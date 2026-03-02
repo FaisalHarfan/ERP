@@ -3729,7 +3729,7 @@ window.completeProduction = (id) => {
 
     // 1. Deduct RM Stock
     actualUsages.forEach(usage => {
-        db.addStockMovement(
+        db.addInventoryTransaction(
             usage.productId,
             'OUT',
             usage.qty,
@@ -3740,7 +3740,7 @@ window.completeProduction = (id) => {
     });
 
     // 2. Add FG Stock
-    db.addStockMovement(
+    db.addInventoryTransaction(
         bom.productId,
         'IN',
         actualFgQty,

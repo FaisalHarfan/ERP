@@ -589,13 +589,26 @@ window.startMO = (id) => {
     const materials = db.read('bomMaterials').filter(m => m.bomId === bom.id);
     const target = parseFloat(mo.qtyTarget) || 0;
     const outputPerBatch = parseFloat(bom.outputPerBatch) || 1;
+
+    console.log('Starting MO:', mo.moNumber, 'BOM:', bom.bomCode);
+    console.log('Target:', target, 'OutputPerBatch:', outputPerBatch);
+
+    if (outputPerBatch <= 0) {
+        showToast('BOM tidak valid: Output per batch harus > 0', 'error');
+        return;
+    }
+
     const batchFactor = target / outputPerBatch;
+    console.log('Batch Factor:', batchFactor);
 
     // Cek stok semua bahan baku
     const errors = [];
     materials.forEach(mat => {
         const needed = mat.qty * batchFactor * (1 + (parseFloat(mat.wastePct) || 0) / 100);
-        if (!db.validateInventoryStock(mat.itemId, needed)) {
+        const hasStock = db.validateInventoryStock(mat.itemId, needed);
+        console.log('Material:', mat.itemName, 'Needed:', needed, 'Has Stock:', hasStock);
+
+        if (!hasStock) {
             const stk = db.getInventoryStock(mat.itemId);
             errors.push(`⚠ ${mat.itemName}: Butuh ${prodFmt(needed)} ${mat.unit}, Stok: ${prodFmt(stk)} ${mat.unit}`);
         }
