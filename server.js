@@ -20,8 +20,8 @@ const server = http.createServer((req, res) => {
     // Strip query strings (e.g., ?v=2)
     const urlPath = req.url.split('?')[0];
 
-    // Default to index.html
-    const fileName = urlPath === '/' ? '/index.html' : urlPath;
+    // Default to login.html
+    const fileName = urlPath === '/' ? '/login.html' : urlPath;
     const filePath = path.join(ROOT, fileName);
 
     const ext = path.extname(filePath).toLowerCase();

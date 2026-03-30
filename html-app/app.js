@@ -4,45 +4,276 @@ const CONFIG = {
     companyName: 'PT. Tana Subur Nusantara',
     companyAddress: 'J8WR+3JQ, Jl. Akses Tol Karawang Tim., Anggadita, Kec. Klari, Karawang, Jawa Barat 41371',
     companyPhone: '0267-12345678',
-    companyEmail: 'info@tanasubur.co.id'
+    companyEmail: 'info@tanasubur.co.id',
+    currency: 'IDR',
+    dateFormat: 'DD/MM/YYYY',
+    timezone: 'Asia/Jakarta',
+    language: 'id',
+    taxRate: 11
 };
+
+// --- Shared Global State ---
+window.currentFilters = {
+    salesOrders: { start: '', end: '' },
+    purchaseOrders: { start: '', end: '' },
+    salesInvoices: { start: '', end: '', taxType: '', status: '' },
+    supplierPayments: { start: '', end: '', supplier: '', status: '', kategori: '' },
+    salesPayments: { start: '', end: '' },
+    inventoryPOReceipt: { start: '', end: '' }
+};
+
+window.activeDepartment = null; // Track current active department for sidebar filtering
+
+// Helper untuk filter tanggal universal
+function filterByDateRange(data, filterKey) {
+    const filters = window.currentFilters[filterKey];
+    if (!filters.start && !filters.end) return data;
+
+    return data.filter(item => {
+        const itemDate = new Date(item.date);
+        itemDate.setHours(0, 0, 0, 0);
+
+        if (filters.start) {
+            const startDate = new Date(filters.start);
+            startDate.setHours(0, 0, 0, 0);
+            if (itemDate < startDate) return false;
+        }
+
+        if (filters.end) {
+            const endDate = new Date(filters.end);
+            endDate.setHours(23, 59, 59, 999);
+            if (itemDate > endDate) return false;
+        }
+
+        return true;
+    });
+}
 
 // --- View Router ---
 const views = {
     'launcher': renderLauncher,
     'dashboard': renderDashboard,
+    'sales-dashboard': renderSalesDashboard,
+    'purchase-dashboard': renderPurchaseDashboard,
+    'settings-dashboard': renderSettingsDashboard,
     'master-products': renderMasterProducts,
     'stock-card': renderStockCard,
     // Inventory Module (New)
+    'inventory-dashboard': window.renderInventoryDashboard,
     'inventory-master': renderInventoryMaster,
     'inventory-stock-in': renderInventoryStockIn,
     'inventory-stock-out': renderInventoryStockOut,
-    'inventory-delivery': renderInventoryDelivery,
+    'inventory-delivery': renderWarehouseDeliveryOrders,  // Focused on WH process (picking/packing/shipping)
     'inventory-production': renderInventoryProduction,
     'inventory-card': renderInventoryCard,
+    'inventory-shrinkage': renderInventoryShrinkageReport,
+    'inventory-monthly-report': renderMonthlyStockReport,
     'inventory-report': renderInventoryReport,
     'inventory-po-receipt': renderInventoryPOReceipt,
     // Purchase Module
     'master-suppliers': renderMasterSuppliers,
-    'purchase-requests': renderPurchaseRequests,
     'purchase-orders': renderPurchaseOrders,
     'purchase-invoices': renderPurchaseInvoices,
     'supplier-payments': renderSupplierPayments,
     'purchase-reports': renderPurchaseReports,
+    'purchase-receiving': renderPurchaseReceiving,
     // Sales Module
     'sales-quotations': renderSalesQuotations,
     'sales-orders': renderSalesOrders,
     'sales-invoices': renderSalesInvoices,
     'sales-payments': renderSalesPayments,
     'sales-reports': renderSalesReports,
-    'master-customers': renderMasterCustomers,
+    'purchase-rfqs': renderPurchaseRFQs,
+    'sales-customers': renderCustomerData,
+    'sales-returns': window.renderSalesReturns,
+    'sales-exchanges': window.renderProductExchanges,
+    'sales-return-reports': window.renderSalesReturnReports,
+    'sales-delivery-orders': window.renderSalesDeliveryOrders,
     // Production Module (New)
     'production-dashboard': renderProductionDashboard,
     'production-machines': renderProductionMachines,
     'production-bom': renderProductionBOM,
     'production-mo': renderProductionMO,
-    'production-log': renderProductionLog
+    'production-log': renderProductionLog,
+    'production-line': () => window.renderProductionLine(),
+    // Finance Module (New)
+    'finance-dashboard': window.renderFinanceDashboard,
+    'finance-accounts': window.renderFinanceAccounts,
+    'finance-expenses': window.renderFinanceExpenses,
+    'finance-ar': window.renderFinanceAR,
+    'finance-ap': window.renderFinanceAP,
+    'finance-journal': window.renderFinanceJournal,
+    'finance-settings': window.renderFinanceSettings,
+    'finance-credit-notes': window.renderFinanceCreditNotes,
+    'finance-debit-notes': window.renderFinanceDebitNotes,
+    // Settings Module
+    'settings-users': window.renderSettingsUsers,
+    'settings-roles': window.renderSettingsRoles,
+    'settings-company': window.renderSettingsCompany,
+    'settings-system': window.renderSettingsSystem
 };
+
+// --- Access Control Mapping ---
+// Maps view IDs to their corresponding permission module
+const MODULE_VIEW_MAP = {
+    'sales-quotations': 'penjualan', 'purchase-rfqs': 'pembelian', 'sales-orders': 'penjualan', 'sales-invoices': 'penjualan', 'sales-dashboard': 'penjualan', 'sales-dashboard': 'penjualan',
+    'sales-payments': 'penjualan', 'sales-reports': 'penjualan', 'sales-customers': 'penjualan',
+    'purchase-orders': 'pembelian', 'purchase-invoices': 'pembelian', 'purchase-dashboard': 'pembelian', 'purchase-dashboard': 'pembelian',
+    'supplier-payments': 'pembelian', 'purchase-reports': 'pembelian', 'master-suppliers': 'pembelian', 'purchase-receiving': 'pembelian',
+    'master-products': 'logistik', 'stock-card': 'logistik',
+    'inventory-dashboard': 'logistik', 'inventory-master': 'logistik', 'inventory-po-receipt': 'logistik', 'inventory-delivery': 'logistik',
+    'inventory-card': 'logistik', 'inventory-shrinkage': 'logistik', 'inventory-monthly-report': 'logistik',
+    'production-dashboard': 'produksi', 'production-machines': 'produksi', 'production-mo': 'produksi',
+    'production-bom': 'produksi', 'production-log': 'produksi', 'production-line': 'produksi',
+    'sales-returns': 'logistik', 'sales-exchanges': 'logistik', 'sales-return-reports': 'logistik',
+    'finance-dashboard': 'finance', 'finance-accounts': 'finance', 'finance-expenses': 'finance',
+    'finance-ar': 'finance', 'finance-ap': 'finance', 'finance-journal': 'finance', 'finance-settings': 'finance',
+    'finance-credit-notes': 'finance', 'finance-debit-notes': 'finance',
+    'settings-users': 'pengaturan', 'settings-roles': 'pengaturan', 'settings-company': 'pengaturan',
+    'settings-system': 'pengaturan', 'settings-dashboard': 'pengaturan',
+    'sales-delivery-orders': 'penjualan'
+};
+
+// --- Global Auth Helpers ---
+window.isCurrentUserAdmin = function() {
+    try {
+        const sess = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
+        if (!sess.userId) return false;
+        const user = db.findById('users', sess.userId);
+        if (!user) return false;
+        const role = db.findById('roles', user.roleId);
+        return user.id === 'user_admin' || (role && role.id === 'role_admin');
+    } catch (e) {
+        return false;
+    }
+};
+
+function getModulePermission(module) {
+    try {
+        const sess = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
+        if (!sess.userId) return { view: false, edit: false };
+
+        const user = db.findById('users', sess.userId);
+        if (!user) return { view: false, edit: false };
+
+        const roles = db.read('roles');
+        const role = roles.find(r => r.id === user.roleId);
+        const isAdmin = user.id === 'user_admin' || (role && role.id === 'role_admin');
+
+        if (isAdmin) return { view: true, edit: true };
+
+        // Per-user permissions override role permissions
+        const perms = user.permissions || (role ? role.permissions : {}) || {};
+        const p = perms[module] || { view: false, edit: false };
+        return { view: !!p.view, edit: !!p.edit };
+    } catch (e) {
+        return { view: false, edit: false };
+    }
+}
+
+// --- Sidebar Helper ---
+function updateSidebarVisibility() {
+    try {
+        const sess = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
+        const user = db.findById('users', sess.userId);
+        if (!user) return;
+
+        const roles = db.read('roles');
+        const role = roles.find(r => r.id === user.roleId);
+        const isAdmin = user.id === 'user_admin' || role?.id === 'role_admin';
+
+        // Load active department if not set
+        if (!window.activeDepartment) {
+            window.activeDepartment = localStorage.getItem('unityerp_active_dept');
+        }
+
+        // Get effective permissions
+        const perms = user.permissions || role?.permissions || {};
+
+        // 1. Hide/Show individual links based on permissions
+        document.querySelectorAll('a[data-view]').forEach(link => {
+            const viewId = link.dataset.view;
+            const module = MODULE_VIEW_MAP[viewId];
+            if (module && !isAdmin) {
+                if (!perms[module]?.view) {
+                    link.classList.add('hidden');
+                } else {
+                    link.classList.remove('hidden');
+                }
+            }
+        });
+
+        // 2. Tampilkan/Sembunyikan grup navigasi berdasarkan izin & departemen aktif
+        document.querySelectorAll('.nav-group-parent').forEach(groupParent => {
+            const innerGroup = groupParent.querySelector('[id$="-group"]');
+            if (!innerGroup) return;
+            const groupName = innerGroup.id.replace('-group', '');
+
+            // Mapping izin
+            const moduleMap = {
+                'sales': 'penjualan', 'penjualan': 'penjualan',
+                'purchase': 'pembelian', 'pembelian': 'pembelian',
+                'inventory': 'logistik', 'logistik': 'logistik',
+                'production': 'produksi', 'produksi': 'produksi',
+                'finance': 'finance',
+                'settings': 'pengaturan', 'pengaturan': 'pengaturan',
+                'logistik': 'logistik', 'warehouse': 'logistik'
+            };
+
+            const module = moduleMap[groupName] || groupName;
+            
+            // Logic: Hide if:
+            // 1. activeDepartment is null (Launcher)
+            // 2. OR activeDepartment doesn't match this group
+            // This applies even to Admins to keep the sidebar clean.
+            const isDepartmentMatch = window.activeDepartment === groupName || 
+                                     (groupName === 'sales' && window.activeDepartment === 'penjualan') ||
+                                     (groupName === 'penjualan' && window.activeDepartment === 'sales') ||
+                                     (groupName === 'purchase' && window.activeDepartment === 'pembelian') ||
+                                     (groupName === 'pembelian' && window.activeDepartment === 'purchase') ||
+                                     (groupName === 'inventory' && window.activeDepartment === 'logistik') ||
+                                     (groupName === 'logistik' && window.activeDepartment === 'inventory') ||
+                                     (groupName === 'production' && window.activeDepartment === 'produksi') ||
+                                     (groupName === 'produksi' && window.activeDepartment === 'production') ||
+                                     (groupName === 'settings' && window.activeDepartment === 'pengaturan') ||
+                                     (groupName === 'pengaturan' && window.activeDepartment === 'settings');
+
+            // Check if any children are visible (permissions)
+            const children = innerGroup.querySelectorAll('a[data-view]');
+            const visibleChildren = Array.from(children).filter(c => !c.classList.contains('hidden'));
+
+            // Always hide if no active department (Launcher)
+            // If active department, only show the matching group
+            if (!window.activeDepartment || !isDepartmentMatch || (visibleChildren.length === 0 && !isAdmin)) {
+                groupParent.classList.add('hidden');
+            } else {
+                groupParent.classList.remove('hidden');
+            }
+        });
+
+        // 3. Launcher tiles visibility
+        const appMapLauncher = {
+            'penjualan': 'penjualan',
+            'pembelian': 'pembelian',
+            'logistik': 'logistik',
+            'produksi': 'produksi',
+            'finance': 'finance',
+            'pengaturan': 'pengaturan'
+        };
+        document.querySelectorAll('button[onclick^="openApp"]').forEach(btn => {
+            const match = btn.getAttribute('onclick').match(/'([^']+)'/);
+            if (match && !isAdmin) {
+                const appName = match[1];
+                const module = appMapLauncher[appName]; // Fixed typo: was appMap
+                if (module && !perms[module]?.view) {
+                    btn.style.display = 'none'; // Use style.display to be sure it's hidden
+                } else {
+                    btn.style.display = '';
+                }
+            }
+        });
+    } catch (e) { console.error('Sidebar visibility error:', e); }
+}
 // Helper untuk Print
 window.printHTML = (htmlContent, title) => {
     const printWindow = window.open('', '_blank', 'height=800,width=800');
@@ -50,6 +281,7 @@ window.printHTML = (htmlContent, title) => {
         alert('Mohon izinkan pop-ups untuk mencetak dokumen.');
         return;
     }
+    const hasInternalHeader = htmlContent.includes('id="print-internal-header"');
     printWindow.document.write(`
         <html>
             <head>
@@ -59,17 +291,28 @@ window.printHTML = (htmlContent, title) => {
                     body { font-family: 'Inter', sans-serif; padding: 2rem; background: white; color: black; }
                     @media print {
                         .no-print { display: none !important; }
-                        body { padding: 0; }
+                        body { padding: 0.5rem; }
                     }
                 </style>
             </head>
             <body>
+                ${!hasInternalHeader ? `
+                <div class="flex justify-between items-start mb-8 pb-4 border-b-2 border-gray-100">
+                    <div>
+                        <h1 class="text-2xl font-bold uppercase text-gray-800">${title}</h1>
+                        <p class="text-xs text-gray-500 mt-1">${CONFIG.companyName}</p>
+                    </div>
+                    ${CONFIG.logo ? `<img src="${CONFIG.logo}" class="h-16 w-auto object-contain">` : ''}
+                </div>` : ''}
                 ${htmlContent}
+                <div class="mt-12 pt-4 border-t border-gray-100 text-[10px] text-gray-400 flex justify-between">
+                    <span>Dicetak pada: ${new Date().toLocaleString('id-ID')}</span>
+                    <span>${CONFIG.companyName} - ERP System</span>
+                </div>
                 <script>
-                    setTimeout(() => {
-                        window.print();
-                        window.close();
-                    }, 500);
+                    window.onload = () => {
+                        setTimeout(() => { window.print(); window.close(); }, 500);
+                    };
                 </script>
             </body>
         </html>
@@ -79,38 +322,116 @@ window.printHTML = (htmlContent, title) => {
 
 function navigateTo(viewId) {
     const sidebar = document.getElementById('sidebar');
-    const homeBtn = document.getElementById('homeBtn');
 
     // Toggle sidebar visibility for launcher vs inner apps
     if (viewId === 'launcher') {
+        window.activeDepartment = null; // Reset filter when in launcher
+        localStorage.removeItem('unityerp_active_dept');
         sidebar.classList.add('hidden');
         sidebar.classList.remove('flex', 'md:block');
-        if (homeBtn) homeBtn.classList.add('hidden');
     } else {
         sidebar.classList.remove('hidden');
         sidebar.classList.add('flex');
-        if (homeBtn) homeBtn.classList.remove('hidden');
     }
+
+    // Update sidebar visibility based on permissions AND active department
+    updateSidebarVisibility();
 
     // Update active nav link
     document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.classList.remove('active', 'bg-blue-600', 'text-white');
-        btn.classList.add('hover:bg-slate-800', 'hover:text-white');
+        btn.classList.remove('active', 'text-white', 'bg-blue-600', 'text-primary');
+        btn.classList.add('text-slate-600');
+
         if (btn.dataset.view === viewId) {
-            btn.classList.add('active', 'bg-blue-600', 'text-white');
-            btn.classList.remove('hover:bg-slate-800', 'hover:text-white');
+            btn.classList.add('active');
+            btn.classList.remove('text-slate-600');
+            btn.classList.add('text-primary'); // Uses Tailwind Blue from config
+
+            // Auto-expand parent group
+            const parentGroup = btn.closest('.nav-group');
+            if (parentGroup && parentGroup.id.endsWith('-group')) {
+                parentGroup.classList.remove('hidden');
+                const groupId = parentGroup.id.replace('-group', '');
+                const parentBtn = document.querySelector(`button[onclick="toggleNavGroup('${groupId}')"]`);
+                if (parentBtn) {
+                    parentBtn.setAttribute('aria-expanded', 'true');
+                    parentBtn.classList.add('text-slate-900', 'font-semibold');
+                }
+            }
         }
     });
 
+    // Update Topbar
+    // Maintenance Mode Guard
+    const isMaintenance = localStorage.getItem('unityerp_maintenance_mode') === 'true';
+    const sess = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
+    const userInfo = db.findById('users', sess.userId);
+    const userRoles = db.read('roles');
+    const userRole = userRoles.find(r => r.id === userInfo?.roleId);
+    const isAdmin = userInfo?.id === 'user_admin' || userRole?.id === 'role_admin';
+
+    if (isMaintenance && !isAdmin && viewId !== 'launcher') {
+        const mainContent = document.getElementById('main-content');
+        mainContent.innerHTML = `
+            <div class="flex flex-col items-center justify-center h-full text-center py-20 px-4">
+                <div class="w-20 h-20 rounded-full bg-orange-50 flex items-center justify-center mb-6 animate-pulse">
+                    <i class="fas fa-tools text-orange-400 text-3xl"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">Sistem Sedang Dalam Pemeliharaan</h2>
+                <p class="text-gray-500 max-w-md mx-auto">
+                    Kami sedang melakukan pembaruan rutin untuk meningkatkan layanan. 
+                    Sistem akan segera kembali normal dalam beberapa saat.
+                </p>
+                <button onclick="window.location.reload()" class="mt-8 px-6 py-2 bg-orange-500 text-white rounded-lg font-semibold hover:bg-orange-600 transition-colors shadow-sm">
+                    Coba Lagi
+                </button>
+            </div>
+        `;
+        return;
+    }
+
+
+    // Access Control Check
+    const requiredModule = MODULE_VIEW_MAP[viewId];
+    if (requiredModule) {
+        try {
+            const sess = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
+            const user = db.findById('users', sess.userId);
+            if (user && user.id !== 'user_admin') {
+                const roles = db.read('roles');
+                const role = roles.find(r => r.id === user.roleId);
+                if (role?.id !== 'role_admin') {
+                    // Per-user permissions take priority, fall back to role
+                    const perms = user.permissions || role?.permissions || {};
+                    if (!perms[requiredModule]?.view) {
+                        mainContent.innerHTML = `
+                            <div class="flex flex-col items-center justify-center h-64 text-center py-16">
+                                <div class="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mb-4">
+                                    <i class="fas fa-lock text-red-400 text-2xl"></i>
+                                    </div>
+                                <h3 class="text-lg font-semibold text-gray-700 mb-2">Akses Ditolak</h3>
+                                <p class="text-sm text-gray-400">Anda tidak memiliki izin untuk mengakses halaman ini.<br>Hubungi Administrator untuk mendapatkan akses.</p>
+                            </div>`;
+                        return;
+                    }
+                }
+            }
+        } catch (e) { /* skip check on error */ }
+    }
+
     // Render the view
-    const mainContent = document.getElementById('main-content');
-    mainContent.innerHTML = ''; // clear
+    const mainContent2 = document.getElementById('main-content');
+    mainContent2.innerHTML = ''; // clear
 
     if (views[viewId]) {
         views[viewId]();
     } else {
-        mainContent.innerHTML = `<div class="p-8 text-center text-gray-500">View not found</div>`;
+        mainContent2.innerHTML = `<div class="p-8 text-center text-gray-500">View not found</div>`;
     }
+
+    // Update sidebar/launcher whenever we navigate to ensure it's in sync
+    // MUST be called after render so elements are in DOM
+    updateSidebarVisibility();
 
     // Close mobile menu if open (only on mobile screens)
     if (window.innerWidth < 768 && viewId !== 'launcher') {
@@ -119,45 +440,69 @@ function navigateTo(viewId) {
     }
 }
 
+// Enterprise Nav Toggle
+// Enterprise Nav Toggle
+function toggleNavGroup(groupId) {
+    // Logic removed as per "langsung gini aja" request
+    // Groups are now always visible if they match the active department
+}
+
+
 function renderLauncher() {
-    document.getElementById('pageTitle').innerText = 'Pilih Departemen';
+    document.getElementById('pageTitle').innerText = 'Select Department';
     const mainContent = document.getElementById('main-content');
 
     mainContent.innerHTML = `
         <div class="h-full w-full flex flex-col items-center justify-center p-4 sm:p-8">
-            <h2 class="text-4xl font-bold text-gray-800 mb-12 text-center">Nex<span class="text-blue-600">ERP</span></h2>
-            <div class="max-w-4xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-6 sm:gap-10 w-full">
+            <h2 class="text-3xl font-bold text-gray-800 mb-8 text-center">Unity<span class="text-blue-600">ERP</span></h2>
+            <div class="max-w-4xl mx-auto grid grid-cols-3 md:grid-cols-5 gap-4 w-full">
                 <!-- Penjualan -->
-                <button onclick="openApp('sales')" class="group flex flex-col items-center justify-center p-8 bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 transform hover:-translate-y-2 aspect-square">
-                    <div class="w-20 h-20 flex items-center justify-center rounded-2xl bg-gradient-to-br from-green-400 to-green-600 text-white mb-4 shadow-lg group-hover:scale-110 transition-transform">
-                        <i class="fas fa-file-invoice-dollar text-3xl"></i>
+                <button onclick="openApp('penjualan')" class="group flex flex-col items-center justify-center p-5 bg-white rounded-2xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-100 transform hover:-translate-y-1">
+                    <div class="w-12 h-12 flex items-center justify-center rounded-xl bg-gradient-to-br from-blue-400 to-blue-600 text-white mb-3 shadow-md group-hover:scale-110 transition-transform">
+                        <i class="fas fa-file-invoice-dollar text-lg"></i>
                     </div>
-                    <span class="font-semibold text-gray-800 text-lg group-hover:text-green-600 transition-colors">Penjualan</span>
+                    <span class="font-semibold text-gray-700 text-sm group-hover:text-blue-600 transition-colors">Sales</span>
                 </button>
-                
+
                 <!-- Pembelian -->
-                <button onclick="openApp('purchase')" class="group flex flex-col items-center justify-center p-8 bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 transform hover:-translate-y-2 aspect-square">
-                    <div class="w-20 h-20 flex items-center justify-center rounded-2xl bg-gradient-to-br from-purple-400 to-purple-600 text-white mb-4 shadow-lg group-hover:scale-110 transition-transform">
-                        <i class="fas fa-shopping-cart text-3xl"></i>
+                <button onclick="openApp('pembelian')" class="group flex flex-col items-center justify-center p-5 bg-white rounded-2xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-100 transform hover:-translate-y-1">
+                    <div class="w-12 h-12 flex items-center justify-center rounded-xl bg-gradient-to-br from-indigo-400 to-indigo-600 text-white mb-3 shadow-md group-hover:scale-110 transition-transform">
+                        <i class="fas fa-shopping-cart text-lg"></i>
                     </div>
-                    <span class="font-semibold text-gray-800 text-lg group-hover:text-purple-600 transition-colors">Pembelian</span>
+                    <span class="font-semibold text-gray-700 text-sm group-hover:text-indigo-600 transition-colors">Purchasing</span>
                 </button>
 
                 <!-- Persediaan -->
-                <button onclick="openApp('inventory')" class="relative group flex flex-col items-center justify-center p-8 bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 transform hover:-translate-y-2 aspect-square">
-                    ${(() => { const items = db.read('inventoryItems'); const lowCount = items.filter(i => db.getInventoryStock(i.id) < i.minStock).length; return lowCount > 0 ? `<span class="absolute top-3 right-3 bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">${lowCount} LOW</span>` : ''; })()}
-                    <div class="w-20 h-20 flex items-center justify-center rounded-2xl bg-gradient-to-br from-blue-400 to-blue-600 text-white mb-4 shadow-lg group-hover:scale-110 transition-transform">
-                        <i class="fas fa-boxes text-3xl"></i>
+                <button onclick="openApp('logistik')" class="relative group flex flex-col items-center justify-center p-5 bg-white rounded-2xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-100 transform hover:-translate-y-1">
+                    ${(() => { try { const items = db.read('inventoryItems') || []; const lowCount = items.filter(i => (db.getInventoryStock(i.id) || 0) < (i.minStock || 0)).length; return lowCount > 0 ? `<span class="absolute top-2 right-2 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">${lowCount}</span>` : ''; } catch(e) { return ''; } })()}
+                    <div class="w-12 h-12 flex items-center justify-center rounded-xl bg-gradient-to-br from-sky-400 to-sky-600 text-white mb-3 shadow-md group-hover:scale-110 transition-transform">
+                        <i class="fas fa-boxes text-lg"></i>
                     </div>
-                    <span class="font-semibold text-gray-800 text-lg group-hover:text-blue-600 transition-colors">Persediaan</span>
+                    <span class="font-semibold text-gray-700 text-sm group-hover:text-sky-600 transition-colors">Inventory</span>
                 </button>
 
                 <!-- Produksi -->
-                <button onclick="openApp('production')" class="group flex flex-col items-center justify-center p-8 bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 transform hover:-translate-y-2 aspect-square">
-                    <div class="w-20 h-20 flex items-center justify-center rounded-2xl bg-gradient-to-br from-orange-400 to-orange-600 text-white mb-4 shadow-lg group-hover:scale-110 transition-transform">
-                        <i class="fas fa-industry text-3xl"></i>
+                <button onclick="openApp('produksi')" class="group flex flex-col items-center justify-center p-5 bg-white rounded-2xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-100 transform hover:-translate-y-1">
+                    <div class="w-12 h-12 flex items-center justify-center rounded-xl bg-gradient-to-br from-slate-400 to-slate-600 text-white mb-3 shadow-md group-hover:scale-110 transition-transform">
+                        <i class="fas fa-industry text-lg"></i>
                     </div>
-                    <span class="font-semibold text-gray-800 text-lg group-hover:text-orange-600 transition-colors">Produksi</span>
+                    <span class="font-semibold text-gray-700 text-sm group-hover:text-slate-600 transition-colors">Manufacturing</span>
+                </button>
+
+                <!-- Finance -->
+                <button onclick="openApp('finance')" class="group flex flex-col items-center justify-center p-5 bg-white rounded-2xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-100 transform hover:-translate-y-1">
+                    <div class="w-12 h-12 flex items-center justify-center rounded-xl bg-gradient-to-br from-orange-400 to-orange-600 text-white mb-3 shadow-md group-hover:scale-110 transition-transform">
+                        <i class="fas fa-money-bill-wave text-lg"></i>
+                    </div>
+                    <span class="font-semibold text-gray-700 text-sm group-hover:text-orange-600 transition-colors">Finance</span>
+                </button>
+
+                <!-- Pengaturan -->
+                <button onclick="openApp('pengaturan')" class="group flex flex-col items-center justify-center p-5 bg-white rounded-2xl shadow-sm hover:shadow-lg transition-all duration-300 border border-gray-100 transform hover:-translate-y-1">
+                    <div class="w-12 h-12 flex items-center justify-center rounded-xl bg-gradient-to-br from-gray-400 to-gray-600 text-white mb-3 shadow-md group-hover:scale-110 transition-transform">
+                        <i class="fas fa-cog text-lg"></i>
+                    </div>
+                    <span class="font-semibold text-gray-700 text-sm group-hover:text-gray-600 transition-colors">Settings</span>
                 </button>
             </div>
         </div>
@@ -165,27 +510,44 @@ function renderLauncher() {
 }
 
 window.openApp = (appName) => {
-    // Hide all nav groups
-    document.querySelectorAll('.nav-group').forEach(el => el.classList.add('hidden'));
-
-    // Show specific target group
-    const targetGroup = document.querySelector(`.nav-group.${appName}`);
-    if (targetGroup) targetGroup.classList.remove('hidden');
+    window.activeDepartment = appName;
+    localStorage.setItem('unityerp_active_dept', appName);
+    
+    // Expand the correct group in sidebar
+    const groups = document.querySelectorAll('.nav-group');
+    groups.forEach(group => {
+        if (group.id === appName + '-group') {
+            group.classList.remove('hidden');
+        } else {
+            group.classList.add('hidden');
+        }
+    });
 
     // Default routes per app
-    if (appName === 'sales') navigateTo('sales-quotations');
-    else if (appName === 'purchase') navigateTo('purchase-orders');
-    else if (appName === 'inventory') navigateTo('inventory-master');
-    else if (appName === 'production') navigateTo('production-dashboard');
+    if (appName === 'penjualan') navigateTo('sales-dashboard');
+    else if (appName === 'pembelian') navigateTo('purchase-dashboard');
+    else if (appName === 'logistik') navigateTo('inventory-dashboard');
+    else if (appName === 'produksi') navigateTo('production-dashboard');
+    else if (appName === 'finance') navigateTo('finance-dashboard');
+    else if (appName === 'pengaturan') navigateTo('settings-dashboard');
 };
 
 // --- Modals ---
-function showModal(title, bodyHtml, footerHtml) {
+function showModal(title, bodyHtml, footerHtml, size = 'md') {
     const modalContainer = document.getElementById('modal-container');
+    const sizeClasses = {
+        'sm': 'max-w-md',
+        'md': 'max-w-2xl',
+        'lg': 'max-w-4xl',
+        'xl': 'max-w-6xl',
+        'full': 'max-w-[96vw] h-[96vh]'
+    };
+    const sizeClass = sizeClasses[size] || sizeClasses['md'];
+
     modalContainer.innerHTML = `
-        <div class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 p-4 animate-fade-in" id="modal-backdrop">
-        <div class="bg-white rounded-lg shadow-xl w-full max-w-2xl flex flex-col max-h-[90vh] animate-slide-up">
-            <div class="flex justify-between items-center p-4 sm:p-6 border-b border-gray-200">
+        <div class="fixed inset-0 bg-gray-900 bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4 animate-fade-in" id="modal-backdrop">
+        <div class="bg-white rounded-lg shadow-xl w-full ${sizeClass} flex flex-col ${size === 'full' ? '' : 'max-h-[90vh]'} animate-slide-up overflow-hidden">
+            <div class="flex justify-between items-center p-4 sm:p-5 border-b border-gray-200 shrink-0">
                 <h3 class="text-xl font-semibold text-gray-800">${title}</h3>
                 <button class="text-gray-400 hover:text-gray-600 transition-colors" onclick="closeModal()">
                     <i class="fas fa-times text-xl"></i>
@@ -194,7 +556,7 @@ function showModal(title, bodyHtml, footerHtml) {
             <div class="p-4 sm:p-6 overflow-y-auto flex-1">
                 ${bodyHtml}
             </div>
-            <div class="px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse bg-gray-50 border-t border-gray-200 rounded-b-lg">
+            <div class="px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse bg-gray-50 border-t border-gray-200 rounded-b-lg shrink-0">
                 ${footerHtml}
             </div>
         </div>
@@ -230,16 +592,227 @@ function showToast(message, type = 'success') {
 }
 
 // --- Formatting Helpers ---
-const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(amount);
+window.formatCurrency = (amount) => {
+    const locale = CONFIG.language === 'en' ? 'en-US' : 'id-ID';
+    return new Intl.NumberFormat(locale, { style: 'currency', currency: CONFIG.currency || 'IDR' }).format(amount);
 };
-const formatDate = (isoString) => {
+
+window.formatDate = (isoString) => {
     if (!isoString) return '-';
     const date = new Date(isoString);
-    return date.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const locale = CONFIG.language === 'en' ? 'en-US' : 'id-ID';
+
+    // Simplistic mapping for common formats
+    const options = { hour: '2-digit', minute: '2-digit' };
+    if (CONFIG.dateFormat === 'YYYY-MM-DD') {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d} ${date.toLocaleTimeString(locale, options)}`;
+    } else if (CONFIG.dateFormat === 'MM/DD/YYYY') {
+        return date.toLocaleDateString('en-US') + ' ' + date.toLocaleTimeString(locale, options);
+    } else {
+        // Default DD/MM/YYYY
+        return date.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }) + ' ' + date.toLocaleTimeString(locale, options);
+    }
 };
 
 // --- View Renderers (Placeholders) ---
+
+// ─────────────────── SALES DASHBOARD ─────────────────────────
+function renderSalesDashboard() {
+    document.getElementById('pageTitle').innerText = 'Dashboard Penjualan';
+    const mc = document.getElementById('main-content');
+
+    const quotations = db.read('salesQuotations') || [];
+    const orders = db.read('salesOrders') || [];
+    const invoices = db.read('salesInvoices') || [];
+
+    const draftQT = quotations.filter(q => q.status === 'DRAFT').length;
+    const sentQT = quotations.filter(q => q.status === 'SENT').length;
+    const pendingSO = orders.filter(o => o.status === 'CONFIRMED').length;
+    const unpaidINV = invoices.filter(i => i.status === 'UNPAID').length;
+
+    const card = (title, count, subtitle, actionLabel, viewId, icon, color) => `
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <h3 class="text-lg font-bold text-gray-800">${title}</h3>
+                    <p class="text-sm text-gray-500 mt-1">${count} ${subtitle}</p>
+                </div>
+                <div class="w-12 h-12 rounded-lg ${color} flex items-center justify-center text-xl shadow-sm">
+                    <i class="${icon}"></i>
+                </div>
+            </div>
+            <button onclick="navigateTo('${viewId}')" class="w-full bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg text-sm transition-colors mt-2">
+                ${actionLabel}
+            </button>
+        </div>`;
+
+    mc.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            ${card('Penawaran (Draft)', draftQT, 'Draft', 'Buka Penawaran', 'sales-quotations', 'fas fa-file-alt', 'bg-gray-50 text-gray-600')}
+            ${card('Penawaran (Sent)', sentQT, 'Terkirim', 'Buka Penawaran', 'sales-quotations', 'fas fa-paper-plane', 'bg-blue-50 text-blue-600')}
+            ${card('Sales Order', pendingSO, 'Butuh Surat Jalan', 'Proses SO', 'sales-orders', 'fas fa-shopping-cart', 'bg-green-50 text-green-600')}
+            ${card('Piutang', unpaidINV, 'Belum Lunas', 'Lihat Invoice', 'sales-invoices', 'fas fa-money-bill-wave', 'bg-orange-50 text-orange-600')}
+        </div>
+        
+        <div class="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <h3 class="text-md font-bold text-gray-800 mb-4 flex items-center gap-2">
+                    <i class="fas fa-trophy text-yellow-500"></i> Customer Terbaik (Total SO)
+                </h3>
+                <div class="space-y-4">
+                    ${(() => {
+            const custTotals = {};
+            orders.forEach(o => {
+                custTotals[o.customerId] = (custTotals[o.customerId] || 0) + (parseFloat(o.totalAmount) || 0);
+            });
+            const customers = db.read('customers') || [];
+            return Object.entries(custTotals)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 5)
+                .map(([cid, total], idx) => {
+                    const c = customers.find(cust => cust.id === cid) || { name: 'Customer Lama' };
+                    return `
+                                <div class="flex items-center justify-between">
+                                    <div class="flex items-center gap-3">
+                                        <span class="text-xs font-bold text-gray-400">#${idx + 1}</span>
+                                        <span class="text-sm font-medium text-gray-800">${c.name}</span>
+                                    </div>
+                                    <span class="text-sm font-bold text-blue-600">${formatCurrency(total)}</span>
+                                </div>`;
+                }).join('') || '<p class="text-center py-6 text-gray-400 text-sm italic">Belum ada data penjualan.</p>';
+        })()}
+                </div>
+            </div>
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <h3 class="text-md font-bold text-gray-800 mb-4 flex items-center gap-2">
+                    <i class="fas fa-history text-blue-500"></i> Aktifitas Penawaran Terakhir
+                </h3>
+                    ${quotations.slice(-5).reverse().map(q => {
+                        const qCust = db.read('customers').find(c => c.id === q.customerId) || { name: 'Unknown' };
+                        return `
+                        <div class="flex items-center justify-between mt-2">
+                            <div>
+                                <p class="text-sm font-bold text-gray-800">${q.qtNumber || '-'}</p>
+                                <p class="text-[10px] text-gray-500">${qCust.name} · ${formatDate(q.date).slice(0, 11)}</p>
+                            </div>
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${q.status === 'SENT' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}">${q.status}</span>
+                        </div>
+                        `;
+                    }).join('') || '<p class="text-center py-6 text-gray-400 text-sm italic">Tidak ada penawaran terbaru.</p>'}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// ─────────────────── PURCHASE DASHBOARD ──────────────────────
+function renderPurchaseDashboard() {
+    document.getElementById('pageTitle').innerText = 'Dashboard Pembelian';
+    const mc = document.getElementById('main-content');
+
+    const pos = db.read('purchaseOrders') || [];
+    const invs = db.read('purchaseInvoices') || [];
+
+    const activePO = pos.filter(p => ['APPROVED', 'PARTIALLY RECEIVED'].includes(p.status)).length;
+    const unpaidDebt = invs.filter(i => i.status === 'UNPAID').length;
+
+    const card = (title, count, subtitle, actionLabel, viewId, icon, color) => `
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
+            <div class="flex justify-between items-start mb-4">
+                <div>
+                    <h3 class="text-lg font-bold text-gray-800">${title}</h3>
+                    <p class="text-sm text-gray-500 mt-1">${count} ${subtitle}</p>
+                </div>
+                <div class="w-12 h-12 rounded-lg ${color} flex items-center justify-center text-xl shadow-sm">
+                    <i class="${icon}"></i>
+                </div>
+            </div>
+            <button onclick="navigateTo('${viewId}')" class="w-full bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg text-sm transition-colors mt-2">
+                ${actionLabel}
+            </button>
+        </div>`;
+
+    mc.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
+            ${card('Purchase Order', activePO, 'Dalam Perjalanan', 'Buka PO', 'purchase-orders', 'fas fa-shopping-bag', 'bg-green-50 text-green-600')}
+            ${card('Hutang Supplier', unpaidDebt, 'Invoiced', 'Buka Pembayaran', 'supplier-payments', 'fas fa-wallet', 'bg-red-50 text-red-600')}
+        </div>
+
+        <div class="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+             <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <h3 class="text-md font-bold text-gray-800 mb-4 flex items-center gap-2">
+                    <i class="fas fa-truck text-indigo-500"></i> Supplier Top Volume
+                </h3>
+                <div class="space-y-4">
+                    ${(() => {
+            const supTotals = {};
+            pos.forEach(p => { supTotals[p.supplierId] = (supTotals[p.supplierId] || 0) + (parseFloat(p.totalAmount) || 0); });
+            const suppliers = db.read('suppliers') || [];
+            return Object.entries(supTotals).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([sid, total], idx) => {
+                const s = suppliers.find(sup => sup.id === sid) || { name: 'Supplier' };
+                return `<div class="flex justify-between items-center text-sm"><span class="text-gray-700">${idx + 1}. ${s.name}</span><span class="font-bold text-indigo-600">${formatCurrency(total)}</span></div>`;
+            }).join('') || '<p class="text-center py-6 text-gray-400 text-sm">Belum ada aktifitas PO.</p>';
+        })()}
+                </div>
+             </div>
+             <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                <h3 class="text-md font-bold text-gray-800 mb-4 flex items-center gap-2">
+                    <i class="fas fa-tasks text-green-500"></i> Status PO Terakhir
+                </h3>
+                 <div class="space-y-4">
+                     ${pos.slice(-5).reverse().map(p => `
+                        <div class="flex items-center justify-between text-xs">
+                            <span class="font-bold text-gray-800">${p.poNumber}</span>
+                            <span class="text-gray-500">${formatDate(p.date).slice(0, 11)}</span>
+                            <span class="px-2 py-0.5 rounded font-bold ${p.status === 'RECEIVED' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}">${p.status}</span>
+                        </div>
+                     `).join('') || '<p class="text-center py-6 text-gray-400 text-sm">Tidak ada aktifitas PO.</p>'}
+                </div>
+             </div>
+        </div>
+    `;
+}
+
+// ─────────────────── SETTINGS DASHBOARD ──────────────────────
+function renderSettingsDashboard() {
+    document.getElementById('pageTitle').innerText = 'Dashboard Pengaturan';
+    const mc = document.getElementById('main-content');
+
+    const users = db.read('users') || [];
+    const roles = db.read('roles') || [];
+    const config = db.read('company_config') || {};
+
+    mc.innerHTML = `
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div onclick="navigateTo('settings-users')" class="bg-white p-6 rounded-xl border border-gray-100 shadow-sm cursor-pointer hover:border-blue-500 transition-all">
+                <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">User Aktif</p>
+                <p class="text-3xl font-black text-blue-600 mt-1">${users.length}</p>
+                <p class="text-xs text-blue-400 mt-2">Klik untuk manajemen user</p>
+            </div>
+            <div onclick="navigateTo('settings-roles')" class="bg-white p-6 rounded-xl border border-gray-100 shadow-sm cursor-pointer hover:border-purple-500 transition-all">
+                <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">Total Hak Akses (Roles)</p>
+                <p class="text-3xl font-black text-purple-600 mt-1">${roles.length}</p>
+                <p class="text-xs text-purple-400 mt-2">Klik untuk atur izin modul</p>
+            </div>
+            <div onclick="navigateTo('settings-company')" class="bg-white p-6 rounded-xl border border-gray-100 shadow-sm cursor-pointer hover:border-green-500 transition-all">
+                <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">Pruduktivitas Profil</p>
+                <div class="flex items-center gap-2 mt-1">
+                    <span class="text-3xl font-black text-green-600">${config.companyName ? 'OK' : 'EMPTY'}</span>
+                    ${config.companyName ? '<i class="fas fa-check-circle text-green-500"></i>' : '<i class="fas fa-exclamation-circle text-orange-500"></i>'}
+                </div>
+                <p class="text-xs text-green-400 mt-2">Klik untuk edit data perusahaan</p>
+            </div>
+        </div>
+
+        <div class="bg-blue-50 border border-blue-100 rounded-xl p-6">
+            <h3 class="text-blue-800 font-bold mb-2 flex items-center gap-2"><i class="fas fa-info-circle"></i> Tips Pengaturan</h3>
+            <p class="text-sm text-blue-700 leading-relaxed">Pastikan Profil Perusahaan (NPWP, Alamat, dan Telepon) sudah diisi dengan benar agar muncul di semua dokumen cetak Penawaran, PO, dan Invoice. Jangan lupa untuk berkala mengganti password User demi keamanan data.</p>
+        </div>
+    `;
+}
 
 function renderDashboard() {
     document.getElementById('pageTitle').innerText = 'Dashboard Overview';
@@ -268,7 +841,7 @@ function renderDashboard() {
     const totalPoThisMonth = monthlyPo.reduce((sum, p) => sum + (parseFloat(p.totalAmount) || 0), 0);
     const totalSoThisMonth = monthlySo.reduce((sum, s) => sum + (parseFloat(s.totalAmount) || 0), 0);
 
-    // Calculate total stock value (Simple assumption: avg PO price * stock)-For MVP using fixed estimation 
+    // Calculate total stock value (Simple assumption: avg PO price * stock)-For MVP using fixed estimation
     // Usually requires actual costing method (FIFO/Average).
     let estimatedStockValue = 0;
     products.forEach(p => {
@@ -287,7 +860,7 @@ function renderDashboard() {
                     <p class="text-xl font-bold text-gray-800">${formatCurrency(estimatedStockValue)}</p>
                 </div>
             </div>
-            
+
             <!-- Card 2 -- >
             <div class="bg-white rounded-lg shadow-sm p-5 border border-gray-100 flex items-center">
                 <div class="p-3 rounded-full bg-red-100 text-red-600 mr-4">
@@ -366,8 +939,9 @@ function renderDashboard() {
 }
 
 // --- Master Customers Module ---
-function renderMasterCustomers() {
-    document.getElementById('pageTitle').innerText = 'Master Customers';
+function renderCustomerData() {
+    const canEdit = getModulePermission('penjualan').edit;
+    document.getElementById('pageTitle').innerText = 'Customer Management';
     const mainContent = document.getElementById('main-content');
 
     const customers = db.read('customers');
@@ -375,33 +949,51 @@ function renderMasterCustomers() {
     let rows = customers.map(c => `
         <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
             <td class="py-3 px-4 text-sm font-medium text-gray-800">${c.name}</td>
+            <td class="py-3 px-4 text-sm text-gray-600">${c.contactPerson || '-'}</td>
             <td class="py-3 px-4 text-sm text-gray-600">${c.phone || '-'}</td>
-            <td class="py-3 px-4 text-sm text-gray-600 text-sm whitespace-pre-wrap">${c.address || '-'}</td>
+            <td class="py-3 px-4 text-sm text-gray-600 font-mono">${c.email || '-'}</td>
+            <td class="py-3 px-4 text-sm text-gray-800 font-medium">${c.region || '-'}${c.city ? `, ${c.city}` : ''}</td>
+            <td class="py-3 px-4 text-sm text-gray-600 text-sm whitespace-pre-wrap">${c.shippingAddress || c.address || '-'}</td>
             <td class="py-3 px-4 text-sm text-right">
-                <button onclick="openCustomerModal('${c.id}')" class="text-blue-600 hover:text-blue-800 mr-2" title="Edit"><i class="fas fa-edit"></i></button>
-                <button onclick="deleteCustomer('${c.id}')" class="text-red-500 hover:text-red-700" title="Hapus"><i class="fas fa-trash"></i></button>
+                <div class="flex justify-end gap-2">
+                    <button onclick="viewCustomerHistory('${c.id}')" class="text-indigo-600 hover:text-indigo-800" title="History"><i class="fas fa-history"></i></button>
+                    ${canEdit ? `
+                    <button onclick="openCustomerModal('${c.id}')" class="text-blue-600 hover:text-blue-400" title="Edit"><i class="fas fa-edit"></i></button>
+                    <button onclick="deleteCustomer('${c.id}')" class="text-red-500 hover:text-red-700" title="Hapus"><i class="fas fa-trash"></i></button>
+                    ` : ''}
+                </div>
             </td>
         </tr>
     `).join('');
 
-    if (customers.length === 0) rows = `<tr><td colspan="4" class="py-4 text-center text-gray-500">Belum ada data customer</td></tr>`;
+    if (customers.length === 0) rows = `<tr><td colspan="7" class="py-4 text-center text-gray-500">Belum ada data customer</td></tr>`;
 
     mainContent.innerHTML = `
         <div class="bg-white rounded-lg shadow-sm border border-gray-100">
             <div class="flex justify-between items-center p-4 sm:p-6 border-b border-gray-100">
                 <h2 class="text-lg font-semibold text-gray-800">Daftar Customer</h2>
-                <button onclick="openCustomerModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors text-sm font-medium">
-                    <i class="fas fa-plus mr-2"></i>Tambah Customer
-                </button>
+                <div class="flex gap-2">
+                    ${canEdit ? `
+                    <button onclick="openCustomerModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors text-sm font-medium">
+                        <i class="fas fa-plus mr-2"></i>Tambah Customer
+                    </button>
+                    ` : `
+                    <span class="text-xs font-medium text-orange-500 bg-orange-50 border border-orange-100 px-3 py-1.5 rounded-lg flex items-center gap-2">
+                        <i class="fas fa-info-circle"></i> Mode Lihat Saja
+                    </span>
+                    `}
+                </div>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
                     <thead>
                         <tr class="bg-gray-50 border-b border-gray-200">
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider w-1/4">Nama Perusahaan/Orang</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider w-1/5">No. Telepon</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Alamat</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">Aksi</th>
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Customer Name</th>
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Contact Person</th>
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Phone</th>
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Wilayah / Kota</th>
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Shipping Address</th>
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">Actions</th>
                         </tr>
                     </thead>
                     <tbody>${rows}</tbody>
@@ -411,32 +1003,62 @@ function renderMasterCustomers() {
     `;
 }
 
-window.openCustomerModal = (id = null) => {
-    let customer = { name: '', phone: '', address: '' };
+window.openCustomerModal = (id = null, afterView = null) => {
+    window._afterCustomerSave = afterView; 
+    let customer = { name: '', phone: '', email: '', address: '', contactPerson: '', shippingAddress: '' };
     if (id) {
         customer = db.findById('customers', id);
     }
 
     const body = `
-        <div class="space-y-4">
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Nama Customer / PT</label>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Customer / Company Name <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
                 <input type="text" id="cust_name" value="${customer.name}" class="w-full border border-gray-300 rounded px-3 py-2">
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">No. Telepon</label>
-                <input type="text" id="cust_phone" value="${customer.phone}" class="w-full border border-gray-300 rounded px-3 py-2">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Contact Person <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                <input type="text" id="cust_cp" value="${customer.contactPerson || ''}" class="w-full border border-gray-300 rounded px-3 py-2" placeholder="Nama PIC">
             </div>
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Alamat Lengkap</label>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Phone Number <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                <input type="text" id="cust_phone" value="${customer.phone}" class="w-full border border-gray-300 rounded px-3 py-2">
+            </div>
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Email Address <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                <input type="email" id="cust_email" value="${customer.email || ''}" class="w-full border border-gray-300 rounded px-3 py-2 font-mono text-sm" placeholder="example@mail.com">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Billing Address <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
                 <textarea id="cust_address" class="w-full border border-gray-300 rounded px-3 py-2 h-24">${customer.address}</textarea>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Shipping Address <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                <textarea id="cust_shipping" class="w-full border border-gray-300 rounded px-3 py-2 h-24">${customer.shippingAddress || customer.address}</textarea>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Wilayah / Daerah <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                <input type="text" id="cust_region" value="${customer.region || ''}" class="w-full border border-gray-300 rounded px-3 py-2" placeholder="Cth: Jawa Barat">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Kota <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                <input type="text" id="cust_city" value="${customer.city || ''}" class="w-full border border-gray-300 rounded px-3 py-2" placeholder="Cth: Karawang">
+            </div>
+            <div class="md:col-span-2">
+                <label class="block text-sm font-medium text-gray-700 mb-1">Sistem Pembayaran (Payment Term) <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                <select id="cust_payment_term" class="w-full border border-gray-300 rounded px-3 py-2 bg-white focus:ring-2 focus:ring-blue-500">
+                    <option value="" ${!customer.paymentTerm ? 'selected' : ''}>-- Pilih Term --</option>
+                    <option value="10" ${customer.paymentTerm === '10' ? 'selected' : ''}>Tempo 7 s/d 10 Hari</option>
+                    <option value="30" ${customer.paymentTerm === '30' ? 'selected' : ''}>30 Hari</option>
+                    <option value="45" ${customer.paymentTerm === '45' ? 'selected' : ''}>45 Hari</option>
+                </select>
             </div>
         </div>
     `;
 
     const footer = `
         <button type="button" onclick="saveCustomer('${id || ''}')" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-white font-medium focus:outline-none sm:ml-3 sm:w-auto sm:text-sm">Simpan</button>
-        <button type="button" onclick="closeModal()" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-gray-700 font-medium sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">Batal</button>
+        <button type="button" onclick="window._afterCustomerSave ? (window._afterCustomerSave === 'SO' ? openSOModal() : (window._afterCustomerSave === 'QT' ? openQuotationModal() : closeModal())) : closeModal()" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-gray-700 font-medium sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">Batal</button>
     `;
 
     showModal(id ? 'Edit Customer' : 'Tambah Customer Baru', body, footer);
@@ -445,26 +1067,104 @@ window.openCustomerModal = (id = null) => {
 window.saveCustomer = (id) => {
     const name = document.getElementById('cust_name').value.trim();
     const phone = document.getElementById('cust_phone').value.trim();
+    const email = document.getElementById('cust_email').value.trim();
     const address = document.getElementById('cust_address').value.trim();
+    const contactPerson = document.getElementById('cust_cp').value.trim();
+    const shippingAddress = document.getElementById('cust_shipping').value.trim();
+    const region = document.getElementById('cust_region').value.trim();
+    const city = document.getElementById('cust_city').value.trim();
+    const paymentTerm = document.getElementById('cust_payment_term').value;
 
-    if (!name) { showToast('Nama harus diisi', 'error'); return; }
+    if (!name) { showToast('Nama Customer harus diisi', 'error'); return; }
+    if (!contactPerson) { showToast('PIC / Contact Person harus diisi', 'error'); return; }
+    if (!phone) { showToast('Nomor Telepon harus diisi', 'error'); return; }
+    if (!email) { showToast('Email harus diisi', 'error'); return; }
+    if (!address) { showToast('Alamat Billing harus diisi', 'error'); return; }
+    if (!shippingAddress) { showToast('Alamat Shipping harus diisi', 'error'); return; }
+    if (!region) { showToast('Wilayah / Daerah harus diisi', 'error'); return; }
+    if (!city) { showToast('Kota harus diisi', 'error'); return; }
+    if (!paymentTerm) { showToast('Sistem Pembayaran harus dipilih', 'error'); return; }
+
+    const data = { name, phone, email, address, contactPerson, shippingAddress, paymentTerm, region, city };
 
     if (id) {
-        db.update('customers', id, { name, phone, address });
+        db.update('customers', id, data);
         showToast('Data customer berhasil diperbarui');
     } else {
-        db.insert('customers', { name, phone, address });
+        db.insert('customers', data);
         showToast('Customer baru berhasil ditambahkan');
     }
 
     closeModal();
-    renderMasterCustomers();
+    if (window._afterCustomerSave === 'SO') {
+        openSOModal();
+    } else if (window._afterCustomerSave === 'QT') {
+        openQuotationModal();
+    } else {
+        renderCustomerData();
+    }
+    window._afterCustomerSave = null;
+};
+
+// ============================================================
+// ===          CUSTOMER MANAGEMENT (SALES)                 ===
+
+window.viewCustomerHistory = (customerId) => {
+    const customer = db.findById('customers', customerId);
+    if (!customer) return;
+
+    const quotations = (db.read('salesQuotations') || []).filter(q => q.customerId === customerId);
+    const orders = (db.read('salesOrders') || []).filter(o => o.customerId === customerId);
+    const invoices = (db.read('salesInvoices') || []).filter(i => i.customerId === customerId);
+
+    const body = `
+        <div class="space-y-6">
+            <div>
+                <h4 class="text-sm font-bold text-gray-700 mb-3 border-b pb-1">Sales Quotations</h4>
+                <div class="max-h-40 overflow-y-auto border rounded divide-y">
+                    ${quotations.length ? quotations.map(q => `
+                        <div class="p-2 text-xs flex justify-between hover:bg-gray-50 cursor-pointer" onclick="viewQuotation('${q.id}')">
+                            <span>${q.quotationNumber}</span>
+                            <span class="text-gray-500">${formatDate(q.createdAt).slice(0,10)}</span>
+                            <span class="font-bold">${formatCurrency(q.totalAmount)}</span>
+                        </div>
+                    `).join('') : '<p class="p-3 text-center text-gray-400 text-xs">No quotations found</p>'}
+                </div>
+            </div>
+            <div>
+                <h4 class="text-sm font-bold text-gray-700 mb-3 border-b pb-1">Sales Orders</h4>
+                <div class="max-h-40 overflow-y-auto border rounded divide-y">
+                    ${orders.length ? orders.map(o => `
+                        <div class="p-2 text-xs flex justify-between hover:bg-gray-50 cursor-pointer" onclick="viewSO('${o.id}')">
+                            <span>${o.soNumber}</span>
+                            <span class="text-gray-500">${formatDate(o.createdAt).slice(0,10)}</span>
+                            <span class="font-bold">${formatCurrency(o.totalAmount)}</span>
+                        </div>
+                    `).join('') : '<p class="p-3 text-center text-gray-400 text-xs">No orders found</p>'}
+                </div>
+            </div>
+            <div>
+                <h4 class="text-sm font-bold text-gray-700 mb-3 border-b pb-1">Invoices</h4>
+                <div class="max-h-40 overflow-y-auto border rounded divide-y">
+                    ${invoices.length ? invoices.map(i => `
+                        <div class="p-2 text-xs flex justify-between hover:bg-gray-50 cursor-pointer" onclick="viewInvoice('${i.id}')">
+                            <span>${i.invoiceNumber}</span>
+                            <span class="text-gray-500">${formatDate(i.createdAt).slice(0,10)}</span>
+                            <span class="font-bold text-blue-600">${formatCurrency(i.totalAmount)}</span>
+                        </div>
+                    `).join('') : '<p class="p-3 text-center text-gray-400 text-xs">No invoices found</p>'}
+                </div>
+            </div>
+        </div>
+    `;
+
+    showModal(`History: ${customer.name}`, body, `<button onclick="closeModal()" class="px-4 py-2 bg-gray-600 text-white rounded text-sm hover:bg-gray-700">Close History</button>`, 'lg');
 };
 
 window.deleteCustomer = (id) => {
     if (confirm('Yakin ingin menghapus customer ini?')) {
         db.delete('customers', id);
-        renderMasterCustomers();
+        renderCustomerData();
     }
 };
 
@@ -487,24 +1187,77 @@ function statusBadgePurch(status) {
     return `<span class="px-2 py-1 rounded text-xs font-semibold ${map[status] || 'bg-gray-100 text-gray-600'}">${status}</span>`;
 }
 
+function toRomanPurch(num) {
+    const lookup = { M: 1000, CM: 900, D: 500, CD: 400, C: 100, XC: 90, L: 50, XL: 40, X: 10, IX: 9, V: 5, IV: 4, I: 1 };
+    let roman = '';
+    for (let i in lookup) {
+        while (num >= lookup[i]) {
+            roman += i;
+            num -= lookup[i];
+        }
+    }
+    return roman;
+}
+
+function generatePurchaseOrderNumber(isTax = false) {
+    const pos = db.read('purchaseOrders') || [];
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+    const romanMonth = toRomanPurch(month);
+    
+    const sameMonthPOs = pos.filter(p => {
+        const pDate = new Date(p.date || p.createdAt);
+        return pDate.getMonth() + 1 === month && pDate.getFullYear() === year;
+    });
+
+    const nextSeq = sameMonthPOs.length + 1;
+    const seqStr = String(nextSeq).padStart(3, '0');
+    const type = isTax ? 'TAX' : 'NTX';
+    
+    return `PO-${type}-${seqStr}/${romanMonth}/${year}`;
+}
+
+window.updatePODueDate = () => {
+    const poDateVal = document.getElementById('po_date')?.value;
+    const term = document.getElementById('po_payment_terms')?.value;
+    const dueDateInput = document.getElementById('po_due_date');
+    if (!poDateVal || !term || !dueDateInput) return;
+
+    let days = 0;
+    if (term === 'Cash' || term === 'COD') days = 0;
+    else if (term === '7 S/d 10 Hari') days = 10;
+    else if (term === '30 Hari') days = 30;
+    else if (term === '45 Hari') days = 45;
+    else if (term === '60 Hari') days = 60;
+
+    const date = new Date(poDateVal);
+    date.setDate(date.getDate() + days);
+    dueDateInput.value = date.toISOString().split('T')[0];
+};
+
 // ─────────────────── MASTER SUPPLIERS ───────────────────────
 function renderMasterSuppliers() {
-    document.getElementById('pageTitle').innerText = 'Master Supplier';
+    const canEdit = getModulePermission('pembelian').edit;
+    document.getElementById('pageTitle').innerText = 'Supplier';
     const mainContent = document.getElementById('main-content');
     const suppliers = db.read('suppliers');
 
     let rows = suppliers.map(s => `
         <tr class="border-b border-gray-100 hover:bg-gray-50">
             <td class="py-3 px-4 text-sm font-medium text-gray-800">${s.name}</td>
+            <td class="py-3 px-4 text-sm text-gray-600">${s.pic || '-'}</td>
+            <td class="py-3 px-4 text-sm text-gray-600">${s.city || '-'}</td>
             <td class="py-3 px-4 text-sm text-gray-600">${s.phone || '-'}</td>
-            <td class="py-3 px-4 text-sm text-gray-600">${s.email || '-'}</td>
             <td class="py-3 px-4 text-sm text-gray-600 whitespace-pre-wrap">${s.address || '-'}</td>
             <td class="py-3 px-4 text-sm text-right">
+                ${canEdit ? `
                 <button onclick="openSupplierModal('${s.id}')" class="text-blue-500 hover:text-blue-700 mr-2"><i class="fas fa-edit"></i></button>
                 <button onclick="deleteSupplier('${s.id}')" class="text-red-500 hover:text-red-700"><i class="fas fa-trash"></i></button>
+                ` : '<span class="text-gray-400 text-[10px] italic">No Access</span>'}
             </td>
         </tr>`).join('');
-    if (!rows) rows = `<tr><td colspan="5" class="py-4 text-center text-gray-500">Belum ada supplier</td></tr>`;
+    if (!rows) rows = `<tr><td colspan="6" class="py-4 text-center text-gray-500">Belum ada supplier</td></tr>`;
 
     mainContent.innerHTML = `
         <div class="bg-white rounded-lg shadow-sm border border-gray-100">
@@ -519,8 +1272,9 @@ function renderMasterSuppliers() {
                     <thead>
                         <tr class="bg-gray-50 border-b border-gray-200">
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Nama</th>
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">PIC</th>
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Kota</th>
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Telepon</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Email</th>
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Alamat</th>
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Aksi</th>
                         </tr>
@@ -532,18 +1286,26 @@ function renderMasterSuppliers() {
 }
 
 window.openSupplierModal = (id = null) => {
-    const s = id ? db.findById('suppliers', id) : { name: '', phone: '', email: '', address: '' };
+    const s = id ? db.findById('suppliers', id) : { name: '', phone: '', email: '', address: '', pic: '', region: '', city: '' };
     const body = `<div class="space-y-4">
-        <div><label class="block text-sm font-medium text-gray-700 mb-1">Nama Supplier / PT</label>
-            <input id="sup_name" value="${s.name}" class="w-full border border-gray-300 rounded px-3 py-2"></div>
-        <div class="grid grid-cols-2 gap-3">
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Telepon</label>
-                <input id="sup_phone" value="${s.phone || ''}" class="w-full border border-gray-300 rounded px-3 py-2"></div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input id="sup_email" value="${s.email || ''}" class="w-full border border-gray-300 rounded px-3 py-2"></div>
+        <div><label class="block text-sm font-medium text-gray-700 mb-1">Nama Supplier / PT <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+            <input id="sup_name" value="${s.name}" class="w-full border border-gray-300 rounded px-3 py-2 focus:ring-1 focus:ring-blue-500 outline-none"></div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Nama PIC <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                <input id="sup_pic" value="${s.pic || ''}" placeholder="Person In Charge" class="w-full border border-gray-300 rounded px-3 py-2 focus:ring-1 focus:ring-blue-500 outline-none"></div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Telepon <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                <input id="sup_phone" value="${s.phone || ''}" class="w-full border border-gray-300 rounded px-3 py-2 focus:ring-1 focus:ring-blue-500 outline-none"></div>
         </div>
-        <div><label class="block text-sm font-medium text-gray-700 mb-1">Alamat Lengkap</label>
-            <textarea id="sup_address" class="w-full border border-gray-300 rounded px-3 py-2 h-20">${s.address || ''}</textarea></div>
+        <div><label class="block text-sm font-medium text-gray-700 mb-1">Email <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+            <input id="sup_email" value="${s.email || ''}" class="w-full border border-gray-300 rounded px-3 py-2 focus:ring-1 focus:ring-blue-500 outline-none"></div>
+        <div><label class="block text-sm font-medium text-gray-700 mb-1">Alamat Lengkap <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+            <textarea id="sup_address" class="w-full border border-gray-300 rounded px-3 py-2 h-20 focus:ring-1 focus:ring-blue-500 outline-none">${s.address || ''}</textarea></div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Kota <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                <input id="sup_city" value="${s.city || ''}" class="w-full border border-gray-300 rounded px-3 py-2 focus:ring-1 focus:ring-blue-500 outline-none"></div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Daerah / Provinsi <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                <input id="sup_region" value="${s.region || ''}" class="w-full border border-gray-300 rounded px-3 py-2 focus:ring-1 focus:ring-blue-500 outline-none"></div>
+        </div>
     </div>`;
     const footer = `
         <button onclick="saveSupplier('${id || ''}')" class="w-full sm:w-auto inline-flex justify-center rounded-md bg-blue-600 px-4 py-2 text-white text-sm font-medium hover:bg-blue-700 sm:ml-3">Simpan</button>
@@ -554,10 +1316,28 @@ window.openSupplierModal = (id = null) => {
 window.saveSupplier = (id) => {
     const name = document.getElementById('sup_name').value.trim();
     if (!name) { showToast('Nama supplier harus diisi', 'error'); return; }
+    const pic = document.getElementById('sup_pic').value.trim();
+    const phone = document.getElementById('sup_phone').value.trim();
+    const city = document.getElementById('sup_city').value.trim();
+    const region = document.getElementById('sup_region').value.trim();
+    const email = document.getElementById('sup_email').value.trim();
+    const address = document.getElementById('sup_address').value.trim();
+
+    if (!pic) { showToast('PIC harus diisi', 'error'); return; }
+    if (!phone) { showToast('Nomor Telepon harus diisi', 'error'); return; }
+    if (!email) { showToast('Email harus diisi', 'error'); return; }
+    if (!address) { showToast('Alamat harus diisi', 'error'); return; }
+    if (!city) { showToast('Kota harus diisi', 'error'); return; }
+    if (!region) { showToast('Daerah harus diisi', 'error'); return; }
+
     const data = {
-        name, phone: document.getElementById('sup_phone').value.trim(),
-        email: document.getElementById('sup_email').value.trim(),
-        address: document.getElementById('sup_address').value.trim()
+        name, 
+        pic,
+        phone,
+        city,
+        region,
+        email,
+        address
     };
     if (id) { db.update('suppliers', id, data); showToast('Supplier diperbarui'); }
     else { db.insert('suppliers', data); showToast('Supplier ditambahkan'); }
@@ -568,228 +1348,56 @@ window.deleteSupplier = (id) => {
     if (confirm('Hapus supplier ini?')) { db.delete('suppliers', id); renderMasterSuppliers(); }
 };
 
-// ─────────────────── PURCHASE REQUESTS ──────────────────────
-function renderPurchaseRequests() {
-    document.getElementById('pageTitle').innerText = 'Purchase Request';
-    const mainContent = document.getElementById('main-content');
-    const requests = db.read('purchaseRequests').sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-
-    let rows = requests.map(r => {
-        let actions = `<button onclick="viewPR('${r.id}')" class="text-gray-500 hover:text-gray-700 mr-2" title="Detail"><i class="fas fa-eye"></i></button>`;
-        if (r.status === 'DRAFT') {
-            actions += `<button onclick="approvePR('${r.id}')" class="text-blue-500 hover:text-blue-700 mr-2" title="Approve"><i class="fas fa-check-circle"></i></button>`;
-            actions += `<button onclick="deletePR('${r.id}')" class="text-red-400 hover:text-red-600" title="Hapus"><i class="fas fa-trash"></i></button>`;
+// ─────────────────── QUICK SUPPLIER CREATION HELPERS ──────────────────────
+window.toggleQuickSupplierForm = (context) => {
+    const container = document.getElementById(`${context}_quick_supplier_container`);
+    if (container) {
+        container.classList.toggle('hidden');
+        if (!container.classList.contains('hidden')) {
+            const nameInput = document.getElementById(`${context}_sup_name`);
+            if (nameInput) nameInput.focus();
         }
-        if (r.status === 'APPROVED') {
-            actions += `<button onclick="convertPRtoPO('${r.id}')" class="text-white bg-indigo-600 hover:bg-indigo-700 text-xs px-2 py-1 rounded font-medium">→ Buat PO</button>`;
+    }
+};
+
+window.saveQuickSupplier = (context) => {
+    const nameInput = document.getElementById(`${context}_sup_name`);
+    const phoneInput = document.getElementById(`${context}_sup_phone`);
+    const name = nameInput.value.trim();
+    const phone = phoneInput.value.trim();
+
+    if (!name) { showToast('Nama supplier harus diisi', 'error'); return; }
+
+    const newSupplier = { name, phone, email: '', address: '' };
+    const id = db.insert('suppliers', newSupplier);
+    showToast('Supplier baru ditambahkan');
+
+    // Refresh dropdown in the current modal
+    const select = document.getElementById(context === 'rfq' ? 'rfq_supplier_id' : 'po_supplier');
+    if (select) {
+        const suppliers = db.read('suppliers');
+        select.innerHTML = (context === 'po' ? '<option value="">-- Pilih Supplier --</option>' : '') + 
+            suppliers.map(s => `<option value="${s.id}" ${s.id === id ? 'selected' : ''}>${s.name}</option>`).join('');
+    }
+
+    // Hide form
+    window.toggleQuickSupplierForm(context);
+    nameInput.value = '';
+    phoneInput.value = '';
+};
+
+window.navigateToSupplierPage = () => {
+    closeModal();
+    navigateTo('master-suppliers');
+    setTimeout(() => {
+        if (typeof openSupplierModal === 'function') {
+            openSupplierModal();
         }
-        return `<tr class="border-b border-gray-100 hover:bg-gray-50">
-            <td class="py-3 px-4 text-sm font-medium text-indigo-600">${r.requestNumber}</td>
-            <td class="py-3 px-4 text-sm text-gray-600">${formatDate(r.date).slice(0, 11)}</td>
-            <td class="py-3 px-4 text-sm text-gray-800">${r.requestedBy || '-'}</td>
-            <td class="py-3 px-4 text-sm">${statusBadgePurch(r.status)}</td>
-            <td class="py-3 px-4 text-sm text-right">${actions}</td>
-        </tr>`;
-    }).join('');
-    if (!rows) rows = `<tr><td colspan="5" class="py-4 text-center text-gray-500">Belum ada Purchase Request</td></tr>`;
-
-    mainContent.innerHTML = `
-        <div class="bg-white rounded-lg shadow-sm border border-gray-100">
-            <div class="flex justify-between items-center p-4 sm:p-6 border-b border-gray-100">
-                <h2 class="text-lg font-semibold text-gray-800">Daftar Purchase Request</h2>
-                <button onclick="openPRModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md text-sm font-medium">
-                    <i class="fas fa-plus mr-2"></i>Buat PR
-                </button>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead><tr class="bg-gray-50 border-b border-gray-200">
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">No. PR</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Tanggal</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Diminta Oleh</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Status</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Aksi</th>
-                    </tr></thead>
-                    <tbody>${rows}</tbody>
-                </table>
-            </div>
-        </div>`;
-}
-
-window.openPRModal = () => {
-    window.tempPRItems = [];
-    const body = `<div class="space-y-4">
-        <div class="grid grid-cols-2 gap-3">
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">No. PR</label>
-                <input id="pr_number" value="PR-${Date.now().toString().slice(-6)}" class="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50" readonly></div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Diminta Oleh</label>
-                <input id="pr_by" placeholder="Nama / Divisi" class="w-full border border-gray-300 rounded px-3 py-2"></div>
-        </div>
-        <div class="border-t pt-4">
-            <p class="text-sm font-medium text-gray-700 mb-2">Item Permintaan</p>
-            <div class="grid grid-cols-12 gap-2 mb-2">
-                <input id="pr_item_name" placeholder="Nama bahan/barang" class="col-span-6 border border-gray-300 rounded px-3 py-2 text-sm">
-                <input id="pr_qty" type="number" min="1" placeholder="Qty" class="col-span-3 border border-gray-300 rounded px-3 py-2 text-sm">
-                <input id="pr_unit" placeholder="Satuan" class="col-span-2 border border-gray-300 rounded px-3 py-2 text-sm">
-                <button onclick="addPRItem()" class="col-span-1 bg-indigo-600 text-white rounded text-sm font-bold">+</button>
-            </div>
-            <div id="pr_items_list" class="space-y-1 text-sm"></div>
-        </div>
-    </div>`;
-    const footer = `
-        <button onclick="savePR()" class="w-full sm:w-auto inline-flex justify-center rounded-md bg-indigo-600 px-4 py-2 text-white text-sm font-medium hover:bg-indigo-700 sm:ml-3">Simpan PR</button>
-        <button onclick="closeModal()" class="mt-3 sm:mt-0 w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 px-4 py-2 bg-white text-gray-700 text-sm font-medium sm:ml-3">Batal</button>`;
-    showModal('Buat Purchase Request', body, footer);
-};
-
-window.addPRItem = () => {
-    const name = document.getElementById('pr_item_name').value.trim();
-    const qty = parseFloat(document.getElementById('pr_qty').value);
-    const unit = document.getElementById('pr_unit').value.trim();
-    if (!name) { showToast('Nama item harus diisi', 'error'); return; }
-    if (!qty || qty <= 0) { showToast('Qty harus diisi', 'error'); return; }
-    window.tempPRItems.push({ prodText: name, qty, unit: unit || '-' });
-    // Clear inputs for next item
-    document.getElementById('pr_item_name').value = '';
-    document.getElementById('pr_qty').value = '';
-    document.getElementById('pr_unit').value = '';
-    document.getElementById('pr_item_name').focus();
-    renderPRItemsList();
-};
-
-function renderPRItemsList() {
-    const el = document.getElementById('pr_items_list');
-    if (!el) return;
-    if (!window.tempPRItems.length) { el.innerHTML = ''; return; }
-    el.innerHTML = `
-        <table class="w-full border-collapse mt-1">
-            <thead><tr class="bg-indigo-50 text-xs text-indigo-700 uppercase">
-                <th class="py-2 px-3 text-left">#</th>
-                <th class="py-2 px-3 text-left">Nama Barang</th>
-                <th class="py-2 px-3 text-center">Qty</th>
-                <th class="py-2 px-3 text-center">Satuan</th>
-                <th class="py-2 px-3"></th>
-            </tr></thead>
-            <tbody>${window.tempPRItems.map((i, idx) => `
-                <tr class="border-b border-gray-100 hover:bg-gray-50">
-                    <td class="py-2 px-3 text-gray-500 text-sm">${idx + 1}</td>
-                    <td class="py-2 px-3 text-sm font-medium text-gray-800">${i.prodText}</td>
-                    <td class="py-2 px-3 text-sm text-center">${i.qty}</td>
-                    <td class="py-2 px-3 text-sm text-center text-gray-600">${i.unit}</td>
-                    <td class="py-2 px-3 text-center"><button onclick="removePRItem(${idx})" class="text-red-400 hover:text-red-600"><i class="fas fa-times"></i></button></td>
-                </tr>`).join('')}
-            </tbody>
-        </table>`;
-}
-
-window.removePRItem = (idx) => { window.tempPRItems.splice(idx, 1); renderPRItemsList(); };
-
-window.savePR = () => {
-    const num = document.getElementById('pr_number').value;
-    const by = document.getElementById('pr_by').value.trim();
-    if (!window.tempPRItems.length) { showToast('Tambahkan minimal satu item', 'error'); return; }
-    db.insert('purchaseRequests', { requestNumber: num, date: new Date().toISOString(), requestedBy: by, status: 'DRAFT', items: window.tempPRItems });
-    showToast('Purchase Request berhasil dibuat'); closeModal(); renderPurchaseRequests();
-};
-
-window.approvePR = (id) => {
-    if (confirm('Approve PR ini?')) { db.update('purchaseRequests', id, { status: 'APPROVED' }); showToast('PR di-approve'); renderPurchaseRequests(); }
-};
-window.deletePR = (id) => {
-    if (confirm('Hapus PR ini?')) { db.delete('purchaseRequests', id); renderPurchaseRequests(); }
-};
-
-window.viewPR = (id) => {
-    const pr = db.findById('purchaseRequests', id);
-    const rows = (pr.items || []).map(i => `<tr><td class="py-2 px-2">${i.prodText}</td><td class="py-2 px-2 text-right">${i.qty}</td></tr>`).join('');
-    const body = `<div class="space-y-3 text-sm">
-        <div class="grid grid-cols-2 gap-2 bg-gray-50 p-3 rounded">
-            <div><p class="text-gray-500">No. PR</p><p class="font-bold">${pr.requestNumber}</p></div>
-            <div><p class="text-gray-500">Status</p>${statusBadgePurch(pr.status)}</div>
-            <div><p class="text-gray-500">Tanggal</p><p>${formatDate(pr.date).slice(0, 11)}</p></div>
-            <div><p class="text-gray-500">Diminta Oleh</p><p>${pr.requestedBy || '-'}</p></div>
-        </div>
-        <table class="w-full border-collapse"><thead>
-            <tr class="border-b-2 border-gray-800 text-xs uppercase"><th class="py-2 px-2">Produk</th><th class="py-2 px-2 text-right">Qty</th></tr>
-        </thead><tbody>${rows}</tbody></table>
-    </div>`;
-    showModal(`Detail PR - ${pr.requestNumber}`, body, `<button onclick="closeModal()" class="w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 px-4 py-2 bg-white text-gray-700 text-sm font-medium">Tutup</button>`);
-};
-
-window.convertPRtoPO = (prId) => {
-    if (!confirm('Buat Purchase Order dari PR ini?')) return;
-    const pr = db.findById('purchaseRequests', prId);
-    db.update('purchaseRequests', prId, { status: 'CONVERTED' });
-    window.tempPOItems = pr.items.map(i => ({ ...i, price: 0, subtotal: 0 }));
-    window.tempPOFromPR = prId;
-    navigateTo('purchase-orders');
-    setTimeout(() => openPOModal(prId), 100);
+    }, 300);
 };
 
 
-// ─────────────────── PURCHASE ORDERS ────────────────────────
-function renderPurchaseOrders() {
-    document.getElementById('pageTitle').innerText = 'Purchase Orders';
-    const mainContent = document.getElementById('main-content');
-    const pos = db.read('purchaseOrders').sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    const suppliers = db.read('suppliers');
-    const purchaseInvoices = db.read('purchaseInvoices');
 
-    let rows = pos.map(po => {
-        const sup = suppliers.find(s => s.id === po.supplierId) || { name: '-' };
-        const existInv = purchaseInvoices.find(i => i.purchaseOrderId === po.id && i.status !== 'CANCELLED');
-        let actions = `<button onclick="viewPO('${po.id}')" class="text-gray-500 hover:text-gray-700 mr-2" title="Detail"><i class="fas fa-eye"></i></button>`;
-        if (po.status === 'DRAFT') {
-            actions += `<button onclick="approvePO('${po.id}')" class="text-blue-500 hover:text-blue-700 mr-2" title="Approve"><i class="fas fa-check-circle"></i></button>`;
-            actions += `<button onclick="cancelPO('${po.id}')" class="text-red-400 hover:text-red-600 mr-2" title="Batal"><i class="fas fa-ban"></i></button>`;
-        }
-
-
-        if (po.status === 'RECEIVED' && !existInv) {
-            actions += `<button onclick="createPurchaseInvoice('${po.id}')" class="text-white bg-purple-600 hover:bg-purple-700 text-xs px-2 py-1 rounded font-medium">Buat Invoice</button>`;
-        } else if (existInv) {
-            actions += `<span class="text-purple-600 text-xs font-medium border border-purple-200 bg-purple-50 px-2 py-1 rounded">Invoiced</span>`;
-        }
-        let statusDisplay = statusBadgePurch(po.status);
-        if (po.status === 'PARTIALLY RECEIVED') {
-            const totalOrdered = (po.items || []).reduce((s, i) => s + i.qty, 0);
-            const totalReceived = (po.items || []).reduce((s, i) => s + (i.receivedQty || 0), 0);
-            statusDisplay += `<div class="text-xs text-orange-600 font-medium mt-0.5">Diterima ${totalReceived}/${totalOrdered}</div>`;
-        }
-        return `<tr class="border-b border-gray-100 hover:bg-gray-50">
-            <td class="py-3 px-4 text-sm font-medium text-blue-600">${po.poNumber}</td>
-            <td class="py-3 px-4 text-sm text-gray-600">${formatDate(po.date).slice(0, 11)}</td>
-            <td class="py-3 px-4 text-sm text-gray-800">${sup.name}</td>
-            <td class="py-3 px-4 text-sm text-gray-800 text-right font-medium">${formatCurrency(po.totalAmount)}</td>
-            <td class="py-3 px-4 text-sm">${statusDisplay}</td>
-            <td class="py-3 px-4 text-sm text-right whitespace-nowrap">${actions}</td>
-        </tr>`;
-    }).join('');
-    if (!rows) rows = `<tr><td colspan="6" class="py-4 text-center text-gray-500">Belum ada Purchase Order</td></tr>`;
-
-    mainContent.innerHTML = `
-        <div class="bg-white rounded-lg shadow-sm border border-gray-100">
-            <div class="flex justify-between items-center p-4 sm:p-6 border-b border-gray-100">
-                <h2 class="text-lg font-semibold text-gray-800">Daftar Purchase Order</h2>
-                <button onclick="openPOModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium">
-                    <i class="fas fa-plus mr-2"></i>Buat PO Baru
-                </button>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead><tr class="bg-gray-50 border-b border-gray-200">
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">No. PO</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Tanggal</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Supplier</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Total</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Status</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Aksi</th>
-                    </tr></thead>
-                    <tbody>${rows}</tbody>
-                </table>
-            </div>
-        </div>`;
-}
 
 window.openPOModal = (fromPrId = null) => {
     const suppliers = db.read('suppliers');
@@ -800,16 +1408,55 @@ window.openPOModal = (fromPrId = null) => {
 
     const todayStr = new Date().toISOString().split('T')[0];
     const body = `<div class="space-y-4">
-        <div class="grid grid-cols-2 gap-3">
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">No. PO</label>
-                <input id="po_number" value="PO-${Date.now().toString().slice(-6)}" class="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50" readonly></div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Supplier</label>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div class="col-span-1">
+                <label class="block text-sm font-medium text-gray-700 mb-1">No. Purchase Order <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                <div class="flex">
+                    <select id="po_tax_type" onchange="document.getElementById('po_number').value = generatePurchaseOrderNumber(this.value === 'TAX')" class="border border-gray-300 rounded-l px-2 py-2 bg-gray-50 text-xs font-bold">
+                        <option value="NTX">NTX</option>
+                        <option value="TAX">TAX</option>
+                    </select>
+                    <input id="po_number" value="${generatePurchaseOrderNumber(false)}" class="w-full border border-gray-300 rounded-r px-3 py-2 bg-gray-50 font-mono text-xs" readonly>
+                </div>
+            </div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Pajak (PPN %) <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                <select id="po_tax_rate" onchange="renderPOItemsList()" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
+                    <option value="0" ${CONFIG.taxRate == 0 ? 'selected' : ''}>0% (Tanpa Pajak)</option>
+                    <option value="11" ${(CONFIG.taxRate == 11 || !CONFIG.taxRate) ? 'selected' : ''}>11% (PPN)</option>
+                </select></div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Supplier <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
                 <select id="po_supplier" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
                     <option value="">-- Pilih Supplier --</option>${supOpts}
+                </select>
+                <div class="mt-1">
+                    <button type="button" onclick="navigateToSupplierPage()" class="text-blue-600 text-[10px] font-bold hover:underline">+ Tambah Supplier Baru</button>
+                </div>
+            </div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Kategori Pembelian <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                <select id="po_category" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
+                    <option value="">-- Pilih Kategori --</option>
+                    <option value="Bahan Baku">Bahan Baku</option>
+                    <option value="Packaging">Packaging</option>
+                    <option value="Perlengkapan">Perlengkapan</option>
+                    <option value="Service">Service</option>
+                    <option value="Sparepart">Sparepart</option>
+                </select>
+            </div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Tanggal PO <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                <input type="date" id="po_date" value="${todayStr}" onchange="updatePODueDate()" class="w-full border border-gray-300 rounded px-3 py-2 bg-white"></div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Term Pembayaran <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                <select id="po_payment_terms" onchange="updatePODueDate()" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
+                    <option value="">-- Pilih Term --</option>
+                    <option value="Cash">Cash</option>
+                    <option value="COD">COD</option>
+                    <option value="7 S/d 10 Hari">7 S/d 10 Hari</option>
+                    <option value="30 Hari">30 Hari</option>
+                    <option value="45 Hari">45 Hari</option>
+                    <option value="60 Hari">60 Hari</option>
                 </select></div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Tanggal PO</label>
-                <input type="date" id="po_date" value="${todayStr}" class="w-full border border-gray-300 rounded px-3 py-2 bg-white"></div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">ETD <span class="text-xs text-gray-400">(Estimasi Tiba)</span></label>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">Tanggal Jatuh Tempo <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                <input type="date" id="po_due_date" value="${todayStr}" class="w-full border border-gray-300 rounded px-3 py-2 bg-white font-bold text-blue-600"></div>
+            <div><label class="block text-sm font-medium text-gray-700 mb-1">ETD <span class="text-xs text-gray-400 font-normal">(Estimasi Tiba)</span> <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
                 <input type="date" id="po_etd" min="${todayStr}" class="w-full border border-gray-300 rounded px-3 py-2 bg-white"></div>
         </div>
         <div class="border-t pt-4">
@@ -826,12 +1473,18 @@ window.openPOModal = (fromPrId = null) => {
             </div>
             <div id="po_items_list" class="text-sm"></div>
             <div id="po_total_display" class="text-right font-bold text-gray-800 mt-2 pt-2 border-t text-sm"></div>
+            
+            <div class="mt-6 pt-4 border-t border-dashed border-gray-200">
+                <label class="block text-sm font-black text-gray-400 uppercase tracking-widest mb-2">Catatan / Keterangan Tambahan</label>
+                <textarea id="po_notes" class="w-full border border-gray-300 rounded-xl px-4 py-3 bg-gray-50/50 text-sm focus:ring-2 focus:ring-blue-500 transition-all" rows="3" placeholder="Tambahkan instruksi pengiriman, spesifikasi teknis, atau catatan lainnya di sini..."></textarea>
+            </div>
         </div>
     </div>`;
     const footer = `
         <button onclick="savePO()" class="w-full sm:w-auto inline-flex justify-center rounded-md bg-blue-600 px-4 py-2 text-white text-sm font-medium hover:bg-blue-700 sm:ml-3">Simpan PO Draft</button>
         <button onclick="closeModal()" class="mt-3 sm:mt-0 w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 px-4 py-2 bg-white text-gray-700 text-sm font-medium sm:ml-3">Batal</button>`;
-    showModal('Buat Purchase Order', body, footer);
+    showModal('Buat Purchase Order', body, footer, 'full');
+    setTimeout(() => updatePODueDate(), 100);
     renderPOItemsList();
 };
 
@@ -889,8 +1542,24 @@ function renderPOItemsList() {
                 </tr>`).join('')}
             </tbody>
         </table>`;
-    const total = (window.tempPOItems || []).reduce((s, i) => s + i.subtotal, 0);
-    if (totEl) totEl.innerHTML = `<span class="text-blue-700">Total: ${formatCurrency(total)}</span>`;
+    const dpp = (window.tempPOItems || []).reduce((s, i) => s + i.subtotal, 0);
+    const taxRateVal = document.getElementById('po_tax_rate')?.value || '0';
+    let taxPct = parseFloat(taxRateVal) || 0;
+    let taxLabel = `${taxPct}% (PPN)`;
+    if (taxRateVal === '11_ppn_pemungut') { taxPct = 11; taxLabel = '11% Pemungut PPN'; }
+    else if (taxRateVal === '20') { taxPct = 20; taxLabel = '20% (STLG)'; }
+
+    const taxAmount = Math.round(dpp * taxPct / 100);
+    const grandTotal = dpp + taxAmount;
+
+    if (totEl) {
+        totEl.innerHTML = `
+            <div class="space-y-1">
+                <div class="flex justify-end gap-4"><span class="text-gray-500">DPP:</span><span class="w-28">${formatCurrency(dpp)}</span></div>
+                <div class="flex justify-end gap-4"><span class="text-gray-500">${taxLabel}:</span><span class="w-28 text-orange-600">${formatCurrency(taxAmount)}</span></div>
+                <div class="flex justify-end gap-4 border-t pt-1 font-bold text-lg"><span class="text-gray-800">Grand Total:</span><span class="w-28 text-blue-700">${formatCurrency(grandTotal)}</span></div>
+            </div>`;
+    }
 }
 
 window.removePOItem = (idx) => { window.tempPOItems.splice(idx, 1); renderPOItemsList(); };
@@ -900,15 +1569,44 @@ window.savePO = () => {
     const poNum = document.getElementById('po_number').value;
     const poDateEl = document.getElementById('po_date');
     const poEtdEl = document.getElementById('po_etd');
+    const taxRateVal = document.getElementById('po_tax_rate').value;
+    const taxType = document.getElementById('po_tax_type').value;
+    const category = document.getElementById('po_category')?.value || '';
+
     if (!supId) { showToast('Pilih supplier', 'error'); return; }
+    if (!category) { showToast('Pilih kategori pembelian', 'error'); return; }
+    const paymentTerms = document.getElementById('po_payment_terms').value;
+    const dueDate = document.getElementById('po_due_date').value;
+    const notes = document.getElementById('po_notes')?.value || '';
+
+    if (!poDateEl?.value) { showToast('Tanggal PO harus diisi', 'error'); return; }
+    if (!paymentTerms) { showToast('Pilih Term Pembayaran', 'error'); return; }
+    if (!dueDate) { showToast('Pilih Tanggal Jatuh Tempo', 'error'); return; }
+    if (!poEtdEl?.value) { showToast('ETD (Estimasi Tiba) harus diisi', 'error'); return; }
+    if (!taxRateVal) { showToast('Pilih tarif pajak', 'error'); return; }
     if (!window.tempPOItems.length) { showToast('Tambah minimal satu item', 'error'); return; }
-    const total = window.tempPOItems.reduce((s, i) => s + i.subtotal, 0);
+
+    const dpp = window.tempPOItems.reduce((s, i) => s + i.subtotal, 0);
+    let taxPct = parseFloat(taxRateVal) || 0;
+
+    const taxAmount = Math.round(dpp * taxPct / 100);
+    const total = dpp + taxAmount;
+
     const newPO = db.insert('purchaseOrders', {
         poNumber: poNum, supplierId: supId, requestId: window.tempPOFromPR || null,
         date: (poDateEl && poDateEl.value) ? new Date(poDateEl.value).toISOString() : new Date().toISOString(),
+        paymentTerms,
+        dueDate,
         etd: (poEtdEl && poEtdEl.value) ? poEtdEl.value : null,
         actualDeliveryDate: null,
-        status: 'DRAFT', totalAmount: total,
+        status: 'DRAFT',
+        category: category,
+        dppAmount: dpp,
+        taxRate: taxRateVal,
+        taxAmount: taxAmount,
+        totalAmount: total,
+        taxType: taxType,
+        notes: notes,
         items: window.tempPOItems
     });
     window.tempPOItems = []; window.tempPOFromPR = null;
@@ -940,7 +1638,7 @@ window.receiveGoodsPO = (id) => {
             </td>
             <td class="py-2 px-2 text-right"><span class="font-bold text-blue-600">${sisa}</span></td>
             <td class="py-2 px-2 text-right">
-                <input type="number" id="recv_qty_${idx}" value="${sisa}" max="${sisa}" min="0" 
+                <input type="number" id="recv_qty_${idx}" value="${sisa}" max="${sisa}" min="0"
                     ${sisa === 0 ? 'disabled' : ''}
                     class="w-20 border border-gray-300 rounded px-2 py-1 text-center text-sm ${sisa === 0 ? 'bg-gray-100' : ''}">
             </td>
@@ -960,17 +1658,17 @@ window.receiveGoodsPO = (id) => {
         <button onclick="confirmReceiveGoods('${id}')" class="w-full sm:w-auto inline-flex justify-center rounded-md bg-green-600 px-4 py-2 text-white text-sm font-medium hover:bg-green-700 sm:ml-3">Konfirmasi Terima</button>
         <button onclick="closeModal()" class="mt-3 sm:mt-0 w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 px-4 py-2 bg-white text-gray-700 text-sm font-medium sm:ml-3">Batal</button>`;
 
-    showModal(`Terima Barang - ${po.poNumber}`, body, footer);
+    showModal(`Terima Barang - ${po.poNumber}`, body, footer, 'xl');
 };
 
 window.confirmReceiveGoods = (id) => {
     const po = db.findById('purchaseOrders', id);
-    // Always work on a deep copy so we can mutate safely
     const updatedItems = JSON.parse(JSON.stringify(po.items || []));
     let anyReceived = false;
     let sumReceivedAll = 0;
     let sumTargetAll = 0;
     const receivedItems = [];
+    let totalValueReceived = 0;
 
     updatedItems.forEach((item, idx) => {
         const recvInput = document.getElementById(`recv_qty_${idx}`);
@@ -986,12 +1684,14 @@ window.confirmReceiveGoods = (id) => {
         sumReceivedAll += item.receivedQty;
 
         if (recvQty > 0) {
-            // Use inventoryItemId if available, fallback to productId
-            const stockItemId = item.inventoryItemId || item.productId || null;
-            if (stockItemId) {
-                try { db.addStockMovement(stockItemId, 'IN', recvQty, 'PURCHASE', id, `Penerimaan partial PO ${po.poNumber}`); } catch (e) { console.warn('addStockMovement error:', e); }
-            }
-            receivedItems.push({ prodText: item.prodText || item.itemName || '', qty: recvQty, unit: item.unit || '', inventoryItemId: item.inventoryItemId });
+            receivedItems.push({
+                prodText: item.prodText || item.itemName || '',
+                qty: recvQty,
+                unit: item.unit || '',
+                inventoryItemId: item.inventoryItemId,
+                price: item.price || 0
+            });
+            totalValueReceived += (recvQty * (item.price || 0));
             anyReceived = true;
         }
     });
@@ -1006,17 +1706,35 @@ window.confirmReceiveGoods = (id) => {
         status: newStatus,
         receivedAt: new Date().toISOString(),
         actualDeliveryDate: isCompleted ? today : (po.actualDeliveryDate || null),
-        items: updatedItems  // Save deep-copied updated items with new receivedQty
+        items: updatedItems
     });
+
+    // Otomatis buat Jurnal: Debit Persediaan (RM/FG), Kredit Hutang Usaha/Accrued
+    if (totalValueReceived > 0 && typeof db.addJournalEntry === 'function') {
+        // Asumsi default ke RM jika tidak spesifik, atau cek item pertama
+        let invAccount = 'acc_inv_rm';
+        if (receivedItems.length > 0) {
+            const firstItem = db.findById('inventoryItems', receivedItems[0].inventoryItemId);
+            if (firstItem && firstItem.category === 'FINISHED_GOODS') invAccount = 'acc_inv_fg';
+        }
+
+        db.addJournalEntry({
+            description: `Penerimaan Barang PO ${po.poNumber}`,
+            referenceType: 'PO',
+            referenceId: id,
+            items: [
+                { accountId: invAccount, debit: totalValueReceived, credit: 0 },
+                { accountId: 'acc_ap', debit: 0, credit: totalValueReceived }
+            ]
+        });
+    }
 
     if (typeof addNotification === 'function') {
         const msg = isCompleted ? `PO ${po.poNumber} telah DITERIMA PENUH.` : `PO ${po.poNumber} DITERIMA SEBAGIAN — sisa ${sumTargetAll - sumReceivedAll} unit belum diterima.`;
         addNotification('Barang Diterima', msg);
     }
 
-    if (!isCompleted && typeof syncInventoryFromPOReceipt === 'function') {
-        syncInventoryFromPOReceipt(id, po.poNumber, receivedItems);
-    } else if (isCompleted && typeof syncInventoryFromPOReceipt === 'function') {
+    if (typeof syncInventoryFromPOReceipt === 'function') {
         syncInventoryFromPOReceipt(id, po.poNumber, receivedItems);
     }
 
@@ -1025,7 +1743,13 @@ window.confirmReceiveGoods = (id) => {
         : `📦 Terima sebagian berhasil! Sisa ${sumTargetAll - sumReceivedAll} unit. Klik "Terima Barang" lagi untuk input sisanya.`;
     showToast(toastMsg, isCompleted ? 'success' : 'info');
     closeModal();
-    renderPurchaseOrders();
+    // Refresh the current view
+    const activeNav = document.querySelector('.nav-btn.active');
+    if (activeNav && activeNav.dataset.view === 'purchase-receiving') {
+        renderPurchaseReceiving();
+    } else {
+        renderPurchaseOrders();
+    }
 };
 
 window.viewPO = (id) => {
@@ -1061,11 +1785,19 @@ window.viewPO = (id) => {
         }
         deliveryHtml = `
         <div class="my-4 p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm">
-            <h3 class="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-2">Info Pengiriman</h3>
-            <div class="grid grid-cols-3 gap-3">
+            <h3 class="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-2">Info Pengiriman & Pembayaran</h3>
+            <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
                 <div>
                     <p class="text-gray-500 text-xs">Tanggal PO</p>
                     <p class="font-medium text-gray-800">${po.date ? po.date.split('T')[0] : '-'}</p>
+                </div>
+                <div>
+                    <p class="text-gray-500 text-xs">Term Pembayaran</p>
+                    <p class="font-medium text-gray-800">${po.paymentTerms || '-'}</p>
+                </div>
+                <div>
+                    <p class="text-gray-500 text-xs">Jatuh Tempo</p>
+                    <p class="font-medium text-orange-600 font-bold">${po.dueDate || '-'}</p>
                 </div>
                 <div>
                     <p class="text-gray-500 text-xs">ETD (Estimasi Tiba)</p>
@@ -1087,9 +1819,13 @@ window.viewPO = (id) => {
         </div>
         <div class="grid grid-cols-2 gap-8 mb-4">
             <div><h3 class="text-xs font-semibold text-gray-500 uppercase mb-1">Supplier</h3>
-                <p class="font-medium">${sup.name}</p><p class="text-sm text-gray-600">${sup.phone || ''}</p></div>
+                <p class="font-medium">${sup.name}</p><p class="text-sm text-gray-600">${sup.phone || ''}</p>
+                ${po.category ? `<p class="text-xs mt-1"><span class="font-semibold text-gray-500">Kategori:</span> <span class="font-bold text-indigo-600">${po.category}</span></p>` : ''}
+            </div>
             <div class="text-right"><h3 class="text-xs font-semibold text-gray-500 uppercase mb-1">Detail</h3>
                 <p class="text-sm">Tanggal PO: ${po.date ? po.date.split('T')[0] : '-'}</p>
+                <p class="text-sm">Term Pembayaran: <strong>${po.paymentTerms || '-'}</strong></p>
+                <p class="text-sm">Jatuh Tempo: <strong>${po.dueDate || '-'}</strong></p>
                 ${po.etd ? `<p class="text-sm">ETD: <strong>${po.etd}</strong></p>` : ''}
                 ${po.actualDeliveryDate ? `<p class="text-sm">Tiba: <strong>${po.actualDeliveryDate}</strong></p>` : ''}
                 <p class="text-sm">Status: ${statusBadgePurch(po.status)}</p></div>
@@ -1098,10 +1834,48 @@ window.viewPO = (id) => {
         <table class="w-full border-collapse mb-6"><thead>
             <tr class="border-b-2 border-gray-800 text-sm"><th class="py-2 px-2">Produk</th><th class="py-2 px-2 text-right">Qty</th><th class="py-2 px-2 text-right">Harga</th><th class="py-2 px-2 text-right">Subtotal</th></tr>
         </thead><tbody>${itemRows}</tbody>
-        <tfoot><tr><td colspan="3" class="py-3 px-2 text-right font-bold">Total:</td>
-            <td class="py-3 px-2 text-right font-bold text-blue-600 border-t-2 border-gray-800">${formatCurrency(po.totalAmount)}</td></tr></tfoot>
-        </table></div>`;
+        <tfoot>
+            <tr>
+                <td colspan="3" class="py-2 px-2 text-right text-gray-500 font-medium">DPP (Sebelum Pajak):</td>
+                <td class="py-2 px-2 text-right font-medium text-gray-800">${formatCurrency(po.dppAmount || po.totalAmount)}</td>
+            </tr>
+            <tr>
+                <td colspan="3" class="py-1 px-2 text-right text-gray-500 font-medium">${(po.taxRate || 0)}% (PPN):</td>
+                <td class="py-1 px-2 text-right font-medium text-orange-600">${formatCurrency(po.taxAmount || 0)}</td>
+            </tr>
+            <tr class="border-t-2 border-gray-800">
+                <td colspan="3" class="py-3 px-2 text-right font-bold text-lg">Grand Total:</td>
+                <td class="py-3 px-2 text-right font-bold text-blue-600 text-lg">${formatCurrency(po.totalAmount)}</td>
+            </tr>
+        </tfoot>
+        </table>
+        
+        ${po.notes ? `<div class="mb-8 p-3 border border-gray-200 rounded-lg bg-gray-50/50">
+            <h4 class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Catatan / Keterangan:</h4>
+            <p class="text-xs text-gray-700 whitespace-pre-wrap">${po.notes}</p>
+        </div>` : ''}
+
+        <div class="grid grid-cols-4 gap-4 mt-12 text-center">
+            <div class="space-y-16">
+                <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Di Buat</p>
+                <div class="border-b border-gray-300 w-3/4 mx-auto"></div>
+            </div>
+            <div class="space-y-16">
+                <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Di Ketahui</p>
+                <div class="border-b border-gray-300 w-3/4 mx-auto"></div>
+            </div>
+            <div class="space-y-16">
+                <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Di Setujui</p>
+                <div class="border-b border-gray-300 w-3/4 mx-auto"></div>
+            </div>
+            <div class="space-y-16">
+                <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Di Terima</p>
+                <div class="border-b border-gray-300 w-3/4 mx-auto"></div>
+            </div>
+        </div>
+    </div>`;
     const footer = `
+        <button onclick="openSendPOModal('${po.id}')" class="w-full sm:w-auto inline-flex justify-center items-center rounded-md bg-blue-600 px-4 py-2 text-white text-sm font-medium hover:bg-blue-700 mr-2"><i class="fas fa-paper-plane mr-2"></i>Kirim</button>
         <button onclick='printHTML(\`${printable.replace(/`/g, "\\`").replace(/\n/g, "")}\`, "PO ${po.poNumber}")' class="w-full sm:w-auto inline-flex justify-center items-center rounded-md bg-purple-600 px-4 py-2 text-white text-sm font-medium hover:bg-purple-700 sm:ml-3 mr-2"><i class="fas fa-file-pdf mr-2"></i>Print/PDF</button>
         <button onclick="closeModal()" class="w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 px-4 py-2 bg-white text-gray-700 text-sm font-medium">Tutup</button>`;
     showModal(`Detail PO - ${po.poNumber}`, printable, footer);
@@ -1119,17 +1893,34 @@ function renderPurchaseInvoices() {
         const sup = suppliers.find(s => s.id === inv.supplierId) || { name: '-' };
         const paid = supPayments.filter(p => p.invoiceId === inv.id).reduce((s, p) => s + parseFloat(p.amount), 0);
         const balance = inv.totalAmount - paid;
+        let attachmentHtml = '';
+        if (inv.attachment) {
+            attachmentHtml = `
+                <div class="flex items-center gap-1">
+                    <button onclick="viewPurchaseInvoice('${inv.id}')" class="text-blue-600 hover:text-blue-800" title="Lihat Lampiran">
+                        <i class="fas fa-paperclip"></i>
+                    </button>
+                    <button onclick="removeInvoiceAttachment('${inv.id}')" class="text-red-400 hover:text-red-600 text-[10px]" title="Hapus Lampiran">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>`;
+        } else {
+            attachmentHtml = `
+                <button onclick="triggerInvoiceUpload('${inv.id}')" class="text-gray-400 hover:text-primary transition-colors" title="Unggah Tagihan">
+                    <i class="fas fa-upload"></i>
+                </button>`;
+        }
+
         let actions = `<button onclick="viewPurchaseInvoice('${inv.id}')" class="text-gray-500 hover:text-gray-700 mr-2" title="Detail"><i class="fas fa-eye"></i></button>`;
-        if (inv.status === 'UNPAID' && balance > 0)
-            actions += `<button onclick="openSupplierPaymentModal('${inv.id}')" class="text-white bg-green-600 hover:bg-green-700 text-xs px-2 py-1 rounded font-medium">Bayar</button>`;
         return `<tr class="border-b border-gray-100 hover:bg-gray-50">
-            <td class="py-3 px-4 text-sm font-medium text-purple-600">${inv.invoiceNumber}</td>
+            <td class="py-3 px-4 text-sm font-medium text-blue-600">${inv.invoiceNumber}</td>
             <td class="py-3 px-4 text-sm text-gray-600">${formatDate(inv.date).slice(0, 11)}</td>
+            <td class="py-3 px-4 text-sm font-semibold text-red-600">${inv.dueDate ? formatDate(inv.dueDate).slice(0, 11) : '-'}</td>
             <td class="py-3 px-4 text-sm text-gray-800">${sup.name}</td>
             <td class="py-3 px-4 text-sm text-gray-800 text-right">${formatCurrency(inv.totalAmount)}</td>
-            <td class="py-3 px-4 text-sm text-green-600 text-right">${formatCurrency(paid)}</td>
             <td class="py-3 px-4 text-sm text-red-600 text-right font-medium">${formatCurrency(balance)}</td>
             <td class="py-3 px-4 text-sm">${statusBadgePurch(inv.status)}</td>
+            <td class="py-3 px-4 text-sm text-center">${attachmentHtml}</td>
             <td class="py-3 px-4 text-sm text-right">${actions}</td>
         </tr>`;
     }).join('');
@@ -1138,19 +1929,23 @@ function renderPurchaseInvoices() {
     mainContent.innerHTML = `
         <div class="bg-white rounded-lg shadow-sm border border-gray-100">
             <div class="flex justify-between items-center p-4 sm:p-6 border-b border-gray-100">
-                <h2 class="text-lg font-semibold text-gray-800">Daftar Supplier Invoice</h2>
+                <h2 class="text-lg font-semibold text-gray-800">Supplier Invoice List</h2>
+                <button onclick="openPurchaseOrderSelectionForInvoice()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2">
+                    <i class="fas fa-plus"></i> Create Invoice
+                </button>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
                     <thead><tr class="bg-gray-50 border-b border-gray-200">
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">No. Invoice</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Tanggal</th>
+                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Inv. Number</th>
+                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Date</th>
+                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-red-600">Due Date</th>
                         <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Supplier</th>
                         <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Total</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Terbayar</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Sisa</th>
+                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Balance</th>
                         <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Status</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Aksi</th>
+                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-center">Attach</th>
+                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Action</th>
                     </tr></thead>
                     <tbody>${rows}</tbody>
                 </table>
@@ -1159,16 +1954,216 @@ function renderPurchaseInvoices() {
 }
 
 window.createPurchaseInvoice = (poId) => {
+    openPurchaseInvoiceModal(poId);
+};
+
+window.openPurchaseOrderSelectionForInvoice = () => {
+    const pos = db.read('purchaseOrders').filter(po => 
+        (po.status === 'RECEIVED' || po.status === 'PARTIALLY RECEIVED')
+    );
+    const invoices = db.read('purchaseInvoices');
+    const eligiblePOs = pos.filter(po => !invoices.some(inv => inv.purchaseOrderId === po.id));
+    const suppliers = db.read('suppliers');
+
+    if (!eligiblePOs.length) {
+        showToast('No eligible Purchase Orders found that haven\'t been invoiced.', 'info');
+        return;
+    }
+
+    const rows = eligiblePOs.map(po => {
+        const sup = suppliers.find(s => s.id === po.supplierId) || { name: 'Unknown' };
+        return `
+            <tr class="border-b border-gray-100 hover:bg-gray-50 cursor-pointer" onclick="openPurchaseInvoiceModal('${po.id}')">
+                <td class="py-3 px-4 text-sm font-medium text-blue-600">${po.poNumber}</td>
+                <td class="py-3 px-4 text-sm text-gray-600">${formatDate(po.date).slice(0, 11)}</td>
+                <td class="py-3 px-4 text-sm text-gray-800">${sup.name}</td>
+                <td class="py-3 px-4 text-sm text-right font-semibold">${formatCurrency(po.totalAmount)}</td>
+                <td class="py-3 px-4 text-sm text-center">
+                    <button class="text-purple-600 hover:text-purple-800 font-bold text-xs">Select</button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    const body = `
+        <div class="mb-4">
+            <p class="text-sm text-gray-500 mb-4">Select a Purchase Order to create a payment request/invoice.</p>
+            <div class="max-h-[400px] overflow-y-auto border rounded-lg">
+                <table class="w-full text-left border-collapse">
+                    <thead class="sticky top-0 bg-gray-50 shadow-sm">
+                        <tr class="border-b">
+                            <th class="py-2 px-4 text-xs font-bold uppercase text-gray-500">PO Number</th>
+                            <th class="py-2 px-4 text-xs font-bold uppercase text-gray-500">Date</th>
+                            <th class="py-2 px-4 text-xs font-bold uppercase text-gray-500">Supplier</th>
+                            <th class="py-2 px-4 text-xs font-bold uppercase text-gray-500 text-right">Total</th>
+                            <th class="py-2 px-4 text-xs font-bold uppercase text-gray-500 text-center"></th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+        </div>
+    `;
+
+    showModal('Select Purchase Order', body, `<button onclick="closeModal()" class="w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 px-4 py-2 bg-white text-gray-700 text-sm font-medium">Cancel</button>`, 'lg');
+};
+
+window.openPurchaseInvoiceModal = (poId) => {
     const po = db.findById('purchaseOrders', poId);
     if (!po) return;
+    
+    const today = new Date().toISOString().split('T')[0];
+    
+    const body = `
+        <div class="space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Supplier Invoice No.</label>
+                    <input type="text" id="pinv_number" value="" class="w-full border border-gray-300 rounded px-3 py-2 bg-white text-sm" placeholder="e.g. INV/2024/001">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Invoice Receipt Date</label>
+                    <input type="date" id="pinv_date" value="${today}" class="w-full border border-gray-300 rounded px-3 py-2 bg-white text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Payment Terms</label>
+                    <select id="pinv_terms" onchange="updatePurchaseInvoiceDueDate('${poId}')" class="w-full border border-gray-300 rounded px-3 py-2 bg-white text-sm">
+                        <option value="0">Cash / COD</option>
+                        <option value="7">Net 7 Days</option>
+                        <option value="15">Net 15 Days</option>
+                        <option value="30">Net 30 Days</option>
+                        <option value="45">Net 45 Days</option>
+                        <option value="60">Net 60 Days</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1" title="Dihitung dari Tanggal Penerimaan Barang">Due Date <i class="fas fa-info-circle text-gray-400"></i></label>
+                    <input type="date" id="pinv_due_date" value="${today}" class="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50 text-sm font-semibold text-blue-700" readonly>
+                </div>
+            </div>
+            
+            <div class="p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                <div class="flex justify-between items-center mb-1">
+                    <span class="text-xs font-semibold text-blue-600 uppercase">PO Detail: ${po.poNumber}</span>
+                    <span class="text-xs text-gray-500">${formatDate(po.date).slice(0, 11)}</span>
+                </div>
+                <div class="flex justify-between items-end">
+                    <p class="text-sm text-gray-700 font-medium">Total Amount:</p>
+                    <p class="text-lg font-bold text-blue-800">${formatCurrency(po.totalAmount)}</p>
+                </div>
+            </div>
+
+            <div class="pt-2">
+                <label class="block text-sm font-semibold text-gray-700 mb-2 border-b pb-1">Informasi Transfer Bank Supplier</label>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Nama Bank</label>
+                        <input type="text" id="pinv_bank_name" class="w-full border border-gray-300 rounded px-3 py-2 bg-white text-sm" placeholder="Contoh: BCA">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Nomor Rekening</label>
+                        <input type="text" id="pinv_bank_account" class="w-full border border-gray-300 rounded px-3 py-2 bg-white text-sm" placeholder="Contoh: 1234567890">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Atas Nama (Rekening)</label>
+                        <input type="text" id="pinv_bank_holder" class="w-full border border-gray-300 rounded px-3 py-2 bg-white text-sm" placeholder="Nama Pemilik Rekening">
+                    </div>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Upload Invoice (PDF/Image)</label>
+                <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md hover:border-blue-400 transition-colors bg-gray-50">
+                    <div class="space-y-1 text-center">
+                        <i class="fas fa-file-invoice text-gray-400 text-3xl mb-2"></i>
+                        <div class="flex flex-col items-center text-sm text-gray-600">
+                            <label for="pinv_file" class="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:text-blue-500 focus-within:outline-none mb-1">
+                                <span id="pinv_file_name_display" class="border border-blue-600 px-3 py-1 rounded">Pilih file</span>
+                                <input id="pinv_file" name="pinv_file" type="file" class="sr-only" onchange="const t = document.getElementById('pinv_file_name_display'); if(this.files && this.files.length) { t.innerText = this.files[0].name; t.classList.replace('text-blue-600', 'text-green-600'); t.classList.replace('border-blue-600', 'border-green-600'); } else { t.innerText = 'Pilih file'; }">
+                            </label>
+                            <p class="pl-1 mt-1 text-xs">klik atau drop file di sini</p>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-2">PNG, JPG, PDF up to 10MB</p>
+                    </div>
+                </div>
+                <p class="text-[10px] text-gray-400 mt-1 italic">* Simulasi: file tidak benar-benar di-upload ke server</p>
+            </div>
+        </div>
+    `;
+
+    const footer = `
+        <button onclick="savePurchaseInvoice('${poId}')" class="w-full sm:w-auto inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-purple-600 text-white font-medium hover:bg-purple-700 focus:outline-none sm:text-sm">Submit Invoice</button>
+        <button onclick="closeModal()" class="mt-3 w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 px-4 py-2 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 sm:mt-0 sm:ml-3">Cancel</button>
+    `;
+
+    showModal('Create Supplier Invoice (Request)', body, footer, 'md');
+    updatePurchaseInvoiceDueDate(poId); // Initial calculation
+};
+
+window.updatePurchaseInvoiceDueDate = (poId) => {
+    const termInput = document.getElementById('pinv_terms');
+    const dueInput = document.getElementById('pinv_due_date');
+    if (!termInput || !dueInput || !poId) return;
+
+    const po = db.findById('purchaseOrders', poId);
+    if (!po) return;
+
+    // Gunakan tanggal penerimaan barang (actualDeliveryDate) sebagai titik awal
+    // Jika belum diterima (harusnya tidak mungkin karena difilter), gunakan hari ini sbg fallback
+    const startDateObj = po.actualDeliveryDate ? new Date(po.actualDeliveryDate) : new Date();
+    
+    const days = parseInt(termInput.value) || 0;
+    startDateObj.setDate(startDateObj.getDate() + days);
+    
+    dueInput.value = startDateObj.toISOString().split('T')[0];
+};
+
+window.savePurchaseInvoice = (poId) => {
+    const po = db.findById('purchaseOrders', poId);
+    const invNum = document.getElementById('pinv_number').value;
+    const invDate = document.getElementById('pinv_date').value;
+    const invTerms = document.getElementById('pinv_terms').value;
+    const invDueDate = document.getElementById('pinv_due_date').value;
+    
+    // Bank Details
+    const bankName = document.getElementById('pinv_bank_name') ? document.getElementById('pinv_bank_name').value : '';
+    const bankAccount = document.getElementById('pinv_bank_account') ? document.getElementById('pinv_bank_account').value : '';
+    const bankHolder = document.getElementById('pinv_bank_holder') ? document.getElementById('pinv_bank_holder').value : '';
+
+    if (!invNum) { showToast('Nomor Invoice harus diisi', 'error'); return; }
+
     const inv = db.insert('purchaseInvoices', {
-        invoiceNumber: 'PINV-' + Date.now().toString().slice(-6),
-        purchaseOrderId: poId, supplierId: po.supplierId,
-        date: new Date().toISOString(), totalAmount: po.totalAmount, status: 'UNPAID'
+        invoiceNumber: invNum,
+        purchaseOrderId: poId,
+        supplierId: po.supplierId,
+        date: new Date(invDate).toISOString(),
+        dueDate: new Date(invDueDate).toISOString(),
+        paymentTerms: invTerms,
+        totalAmount: po.totalAmount,
+        status: 'UNPAID',
+        attachment: 'simulated_attachment_' + Date.now() + '.pdf', // Simulated upload
+        createdAt: new Date().toISOString(),
+        bankName: bankName,
+        bankAccount: bankAccount,
+        bankHolder: bankHolder
     });
-    showToast('Supplier Invoice berhasil dibuat!', 'success');
+
+    // Otomatis buat Jurnal: Debit Persediaan, Kredit Hutang Usaha
+    if (typeof db.addJournalEntry === 'function') {
+        db.addJournalEntry({
+            date: inv.date,
+            description: `Request Pembayaran (Hutang) INV ${inv.invoiceNumber} (PO ${po.poNumber})`,
+            reference: inv.invoiceNumber,
+            items: [
+                { accountId: 'acc_inv_rm', debit: inv.totalAmount, credit: 0 },
+                { accountId: 'acc_ap', debit: 0, credit: inv.totalAmount }
+            ]
+        });
+    }
+
+    showToast('Supplier Invoice submitted to Finance!', 'success');
+    closeModal();
     navigateTo('purchase-invoices');
-    setTimeout(() => viewPurchaseInvoice(inv.id), 100);
 };
 
 window.viewPurchaseInvoice = (id) => {
@@ -1184,12 +2179,27 @@ window.viewPurchaseInvoice = (id) => {
         <td class="py-2 text-right text-green-600 font-medium">${formatCurrency(p.amount)}</td></tr>`).join('')
         : `<tr><td colspan="4" class="py-2 text-gray-500 italic text-sm">Belum ada pembayaran.</td></tr>`;
     const body = `<div class="space-y-4 text-sm">
-        <div class="grid grid-cols-2 gap-2 bg-gray-50 p-3 rounded">
-            <div><p class="text-gray-500">No. Invoice</p><p class="font-bold text-lg">${inv.invoiceNumber}</p></div>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 bg-gray-50 p-3 rounded">
+            <div><p class="text-gray-500">Invoice No.</p><p class="font-bold">${inv.invoiceNumber}</p></div>
+            <div><p class="text-gray-500">Invoice Date</p><p class="font-medium">${formatDate(inv.date).slice(0, 11)}</p></div>
+            <div><p class="text-gray-500 text-red-600">Due Date</p><p class="font-bold text-red-600">${inv.dueDate ? formatDate(inv.dueDate).slice(0, 11) : '-'}</p></div>
             <div class="text-right"><p class="text-gray-500">Status</p>${statusBadgePurch(inv.status)}</div>
             <div><p class="text-gray-500">Supplier</p><p class="font-medium">${sup.name}</p></div>
-            <div class="text-right"><p class="text-gray-500">Ref. PO</p><p class="font-medium">${po?.poNumber || '-'}</p></div>
+            <div><p class="text-gray-500">Ref. PO</p><p class="font-medium">${po?.poNumber || '-'}</p></div>
+            <div><p class="text-gray-500">Terms</p><p class="font-medium">${inv.paymentTerms ? inv.paymentTerms + ' Days' : 'Cash'}</p></div>
         </div>
+        
+        ${(inv.bankName || inv.bankAccount || inv.bankHolder) ? `
+        <div class="bg-blue-50/50 p-3 rounded border border-blue-100">
+            <p class="text-xs font-semibold text-gray-700 mb-2 border-b border-blue-100 pb-1">Informasi Rekening Bank Supplier</p>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div><p class="text-xs text-gray-500 focus:outline-none">Nama Bank</p><p class="font-medium text-sm text-gray-800">${inv.bankName || '-'}</p></div>
+                <div><p class="text-xs text-gray-500">Nomor Rekening</p><p class="font-medium text-sm text-gray-800">${inv.bankAccount || '-'}</p></div>
+                <div><p class="text-xs text-gray-500">Atas Nama</p><p class="font-medium text-sm text-gray-800">${inv.bankHolder || '-'}</p></div>
+            </div>
+        </div>
+        ` : ''}
+
         <div><p class="font-semibold text-gray-700 border-b pb-1 mb-2">Riwayat Pembayaran</p>
             <table class="w-full"><thead><tr class="text-xs text-gray-500 border-b">
                 <th class="py-1">Tanggal</th><th class="py-1">Metode</th><th class="py-1">Referensi</th><th class="py-1 text-right">Jumlah</th>
@@ -1200,19 +2210,63 @@ window.viewPurchaseInvoice = (id) => {
             <div class="flex justify-between"><span class="text-gray-600">Total Terbayar:</span><span class="text-green-600 font-bold">${formatCurrency(paid)}</span></div>
             <div class="flex justify-between border-t border-blue-200 pt-1 mt-1"><span class="font-bold">Sisa Hutang:</span><span class="text-red-600 font-bold text-lg">${formatCurrency(inv.totalAmount - paid)}</span></div>
         </div>
+        ${inv.attachment ? `
+        <div class="mt-4">
+            <p class="font-semibold text-gray-700 border-b pb-1 mb-2">Lampiran Tagihan</p>
+            <div class="border rounded-lg overflow-hidden bg-gray-100 flex justify-center p-2">
+                ${inv.attachment.startsWith('data:image')
+                ? `<img src="${inv.attachment}" class="max-w-full h-auto cursor-pointer" onclick="window.open('${inv.attachment}')">`
+                : `<div class="p-8 text-center"><i class="fas fa-file-pdf text-4xl text-red-500 mb-2"></i><br><a href="${inv.attachment}" download="invoice-${inv.invoiceNumber}" class="text-blue-600 underline">Unduh Lampiran</a></div>`}
+            </div>
+        </div>` : ''}
     </div>`;
     showModal(`Detail Invoice - ${inv.invoiceNumber}`, body, `<button onclick="closeModal()" class="w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 px-4 py-2 bg-white text-gray-700 text-sm font-medium">Tutup</button>`);
 };
 
+// --- Purchase Invoice Attachment Helpers ---
+window.triggerInvoiceUpload = (id) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*,application/pdf';
+    input.onchange = (e) => handleInvoiceFile(e, id);
+    input.click();
+};
+
+window.handleInvoiceFile = (e, id) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+        showToast('File terlalu besar (maks 2MB)', 'error');
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        db.update('purchaseInvoices', id, { attachment: event.target.result });
+        showToast('Lampiran berhasil diunggah');
+        renderPurchaseInvoices();
+    };
+    reader.readAsDataURL(file);
+};
+
+window.removeInvoiceAttachment = (id) => {
+    if (confirm('Hapus lampiran ini?')) {
+        db.update('purchaseInvoices', id, { attachment: null });
+        showToast('Lampiran dihapus');
+        renderPurchaseInvoices();
+    }
+};
+
 // ─────────────────── SUPPLIER PAYMENTS ──────────────────────
 function renderSupplierPayments(prefillInvoiceId = null) {
-    document.getElementById('pageTitle').innerText = 'Pembayaran Supplier';
+    document.getElementById('pageTitle').innerText = 'Supplier Payment';
     const mainContent = document.getElementById('main-content');
     const allPayments = db.read('supplierPayments').sort((a, b) => new Date(b.date) - new Date(a.date));
     const allInvoices = db.read('purchaseInvoices');
     const suppliers = db.read('suppliers');
 
-    let filteredPayments = allPayments;
+    const basePayments = allPayments;
+    let filteredPayments = basePayments;
     let bannerHtml = '';
     if (prefillInvoiceId) {
         window.currentSupPayInvoiceId = prefillInvoiceId;
@@ -1221,20 +2275,52 @@ function renderSupplierPayments(prefillInvoiceId = null) {
             const sup = suppliers.find(s => s.id === inv.supplierId) || { name: '-' };
             const invPaid = allPayments.filter(p => p.invoiceId === inv.id).reduce((s, p) => s + parseFloat(p.amount), 0);
             filteredPayments = allPayments.filter(p => p.invoiceId === inv.id);
-            bannerHtml = `<div class="mb-6 bg-orange-50 border border-orange-100 rounded-lg p-4 sm:p-6 shadow-sm">
+            bannerHtml = `<div class="mb-6 bg-blue-50 border border-blue-100 rounded-lg p-4 sm:p-6 shadow-sm">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
-                    <div><h3 class="text-orange-800 font-bold text-lg">Rekap Hutang: ${inv.invoiceNumber}</h3>
-                        <p class="text-orange-600 text-sm">Supplier: <span class="font-semibold">${sup.name}</span></p></div>
-                    <button onclick="renderSupplierPayments(null)" class="mt-2 sm:mt-0 text-orange-700 hover:text-orange-900 text-sm font-medium underline">
+                    <div><h3 class="text-blue-800 font-bold text-lg">Rekap Hutang: ${inv.invoiceNumber}</h3>
+                        <p class="text-blue-600 text-sm">Supplier: <span class="font-semibold">${sup.name}</span></p></div>
+                    <button onclick="renderSupplierPayments(null)" class="mt-2 sm:mt-0 text-blue-700 hover:text-blue-900 text-sm font-medium underline">
                         <i class="fas fa-list mr-1"></i>Tampilkan Semua</button>
                 </div>
                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div class="bg-white p-3 rounded border border-orange-100"><p class="text-gray-500 text-xs uppercase font-semibold">Total Hutang</p><p class="text-gray-800 font-bold text-lg">${formatCurrency(inv.totalAmount)}</p></div>
-                    <div class="bg-white p-3 rounded border border-orange-100"><p class="text-gray-500 text-xs uppercase font-semibold">Total Dibayar</p><p class="text-green-600 font-bold text-lg">${formatCurrency(invPaid)}</p></div>
-                    <div class="bg-white p-3 rounded border border-orange-100"><p class="text-gray-500 text-xs uppercase font-semibold">Sisa Hutang</p><p class="text-red-600 font-bold text-lg">${formatCurrency(inv.totalAmount - invPaid)}</p></div>
+                    <div class="bg-white p-3 rounded border border-blue-100"><p class="text-gray-500 text-xs uppercase font-semibold">Total Hutang</p><p class="text-gray-800 font-bold text-lg">${formatCurrency(inv.totalAmount)}</p></div>
+                    <div class="bg-white p-3 rounded border border-blue-100"><p class="text-gray-500 text-xs uppercase font-semibold">Total Dibayar</p><p class="text-green-600 font-bold text-lg">${formatCurrency(invPaid)}</p></div>
+                    <div class="bg-white p-3 rounded border border-blue-100"><p class="text-gray-500 text-xs uppercase font-semibold">Sisa Hutang</p><p class="text-red-600 font-bold text-lg">${formatCurrency(inv.totalAmount - invPaid)}</p></div>
                 </div></div>`;
         }
     }
+
+    filteredPayments = filterByDateRange(filteredPayments, 'supplierPayments');
+
+    // Extra filters (supplier, status, kategori) — read from persisted state
+    const filterSup    = window.currentFilters.supplierPayments.supplier || '';
+    const filterStatus = window.currentFilters.supplierPayments.status   || '';
+    const filterKat    = window.currentFilters.supplierPayments.kategori  || '';
+
+    if (filterSup || filterStatus || filterKat) {
+        filteredPayments = filteredPayments.filter(p => {
+            const inv = allInvoices.find(i => i.id === p.invoiceId);
+            if (!inv) return false;
+            if (filterSup && inv.supplierId !== filterSup) return false;
+            if (filterStatus && inv.status !== filterStatus) return false;
+            if (filterKat) {
+                const po = (db.read('purchaseOrders') || []).find(po => po.id === inv.purchaseOrderId);
+                if (!po || po.category !== filterKat) return false;
+            }
+            return true;
+        });
+    }
+
+    // --- Total summary calculation ---
+    const totalPaid = filteredPayments.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+    const touchedInvIds = new Set(filteredPayments.map(p => p.invoiceId));
+    let totalUnpaidBalance = 0;
+    touchedInvIds.forEach(invId => {
+        const inv = allInvoices.find(i => i.id === invId);
+        if (!inv) return;
+        const paidForInv = allPayments.filter(p => p.invoiceId === invId).reduce((s, p) => s + parseFloat(p.amount || 0), 0);
+        totalUnpaidBalance += Math.max(0, (inv.totalAmount || 0) - paidForInv);
+    });
 
     let rows = filteredPayments.map(p => {
         const inv = allInvoices.find(i => i.id === p.invoiceId) || { invoiceNumber: '-', supplierId: null };
@@ -1242,23 +2328,111 @@ function renderSupplierPayments(prefillInvoiceId = null) {
         return `<tr class="border-b border-gray-100 hover:bg-gray-50">
             <td class="py-3 px-4 text-sm font-medium text-gray-800">${p.paymentNumber}</td>
             <td class="py-3 px-4 text-sm text-gray-600">${formatDate(p.date).slice(0, 11)}</td>
-            <td class="py-3 px-4 text-sm text-purple-600">${inv.invoiceNumber}</td>
+            <td class="py-3 px-4 text-sm text-blue-600">${inv.invoiceNumber}</td>
             <td class="py-3 px-4 text-sm text-gray-800">${sup.name}</td>
             <td class="py-3 px-4 text-sm text-gray-600">${p.method}</td>
             <td class="py-3 px-4 text-sm text-gray-500">${p.referenceNote || '-'}</td>
-            <td class="py-3 px-4 text-sm text-green-600 font-bold text-right">${formatCurrency(p.amount)}</td>
+        <td class="py-3 px-4 text-sm text-green-600 font-bold text-right">${formatCurrency(p.amount)}</td>
         </tr>`;
     }).join('');
     if (!rows) rows = `<tr><td colspan="7" class="py-4 text-center text-gray-500">Belum ada data pembayaran${prefillInvoiceId ? ' untuk invoice ini' : ''}</td></tr>`;
 
+    // --- Total summary HTML ---
+    const totalSummaryHtml = !prefillInvoiceId ? `
+        <div class="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="bg-green-50 border border-green-100 rounded-xl p-4 flex items-center gap-4">
+                <div class="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-green-600">
+                    <i class="fas fa-check-circle text-lg"></i>
+                </div>
+                <div>
+                    <p class="text-green-600 text-xs font-bold uppercase tracking-wider">Total Sudah Dibayar</p>
+                    <p class="text-green-800 font-bold text-xl mt-0.5">${formatCurrency(totalPaid)}</p>
+                    <p class="text-green-400 text-[10px]">${filteredPayments.length} transaksi</p>
+                </div>
+            </div>
+            <div class="bg-red-50 border border-red-100 rounded-xl p-4 flex items-center gap-4">
+                <div class="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600">
+                    <i class="fas fa-clock text-lg"></i>
+                </div>
+                <div>
+                    <p class="text-red-600 text-xs font-bold uppercase tracking-wider">Sisa Hutang (Unpaid)</p>
+                    <p class="text-red-800 font-bold text-xl mt-0.5">${formatCurrency(totalUnpaidBalance)}</p>
+                    <p class="text-red-400 text-[10px]">${touchedInvIds.size} invoice terkait</p>
+                </div>
+            </div>
+            <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-center gap-4">
+                <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                    <i class="fas fa-wallet text-lg"></i>
+                </div>
+                <div>
+                    <p class="text-blue-600 text-xs font-bold uppercase tracking-wider">Total Nilai Invoice</p>
+                    <p class="text-blue-800 font-bold text-xl mt-0.5">${formatCurrency(totalPaid + totalUnpaidBalance)}</p>
+                    <p class="text-blue-400 text-[10px]">Paid + Unpaid</p>
+                </div>
+            </div>
+        </div>` : '';
+
+    let filterHtml = '';
+    if (!prefillInvoiceId) {
+        filterHtml = `
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-5">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">Filter Supplier Payment</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3 items-end">
+                <div class="lg:col-span-1">
+                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Dari Tanggal</label>
+                    <input type="date" id="spay_start_date" value="${window.currentFilters.supplierPayments.start}"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 transition-all">
+                </div>
+                <div class="lg:col-span-1">
+                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Sampai Tanggal</label>
+                    <input type="date" id="spay_end_date" value="${window.currentFilters.supplierPayments.end}"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 transition-all">
+                </div>
+                <div class="lg:col-span-1">
+                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Supplier</label>
+                    <select id="spay_filter_supplier" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500">
+                        <option value="">Semua Supplier</option>
+                        ${suppliers.map(s => `<option value="${s.id}" ${window.currentFilters.supplierPayments.supplier === s.id ? 'selected' : ''}>${s.name}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="lg:col-span-1">
+                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Status Invoice</label>
+                    <select id="spay_filter_status" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500">
+                        <option value="">Semua Status</option>
+                        <option value="PAID" ${window.currentFilters.supplierPayments.status === 'PAID' ? 'selected' : ''}>PAID</option>
+                        <option value="UNPAID" ${window.currentFilters.supplierPayments.status === 'UNPAID' ? 'selected' : ''}>UNPAID</option>
+                    </select>
+                </div>
+                <div class="lg:col-span-1">
+                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Keterangan (Kategori)</label>
+                    <select id="spay_filter_kategori" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500">
+                        <option value="">Semua Kategori</option>
+                        <option value="Bahan Baku" ${window.currentFilters.supplierPayments.kategori === 'Bahan Baku' ? 'selected' : ''}>Bahan Baku</option>
+                        <option value="Packaging" ${window.currentFilters.supplierPayments.kategori === 'Packaging' ? 'selected' : ''}>Packaging</option>
+                        <option value="Perlengkapan" ${window.currentFilters.supplierPayments.kategori === 'Perlengkapan' ? 'selected' : ''}>Perlengkapan</option>
+                        <option value="Service" ${window.currentFilters.supplierPayments.kategori === 'Service' ? 'selected' : ''}>Service</option>
+                        <option value="Sparepart" ${window.currentFilters.supplierPayments.kategori === 'Sparepart' ? 'selected' : ''}>Sparepart</option>
+                    </select>
+                </div>
+                <button onclick="applySupPayFilter()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-sm whitespace-nowrap h-[38px]">
+                    <i class="fas fa-search"></i> Filter
+                </button>
+                <button onclick="resetSupPayFilter()" class="bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm h-[38px]" title="Reset">
+                    <i class="fas fa-undo"></i>
+                </button>
+            </div>
+        </div>`;
+    }
+
     mainContent.innerHTML = `
         ${bannerHtml}
+        ${filterHtml}
         <div class="bg-white rounded-lg shadow-sm border border-gray-100">
-            <div class="flex justify-between items-center p-4 sm:p-6 border-b border-gray-100">
-                <h2 class="text-lg font-semibold text-gray-800">Riwayat Pembayaran Supplier</h2>
-                <button onclick="openSupplierPaymentModal()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-medium">
-                    <i class="fas fa-plus mr-2"></i>Bayar Hutang
-                </button>
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 sm:p-6 border-b border-gray-100 gap-4">
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-800">Supplier Payment History</h2>
+                    <p class="text-xs text-gray-500 mt-1">Total: ${filteredPayments.length} transaksi</p>
+                </div>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
@@ -1274,7 +2448,8 @@ function renderSupplierPayments(prefillInvoiceId = null) {
                     <tbody>${rows}</tbody>
                 </table>
             </div>
-        </div>`;
+        </div>
+        ${totalSummaryHtml}`;
     if (prefillInvoiceId) {
         const inv = allInvoices.find(i => i.id === prefillInvoiceId);
         if (inv && inv.status === 'UNPAID') setTimeout(() => openSupplierPaymentModal(prefillInvoiceId), 100);
@@ -1339,7 +2514,23 @@ window.saveSupplierPayment = () => {
     const paid = allPayments.filter(p => p.invoiceId === inv.id).reduce((s, p) => s + parseFloat(p.amount), 0);
     const balance = inv.totalAmount - paid;
     if (amount > balance + 1) { showToast(`Melebihi sisa hutang (${formatCurrency(balance)})`, 'error'); return; }
-    db.insert('supplierPayments', { paymentNumber: 'SPAY-' + Date.now().toString().slice(-6), invoiceId, date: new Date(date).toISOString(), method, referenceNote: ref, amount });
+    const payment = db.insert('supplierPayments', { paymentNumber: 'SPAY-' + Date.now().toString().slice(-6), invoiceId, date: new Date(date).toISOString(), method, referenceNote: ref, amount });
+
+    // Otomatis buat Jurnal: Debit Hutang Usaha, Kredit Kas/Bank
+    if (typeof db.addJournalEntry === 'function') {
+        let creditAccount = '11110'; // Default: Kas
+        if (method === 'Transfer Bank') creditAccount = '11110'; // Default: Bank BCA
+
+        db.addJournalEntry({
+            date: payment.date,
+            description: `Pembayaran Hutang INV ${inv.invoiceNumber} (${method})`,
+            reference: payment.paymentNumber,
+            items: [
+                { accountId: 'acc_ap', debit: amount, credit: 0 },
+                { accountId: payment.method === 'Transfer Bank' ? 'acc_bank' : 'acc_cash', debit: 0, credit: amount }
+            ]
+        });
+    }
     const newPaid = paid + amount;
     if (newPaid >= inv.totalAmount - 1) { db.update('purchaseInvoices', inv.id, { status: 'PAID' }); showToast('Pembayaran berhasil! Invoice LUNAS.', 'success'); }
     else showToast('Pembayaran berhasil dicatat.', 'success');
@@ -1357,20 +2548,51 @@ function renderPurchaseReports() {
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
 
+    const suppliers = db.read('suppliers');
+    const products = db.read('inventoryItems').filter(i => i.category === 'RAW_MATERIAL');
+
+    const supOpts = suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+    const prodOpts = products.map(p => `<option value="${p.id}">${p.itemName}</option>`).join('');
+
     mainContent.innerHTML = `
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-5">
             <h2 class="text-lg font-semibold text-gray-800 mb-4">Laporan Pembelian</h2>
-            <div class="flex flex-wrap gap-3 items-end">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
                 <div>
                     <label class="block text-xs font-medium text-gray-500 mb-1">Dari Tanggal</label>
-                    <input type="date" id="pr_from" value="${firstDay}" class="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    <input type="date" id="pr_from" value="${firstDay}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500">
                 </div>
                 <div>
                     <label class="block text-xs font-medium text-gray-500 mb-1">Sampai Tanggal</label>
-                    <input type="date" id="pr_to" value="${lastDay}" class="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    <input type="date" id="pr_to" value="${lastDay}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500">
                 </div>
-                <button onclick="runPurchaseReport()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2">
-                    <i class="fas fa-search"></i> Tampilkan Laporan
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Supplier</label>
+                    <select id="pr_filter_supplier" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500">
+                        <option value="">Semua Supplier</option>
+                        ${supOpts}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Produk</label>
+                    <select id="pr_filter_product" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500">
+                        <option value="">Semua Produk</option>
+                        ${prodOpts}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-500 mb-1">Kategori</label>
+                    <select id="pr_filter_category" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500">
+                        <option value="">Semua Kategori</option>
+                        <option value="Bahan Baku">Bahan Baku</option>
+                        <option value="Packaging">Packaging</option>
+                        <option value="Perlengkapan">Perlengkapan</option>
+                        <option value="Service">Service</option>
+                        <option value="Sparepart">Sparepart</option>
+                    </select>
+                </div>
+                <button onclick="runPurchaseReport()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2 h-[38px]">
+                    <i class="fas fa-search"></i> Cari
                 </button>
             </div>
         </div>
@@ -1393,10 +2615,26 @@ window.runPurchaseReport = () => {
     const purchaseInvoices = db.read('purchaseInvoices');
     const payments = db.read('supplierPayments');
 
-    // Filter by date range
+    const filterSupplier = document.getElementById('pr_filter_supplier')?.value;
+    const filterProduct = document.getElementById('pr_filter_product')?.value;
+    const filterCategory = document.getElementById('pr_filter_category')?.value;
+
+    // Filter by date range and selected supplier/product/category
     const pos = allPOs.filter(po => {
-        const d = new Date(po.date);
-        return d >= from && d <= to;
+        const d = po.actualDeliveryDate ? new Date(po.actualDeliveryDate) : null;
+        const inDateRange = d && d >= from && d <= to;
+        if (!inDateRange) return false;
+
+        if (filterSupplier && po.supplierId !== filterSupplier) return false;
+        
+        if (filterProduct) {
+            const hasProduct = (po.items || []).some(item => item.inventoryItemId === filterProduct);
+            if (!hasProduct) return false;
+        }
+
+        if (filterCategory && po.category !== filterCategory) return false;
+
+        return true;
     });
 
     const received = pos.filter(p => p.status === 'RECEIVED');
@@ -1466,7 +2704,7 @@ window.runPurchaseReport = () => {
     }).join('') || `<tr><td colspan="2" class="py-4 text-center text-gray-400 text-sm">Belum ada data</td></tr>`;
 
     // --- Detail Table PO ---
-    const detailRows = pos.sort((a, b) => new Date(b.date) - new Date(a.date)).map(po => {
+    const detailRows = pos.sort((a, b) => new Date(b.actualDeliveryDate) - new Date(a.actualDeliveryDate)).map(po => {
         const sup = suppliers.find(s => s.id === po.supplierId) || { name: '-' };
         const inv = purchaseInvoices.find(i => i.purchaseOrderId === po.id && i.status !== 'CANCELLED');
         const statusColor = {
@@ -1476,15 +2714,26 @@ window.runPurchaseReport = () => {
             'DRAFT': 'bg-gray-100 text-gray-600',
             'CANCELLED': 'bg-red-100 text-red-600'
         }[po.status] || 'bg-gray-100 text-gray-600';
+        const catColorMap = {
+            'Bahan Baku':   'bg-green-100 text-green-700',
+            'Packaging':    'bg-purple-100 text-purple-700',
+            'Perlengkapan': 'bg-yellow-100 text-yellow-700',
+            'Service':      'bg-blue-100 text-blue-700',
+            'Sparepart':    'bg-orange-100 text-orange-700',
+        };
+        const catBadge = po.category
+            ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold ${catColorMap[po.category] || 'bg-gray-100 text-gray-600'}">${po.category}</span>`
+            : `<span class="text-gray-300 text-[10px]">-</span>`;
         return `<tr class="border-b border-gray-100 hover:bg-gray-50 text-sm">
-            <td class="py-2 px-3 font-medium text-blue-600">${po.poNumber}</td>
-            <td class="py-2 px-3 text-gray-600">${formatDate(po.date).slice(0, 11)}</td>
+            <td class="py-2 px-3 font-medium text-blue-600 cursor-pointer hover:underline" onclick="viewPO('${po.id}')" title="Klik untuk lihat & print PDF">${po.poNumber}</td>
+            <td class="py-2 px-3 text-gray-600">${po.actualDeliveryDate ? formatDate(po.actualDeliveryDate).slice(0, 11) : '<span class="text-gray-400 text-xs italic">Belum tiba</span>'}</td>
             <td class="py-2 px-3 text-gray-800">${sup.name}</td>
+            <td class="py-2 px-3">${catBadge}</td>
             <td class="py-2 px-3 text-right font-semibold text-gray-800">${formatCurrency(po.totalAmount)}</td>
             <td class="py-2 px-3"><span class="px-2 py-0.5 rounded text-xs font-semibold ${statusColor}">${po.status}</span></td>
             <td class="py-2 px-3 text-center">${inv ? `<span class="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs font-semibold">Invoiced</span>` : `<span class="text-gray-400 text-xs">-</span>`}</td>
         </tr>`;
-    }).join('') || `<tr><td colspan="6" class="py-4 text-center text-gray-400">Tidak ada PO dalam rentang tanggal ini</td></tr>`;
+    }).join('') || `<tr><td colspan="7" class="py-4 text-center text-gray-400">Tidak ada PO dalam rentang tanggal ini</td></tr>`;
 
     document.getElementById('purchase_report_output').innerHTML = `
         ${summaryHtml}
@@ -1507,8 +2756,9 @@ window.runPurchaseReport = () => {
                 <table class="w-full text-left border-collapse">
                     <thead><tr class="bg-gray-50 border-b border-gray-200">
                         <th class="py-2 px-3 text-xs font-semibold text-gray-600 uppercase">No. PO</th>
-                        <th class="py-2 px-3 text-xs font-semibold text-gray-600 uppercase">Tanggal</th>
+                        <th class="py-2 px-3 text-xs font-semibold text-gray-600 uppercase">Tgl Kedatangan</th>
                         <th class="py-2 px-3 text-xs font-semibold text-gray-600 uppercase">Supplier</th>
+                        <th class="py-2 px-3 text-xs font-semibold text-gray-600 uppercase">Kategori</th>
                         <th class="py-2 px-3 text-xs font-semibold text-gray-600 uppercase text-right">Total</th>
                         <th class="py-2 px-3 text-xs font-semibold text-gray-600 uppercase">Status</th>
                         <th class="py-2 px-3 text-xs font-semibold text-gray-600 uppercase text-center">Invoice</th>
@@ -1523,6 +2773,7 @@ window.runPurchaseReport = () => {
 // Stubs for other views
 // --- Master Products Module ---
 function renderMasterProducts() {
+    const canEdit = getModulePermission('logistik').edit;
     document.getElementById('pageTitle').innerText = 'Master Produk';
     const mainContent = document.getElementById('main-content');
 
@@ -1539,8 +2790,10 @@ function renderMasterProducts() {
             <td class="py-3 px-4 text-sm text-gray-600">${p.unit}</td>
             <td class="py-3 px-4 text-sm text-gray-600 text-right">${p.minStock}</td>
             <td class="py-3 px-4 text-sm text-right">
-                <button onclick="editProduct('${p.id}')" class="text-blue-500 hover:text-blue-700 mr-2"><i class="fas fa-edit"></i></button>
-                <button onclick="deleteProduct('${p.id}')" class="text-red-500 hover:text-red-700"><i class="fas fa-trash"></i></button>
+                ${canEdit ? `
+                <button onclick="openProductModal('${p.id}')" class="text-blue-500 hover:text-blue-700 mr-2" title="Edit"><i class="fas fa-edit"></i></button>
+                <button onclick="deleteProduct('${p.id}')" class="text-red-500 hover:text-red-700" title="Delete"><i class="fas fa-trash"></i></button>
+                ` : '<span class="text-gray-400 text-[10px] italic">No Access</span>'}
             </td>
         </tr>
         `).join('');
@@ -1553,9 +2806,17 @@ function renderMasterProducts() {
         <div class="bg-white rounded-lg shadow-sm border border-gray-100">
             <div class="flex justify-between items-center p-4 sm:p-6 border-b border-gray-100">
                 <h2 class="text-lg font-semibold text-gray-800">Daftar Produk</h2>
-                <button onclick="openProductModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors text-sm font-medium">
-                    <i class="fas fa-plus mr-2"></i>Tambah Produk
-                </button>
+                <div class="flex gap-2">
+                    ${canEdit ? `
+                    <button onclick="openProductModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors text-sm font-medium">
+                        <i class="fas fa-plus mr-2"></i>Tambah Produk
+                    </button>
+                    ` : `
+                    <span class="text-xs font-medium text-orange-500 bg-orange-50 border border-orange-100 px-3 py-1.5 rounded-lg flex items-center gap-2">
+                        <i class="fas fa-info-circle"></i> Mode Lihat Saja
+                    </span>
+                    `}
+                </div>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
@@ -1818,10 +3079,15 @@ function renderStockCard(activeTab = 'recap') {
 }
 // --- Purchase Orders Module ---
 function renderPurchaseOrders() {
-    document.getElementById('pageTitle').innerText = 'Purchase Orders';
+    const canEdit = getModulePermission('pembelian').edit;
+    document.getElementById('pageTitle').innerText = 'Purchase Order';
     const mainContent = document.getElementById('main-content');
 
-    const pos = db.read('purchaseOrders').sort((a, b) => new Date(b.date) - new Date(a.date));
+    let pos = db.read('purchaseOrders').sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // Apply Date Filter
+    pos = filterByDateRange(pos, 'purchaseOrders');
+
     const suppliers = db.read('suppliers');
 
     let rows = pos.map(po => {
@@ -1830,19 +3096,28 @@ function renderPurchaseOrders() {
         let statusBadge = '';
         if (po.status === 'DRAFT') statusBadge = '<span class="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-semibold">DRAFT</span>';
         if (po.status === 'APPROVED') statusBadge = '<span class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">APPROVED</span>';
+        if (po.status === 'PARTIALLY RECEIVED') statusBadge = '<span class="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-semibold">PARTIAL</span>';
         if (po.status === 'RECEIVED') statusBadge = '<span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-semibold">RECEIVED</span>';
+        if (po.status === 'CANCELLED') statusBadge = '<span class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-semibold">CANCELLED</span>';
 
         // Action buttons based on status
-        let actions = `<button onclick="viewPO('${po.id}')" class="text-gray-500 hover:text-gray-700 mr-2" title="Detail"> <i class="fas fa-eye"></i></button> `;
+        let actions = `<button onclick="viewPO('${po.id}')" class="text-gray-500 hover:text-gray-700" title="Detail"> <i class="fas fa-eye text-lg"></i></button> `;
 
-        if (po.status === 'DRAFT') {
+        if (canEdit && po.status === 'DRAFT') {
             actions += `
-        <button onclick="updatePOStatus('${po.id}', 'APPROVED')" class="text-blue-500 hover:text-blue-700 mr-2" title="Approve"> <i class="fas fa-check"></i></button>
-            <button onclick="deletePO('${po.id}')" class="text-red-500 hover:text-red-700" title="Delete"><i class="fas fa-trash"></i></button>
-    `;
-        } else if (po.status === 'APPROVED') {
-            actions += `<button onclick="receiveGoodsPO('${po.id}')" class="text-green-600 hover:text-green-800 font-bold text-xs bg-green-50 px-2 py-1 rounded border border-green-200"> Set To Received</button> `;
+                <button onclick="openSendPOModal('${po.id}')" class="text-blue-500 hover:text-blue-700 border border-blue-200 px-2 py-1 rounded text-[10px] font-bold bg-blue-50/30" title="Send Options">Kirim</button>
+                <button onclick="updatePOStatus('${po.id}', 'APPROVED')" class="text-blue-500 hover:text-blue-700" title="Approve"> <i class="fas fa-check text-lg"></i></button>
+                <button onclick="deletePO('${po.id}')" class="text-red-500 hover:text-red-700" title="Delete"><i class="fas fa-trash text-lg"></i></button>
+            `;
+        } else if (canEdit && (po.status === 'APPROVED' || po.status === 'PARTIALLY RECEIVED')) {
+            actions += `
+                <button onclick="openSendPOModal('${po.id}')" class="text-blue-500 hover:text-blue-700 border border-blue-200 px-2 py-1 rounded text-[10px] font-bold bg-blue-50/30" title="Send Options">Kirim</button>
+            `;
+        } else if (po.status === 'RECEIVED') {
+             actions += `<button onclick="openSendPOModal('${po.id}')" class="text-blue-500 hover:text-blue-700 border border-blue-200 px-2 py-1 rounded text-[10px] font-bold bg-blue-50/30" title="Send Options">Kirim</button> `;
         }
+        
+
 
         // ETD cell with delay indicator
         const today2 = new Date(); today2.setHours(0, 0, 0, 0);
@@ -1863,26 +3138,78 @@ function renderPurchaseOrders() {
             }
         }
 
+        const catColorMap = {
+            'Bahan Baku':   'bg-green-100 text-green-700',
+            'Packaging':    'bg-purple-100 text-purple-700',
+            'Perlengkapan': 'bg-yellow-100 text-yellow-700',
+            'Service':      'bg-blue-100 text-blue-700',
+            'Sparepart':    'bg-orange-100 text-orange-700',
+        };
+        const catBadge = po.category
+            ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold ${catColorMap[po.category] || 'bg-gray-100 text-gray-600'}">${po.category}</span>`
+            : `<span class="text-gray-300 text-[10px]">-</span>`;
+
         return `
         <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                 <td class="py-3 px-4 text-sm font-medium text-blue-600">${po.poNumber}</td>
                 <td class="py-3 px-4 text-sm text-gray-600">${formatDate(po.date).slice(0, 11)}</td>
+                <td class="py-3 px-4 text-sm text-gray-600">
+                    <span class="font-medium">${po.paymentTerms || '-'}</span><br>
+                    <span class="text-[10px] text-orange-600 font-bold">JT: ${po.dueDate ? formatDate(po.dueDate).slice(0, 11) : '-'}</span>
+                </td>
                 <td class="py-3 px-4 text-sm">${etdCell}</td>
                 <td class="py-3 px-4 text-sm text-gray-800">${supplier.name}</td>
+                <td class="py-3 px-4 text-sm">${catBadge}</td>
                 <td class="py-3 px-4 text-sm text-gray-800 text-right font-medium">${formatCurrency(po.totalAmount)}</td>
                 <td class="py-3 px-4 text-sm">${statusBadge}</td>
-                <td class="py-3 px-4 text-sm text-right">${actions}</td>
+                <td class="py-3 px-4 text-sm text-right">
+                    <div class="flex items-center justify-end gap-3 min-w-max">
+                        ${actions}
+                    </div>
+                </td>
             </tr>
         `;
     }).join('');
 
-    if (pos.length === 0) rows = `<tr > <td colspan="7" class="py-4 text-center text-gray-500">Belum ada Purchase Order</td></tr> `;
+    if (pos.length === 0) rows = `<tr > <td colspan="8" class="py-4 text-center text-gray-500">Belum ada Purchase Order</td></tr> `;
 
     mainContent.innerHTML = `
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-5">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-semibold text-gray-800">Laporan Purchase Order</h2>
+                ${!canEdit ? `
+                <span class="text-[10px] font-bold text-orange-500 bg-orange-50 border border-orange-100 px-2 py-1 rounded flex items-center gap-1 uppercase tracking-tighter">
+                    <i class="fas fa-info-circle"></i> Lihat Saja
+                </span>
+                ` : ''}
+            </div>
+            <div class="flex flex-wrap gap-4 items-end">
+                <div class="flex-1 min-w-[150px]">
+                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Dari Tanggal</label>
+                    <input type="date" id="po_start_date" value="${window.currentFilters.purchaseOrders.start}"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 transition-all">
+                </div>
+                <div class="flex-1 min-w-[150px]">
+                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Sampai Tanggal</label>
+                    <input type="date" id="po_end_date" value="${window.currentFilters.purchaseOrders.end}"
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 transition-all">
+                </div>
+                <button onclick="applyPOFilter()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-sm whitespace-nowrap h-[38px]">
+                    <i class="fas fa-search"></i> Tampilkan Laporan
+                </button>
+                <button onclick="resetPOFilter()" class="bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm h-[38px]" title="Reset">
+                    <i class="fas fa-undo"></i>
+                </button>
+            </div>
+        </div>
+
         <div class="bg-white rounded-lg shadow-sm border border-gray-100">
-            <div class="flex justify-between items-center p-4 sm:p-6 border-b border-gray-100">
-                <h2 class="text-lg font-semibold text-gray-800">Daftar Purchase Order</h2>
-                <button onclick="openPOModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors text-sm font-medium">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 sm:p-6 border-b border-gray-100 gap-4">
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-800">Daftar Purchase Order</h2>
+                    <p class="text-xs text-gray-500 mt-1">Total: ${pos.length} pesanan</p>
+                </div>
+                <button onclick="openPOModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors text-sm font-medium shadow-sm">
                     <i class="fas fa-plus mr-2"></i>Buat PO Baru
                 </button>
             </div>
@@ -1892,8 +3219,10 @@ function renderPurchaseOrders() {
                         <tr class="bg-gray-50 border-b border-gray-200">
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">No. PO</th>
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Tanggal</th>
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Term / JT</th>
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">ETD</th>
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Supplier</th>
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Kategori</th>
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">Total</th>
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">Aksi</th>
@@ -1904,7 +3233,177 @@ function renderPurchaseOrders() {
             </div>
         </div>
         `;
+}
 
+window.openSendPOModal = (id) => {
+    const po = db.findById('purchaseOrders', id);
+    const supplier = db.findById('suppliers', po.supplierId);
+    
+    const body = `
+        <div class="p-6 text-center">
+            <h3 class="text-lg font-bold text-gray-800 mb-2">Kirim Purchase Order</h3>
+            <p class="text-gray-500 mb-8 text-sm">Pilih metode pengiriman untuk PO <strong>${po.poNumber}</strong></p>
+            
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-5">
+                <button onclick="sendPOWhatsApp('${id}'); closeModal();" class="flex flex-col items-center justify-center p-6 border-2 border-green-50 rounded-2xl hover:border-green-500 hover:bg-green-50 transition-all group shadow-sm">
+                    <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-inner">
+                        <i class="fab fa-whatsapp text-3xl text-green-600"></i>
+                    </div>
+                    <span class="font-black text-green-700 text-xs uppercase tracking-widest">WhatsApp</span>
+                </button>
+                
+                <button onclick="sendPOEmail('${id}'); closeModal();" class="flex flex-col items-center justify-center p-6 border-2 border-blue-50 rounded-2xl hover:border-blue-500 hover:bg-blue-50 transition-all group shadow-sm">
+                    <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-inner">
+                        <i class="fas fa-envelope text-3xl text-blue-600"></i>
+                    </div>
+                    <span class="font-black text-blue-700 text-xs uppercase tracking-widest">Email</span>
+                </button>
+
+                <button onclick='printPOFromSend("${id}")' class="flex flex-col items-center justify-center p-6 border-2 border-purple-50 rounded-2xl hover:border-purple-500 hover:bg-purple-50 transition-all group shadow-sm">
+                    <div class="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-inner">
+                        <i class="fas fa-file-pdf text-3xl text-purple-600"></i>
+                    </div>
+                    <span class="font-black text-purple-700 text-xs uppercase tracking-widest">PDF / Cetak</span>
+                </button>
+            </div>
+        </div>
+    `;
+
+    showModal('', body, `<button onclick="closeModal()" class="w-full sm:w-auto px-6 py-2.5 bg-gray-100 text-gray-600 rounded-xl text-sm font-black uppercase tracking-widest hover:bg-gray-200 transition">Tutup</button>`, 'lg');
+};
+
+window.printPOFromSend = (id) => {
+    closeModal();
+    viewPO(id);
+    setTimeout(() => {
+        const printBtn = document.querySelector('button[onclick^="printHTML"]');
+        if (printBtn) printBtn.click();
+    }, 500);
+};
+
+window.sendPOWhatsApp = (id) => {
+    const po = db.findById('purchaseOrders', id);
+    const supplier = db.findById('suppliers', po.supplierId);
+    if (!supplier?.phone) { showToast('Nomor WhatsApp supplier tidak ditemukan', 'error'); return; }
+
+    let phone = supplier.phone.replace(/[^0-9]/g, '');
+    if (phone.startsWith('0')) phone = '62' + phone.substring(1);
+
+    const itemsStr = (po.items || []).map(i => `• *${i.prodText}*: ${i.qty} ${i.unit || ''}`).join('%0A');
+    const message = `Halo ${supplier.name},%0A%0AKami mengirimkan *Purchase Order (PO)* nomor *${po.poNumber}*:%0A%0A${itemsStr}%0A%0ATotal: *${formatCurrency(po.totalAmount)}*%0ATerm: *${po.paymentTerms || '-'}*%0AJatuh Tempo: *${po.dueDate || '-'}*%0A%0AMohon segera diproses. Terima kasih!%0A*${CONFIG.companyName}*`;
+
+    window.open(`https://wa.me/${phone}?text=${message}`, '_blank');
+};
+
+window.sendPOEmail = (id) => {
+    const po = db.findById('purchaseOrders', id);
+    const supplier = db.findById('suppliers', po.supplierId);
+    if (!supplier?.email) { showToast('Email supplier tidak ditemukan', 'error'); return; }
+
+    const itemsStr = (po.items || []).map(i => `- ${i.prodText}: ${i.qty} ${i.unit || ''}`).join('\n');
+    const subject = `Purchase Order ${po.poNumber} - ${CONFIG.companyName}`;
+    const mailBody = `Halo ${supplier.name},\n\nTerlampir detil Purchase Order nomor ${po.poNumber}:\n\n${itemsStr}\n\nTotal: ${formatCurrency(po.totalAmount)}\nTerm: ${po.paymentTerms || '-'}\nJatuh Tempo: ${po.dueDate || '-'}\n\nMohon untuk segera diproses dan dikonfirmasi.\n\nTerima kasih,\n${CONFIG.companyName}`;
+
+    window.location.href = `mailto:${supplier.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(mailBody)}`;
+};
+
+function renderPurchaseReceiving() {
+    const canEdit = getModulePermission('pembelian').edit;
+    document.getElementById('pageTitle').innerText = 'Penerimaan Barang (GR)';
+    const mainContent = document.getElementById('main-content');
+
+    let pos = db.read('purchaseOrders').sort((a, b) => new Date(b.date) - new Date(a.date));
+    const suppliers = db.read('suppliers');
+
+    // Filter PO yang perlu diterima (APPROVED atau PARTIALLY RECEIVED)
+    const pendingPOs = pos.filter(po => ['APPROVED', 'PARTIALLY RECEIVED'].includes(po.status));
+
+    const rows = pendingPOs.map(po => {
+        const sup = suppliers.find(s => s.id === po.supplierId) || { name: 'Unknown' };
+        
+        let statusBadge = '';
+        if (po.status === 'APPROVED') statusBadge = '<span class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">APPROVED</span>';
+        if (po.status === 'PARTIALLY RECEIVED') statusBadge = '<span class="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-semibold">PARTIAL</span>';
+
+        const totalQty = (po.items || []).reduce((s, i) => s + (i.qty || 0), 0);
+        const receivedQty = (po.items || []).reduce((s, i) => s + (i.receivedQty || 0), 0);
+        const progressPct = totalQty > 0 ? Math.round((receivedQty / totalQty) * 100) : 0;
+
+        return `
+        <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+            <td class="py-3 px-4 text-sm font-medium text-blue-600">${po.poNumber}</td>
+            <td class="py-3 px-4 text-sm text-gray-600">${formatDate(po.date).split(' ')[0]}</td>
+            <td class="py-3 px-4 text-sm text-gray-800 font-medium">${sup.name}</td>
+            <td class="py-3 px-4 text-sm">
+                <div class="flex items-center gap-3">
+                    <div class="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden" style="min-width:100px">
+                        <div class="h-full bg-green-500 rounded-full" style="width: ${progressPct}%"></div>
+                    </div>
+                    <span class="text-[10px] font-bold text-gray-500">${receivedQty} / ${totalQty}</span>
+                </div>
+            </td>
+            <td class="py-3 px-4 text-sm text-center">${statusBadge}</td>
+            <td class="py-3 px-4 text-sm text-right">
+                <button onclick="viewPO('${po.id}')" class="text-gray-400 hover:text-gray-600 mr-3" title="Detail PO"><i class="fas fa-eye"></i></button>
+                ${canEdit ? `
+                <button onclick="receiveGoodsPO('${po.id}')" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm flex items-center gap-1 ml-auto">
+                    <i class="fas fa-truck-loading"></i> Terima Barang
+                </button>
+                ` : ''}
+            </td>
+        </tr>
+        `;
+    }).join('');
+
+    const emptyState = `
+        <tr>
+            <td colspan="6" class="py-20 text-center">
+                <div class="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-300">
+                    <i class="fas fa-box-open text-4xl"></i>
+                </div>
+                <h3 class="text-gray-800 font-bold text-lg">Tidak Ada Antrian Penerimaan</h3>
+                <p class="text-gray-500 text-sm mt-1">Semua Purchase Order telah diterima atau belum disetujui.</p>
+            </td>
+        </tr>
+    `;
+
+    mainContent.innerHTML = `
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                    <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
+                        <i class="fas fa-truck-loading text-green-600"></i> Antrian Penerimaan Barang (GR)
+                    </h2>
+                    <p class="text-sm text-gray-500 mt-1">Daftar Purchase Order yang sudah disetujui dan menunggu kedatangan barang.</p>
+                </div>
+                ${!canEdit ? `
+                <span class="text-[10px] font-bold text-orange-500 bg-orange-50 border border-orange-100 px-3 py-1.5 rounded-lg uppercase">
+                    <i class="fas fa-info-circle mr-1"></i> Mode Lihat Saja
+                </span>
+                ` : ''}
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-gray-50 border-b border-gray-200">
+                            <th class="py-4 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest">No. PO</th>
+                            <th class="py-4 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Tanggal</th>
+                            <th class="py-4 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Supplier</th>
+                            <th class="py-4 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Progres Penerimaan</th>
+                            <th class="py-4 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest text-center">Status</th>
+                            <th class="py-4 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest text-right">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">
+                        ${rows || emptyState}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
 }
 
 // --- Purchase Orders Helper Functions ---
@@ -1927,7 +3426,8 @@ window.updatePOStatus = (id, newStatus) => {
 
 // --- Sales Quotations Module ---
 function renderSalesQuotations() {
-    document.getElementById('pageTitle').innerText = 'Sales Quotation';
+    const canEdit = getModulePermission('penjualan').edit;
+    document.getElementById('pageTitle').innerText = 'Penawaran';
     const mainContent = document.getElementById('main-content');
     const qts = db.read('salesQuotations');
     const customers = db.read('customers');
@@ -1940,33 +3440,38 @@ function renderSalesQuotations() {
         if (qt.status === 'CANCELLED') statusColor = 'bg-red-100 text-red-700';
         if (qt.status === 'SO_CREATED') statusColor = 'bg-purple-100 text-purple-700';
 
-        let actionHtml = `
-            <button onclick="viewQT('${qt.id}')" class="text-gray-500 hover:text-gray-700 mr-2" title="Detail"><i class="fas fa-eye"></i></button>
-            <button onclick="deleteQT('${qt.id}')" class="text-red-500 hover:text-red-700" title="Delete"><i class="fas fa-trash"></i></button>
-        `;
+        let actionHtml = `<button onclick="viewQT('${qt.id}')" class="text-gray-500 hover:text-gray-700 mr-2" title="Detail"><i class="fas fa-eye"></i></button>`;
 
-        if (qt.status === 'DRAFT') {
+        if (canEdit) {
+            actionHtml += `<button onclick="deleteQT('${qt.id}')" class="text-red-500 hover:text-red-700" title="Delete"><i class="fas fa-trash"></i></button>`;
+        }
+
+        if (canEdit && qt.status === 'DRAFT') {
             actionHtml = `
-                <button onclick="updateQTStatus('${qt.id}', 'SENT')" class="text-blue-500 hover:text-blue-700 mr-2 border border-blue-500 px-2 py-1 rounded text-xs" title="Mark as Sent">Kirim</button>
-                <button onclick="updateQTStatus('${qt.id}', 'CONFIRMED')" class="text-green-500 hover:text-green-700 mr-2 border border-green-500 px-2 py-1 rounded text-xs" title="Confirm QT">Confirm</button>
-                <button onclick="updateQTStatus('${qt.id}', 'CANCELLED')" class="text-red-500 hover:text-red-700 mr-2 border border-red-500 px-2 py-1 rounded text-xs" title="Cancel QT">Cancel</button>
-                ${actionHtml}
+                <button onclick="updateQTStatus('${qt.id}', 'CONFIRMED')" class="text-green-500 hover:text-green-700 mr-2 border border-green-500 px-2 py-1 rounded text-xs" title="Confirm">Confirm</button>
+                <button onclick="viewQT('${qt.id}')" class="text-gray-500 hover:text-gray-700 mr-2" title="Detail"><i class="fas fa-eye"></i></button>
+                <button onclick="openSendQTModal('${qt.id}')" class="text-blue-500 hover:text-blue-700 mr-2" title="Kirim"><i class="fas fa-paper-plane"></i></button>
+                <button onclick="deleteQT('${qt.id}')" class="text-red-500 hover:text-red-700" title="Delete"><i class="fas fa-trash"></i></button>
             `;
-        } else if (qt.status === 'SENT') {
+        } else if (canEdit && qt.status === 'SENT') {
             actionHtml = `
-                <button onclick="updateQTStatus('${qt.id}', 'CONFIRMED')" class="text-green-500 hover:text-green-700 mr-2 border border-green-500 px-2 py-1 rounded text-xs" title="Confirm QT">Confirm</button>
-                <button onclick="updateQTStatus('${qt.id}', 'CANCELLED')" class="text-red-500 hover:text-red-700 mr-2 border border-red-500 px-2 py-1 rounded text-xs" title="Cancel QT">Cancel</button>
-                ${actionHtml}
+                <button onclick="updateQTStatus('${qt.id}', 'CONFIRMED')" class="text-green-500 hover:text-green-700 mr-2 border border-green-500 px-2 py-1 rounded text-xs" title="Confirm">Confirm</button>
+                <button onclick="viewQT('${qt.id}')" class="text-gray-500 hover:text-gray-700 mr-2" title="Detail"><i class="fas fa-eye"></i></button>
+                <button onclick="openSendQTModal('${qt.id}')" class="text-blue-500 hover:text-blue-700 mr-2" title="Kirim"><i class="fas fa-paper-plane"></i></button>
+                <button onclick="deleteQT('${qt.id}')" class="text-red-500 hover:text-red-700" title="Delete"><i class="fas fa-trash"></i></button>
             `;
-        } else if (qt.status === 'CONFIRMED') {
+        } else if (canEdit && qt.status === 'CONFIRMED') {
             actionHtml = `
                 <button onclick="convertQTtoSO('${qt.id}')" class="text-white hover:bg-orange-600 bg-orange-500 mr-2 px-2 py-1 rounded text-xs shadow-sm" title="Create Sales Order">Buat SO</button>
-                ${actionHtml}
+                <button onclick="viewQT('${qt.id}')" class="text-gray-500 hover:text-gray-700 mr-2" title="Detail"><i class="fas fa-eye"></i></button>
+                <button onclick="openSendQTModal('${qt.id}')" class="text-blue-500 hover:text-blue-700 mr-2" title="Kirim"><i class="fas fa-paper-plane"></i></button>
+                <button onclick="deleteQT('${qt.id}')" class="text-red-500 hover:text-red-700" title="Delete"><i class="fas fa-trash"></i></button>
             `;
         } else if (qt.status === 'SO_CREATED') {
             actionHtml = `
-                <span class="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-semibold bg-purple-100 text-purple-700 mr-2"><i class="fas fa-check-circle"></i> SO Dibuat</span>
-                <button onclick="viewQT('${qt.id}')" class="text-gray-500 hover:text-gray-700" title="Detail"><i class="fas fa-eye"></i></button>
+                <button onclick="viewQT('${qt.id}')" class="text-gray-500 hover:text-gray-700 mr-2" title="Detail"><i class="fas fa-eye"></i></button>
+                <button onclick="openSendQTModal('${qt.id}')" class="text-blue-500 hover:text-blue-700 mr-2" title="Kirim"><i class="fas fa-paper-plane"></i></button>
+                <button onclick="deleteQT('${qt.id}')" class="text-red-500 hover:text-red-700" title="Delete"><i class="fas fa-trash"></i></button>
             `;
         }
 
@@ -1976,21 +3481,29 @@ function renderSalesQuotations() {
                 <td class="py-3 px-4 text-sm text-gray-800">${formatDate(qt.date)}</td>
                 <td class="py-3 px-4 text-sm text-gray-800">${customerNameDisplay}</td>
                 <td class="py-3 px-4 text-sm text-gray-800 text-right">${formatCurrency(qt.totalAmount)}</td>
-                <td class="py-3 px-4 text-sm text-center"><span class="px-2 py-1 rounded text-xs font-semibold ${statusColor}">${qt.status}</span></td>
+                <td class="py-3 px-4 text-sm text-center"><span class="px-2 py-1 rounded text-xs font-semibold ${statusColor}">${qt.status === 'SO_CREATED' ? 'CREATED' : qt.status}</span></td>
                 <td class="py-3 px-4 text-sm text-right whitespace-nowrap">${actionHtml}</td>
             </tr>
         `;
     }).join('');
 
-    if (qts.length === 0) rows = `<tr><td colspan="6" class="py-4 text-center text-gray-500">Belum ada Quotation</td></tr>`;
+    if (qts.length === 0) rows = `<tr><td colspan="6" class="py-4 text-center text-gray-500">Belum ada Penawaran</td></tr>`;
 
     mainContent.innerHTML = `
         <div class="bg-white rounded-lg shadow-sm border border-gray-100">
             <div class="flex justify-between items-center p-4 sm:p-6 border-b border-gray-100">
-                <h2 class="text-lg font-semibold text-gray-800">Sales Quotation</h2>
-                <button onclick="openQTModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors text-sm font-medium">
-                    <i class="fas fa-plus mr-2"></i>Buat Quotation
-                </button>
+                <h2 class="text-lg font-semibold text-gray-800">Penawaran</h2>
+                <div class="flex gap-2">
+                    ${canEdit ? `
+                    <button onclick="openQTModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors text-sm font-medium">
+                        <i class="fas fa-plus mr-2"></i>Buat Penawaran
+                    </button>
+                    ` : `
+                    <span class="text-xs font-medium text-orange-500 bg-orange-50 border border-orange-100 px-3 py-1.5 rounded-lg flex items-center gap-2">
+                        <i class="fas fa-info-circle"></i> Mode Lihat Saja
+                    </span>
+                    `}
+                </div>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
@@ -2013,35 +3526,71 @@ function renderSalesQuotations() {
 }
 
 // --- Sales Quotations Helper Functions ---
+function generateQTNumber() {
+    const qts = db.read('salesQuotations') || [];
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    const dateStr = `${day}${month}${year}`;
+    
+    // Filter QT based on same month and year
+    const sameMonthQTs = qts.filter(q => {
+        if (!q.qtNumber.startsWith('QT-')) return false;
+        const parts = q.qtNumber.split('-');
+        if (parts.length < 2) return false;
+        const qDate = parts[1]; // DDMMYYYY
+        return qDate.slice(2) === `${month}${year}`;
+    });
+
+    const nextSeq = sameMonthQTs.length + 1;
+    const seqStr = String(nextSeq).padStart(3, '0');
+    return `QT-${dateStr}-${seqStr}`;
+}
+
 window.openQTModal = () => {
     const fgProducts = db.read('inventoryItems').filter(i => i.category === 'FINISHED_GOODS' && i.status !== 'INACTIVE');
     const prodOptions = fgProducts.map(p => `<option value="${p.id}" data-name="${p.itemName}" data-unit="${p.unit}">${p.itemCode} - ${p.itemName}</option>`).join('');
 
     const body = `
             <div class="space-y-4">
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">No. QT</label>
-                        <input type="text" id="qt_number" value="QT-${Date.now().toString().slice(-6)}" class="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50" readonly>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">No. Penawaran <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                        <input type="text" id="qt_number" value="${generateQTNumber()}" class="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50 font-mono text-sm" readonly>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Customer</label>
-                        <select id="qt_customer_id" class="w-full border border-gray-300 rounded px-3 py-2 bg-white focus:ring-blue-500 focus:border-blue-500">
-                            ${db.read('customers').map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Customer <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                        <div class="space-y-1">
+                            <select id="qt_customer_id" class="w-full border border-gray-300 rounded px-3 py-2 bg-white focus:ring-blue-500 focus:border-blue-500">
+                                <option value="">-- Pilih Customer --</option>
+                                ${db.read('customers').map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+                            </select>
+                            <button type="button" onclick="openCustomerModal(null, 'QT')" class="text-[10px] text-blue-600 hover:underline"><i class="fas fa-plus-circle mr-1"></i>Tambah Pelanggan Baru</button>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Tanggal Penawaran <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                        <input type="date" id="qt_date" value="${new Date().toISOString().split('T')[0]}" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Pajak (PPN %) <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                        <select id="qt_tax_rate" onchange="refreshQTItemsTable()" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
+                            <option value="0">0% (Tanpa Pajak)</option>
+                            <option value="11" selected>11% (PPN)</option>
                         </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Berlaku Hingga</label>
-                        <input type="date" id="qt_valid_until" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
                     </div>
                 </div>
                 
                 <div class="border-t border-gray-200 pt-4 mt-4">
-                    <h4 class="text-md font-medium text-gray-800 mb-2">Item Quotation</h4>
+                    <h4 class="text-md font-medium text-gray-800 mb-2">Item Penawaran</h4>
                     <div class="flex space-x-2 mb-2">
-                        <select id="qt_item_name" class="flex-1 border border-gray-300 rounded px-2 py-1 text-sm bg-white">
+                        <select id="qt_item_name" onchange="onQTItemSelect()" class="flex-1 border border-gray-300 rounded px-2 py-1 text-sm bg-white">
                             <option value="">-- Pilih Produk --</option>
-                            ${prodOptions}
+                            ${(() => { 
+                                const items = db.read('inventoryItems').filter(i => i.category === 'FINISHED_GOODS' && i.status !== 'INACTIVE'); 
+                                return items.length ? items.map(i => `<option value="${i.id}" data-name="${i.itemName}" data-unit="${i.unit}" data-price="${i.sellingPrice || 0}">${i.itemCode} — ${i.itemName}</option>`).join('') : '<option disabled>Belum ada produk</option>'; 
+                            })()}
                         </select>
                         <input type="number" id="qt_item_qty" placeholder="Qty" min="1" class="w-20 border border-gray-300 rounded px-2 py-1 text-sm">
                         <input type="number" id="qt_item_price" placeholder="Harga Satuan" min="1" class="w-32 border border-gray-300 rounded px-2 py-1 text-sm">
@@ -2054,18 +3603,33 @@ window.openQTModal = () => {
                         </thead>
                         <tbody id="qt_items_list"></tbody>
                     </table>
-                    <div class="text-right text-lg font-bold text-gray-800">Total: Rp <span id="qt_total_display">0</span></div>
+                    <!-- Notes Section -->
+                    <div class="border-t border-gray-100 pt-2 space-y-2 mt-2">
+                        <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider">Keterangan / Notes</label>
+                        <textarea id="qt_notes" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm h-16 focus:ring-2 focus:ring-blue-500 transition-all" placeholder="Tambahkan catatan di sini..."></textarea>
+                    </div>
+
+                    <div class="border-t border-gray-100 pt-2 space-y-1 text-right text-sm">
+                        <div class="flex justify-end gap-4">
+                            <span class="text-gray-500">Subtotal:</span>
+                            <span id="qt_subtotal_display" class="text-gray-700 w-32 text-right">Rp 0</span>
+                        </div>
+                        <div class="flex justify-end gap-4 border-t pt-1">
+                            <span class="text-gray-800 font-bold">Total:</span>
+                            <span id="qt_total_display" class="font-bold text-gray-900 text-lg w-32 text-right">Rp 0</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         `;
 
     const footer = `
-            <button type="button" onclick="saveNewQT()" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-white font-medium focus:outline-none sm:ml-3 sm:w-auto sm:text-sm">Simpan QT Draft</button>
+            <button type="button" onclick="saveNewQT()" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-white font-medium focus:outline-none sm:ml-3 sm:w-auto sm:text-sm">Simpan Draft Penawaran</button>
             <button type="button" onclick="closeModal()" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-gray-700 font-medium sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">Batal</button>
         `;
 
     window.tempQTItems = [];
-    showModal('Buat Sales Quotation', body, footer);
+    showModal('Buat Penawaran', body, footer, 'full');
 };
 
 window.addQTItemRow = () => {
@@ -2104,38 +3668,100 @@ window.refreshQTItemsTable = () => {
                 <tr class="border-t">
                     <td class="px-2 py-1">${item.prodText.split(' (')[0]}</td>
                     <td class="px-2 py-1 text-right">${item.qty} ${item.prodUnit}</td>
-                    <td class="px-2 py-1 text-right">${item.price}</td>
-                    <td class="px-2 py-1 text-right">${item.subtotal}</td>
+                    <td class="px-2 py-1 text-right">${formatCurrency(item.price)}</td>
+                    <td class="px-2 py-1 text-right">${formatCurrency(item.subtotal)}</td>
                     <td class="px-2 py-1 text-center"><button class="text-red-500" onclick="removeQTItemRow('${item.id}')"><i class="fas fa-times"></i></button></td>
                 </tr>
             `;
     }).join('');
-    document.getElementById('qt_total_display').innerText = new Intl.NumberFormat('id-ID').format(total);
+    const fmt = v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(v);
+
+    const grandTotalBeforeTax = total;
+    const taxRate = parseFloat(document.getElementById('qt_tax_rate')?.value) || 0;
+    const taxAmt = Math.round(grandTotalBeforeTax * taxRate / 100);
+    const grandTotal = grandTotalBeforeTax + taxAmt;
+
+    const subtotalEl = document.getElementById('qt_subtotal_display');
+    if (subtotalEl) subtotalEl.innerText = fmt(total);
+    
+    // Create or update tax row if needed - adding it before total
+    let totalRow = document.getElementById('qt_total_display').parentElement;
+    let taxRow = document.getElementById('qt_tax_row');
+    if (!taxRow) {
+        taxRow = document.createElement('div');
+        taxRow.id = 'qt_tax_row';
+        taxRow.className = 'flex justify-end gap-4';
+        taxRow.innerHTML = `<span class="text-orange-600">PPN (${taxRate}%):</span><span id="qt_tax_display" class="font-medium text-orange-600 w-32 text-right"></span>`;
+        totalRow.parentNode.insertBefore(taxRow, totalRow);
+    }
+    document.getElementById('qt_tax_display').innerText = fmt(taxAmt);
+    document.getElementById('qt_tax_row').querySelector('span').innerText = `PPN (${taxRate}%):`;
+
+    document.getElementById('qt_total_display').innerText = fmt(grandTotal);
+    window._qtDiscountAmt = 0;
+    window._qtDiscountDesc = '';
+    window._qtDiscountType = '';
+    window._qtDiscountValue = '';
+    window._qtTaxRate = taxRate;
+    window._qtTaxAmount = taxAmt;
 };
 
+
+
 window.saveNewQT = () => {
-    if (window.tempQTItems.length === 0) { showToast('QT harus memiliki minimal 1 item', 'error'); return; }
+    try {
+        if (!window.tempQTItems || window.tempQTItems.length === 0) {
+            showToast('QT harus memiliki minimal 1 item', 'error');
+            return;
+        }
 
-    const qtNumber = document.getElementById('qt_number').value;
-    const customerId = document.getElementById('qt_customer_id').value;
-    const validUntil = document.getElementById('qt_valid_until').value;
-    const totalAmount = window.tempQTItems.reduce((sum, item) => sum + item.subtotal, 0);
+        const qtNumber = document.getElementById('qt_number')?.value;
+        const customerId = document.getElementById('qt_customer_id')?.value;
+        const qtDate = document.getElementById('qt_date')?.value;
+        const notes = document.getElementById('qt_notes')?.value || '';
 
-    if (!customerId) { showToast('Customer harus dipilih', 'error'); return; }
+        if (!qtNumber) { showToast('No. Penawaran harus ada', 'error'); return; }
+        if (!customerId) { showToast('Pilih Customer', 'error'); return; }
+        if (!qtDate) { showToast('Pilih Tanggal Penawaran', 'error'); return; }
+        const taxRate = document.getElementById('qt_tax_rate')?.value;
+        if (taxRate === undefined || taxRate === '') { showToast('Pilih Pajak', 'error'); return; }
 
-    db.insert('salesQuotations', {
-        qtNumber,
-        date: new Date().toISOString(),
-        validUntil,
-        customerId,
-        status: 'DRAFT',
-        totalAmount,
-        items: window.tempQTItems
-    });
+        // Final sequence check just before saving
+        let finalQTNumber = qtNumber;
+        const existing = db.read('salesQuotations') || [];
+        if (existing.some(q => q.qtNumber === qtNumber)) {
+            finalQTNumber = generateQTNumber();
+        }
 
-    showToast('QT Draft berhasil disimpan');
-    closeModal();
-    renderSalesQuotations();
+        const rawTotal = window.tempQTItems.reduce((sum, item) => sum + (parseFloat(item.subtotal) || 0), 0);
+        const totalAmount = rawTotal + (window._qtTaxAmount || 0);
+
+        db.insert('salesQuotations', {
+            qtNumber: finalQTNumber,
+            date: new Date(qtDate).toISOString(),
+            validUntil: '',
+            customerId,
+            status: 'DRAFT',
+            totalAmount,
+            taxRate: window._qtTaxRate || 0,
+            taxAmount: window._qtTaxAmount || 0,
+            discountType: '',
+            discountValue: '',
+            discountAmount: 0,
+            discountDescription: '',
+            items: window.tempQTItems,
+            notes: notes
+        });
+
+        window._qtDiscountAmt = 0; window._qtDiscountDesc = ''; window._qtDiscountType = ''; window._qtDiscountValue = '';
+
+        showToast('Penawaran Berhasil Disimpan!', 'success');
+        closeModal();
+        renderSalesQuotations();
+    } catch (err) {
+        console.error('Save QT Error:', err);
+        alert('Gagal menyimpan penawaran: ' + err.message);
+    }
 };
 
 window.updateQTStatus = (id, newStatus) => {
@@ -2143,6 +3769,448 @@ window.updateQTStatus = (id, newStatus) => {
     showToast(`QT status updated to ${newStatus}`);
     renderSalesQuotations();
 };
+
+// ─────────────────── PURCHASE RFQ MODULE ─────────────────────────
+function renderPurchaseRFQs() {
+    const canEdit = getModulePermission('pembelian').edit;
+    document.getElementById('pageTitle').innerText = 'Request For Quotation (RFQ) - Pembelian';
+    const mainContent = document.getElementById('main-content');
+    const rfqs = db.read('purchaseRFQs');
+    const suppliers = db.read('suppliers');
+
+    let rows = rfqs.map(rfq => {
+        const supplier = suppliers.find(s => s.id === rfq.supplierId) || { name: 'Unknown' };
+        let statusColor = 'bg-gray-100 text-gray-700';
+        if (rfq.status === 'SENT') statusColor = 'bg-blue-100 text-blue-700';
+        if (rfq.status === 'CONFIRMED') statusColor = 'bg-green-100 text-green-700';
+        if (rfq.status === 'CANCELLED') statusColor = 'bg-red-100 text-red-700';
+
+        let actionHtml = `<button onclick="viewPurchaseRFQ('${rfq.id}')" class="text-gray-500 hover:text-gray-700 mr-2" title="Detail"><i class="fas fa-eye"></i></button>`;
+
+        if (canEdit) {
+            actionHtml += `<button onclick="deletePurchaseRFQ('${rfq.id}')" class="text-red-500 hover:text-red-700" title="Delete"><i class="fas fa-trash"></i></button>`;
+        }
+
+        if (canEdit && rfq.status === 'DRAFT') {
+            actionHtml = `
+                <button onclick="openSendPurchaseRFQModal('${rfq.id}')" class="text-blue-500 hover:text-blue-700 mr-2 border border-blue-500 px-2 py-1 rounded text-xs" title="Send Options">Kirim</button>
+                <button onclick="updatePurchaseRFQStatus('${rfq.id}', 'CONFIRMED')" class="text-green-500 hover:text-green-700 mr-2 border border-green-500 px-2 py-1 rounded text-xs" title="Confirm">Confirm</button>
+                <button onclick="viewPurchaseRFQ('${rfq.id}')" class="text-gray-500 hover:text-gray-700 mr-2" title="Detail"><i class="fas fa-eye"></i></button>
+                <button onclick="deletePurchaseRFQ('${rfq.id}')" class="text-red-500 hover:text-red-700" title="Delete"><i class="fas fa-trash"></i></button>
+            `;
+        } else if (canEdit && rfq.status === 'SENT') {
+            actionHtml = `
+                <button onclick="openSendPurchaseRFQModal('${rfq.id}')" class="text-blue-500 hover:text-blue-700 mr-2 border border-blue-500 px-2 py-1 rounded text-xs" title="Send Options">Kirim Ulang</button>
+                <button onclick="updatePurchaseRFQStatus('${rfq.id}', 'CONFIRMED')" class="text-green-500 hover:text-green-700 mr-2 border border-green-500 px-2 py-1 rounded text-xs" title="Confirm">Confirm</button>
+                <button onclick="viewPurchaseRFQ('${rfq.id}')" class="text-gray-500 hover:text-gray-700 mr-2" title="Detail"><i class="fas fa-eye"></i></button>
+                <button onclick="deletePurchaseRFQ('${rfq.id}')" class="text-red-500 hover:text-red-700" title="Delete"><i class="fas fa-trash"></i></button>
+            `;
+        }
+
+        return `
+            <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                <td class="py-3 px-4 text-sm font-medium text-blue-600">${rfq.rfqNumber}</td>
+                <td class="py-3 px-4 text-sm text-gray-800">${formatDate(rfq.date)}</td>
+                <td class="py-3 px-4 text-sm text-gray-800">${supplier.name}</td>
+                <td class="py-3 px-4 text-sm text-gray-800 text-right">${rfq.items.length} Items</td>
+                <td class="py-3 px-4 text-sm text-center"><span class="px-2 py-1 rounded text-xs font-semibold ${statusColor}">${rfq.status}</span></td>
+                <td class="py-3 px-4 text-sm text-right whitespace-nowrap">${actionHtml}</td>
+            </tr>
+        `;
+    }).join('');
+
+    if (rfqs.length === 0) rows = `<tr><td colspan="6" class="py-4 text-center text-gray-500">Belum ada RFQ Pembelian</td></tr>`;
+
+    mainContent.innerHTML = `
+        <div class="bg-white rounded-lg shadow-sm border border-gray-100">
+            <div class="flex justify-between items-center p-4 sm:p-6 border-b border-gray-100">
+                <h2 class="text-lg font-semibold text-gray-800">Daftar Request For Quotation</h2>
+                <div class="flex gap-2">
+                    ${canEdit ? `
+                    <button onclick="openPurchaseRFQModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors text-sm font-medium shadow-sm">
+                        <i class="fas fa-plus mr-2"></i>Buat RFQ Baru
+                    </button>
+                    ` : `
+                    <span class="text-xs font-medium text-blue-500 bg-blue-50 border border-blue-100 px-3 py-1.5 rounded-lg flex items-center gap-2">
+                        <i class="fas fa-info-circle"></i> Mode Lihat Saja
+                    </span>
+                    `}
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-gray-50 border-b border-gray-200">
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">No. RFQ</th>
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Tanggal</th>
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Supplier</th>
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">Total Item</th>
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-center">Status</th>
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+function generatePurchaseRFQNumber() {
+    const rfqs = db.read('purchaseRFQs') || [];
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    const dateStr = `${day}${month}${year}`;
+    
+    const sameMonthRFQs = rfqs.filter(r => {
+        if (!r.rfqNumber.startsWith('RFQ-')) return false;
+        const parts = r.rfqNumber.split('-');
+        return parts.length >= 2 && parts[1].slice(2) === `${month}${year}`;
+    });
+
+    const nextSeq = sameMonthRFQs.length + 1;
+    const seqStr = String(nextSeq).padStart(3, '0');
+    return `RFQ-${dateStr}-${seqStr}`;
+}
+
+window.openPurchaseRFQModal = () => {
+    const products = db.read('inventoryItems').filter(i => i.category === 'RAW_MATERIAL' && i.status !== 'INACTIVE');
+    const prodOptions = products.map(p => `<option value="${p.id}" data-name="${p.itemName}" data-unit="${p.unit}">${p.itemCode} - ${p.itemName}</option>`).join('');
+
+    const body = `
+        <div class="space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">No. RFQ <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                    <input type="text" id="rfq_number" value="${generatePurchaseRFQNumber()}" class="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50 font-mono text-sm" readonly>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Supplier <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                    <select id="rfq_supplier_id" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
+                        <option value="">-- Pilih Supplier --</option>
+                        ${db.read('suppliers').map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                    </select>
+                    <div class="mt-1 text-right">
+                        <button type="button" onclick="navigateToSupplierPage()" class="text-blue-600 text-[10px] font-bold hover:underline">+ Tambah Supplier Baru</button>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Tanggal RFQ <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                    <input type="date" id="rfq_date" value="${new Date().toISOString().split('T')[0]}" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
+                </div>
+            </div>
+            
+            <div class="border-t border-gray-200 pt-4">
+                <h4 class="text-md font-medium text-gray-800 mb-2">Item Produk</h4>
+                <div class="flex space-x-2 mb-2">
+                    <select id="rfq_item_id" class="flex-1 border border-gray-300 rounded px-2 py-1 text-sm bg-white">
+                        <option value="">-- Pilih Produk --</option>
+                        ${prodOptions}
+                    </select>
+                    <input type="number" id="rfq_item_qty" placeholder="Qty" min="1" class="w-24 border border-gray-300 rounded px-2 py-1 text-sm">
+                    <button type="button" onclick="addPurchaseRFQItemRow()" class="bg-blue-600 text-white px-4 py-1 rounded text-sm shadow-sm hover:bg-blue-700 transition-colors"><i class="fas fa-plus"></i></button>
+                </div>
+                
+                <table class="w-full text-sm text-left border mb-2">
+                    <thead class="bg-gray-50">
+                        <tr><th class="py-2 px-2">Produk</th><th class="py-2 px-2 text-right">Qty</th><th class="py-2 px-2"></th></tr>
+                    </thead>
+                    <tbody id="rfq_items_list"></tbody>
+                </table>
+            </div>
+        </div>
+    `;
+
+    const footer = `
+        <button type="button" onclick="saveNewPurchaseRFQ()" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-white font-medium hover:bg-blue-700 sm:ml-3 sm:w-auto sm:text-sm shadow-sm transition-colors">Simpan Draft RFQ</button>
+        <button type="button" onclick="closeModal()" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-gray-700 font-medium hover:bg-gray-50 transition-colors sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">Batal</button>
+    `;
+
+    window.tempRFQItems = [];
+    showModal('Buat Request For Quotation (Purchase)', body, footer, 'lg');
+};
+
+window.addPurchaseRFQItemRow = () => {
+    const sel = document.getElementById('rfq_item_id');
+    const opt = sel?.selectedOptions[0];
+    const inventoryItemId = sel?.value;
+    const prodText = opt?.dataset.name || '';
+    const prodUnit = opt?.dataset.unit || 'PCS';
+    const qty = parseFloat(document.getElementById('rfq_item_qty').value);
+
+    if (!inventoryItemId) { showToast('Pilih produk dari daftar', 'error'); return; }
+    if (!qty || qty <= 0) { showToast('Qty harus diisi', 'error'); return; }
+
+    window.tempRFQItems.push({ id: Date.now().toString(), inventoryItemId, prodText, prodUnit, qty });
+    sel.value = '';
+    document.getElementById('rfq_item_qty').value = '';
+    refreshPurchaseRFQItemsTable();
+};
+
+window.removePurchaseRFQItemRow = (itemId) => {
+    window.tempRFQItems = window.tempRFQItems.filter(i => i.id !== itemId);
+    refreshPurchaseRFQItemsTable();
+};
+
+window.refreshPurchaseRFQItemsTable = () => {
+    const tbody = document.getElementById('rfq_items_list');
+    if (!tbody) return;
+    tbody.innerHTML = window.tempRFQItems.map(item => `
+        <tr class="border-t">
+            <td class="px-2 py-2">${item.prodText}</td>
+            <td class="px-2 py-2 text-right">${item.qty} ${item.prodUnit}</td>
+            <td class="px-2 py-2 text-center text-red-500 cursor-pointer" onclick="removePurchaseRFQItemRow('${item.id}')"><i class="fas fa-times"></i></td>
+        </tr>
+    `).join('');
+};
+
+window.saveNewPurchaseRFQ = () => {
+    if (window.tempRFQItems.length === 0) { showToast('RFQ harus memiliki minimal 1 item', 'error'); return; }
+    
+    const rfqNumber = document.getElementById('rfq_number').value;
+    const supplierId = document.getElementById('rfq_supplier_id').value;
+    const rfqDate = document.getElementById('rfq_date').value;
+
+    if (!supplierId) { showToast('Pilih Supplier', 'error'); return; }
+    if (!rfqDate) { showToast('Pilih Tanggal RFQ', 'error'); return; }
+
+    db.insert('purchaseRFQs', {
+        rfqNumber,
+        date: new Date(rfqDate).toISOString(),
+        supplierId,
+        status: 'DRAFT',
+        items: window.tempRFQItems
+    });
+
+    showToast('RFQ Berhasil Disimpan!');
+    closeModal();
+    renderPurchaseRFQs();
+};
+
+window.updatePurchaseRFQStatus = (id, newStatus) => {
+    db.update('purchaseRFQs', id, { status: newStatus });
+    showToast(`Status RFQ diperbarui ke ${newStatus}`);
+    renderPurchaseRFQs();
+};
+
+window.deletePurchaseRFQ = (id) => {
+    if (confirm('Yakin hapus RFQ ini?')) {
+        db.delete('purchaseRFQs', id);
+        renderPurchaseRFQs();
+    }
+};
+
+window.viewPurchaseRFQ = (id) => {
+    const rfq = db.findById('purchaseRFQs', id);
+    const supplier = db.findById('suppliers', rfq.supplierId);
+
+    const detailHTML = `
+        <div class="space-y-6 bg-white p-4" id="printable-rfq-area">
+            <div class="flex justify-between items-start border-b-2 border-gray-800 pb-4">
+                <div>
+                    <h2 class="text-2xl font-black text-gray-800 tracking-tight">REQUEST FOR QUOTATION</h2>
+                    <p class="text-blue-600 font-mono font-bold">${rfq.rfqNumber}</p>
+                </div>
+                <div class="text-right">
+                    <p class="font-black text-gray-900 text-lg">${CONFIG.companyName}</p>
+                    <p class="text-xs text-gray-500 mt-1">${CONFIG.companyAddress || ''}</p>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-8 py-4">
+                <div class="space-y-1">
+                    <h3 class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Supplier:</h3>
+                    <p class="font-bold text-gray-900 text-base">${supplier ? supplier.name : '-'}</p>
+                    <p class="text-sm text-gray-600 leading-relaxed">${supplier ? (supplier.address || '') : ''}</p>
+                    ${supplier?.phone ? `<p class="text-sm text-gray-600"><i class="fas fa-phone mr-1 text-xs"></i> ${supplier.phone}</p>` : ''}
+                </div>
+                <div class="space-y-2 text-right">
+                    <div class="inline-block bg-gray-50 p-3 rounded-lg border border-gray-100">
+                        <table class="text-sm">
+                            <tr><td class="text-gray-500 pr-4">Tanggal:</td><td class="font-bold text-gray-800">${formatDate(rfq.date).slice(0, 11)}</td></tr>
+                            <tr><td class="text-gray-500 pr-4">Status:</td><td><span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 uppercase">${rfq.status}</span></td></tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="border rounded-xl overflow-hidden border-gray-200">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-gray-50 border-b-2 border-gray-800 text-gray-800 text-xs font-black uppercase tracking-wider">
+                            <th class="py-3 px-4">#</th>
+                            <th class="py-3 px-4">Deskripsi Produk / Item</th>
+                            <th class="py-3 px-4 text-right">Jumlah (Qty)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-sm divide-y divide-gray-100">
+                        ${rfq.items.map((i, idx) => `
+                            <tr class="hover:bg-gray-50/50 transition-colors">
+                                <td class="py-3 px-4 text-gray-400 font-medium">${idx + 1}</td>
+                                <td class="py-3 px-4 font-semibold text-gray-800">${i.prodText}</td>
+                                <td class="py-3 px-4 text-right font-bold text-gray-900">${i.qty} ${i.prodUnit}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="mt-8 pt-6 border-t border-gray-100">
+                <p class="text-xs text-gray-500 leading-relaxed">
+                    <span class="font-bold text-gray-700 italic block mb-1">Catatan:</span>
+                    Mohon ketersediaan Bapak/Ibu untuk memberikan penawaran harga terbaik untuk item-item tersebut di atas. 
+                    Penawaran dapat dikirimkan kembali melalui Email atau WhatsApp kami. Terima kasih atas kerjasamanya.
+                </p>
+            </div>
+
+            <div class="mt-12 grid grid-cols-2 gap-4 text-center">
+                <div class="h-32 flex flex-col justify-between">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">Hormat Kami,</p>
+                    <p class="text-sm font-bold text-gray-800 border-t border-gray-200 pt-2 inline-block mx-auto min-w-[150px]">${CONFIG.companyName}</p>
+                </div>
+                <div class="h-32 flex flex-col justify-between">
+                    <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">Supplier,</p>
+                    <p class="text-sm font-bold text-gray-800 border-t border-gray-200 pt-2 inline-block mx-auto min-w-[150px]">( ____________________ )</p>
+                </div>
+            </div>
+        </div>
+    `;
+
+    const footer = `
+        <div class="flex flex-wrap gap-2 w-full sm:w-auto">
+            <button onclick='printHTML(\`${detailHTML.replace(/`/g, "\\`").replace(/\n/g, "")}\`, "RFQ ${rfq.rfqNumber}")' class="flex-1 sm:flex-none inline-flex justify-center items-center px-4 py-2 bg-purple-600 text-white rounded-md font-bold text-sm shadow-sm hover:bg-purple-700 transition">
+                <i class="fas fa-file-pdf mr-2"></i> Cetak RFQ (PDF)
+            </button>
+            <button onclick="openSendPurchaseRFQModal('${rfq.id}')" class="flex-1 sm:flex-none inline-flex justify-center items-center px-4 py-2 bg-blue-600 text-white rounded-md font-bold text-sm shadow-sm hover:bg-blue-700 transition">
+                <i class="fas fa-paper-plane mr-2"></i> Kirim RFQ
+            </button>
+            <button onclick="closeModal()" class="flex-1 sm:flex-none inline-flex justify-center items-center px-4 py-2 bg-white border text-gray-600 rounded-md font-bold text-sm hover:bg-gray-50 transition">
+                Tutup
+            </button>
+        </div>
+    `;
+
+    showModal(`RFQ Detail - ${rfq.rfqNumber}`, detailHTML, footer, 'lg');
+};
+
+window.openSendPurchaseRFQModal = (id) => {
+    const rfq = db.findById('purchaseRFQs', id);
+    const supplier = db.findById('suppliers', rfq.supplierId);
+    
+    // Generate detailHTML again for the PDF button
+    const detailHTML = `
+        <div class="space-y-6 bg-white p-4" id="printable-rfq-area">
+            <div class="flex justify-between items-start border-b-2 border-gray-800 pb-4">
+                <div>
+                    <h2 class="text-2xl font-black text-gray-800 tracking-tight">REQUEST FOR QUOTATION</h2>
+                    <p class="text-blue-600 font-mono font-bold">${rfq.rfqNumber}</p>
+                </div>
+                <div class="text-right">
+                    <p class="font-black text-gray-900 text-lg">${CONFIG.companyName}</p>
+                    <p class="text-xs text-gray-500 mt-1">${CONFIG.companyAddress || ''}</p>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-8 py-4">
+                <div class="space-y-1">
+                    <h3 class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Supplier:</h3>
+                    <p class="font-bold text-gray-900 text-base">${supplier ? supplier.name : '-'}</p>
+                    <p class="text-sm text-gray-600 leading-relaxed">${supplier ? (supplier.address || '') : ''}</p>
+                </div>
+                <div class="space-y-2 text-right">
+                    <p class="text-sm font-bold text-gray-800">Tanggal: ${formatDate(rfq.date).slice(0, 11)}</p>
+                </div>
+            </div>
+            <div class="border rounded-xl overflow-hidden border-gray-200">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-gray-50 border-b-2 border-gray-800 text-gray-800 text-xs font-black uppercase tracking-wider">
+                            <th class="py-3 px-4">Deskripsi Produk / Item</th>
+                            <th class="py-3 px-4 text-right">Jumlah (Qty)</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-sm divide-y divide-gray-100">
+                        ${rfq.items.map(i => `
+                            <tr>
+                                <td class="py-3 px-4 font-semibold text-gray-800">${i.prodText}</td>
+                                <td class="py-3 px-4 text-right font-bold text-gray-900">${i.qty} ${i.prodUnit}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-8 pt-6 border-t border-gray-100">
+                <p class="text-xs text-gray-500 italic">Catatan: Mohon berikan penawaran harga terbaik untuk item tersebut di atas.</p>
+            </div>
+        </div>
+    `;
+
+    const body = `
+        <div class="p-4 text-center">
+            <p class="text-gray-600 mb-6 font-medium">Pilih metode pengiriman untuk RFQ <strong>${rfq.rfqNumber}</strong>:</p>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <button onclick="sendPurchaseRFQWA('${id}'); closeModal();" class="flex flex-col items-center justify-center p-6 border-2 border-green-100 rounded-xl hover:border-green-500 hover:bg-green-50 transition-all group shadow-sm">
+                    <div class="w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                        <i class="fab fa-whatsapp text-2xl text-green-600"></i>
+                    </div>
+                    <span class="font-bold text-green-700 text-sm">WhatsApp</span>
+                </button>
+                
+                <button onclick="sendPurchaseRFQEmail('${id}'); closeModal();" class="flex flex-col items-center justify-center p-6 border-2 border-blue-100 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all group shadow-sm">
+                    <div class="w-14 h-14 bg-blue-100 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                        <i class="fas fa-envelope text-2xl text-blue-600"></i>
+                    </div>
+                    <span class="font-bold text-blue-700 text-sm">Email</span>
+                </button>
+
+                <button onclick='printHTML(\`${detailHTML.replace(/`/g, "\\`").replace(/\n/g, "")}\`, "RFQ ${rfq.rfqNumber}"); closeModal();' class="flex flex-col items-center justify-center p-6 border-2 border-purple-100 rounded-xl hover:border-purple-500 hover:bg-purple-50 transition-all group shadow-sm">
+                    <div class="w-14 h-14 bg-purple-100 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                        <i class="fas fa-file-pdf text-2xl text-purple-600"></i>
+                    </div>
+                    <span class="font-bold text-purple-700 text-sm">Cetak PDF</span>
+                </button>
+            </div>
+        </div>
+    `;
+    showModal('Kirim RFQ ke Supplier', body, `<button onclick="closeModal()" class="w-full sm:w-auto px-4 py-2 bg-gray-100 text-gray-700 rounded-md text-sm font-bold hover:bg-gray-200 transition">Batal</button>`, 'lg');
+};
+
+window.sendPurchaseRFQWA = (id) => {
+    const rfq = db.findById('purchaseRFQs', id);
+    const supplier = db.findById('suppliers', rfq.supplierId);
+    if (!supplier?.phone) { showToast('No. HP supplier tidak ditemukan', 'error'); return; }
+
+    let phone = supplier.phone.replace(/[^0-9]/g, '');
+    if (phone.startsWith('0')) phone = '62' + phone.substring(1);
+
+    const itemsStr = rfq.items.map(i => `- ${i.prodText}: ${i.qty} ${i.prodUnit}`).join('%0A');
+    const message = `Halo ${supplier.name},%0A%0AKami memerlukan penawaran harga (RFQ) *${rfq.rfqNumber}* untuk item berikut:%0A%0A${itemsStr}%0A%0AMohon segera informasikan harga terbaik Anda.%0A%0ATerima kasih,%0A*${CONFIG.companyName}*`;
+
+    window.open(`https://wa.me/${phone}?text=${message}`, '_blank');
+    if (rfq.status === 'DRAFT') {
+        db.update('purchaseRFQs', id, { status: 'SENT' });
+        renderPurchaseRFQs();
+    }
+};
+
+window.sendPurchaseRFQEmail = (id) => {
+    const rfq = db.findById('purchaseRFQs', id);
+    const supplier = db.findById('suppliers', rfq.supplierId);
+    if (!supplier?.email) { showToast('Email supplier tidak ditemukan', 'error'); return; }
+
+    const itemsStr = rfq.items.map(i => `- ${i.prodText}: ${i.qty} ${i.prodUnit}`).join('\n');
+    const subject = `RFQ ${rfq.rfqNumber} - ${CONFIG.companyName}`;
+    const mailBody = `Halo ${supplier.name},\n\nKami membutuhkan penawaran harga (RFQ) nomor ${rfq.rfqNumber} untuk detail produk di bawah ini:\n\n${itemsStr}\n\nMohon untuk membalas email ini dengan penawaran harga terbaik Anda.\n\nTerima kasih,\n${CONFIG.companyName}`;
+
+    window.location.href = `mailto:${supplier.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(mailBody)}`;
+    if (rfq.status === 'DRAFT') {
+        db.update('purchaseRFQs', id, { status: 'SENT' });
+        renderPurchaseRFQs();
+    }
+};
+
+
 
 window.deleteQT = (id) => {
     if (confirm('Yakin hapus QT ini?')) {
@@ -2159,7 +4227,7 @@ window.viewQT = (id) => {
            <div class="max-w-4xl mx-auto bg-white p-2 sm:p-6 mb-4">
                 <div class="flex justify-between items-start mb-6">
                     <div>
-                        <h2 class="text-3xl font-bold text-gray-800">SALES QUOTATION</h2>
+                        <h2 class="text-3xl font-bold text-gray-800">PENAWARAN</h2>
                         <p class="text-gray-500 mt-1">${qt.qtNumber}</p>
                     </div>
                     <div class="text-right">
@@ -2183,6 +4251,13 @@ window.viewQT = (id) => {
                         <p class="text-gray-800 text-sm mt-2">Status: <span class="font-medium px-2 py-1 rounded bg-gray-100 text-gray-800">${qt.status}</span></p>
                     </div>
                 </div>
+
+                ${qt.notes ? `
+                <div class="mb-8 p-4 bg-gray-50 rounded-lg border border-gray-100">
+                    <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Keterangan / Catatan:</h3>
+                    <p class="text-sm text-gray-700 whitespace-pre-wrap">${qt.notes}</p>
+                </div>
+                ` : ''}
                 
                 <table class="w-full text-left mb-8 border-collapse">
                     <thead>
@@ -2204,6 +4279,24 @@ window.viewQT = (id) => {
                         `).join('')}
                     </tbody>
                     <tfoot>
+                        <!-- Subtotal -->
+                        <tr>
+                            <td colspan="3" class="py-2 px-2 text-right text-sm text-gray-500">Subtotal:</td>
+                            <td class="py-2 px-2 text-right text-sm text-gray-800 font-medium border-t border-gray-100">${formatCurrency(qt.items.reduce((sum, i) => sum + (parseFloat(i.subtotal) || 0), 0))}</td>
+                        </tr>
+
+
+
+                        <!-- Tax if any -->
+                        ${qt.taxAmount > 0 ? `
+                        <tr>
+                            <td colspan="3" class="py-2 px-2 text-right text-sm text-orange-600 font-medium">PPN (${qt.taxRate}%):</td>
+                            <td class="py-2 px-2 text-right text-sm text-orange-600 font-bold">${formatCurrency(qt.taxAmount)}</td>
+                        </tr>
+                        ` : ''}
+
+
+                        <!-- Grand Total -->
                         <tr>
                             <td colspan="3" class="py-4 px-2 text-right font-bold text-gray-800">Total:</td>
                             <td class="py-4 px-2 text-right font-bold text-blue-600 text-lg border-t-2 border-gray-800">${formatCurrency(qt.totalAmount)}</td>
@@ -2214,44 +4307,170 @@ window.viewQT = (id) => {
         `;
 
     const footer = `
-            <button onclick='printHTML(\`${printableHTML.replace(/`/g, "\\`").replace(/\n/g, "")}\`, "Quotation ${qt.qtNumber}")' class="w-full sm:w-auto inline-flex justify-center items-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-purple-600 text-white font-medium hover:bg-purple-700 sm:text-sm mr-0 mb-3 sm:mb-0 sm:mr-3 transition-colors"> <i class="fas fa-file-pdf mr-2"></i> Print / Save PDF</button>
-            <button onclick="closeModal()" class="w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-gray-700 font-medium hover:bg-gray-50 transition-colors sm:text-sm"> Tutup</button>
+            <div class="flex flex-wrap gap-2 w-full sm:w-auto">
+                <button onclick='printHTML(\`${printableHTML.replace(/`/g, "\\`").replace(/\n/g, "")}\`, "Penawaran ${qt.qtNumber}")' class="flex-1 sm:flex-none inline-flex justify-center items-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-purple-600 text-white font-medium hover:bg-purple-700 sm:text-sm transition-colors"> <i class="fas fa-file-pdf mr-2"></i> Print </button>
+                <button onclick="openSendQTModal('${qt.id}')" class="flex-1 sm:flex-none inline-flex justify-center items-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-white font-medium hover:bg-blue-700 sm:text-sm transition-colors"> <i class="fas fa-paper-plane mr-2"></i> Kirim </button>
+                <button onclick="closeModal()" class="w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-gray-700 font-medium hover:bg-gray-50 transition-colors sm:text-sm"> Tutup</button>
+            </div>
         `;
 
-    showModal(`Detail QT-${qt.qtNumber} `, printableHTML, footer);
+    showModal(`Detail Penawaran - ${qt.qtNumber} `, printableHTML, footer);
 };
 
+window.openSendQTModal = (id) => {
+    const qt = db.findById('salesQuotations', id);
+    const body = `
+        <div class="p-4 text-center">
+            <p class="text-gray-600 mb-6 font-medium">Pilih metode pengiriman untuk Penawaran <strong>${qt.qtNumber}</strong>:</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button onclick="sendWA('${id}'); closeModal();" class="flex flex-col items-center justify-center p-6 border-2 border-green-100 rounded-xl hover:border-green-500 hover:bg-green-50 transition-all group">
+                    <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                        <i class="fab fa-whatsapp text-3xl text-green-600"></i>
+                    </div>
+                    <span class="font-bold text-green-700">WhatsApp</span>
+                    <span class="text-[10px] text-green-500 mt-1 uppercase font-bold tracking-wider">Kirim ke Aplikasi</span>
+                </button>
+                
+                <button onclick="sendEmail('${id}'); closeModal();" class="flex flex-col items-center justify-center p-6 border-2 border-blue-100 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all group">
+                    <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                        <i class="fas fa-envelope text-3xl text-blue-600"></i>
+                    </div>
+                    <span class="font-bold text-blue-700">Email</span>
+                    <span class="text-[10px] text-blue-500 mt-1 uppercase font-bold tracking-wider">Kirim via Gmail</span>
+                </button>
+            </div>
+        </div>
+    `;
+    const footer = `<button onclick="closeModal()" class="w-full sm:w-auto px-4 py-2 bg-gray-100 text-gray-700 rounded-md text-sm font-bold hover:bg-gray-200 transition">Batal</button>`;
+    showModal('Pilih Metode Pengiriman', body, footer);
+};
+
+window.sendWA = (id) => {
+    const qt = db.findById('salesQuotations', id);
+    const customer = db.findById('customers', qt.customerId);
+    if (!customer || !customer.phone) {
+        showToast('Nomor telepon pelanggan tidak ditemukan', 'error');
+        return;
+    }
+
+    let phone = customer.phone.replace(/[^0-9]/g, '');
+    if (phone.startsWith('0')) phone = '62' + phone.substring(1);
+
+    const message = `Halo ${customer.name},%0A%0ABerikut adalah Penawaran *${qt.qtNumber}* senilai *${formatCurrency(qt.totalAmount)}*.%0A%0ASilakan hubungi kami untuk informasi lebih lanjut.%0A%0ATerima kasih,%0A*${CONFIG.companyName}*`;
+
+    window.open(`https://wa.me/${phone}?text=${message}`, '_blank');
+
+    // Auto-update status to SENT if it was DRAFT
+    if (qt.status === 'DRAFT') {
+        db.update('salesQuotations', id, { status: 'SENT' });
+        renderSalesQuotations();
+    }
+};
+
+window.sendEmail = (id) => {
+    const qt = db.findById('salesQuotations', id);
+    const customer = db.findById('customers', qt.customerId);
+    if (!customer || !customer.email) {
+        showToast('Email pelanggan tidak ditemukan. Mohon lengkapi data master customer.', 'error');
+        return;
+    }
+
+    const subject = `Penawaran ${qt.qtNumber} - ${CONFIG.companyName}`;
+    const body = `Halo ${customer.name},\n\nTerlampir detail penawaran ${qt.qtNumber} senilai ${formatCurrency(qt.totalAmount)}.\n\nSilakan hubungi kami kembali untuk konsep kerja sama selanjutnya.\n\nTerima kasih,\n${CONFIG.companyName}`;
+
+    const mailtoUrl = `mailto:${customer.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailtoUrl;
+
+    // Auto-update status to SENT if it was DRAFT
+    if (qt.status === 'DRAFT') {
+        db.update('salesQuotations', id, { status: 'SENT' });
+        renderSalesQuotations();
+    }
+};
+
+
+
+window.openSendSOModal = (id) => {
+    const so = db.findById('salesOrders', id);
+    const body = `
+        <div class="p-4 text-center">
+            <p class="text-gray-600 mb-6 font-medium">Pilih metode pengiriman untuk Sales Order <strong>${so.soNumber}</strong>:</p>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button onclick="sendWASO('${id}'); closeModal();" class="flex flex-col items-center justify-center p-6 border-2 border-green-100 rounded-xl hover:border-green-500 hover:bg-green-50 transition-all group">
+                    <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                        <i class="fab fa-whatsapp text-3xl text-green-600"></i>
+                    </div>
+                    <span class="font-bold text-green-700">WhatsApp</span>
+                    <span class="text-[10px] text-green-500 mt-1 uppercase font-bold tracking-wider">Kirim ke Aplikasi</span>
+                </button>
+                
+                <button onclick="sendEmailSO('${id}'); closeModal();" class="flex flex-col items-center justify-center p-6 border-2 border-blue-100 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all group">
+                    <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                        <i class="fas fa-envelope text-3xl text-blue-600"></i>
+                    </div>
+                    <span class="font-bold text-blue-700">Email</span>
+                    <span class="text-[10px] text-blue-500 mt-1 uppercase font-bold tracking-wider">Kirim via Gmail</span>
+                </button>
+            </div>
+        </div>
+    `;
+    const footer = `<button onclick="closeModal()" class="w-full sm:w-auto px-4 py-2 bg-gray-100 text-gray-700 rounded-md text-sm font-bold hover:bg-gray-200 transition">Batal</button>`;
+    showModal('Pilih Metode Pengiriman SO', body, footer);
+};
+
+window.sendWASO = (id) => {
+    const so = db.findById('salesOrders', id);
+    const customer = db.findById('customers', so.customerId);
+    if (!customer || !customer.phone) {
+        showToast('Nomor telepon pelanggan tidak ditemukan', 'error');
+        return;
+    }
+
+    let phone = customer.phone.replace(/[^0-9]/g, '');
+    if (phone.startsWith('0')) phone = '62' + phone.substring(1);
+
+    const message = `Halo ${customer.name},%0A%0ABerikut adalah Sales Order *${so.soNumber}* senilai *${formatCurrency(so.totalAmount)}*.%0A%0ATerima kasih,%0A*${CONFIG.companyName}*`;
+
+    window.open(`https://wa.me/${phone}?text=${message}`, '_blank');
+};
+
+window.sendEmailSO = (id) => {
+    const so = db.findById('salesOrders', id);
+    const customer = db.findById('customers', so.customerId);
+    if (!customer || !customer.email) {
+        showToast('Email pelanggan tidak ditemukan. Mohon lengkapi data master customer.', 'error');
+        return;
+    }
+
+    const subject = `Sales Order ${so.soNumber} - ${CONFIG.companyName}`;
+    const body = `Halo ${customer.name},\n\nTerlampir detail Sales Order ${so.soNumber} senilai ${formatCurrency(so.totalAmount)}.\n\nTerima kasih,\n${CONFIG.companyName}`;
+
+    const mailtoUrl = `mailto:${customer.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.location.href = mailtoUrl;
+};
+
+
 window.convertQTtoSO = (qtId) => {
-    if (!confirm('Buat Sales Order otomatis dari Quotation ini?')) return;
     const qt = db.findById('salesQuotations', qtId);
-
-    let custId = qt.customerId;
-
-    const newSO = db.insert('salesOrders', {
-        soNumber: 'SO-' + Date.now().toString().slice(-6),
-        quotationId: qt.id,
-        date: new Date().toISOString(),
-        customerId: custId,
-        paymentTerms: qt.paymentTerms || '',
-        status: 'DRAFT',
-        totalAmount: qt.totalAmount,
-        items: qt.items
-    });
-
-    db.update('salesQuotations', qtId, { status: 'SO_CREATED' });
-    showToast('Sales Order berhasil dibuat!', 'success');
-    navigateTo('sales-orders');
-    setTimeout(() => viewSO(newSO.id), 100);
-    renderSalesQuotations();
+    if (!qt) return;
+    
+    // Now just open the modal with prefilled data
+    window.openSOModal(qt);
+    showToast('Silakan cek dan sesuaikan data Sales Order ini.', 'info');
 };
 
 // --- Sales Orders Module ---
 function renderSalesOrders() {
+    const canEdit = getModulePermission('penjualan').edit;
     document.getElementById('pageTitle').innerText = 'Sales Orders';
     const mainContent = document.getElementById('main-content');
 
     // SO Logic is almost identical to PO but deducts stock on DELIVERED and validates stock first
-    const sos = db.read('salesOrders').sort((a, b) => new Date(b.date) - new Date(a.date));
+    let sos = db.read('salesOrders').sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // Apply Date Filter
+    sos = filterByDateRange(sos, 'salesOrders');
+
     const customers = db.read('customers');
     const invoices = db.read('salesInvoices');
 
@@ -2264,18 +4483,34 @@ function renderSalesOrders() {
         if (so.status === 'CONFIRMED') statusBadge = '<span class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">CONFIRMED</span>';
         if (so.status === 'DELIVERED') statusBadge = '<span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-semibold">DELIVERED</span>';
 
-        let actions = `<button onclick="viewSO('${so.id}')" class="text-gray-500 hover:text-gray-700 mr-2" title="Detail"> <i class="fas fa-eye"></i></button> `;
+        let actions = `
+            <button onclick="viewSO('${so.id}')" class="text-gray-500 hover:text-gray-700 mr-2" title="Detail"> <i class="fas fa-eye"></i></button>
+            <button onclick="openSendSOModal('${so.id}')" class="text-blue-500 hover:text-blue-700 mr-2" title="Kirim"> <i class="fas fa-paper-plane"></i></button>
+        `;
 
-        if (so.status === 'DRAFT') {
+        if (canEdit && so.status === 'DRAFT') {
             actions += `
                 <button onclick="updateSOStatus('${so.id}', 'CONFIRMED')" class="text-blue-500 hover:text-blue-700 mr-2" title="Confirm"> <i class="fas fa-check"></i></button>
                 <button onclick="deleteSO('${so.id}')" class="text-red-500 hover:text-red-700" title="Delete"><i class="fas fa-trash"></i></button>
             `;
         }
-        if ((so.status === 'CONFIRMED' || so.status === 'DELIVERED') && !existingInvoice) {
-            actions += `<button onclick="createInvoiceFromSO('${so.id}')" class="text-white hover:bg-purple-700 font-bold text-xs bg-purple-600 px-2 py-1 rounded shadow-sm" title="Buat Invoice">Buat Invoice</button>`;
+
+        if (canEdit) {
+            const existingInvoice = invoices.find(inv => inv.salesOrderId === so.id && inv.status !== 'CANCELLED');
+
+            if (so.status === 'DELIVERED' && !existingInvoice) {
+                actions += `<button onclick="openInvoiceModal('${so.id}')" class="text-white hover:bg-purple-700 font-bold text-xs bg-purple-600 px-2 py-1 rounded shadow-sm ml-1" title="Buat Invoice">Buat Invoice</button>`;
+            } else if (existingInvoice) {
+                actions += `<button onclick="navigateTo('sales-invoices')" class="text-purple-600 font-semibold text-xs border border-purple-200 bg-purple-50 px-2 py-1 rounded ml-1" title="Lihat Invoice">Invoiced</button>`;
+            }
         } else if (existingInvoice) {
             actions += `<button onclick="navigateTo('sales-invoices')" class="text-purple-600 font-semibold text-xs border border-purple-200 bg-purple-50 px-2 py-1 rounded" title="Lihat Invoice">Invoiced</button>`;
+        }
+
+        // Return & Exchange buttons for eligible SOs
+        if ((so.status === 'CONFIRMED' || so.status === 'DELIVERED')) {
+            actions += `<button onclick="openSalesReturnModal('${so.id}')" class="text-red-500 hover:text-red-700 font-bold text-xs border border-red-200 bg-red-50 px-2 py-1 rounded ml-1" title="Retur"><i class="fas fa-undo-alt"></i></button>`;
+            actions += `<button onclick="openExchangeModal('${so.id}')" class="text-orange-500 hover:text-orange-700 font-bold text-xs border border-orange-200 bg-orange-50 px-2 py-1 rounded ml-1" title="Tukar Guling"><i class="fas fa-exchange-alt"></i></button>`;
         }
 
         return `
@@ -2293,10 +4528,42 @@ function renderSalesOrders() {
     if (sos.length === 0) rows = `<tr > <td colspan="6" class="py-4 text-center text-gray-500">Belum ada Sales Order</td></tr> `;
 
     mainContent.innerHTML = `
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-5">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-semibold text-gray-800">Laporan Sales Order</h2>
+                ${!canEdit ? `
+                <span class="text-[10px] font-bold text-orange-500 bg-orange-50 border border-orange-100 px-2 py-1 rounded flex items-center gap-1 uppercase tracking-tighter">
+                    <i class="fas fa-info-circle"></i> Lihat Saja
+                </span>
+                ` : ''}
+            </div>
+            <div class="flex flex-wrap gap-4 items-end">
+                <div class="flex-1 min-w-[150px]">
+                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Dari Tanggal</label>
+                    <input type="date" id="so_start_date" value="${window.currentFilters.salesOrders.start}" 
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 transition-all">
+                </div>
+                <div class="flex-1 min-w-[150px]">
+                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Sampai Tanggal</label>
+                    <input type="date" id="so_end_date" value="${window.currentFilters.salesOrders.end}" 
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 transition-all">
+                </div>
+                <button onclick="applySOFilter()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-sm whitespace-nowrap h-[38px]">
+                    <i class="fas fa-search"></i> Tampilkan Laporan
+                </button>
+                <button onclick="resetSOFilter()" class="bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm h-[38px]" title="Reset">
+                    <i class="fas fa-undo"></i>
+                </button>
+            </div>
+        </div>
+
         <div class="bg-white rounded-lg shadow-sm border border-gray-100">
-            <div class="flex justify-between items-center p-4 sm:p-6 border-b border-gray-100">
-                <h2 class="text-lg font-semibold text-gray-800">Daftar Sales Order</h2>
-                <button onclick="openSOModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors text-sm font-medium">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 sm:p-6 border-b border-gray-100 gap-4">
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-800">Daftar Sales Order</h2>
+                    <p class="text-xs text-gray-500 mt-1">Total: ${sos.length} pesanan</p>
+                </div>
+                <button onclick="openSOModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors text-sm font-medium shadow-sm">
                     <i class="fas fa-plus mr-2"></i>Buat SO Baru
                 </button>
             </div>
@@ -2321,7 +4588,40 @@ function renderSalesOrders() {
 }
 
 // --- Sales Orders Helper Functions ---
+// --- Sales Order Helpers ---
+function romanize(num) {
+    const roman = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+    return roman[num] || "";
+}
+
+function generateSONumber(isTax) {
+    const sos = db.read('salesOrders') || [];
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+    const romanMonth = romanize(month);
+    
+    // Filter SO by same month and year to get shared sequence
+    const sameMonthSOs = sos.filter(s => {
+        if (!s.soNumber) return false;
+        const parts = s.soNumber.split('/');
+        if (parts.length < 2) return false;
+        const [,, yearPart] = parts[1].split(' '); // This is complex, let's simplify pattern
+        // SO-TAX-001/III/2026
+        const mainParts = s.soNumber.split('/');
+        const romanPart = mainParts[1];
+        const yearPartStr = mainParts[2];
+        return romanPart === romanMonth && yearPartStr === String(year);
+    });
+
+    const nextSeq = sameMonthSOs.length + 1;
+    const seqStr = String(nextSeq).padStart(3, '0');
+    const type = isTax ? 'TAX' : 'NT';
+    return `SO-${type}-${seqStr}/${romanMonth}/${year}`;
+}
+
 window.openSOModal = (qtToConvert = null) => {
+    window._qtBeingConverted = qtToConvert ? qtToConvert.id : null;
     let defaultCustId = '';
     if (qtToConvert) {
         let custId = qtToConvert.customerId;
@@ -2347,25 +4647,54 @@ window.openSOModal = (qtToConvert = null) => {
         <div class="space-y-4">
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">No. SO</label>
-                        <input type="text" id="so_number" value="SO-${Date.now().toString().slice(-6)}" class="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50" readonly>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">No. SO <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                        <div class="flex">
+                             <select id="so_is_tax" onchange="updateSONumberPreview()" class="border border-gray-300 rounded-l px-2 py-2 bg-gray-50 text-xs font-bold">
+                                <option value="true">TAX</option>
+                                <option value="false">NT</option>
+                             </select>
+                             <input type="text" id="so_number" value="${generateSONumber(true)}" class="w-full border border-gray-300 rounded-r px-3 py-2 bg-gray-50 font-mono text-xs" readonly>
+                        </div>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Customer</label>
-                        <select id="so_customer" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">${cusOptions}</select>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Customer <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                        <div class="space-y-1">
+                            <select id="so_customer" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
+                                <option value="">-- Pilih Customer --</option>
+                                ${cusOptions}
+                            </select>
+                            <button type="button" onclick="openCustomerModal(null, 'SO')" class="text-[10px] text-blue-600 hover:underline"><i class="fas fa-plus-circle mr-1"></i>Tambah Customer Baru</button>
+                        </div>
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Tgl. Jatuh Tempo</label>
-                        <input type="date" id="so_payment_terms" value="${qtToConvert && qtToConvert.paymentTerms ? qtToConvert.paymentTerms : ''}" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Tanggal Sales Order <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                        <input type="date" id="so_date" value="${new Date().toISOString().split('T')[0]}" onchange="updateSODueDate()" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Pajak</label>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Sales / Pembuat <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                        <input type="text" id="so_sales_name" placeholder="Nama Sales" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Term Pembayaran <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                        <select id="so_payment_terms" onchange="updateSODueDate()" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
+                            <option value="">-- Pilih Term --</option>
+                            <option value="Cash" ${qtToConvert?.paymentTerms === 'Cash' ? 'selected' : ''}>Cash</option>
+                            <option value="Tempo 7 S/d 10 Hari" ${qtToConvert?.paymentTerms === 'Tempo 7 S/d 10 Hari' ? 'selected' : ''}>Tempo 7 S/d 10 Hari</option>
+                            <option value="30 Hari" ${qtToConvert?.paymentTerms === '30 Hari' ? 'selected' : ''}>30 Hari</option>
+                            <option value="45 Hari" ${qtToConvert?.paymentTerms === '45 Hari' ? 'selected' : ''}>45 Hari</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Tanggal Jatuh Tempo <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                        <input type="date" id="so_due_date" value="${new Date().toISOString().split('T')[0]}" class="w-full border border-gray-300 rounded px-3 py-2 bg-white font-bold text-blue-600">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Pajak (PPN %) <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
                         <select id="so_tax_rate" onchange="recalcSOTotal()" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
-                            <option value="0">0% (Tanpa Pajak)</option>
-                            <option value="11">11% (PPN)</option>
-                            <option value="12" selected>12% (PPN)</option>
-                            <option value="20">20% (STLG)</option>
-                            <option value="12_ppn_pemungut">12% Pemungut PPN</option>
+                            <option value="0" ${CONFIG.taxRate == 0 ? 'selected' : ''}>0% (Tanpa Pajak)</option>
+                            <option value="11" ${(CONFIG.taxRate == 11 || !CONFIG.taxRate) ? 'selected' : ''}>11% (PPN)</option>
                         </select>
                     </div>
                 </div>
@@ -2375,7 +4704,7 @@ window.openSOModal = (qtToConvert = null) => {
                     <div class="flex space-x-2 mb-2 flex-wrap gap-y-2">
                         <select id="so_inv_item" onchange="onSOItemSelect()" class="flex-1 min-w-[200px] border border-gray-300 rounded px-2 py-1.5 text-sm bg-white">
                             <option value="">-- Pilih Item (Finished Goods) --</option>
-                            ${(() => { const items = db.read('inventoryItems').filter(i => i.category === 'FINISHED_GOODS' && i.status !== 'INACTIVE'); return items.length ? items.map(i => { const stk = db.getInventoryStock(i.id); return `<option value="${i.id}" data-name="${i.itemName}" data-unit="${i.unit}" data-stock="${stk}">${i.itemCode} — ${i.itemName} (Stok: ${stk} ${i.unit})</option>`; }).join('') : '<option disabled>Belum ada Finished Goods di Gudang</option>'; })()}
+                            ${(() => { const items = db.read('inventoryItems').filter(i => i.category === 'FINISHED_GOODS' && i.status !== 'INACTIVE'); return items.length ? items.map(i => { const stk = db.getInventoryStock(i.id); return `<option value="${i.id}" data-name="${i.itemName}" data-unit="${i.unit}" data-stock="${stk}" data-price="${i.sellingPrice || 0}">${i.itemCode} — ${i.itemName} (Stok: ${stk} ${i.unit})</option>`; }).join('') : '<option disabled>Belum ada Finished Goods di Gudang</option>'; })()}
                         </select>
                         <input id="so_item_qty" type="number" placeholder="Qty" min="1" class="w-20 border border-gray-300 rounded px-2 py-1 text-sm">
                         <input id="so_item_price" type="number" placeholder="Harga Jual" min="1" class="w-32 border border-gray-300 rounded px-2 py-1 text-sm">
@@ -2389,13 +4718,20 @@ window.openSOModal = (qtToConvert = null) => {
                         </thead>
                         <tbody id="so_items_list"></tbody>
                     </table>
+
+                    <!-- Notes Section -->
+                    <div class="border-t border-gray-100 pt-2 space-y-2 mt-2">
+                        <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider">Keterangan / Notes</label>
+                        <textarea id="so_notes" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm h-16 focus:ring-2 focus:ring-blue-500 transition-all" placeholder="Tambahkan catatan di sini...">${qtToConvert?.notes || ''}</textarea>
+                    </div>
+
                     <div class="border-t border-gray-100 pt-2 mt-2 space-y-1 text-right text-sm">
                         <div class="flex justify-end gap-4">
                             <span class="text-gray-500">DPP (Sebelum Pajak):</span>
                             <span id="so_dpp_display" class="font-medium text-gray-700 w-36 text-right">Rp 0</span>
                         </div>
                         <div class="flex justify-end gap-4">
-                            <span class="text-gray-500" id="so_tax_label">PPN (12%):</span>
+                            <span class="text-gray-500" id="so_tax_label">PPN (${CONFIG.taxRate}%):</span>
                             <span id="so_tax_display" class="font-medium text-orange-600 w-36 text-right">Rp 0</span>
                         </div>
                         <div class="flex justify-end gap-4 border-t pt-1">
@@ -2412,8 +4748,31 @@ window.openSOModal = (qtToConvert = null) => {
             <button type="button" onclick="closeModal()" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-gray-700 font-medium sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">Batal</button>
     `;
 
-    showModal('Buat Sales Order', body, footer);
+    showModal('Buat Sales Order', body, footer, 'full');
+    setTimeout(() => updateSODueDate(), 100);
     if (qtToConvert) refreshSOItemsTable();
+};
+
+window.updateSODueDate = () => {
+    const soDateVal = document.getElementById('so_date')?.value;
+    const term = document.getElementById('so_payment_terms')?.value;
+    const dueDateInput = document.getElementById('so_due_date');
+    if (!soDateVal || !term || !dueDateInput) return;
+
+    let days = 0;
+    if (term === 'Cash') days = 0;
+    else if (term === 'Tempo 7 S/d 10 Hari') days = 10;
+    else if (term === '30 Hari') days = 30;
+    else if (term === '45 Hari') days = 45;
+
+    const date = new Date(soDateVal);
+    date.setDate(date.getDate() + days);
+    dueDateInput.value = date.toISOString().split('T')[0];
+};
+
+window.updateSONumberPreview = () => {
+    const isTax = document.getElementById('so_is_tax').value === 'true';
+    document.getElementById('so_number').value = generateSONumber(isTax);
 };
 
 window.onSOItemSelect = () => {
@@ -2428,6 +4787,10 @@ window.onSOItemSelect = () => {
         info.innerHTML = `<i class="fas fa-info-circle mr-1"></i>Stok tersedia: <strong>${stock} ${unit}</strong>`;
         info.className = `text-xs mb-2 ${stock <= 0 ? 'text-red-600' : 'text-blue-600'}`;
     }
+};
+
+window.onQTItemSelect = () => {
+    // Pricing is manual now per requirement
 };
 
 window.addSOItemRow = () => {
@@ -2473,8 +4836,8 @@ window.refreshSOItemsTable = () => {
         <tr class="border-t">
                 <td class="px-2 py-1">${item.prodText.split(' (')[0]}</td>
                 <td class="px-2 py-1 text-right">${item.qty} ${item.prodUnit}</td>
-                <td class="px-2 py-1 text-right">${item.price}</td>
-                <td class="px-2 py-1 text-right">${item.subtotal}</td>
+                <td class="px-2 py-1 text-right">${formatCurrency(item.price)}</td>
+                <td class="px-2 py-1 text-right">${formatCurrency(item.subtotal)}</td>
                 <td class="px-2 py-1 text-center"><button class="text-red-500" onclick="removeSOItemRow('${item.id}')"><i class="fas fa-times"></i></button></td>
             </tr>
         `;
@@ -2487,43 +4850,94 @@ window.refreshSOItemsTable = () => {
 window.recalcSOTotal = () => {
     const dpp = window._soRawTotal || 0;
     const sel = document.getElementById('so_tax_rate');
-    const taxValue = sel ? sel.value : '12';
+    const taxValue = sel ? sel.value : '11';
     const taxPct = parseFloat(taxValue) || 0;
-    const taxAmt = Math.round(dpp * taxPct / 100);
-    const grand = dpp + taxAmt;
     const fmt = v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(v);
+
+    const dppAfterDisc = dpp;
+    const taxAmt = Math.round(dppAfterDisc * taxPct / 100);
+    const grand = dppAfterDisc + taxAmt;
+
     if (document.getElementById('so_dpp_display')) document.getElementById('so_dpp_display').innerText = fmt(dpp);
     if (document.getElementById('so_tax_display')) document.getElementById('so_tax_display').innerText = fmt(taxAmt);
     if (document.getElementById('so_tax_label')) document.getElementById('so_tax_label').innerText = `PPN (${taxPct}%):`;
     if (document.getElementById('so_total_display')) document.getElementById('so_total_display').innerText = fmt(grand);
+
+    // Store computed values
+    window._soDiscountAmt = 0;
+    window._soDiscountDesc = '';
+    window._soDiscountType = '';
+    window._soDiscountValue = '';
 };
+
+
 
 window.saveNewSO = () => {
     if (window.tempSOItems.length === 0) { showToast('SO harus memiliki minimal 1 item', 'error'); return; }
 
-    const soNumber = document.getElementById('so_number').value;
+    const soNumberInitial = document.getElementById('so_number').value;
+    const isTax = document.getElementById('so_is_tax').value === 'true';
     const customerId = document.getElementById('so_customer').value;
+    const soDate = document.getElementById('so_date').value;
+    const salesName = document.getElementById('so_sales_name').value;
     const paymentTerms = document.getElementById('so_payment_terms').value;
-    const taxRateRaw = document.getElementById('so_tax_rate')?.value || '12';
+    const dueDate = document.getElementById('so_due_date')?.value;
+    const taxRateRaw = document.getElementById('so_tax_rate')?.value;
+
+    if (!customerId) { showToast('Pilih Customer', 'error'); return; }
+    if (!soDate) { showToast('Pilih Tanggal SO', 'error'); return; }
+    if (!salesName) { showToast('Isi Nama Sales', 'error'); return; }
+    if (!paymentTerms) { showToast('Pilih Term Pembayaran', 'error'); return; }
+    if (!dueDate) { showToast('Pilih Tanggal Jatuh Tempo', 'error'); return; }
+    if (taxRateRaw === undefined || taxRateRaw === '') { showToast('Pilih Pajak', 'error'); return; }
+
+    // Recalculate number at save to ensure shared sequence is up to date
+    let soNumber = soNumberInitial;
+    const existing = db.read('salesOrders') || [];
+    if (existing.some(s => s.soNumber === soNumberInitial)) {
+        soNumber = generateSONumber(isTax);
+    }
+
     const taxPct = parseFloat(taxRateRaw) || 0;
     const taxLabel = document.getElementById('so_tax_rate')?.selectedOptions[0]?.text || `${taxPct}%`;
     const dpp = window.tempSOItems.reduce((sum, item) => sum + item.subtotal, 0);
+    const notes = document.getElementById('so_notes')?.value || '';
     const taxAmount = Math.round(dpp * taxPct / 100);
     const totalAmount = dpp + taxAmount;
 
     db.insert('salesOrders', {
         soNumber,
-        date: new Date().toISOString(),
+        quotationId: window._qtBeingConverted || null,
+        date: new Date(soDate).toISOString(),
+        salesName: salesName || '-',
+        isTax,
         customerId,
         paymentTerms,
+        dueDate: dueDate ? new Date(dueDate).toISOString() : null,
         taxRate: taxPct,
         taxLabel,
         taxAmount,
         dpp,
+        discountType: '',
+        discountValue: '',
+        discountAmount: 0,
+        discountDescription: '',
         status: 'DRAFT',
         totalAmount,
-        items: window.tempSOItems
+        items: window.tempSOItems,
+        notes
     });
+
+    if (window._qtBeingConverted) {
+        db.update('salesQuotations', window._qtBeingConverted, { status: 'SO_CREATED' });
+        window._qtBeingConverted = null;
+    }
+
+    // Reset discount state
+    window._soDiscountAmt = 0;
+    window._soDiscountDesc = '';
+    window._soDiscountType = '';
+    window._soDiscountValue = '';
 
     showToast('SO Draft berhasil disimpan');
     closeModal();
@@ -2534,6 +4948,19 @@ window.updateSOStatus = (id, newStatus) => {
     db.update('salesOrders', id, { status: newStatus });
     const so = db.findById('salesOrders', id);
     if (newStatus === 'CONFIRMED' && so) {
+        // Otomatis buat Jurnal: Debit Piutang, Kredit Pendapatan
+        if (typeof db.addJournalEntry === 'function') {
+            db.addJournalEntry({
+                date: so.date || new Date().toISOString(),
+                description: `Piutang Penjualan SO ${so.soNumber}`,
+                reference: so.soNumber,
+                items: [
+                    { accountId: 'acc_ar', debit: so.totalAmount, credit: 0 }, // Piutang Usaha
+                    { accountId: 'acc_sales', debit: 0, credit: so.totalAmount }  // Penjualan
+                ]
+            });
+        }
+
         if (typeof addNotification === 'function') {
             addNotification(
                 'Pesanan Baru Siap Kirim',
@@ -2581,11 +5008,20 @@ window.viewSO = (id) => {
                     </div>
                     <div class="text-right">
                         <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Detail Pesanan</h3>
-                        <p class="text-gray-800 text-sm mb-1">Tanggal: ${formatDate(so.date).slice(0, 11)}</p>
-                        ${so.paymentTerms ? (() => { const d1 = new Date(so.date); const d2 = new Date(so.paymentTerms); const days = Math.round((d2 - d1) / 86400000); return `<p class="text-gray-800 text-sm mb-1">Jatuh Tempo Pembayaran: <span class="font-medium">Net ${days} Hari (${so.paymentTerms})</span></p>`; })() : ''}
+                        <p class="text-gray-800 text-sm mb-1">Tanggal SO: ${formatDate(so.date).slice(0, 11)}</p>
+                        <p class="text-gray-800 text-sm mb-1">Sales: <span class="font-medium">${so.salesName || '-'}</span></p>
+                        <p class="text-gray-800 text-sm mb-1">Term Pembayaran: <span class="font-medium">${so.paymentTerms || '-'}</span></p>
+                        <p class="text-gray-800 text-sm mb-1">Jatuh Tempo: <span class="font-bold text-red-600">${so.dueDate ? formatDate(so.dueDate).slice(0, 11) : '-'}</span></p>
                         <p class="text-gray-800 text-sm mt-2">Status: <span class="font-medium px-2 py-1 rounded bg-gray-100 text-gray-800">${so.status}</span></p>
                     </div>
                 </div>
+
+                ${so.notes ? `
+                <div class="mb-8 p-4 bg-gray-50 rounded-lg border border-gray-100">
+                    <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Keterangan / Catatan:</h3>
+                    <p class="text-sm text-gray-700 whitespace-pre-wrap">${so.notes}</p>
+                </div>
+                ` : ''}
                 
                 <table class="w-full text-left mb-8 border-collapse">
                     <thead>
@@ -2607,18 +5043,33 @@ window.viewSO = (id) => {
                         `).join('')}
                     </tbody>
                     <tfoot>
-                        ${so.dpp != null ? `
+                        <!-- Subtotal -->
                         <tr>
-                            <td colspan="3" class="py-2 px-2 text-right text-sm text-gray-600">DPP (Sebelum Pajak):</td>
-                            <td class="py-2 px-2 text-right text-sm text-gray-800 font-medium">${formatCurrency(so.dpp)}</td>
+                            <td colspan="3" class="py-2 px-2 text-right text-sm text-gray-500 font-medium">Subtotal (Gross):</td>
+                            <td class="py-2 px-2 text-right text-sm text-gray-800 font-medium border-t-2 border-gray-100">${formatCurrency(so.dpp || so.totalAmount)}</td>
+                        </tr>
+
+
+
+                        <!-- DPP (Net after discount) -->
+                        ${so.dpp != null ? `
+                        <tr class="bg-gray-50/50">
+                            <td colspan="3" class="py-2 px-2 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">DPP (Dasar Pengenaan Pajak):</td>
+                            <td class="py-2 px-2 text-right text-sm text-gray-900 font-black border-y border-gray-200">
+                                ${formatCurrency(Math.max(0, (so.dpp || 0) - (so.discountAmount || 0)))}
+                            </td>
                         </tr>
                         <tr>
                             <td colspan="3" class="py-2 px-2 text-right text-sm text-gray-600">${so.taxLabel || `PPN (${so.taxRate || 0}%)`}:</td>
                             <td class="py-2 px-2 text-right text-sm text-orange-600 font-medium">${formatCurrency(so.taxAmount || 0)}</td>
                         </tr>` : ''}
+
+                        <!-- Grand Total -->
                         <tr>
-                            <td colspan="3" class="py-4 px-2 text-right font-bold text-gray-800">Grand Total:</td>
-                            <td class="py-4 px-2 text-right font-bold text-blue-600 text-lg border-t-2 border-gray-800">${formatCurrency(so.totalAmount)}</td>
+                            <td colspan="3" class="py-4 px-2 text-right font-bold text-gray-800 text-base">Grand Total:</td>
+                            <td class="py-4 px-2 text-right font-bold text-blue-700 text-xl border-t-4 border-gray-800">
+                                ${formatCurrency(so.totalAmount)}
+                            </td>
                         </tr>
                     </tfoot>
                 </table>
@@ -2627,6 +5078,7 @@ window.viewSO = (id) => {
 
     const footer = `
             <button onclick='printHTML(\`${printableHTML.replace(/`/g, "\\`").replace(/\n/g, "")}\`, "Sales Order ${so.soNumber}")' class="w-full sm:w-auto inline-flex justify-center items-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-purple-600 text-white font-medium hover:bg-purple-700 sm:text-sm mr-0 mb-3 sm:mb-0 sm:mr-3 transition-colors"> <i class="fas fa-file-pdf mr-2"></i> Print / Save PDF</button>
+            <button onclick="openSendSOModal('${so.id}')" class="w-full sm:w-auto inline-flex justify-center items-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-white font-medium hover:bg-blue-700 sm:text-sm mr-0 mb-3 sm:mb-0 sm:mr-3 transition-colors"> <i class="fas fa-paper-plane mr-2"></i> Kirim</button>
             <button onclick="closeModal()" class="w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-gray-700 font-medium hover:bg-gray-50 transition-colors sm:text-sm"> Tutup</button>
         `;
 
@@ -2634,20 +5086,365 @@ window.viewSO = (id) => {
 };
 
 // --- Create Invoice Logic ---
-window.createInvoiceFromSO = (soId) => {
-    if (!confirm('Buat Invoice untuk pesanan ini?')) return;
-    const so = db.findById('salesOrders', soId);
+window.generateInvoiceNumber = (isTax) => {
+    const invoices = db.read('salesInvoices') || [];
+    const now = new Date();
+    const month = now.getMonth() + 1;
+    const year = now.getFullYear();
+    const romanMonth = romanize(month);
 
-    db.insert('salesInvoices', {
-        invoiceNumber: 'INV-' + Date.now().toString().slice(-6),
-        salesOrderId: so.id,
-        customerId: so.customerId,
-        date: new Date().toISOString(),
-        totalAmount: so.totalAmount,
-        status: 'UNPAID'
+    const sameMonthInvs = invoices.filter(inv => {
+        if (!inv.invoiceNumber) return false;
+        const parts = inv.invoiceNumber.split('/');
+        if (parts.length < 3) return false;
+        const romanPart = parts[1];
+        const yearPartStr = parts[2];
+        return romanPart === romanMonth && yearPartStr === String(year);
     });
 
-    showToast('Invoice berhasil dibuat!', 'success');
+    const nextSeq = sameMonthInvs.length + 1;
+    const seqStr = String(nextSeq).padStart(3, '0');
+    const type = isTax ? 'TAX' : 'NT';
+    return `INV-${type}-${seqStr}/${romanMonth}/${year}`;
+};
+
+window.openInvoiceModal = (soId) => {
+    const so = db.findById('salesOrders', soId);
+    if (!so) { showToast('Sales Order tidak ditemukan', 'error'); return; }
+    if (so.status !== 'DELIVERED') { 
+        showToast('Barang harus dikirim terlebih dahulu (Status Delivered) sebelum membuat invoice.', 'error'); 
+        return; 
+    }
+
+    const customers = db.read('customers') || [];
+    const customer = customers.find(c => c.id === so.customerId) || { name: 'Unknown' };
+
+    // Get packaging data from related DO
+    const relatedDO = db.read('deliveryOrders').find(d => d.salesOrderId === so.id && d.status === 'SHIPPED');
+    
+    const isSOTaxed = (parseFloat(so.taxAmount) || 0) > 0;
+    const defaultTaxRate = isSOTaxed ? 11 : 0;
+    
+    // Auto-generate invoice number based on current tax status
+    const initialInvNumber = generateInvoiceNumber(isSOTaxed);
+
+    const itemsPreview = (so.items || []).map(item => {
+        const doItem = relatedDO ? relatedDO.items.find(di => di.inventoryItemId === item.inventoryItemId) : null;
+        const kemasan = doItem?.kemasan || '-';
+        const colly = doItem?.colly || '-';
+        return `
+            <tr class="border-t">
+                <td class="px-2 py-1">
+                    <div class="text-[11px] font-bold text-gray-800">${item.prodText}</div>
+                    ${kemasan !== '-' ? `<div class="text-[9px] text-gray-500 italic">Kemasan: ${kemasan}</div>` : ''}
+                </td>
+                <td class="px-2 py-1 text-center font-bold text-[11px] text-blue-600">${colly}</td>
+                <td class="px-2 py-1 text-right text-[11px]">${item.qty} ${item.prodUnit}</td>
+                <td class="px-2 py-1 text-right text-[11px]">${formatCurrency(item.price || 0)}</td>
+                <td class="px-2 py-1 text-right text-[11px] font-bold">${formatCurrency(item.subtotal || 0)}</td>
+            </tr>
+        `;
+    }).join('');
+
+    const baseSubtotal = (so.items || []).reduce((sum, item) => sum + (parseFloat(item.subtotal) || 0), 0);
+    
+    let defaultDiscType = so.discountType || '';
+    let defaultDiscValue = so.discountValue || '';
+    let inheritedDiscountAmount = so.discountAmount || 0;
+
+    const body = `
+        <div class="space-y-4">
+            <input type="hidden" id="inv_so_id" value="${so.id}">
+            <input type="hidden" id="inv_customer_id" value="${so.customerId}">
+            <input type="hidden" id="inv_base_subtotal" value="${baseSubtotal}">
+            
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">No. Invoice</label>
+                    <input type="text" id="inv_number" value="${initialInvNumber}" class="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50 font-mono text-sm" readonly>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Customer</label>
+                    <input type="text" value="${customer.name}" class="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50 text-sm font-medium" readonly>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Tanggal Transaksi</label>
+                    <input type="date" id="inv_date" value="${new Date().toISOString().split('T')[0]}" onchange="updateInvDueDate()" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Term Pembayaran</label>
+                    <select id="inv_due_date_term" onchange="updateInvDueDate()" class="w-full border border-gray-300 rounded px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-blue-400">
+                        <option value="0">Cash</option>
+                        <option value="10" selected>Tempo 7 s/d 10 Hari</option>
+                        <option value="30">30 Hari</option>
+                        <option value="45">45 Hari</option>
+                    </select>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-2">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Tanggal Jatuh Tempo</label>
+                    <input type="date" id="inv_due_date" class="w-full border border-gray-300 rounded px-3 py-2 bg-white text-sm font-bold text-red-600">
+                </div>
+            </div>
+            
+            <div class="border-t border-gray-200 pt-4 mt-4">
+                <h4 class="text-md font-medium text-gray-800 mb-2">Item Invoice (Berdasarkan SO-${so.soNumber})</h4>
+                <div class="max-h-48 overflow-y-auto mb-4 border rounded">
+                    <table class="w-full text-sm text-left">
+                        <thead class="bg-gray-50 sticky top-0">
+                            <tr>
+                                <th class="px-2 py-1">Produk</th>
+                                <th class="px-2 py-1 text-center">Colly</th>
+                                <th class="px-2 py-1 text-right">Qty</th>
+                                <th class="px-2 py-1 text-right">Harga</th>
+                                <th class="px-2 py-1 text-right">Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody class="bg-white">
+                            ${itemsPreview}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div>
+                        <div class="bg-gray-50 p-4 rounded border mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Catatan Tambahan (Opsional)</label>
+                            <textarea id="inv_notes" class="w-full border border-gray-300 rounded px-3 py-2 text-sm h-16" placeholder="Cth: Harap segera dilunasi..."></textarea>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between items-center bg-gray-50 p-2 rounded">
+                            <span class="text-gray-600 font-medium">Subtotal Item:</span>
+                            <span class="font-bold">${formatCurrency(baseSubtotal)}</span>
+                        </div>
+                        
+                        <div class="flex justify-between items-center border-b pb-2">
+                            <div class="flex items-center gap-2">
+                                <span class="text-gray-600 font-medium">Diskon / Promo:</span>
+                                <select id="inv_discount_type" onchange="refreshInvoiceCalculation()" class="border border-gray-300 rounded px-2 py-1 text-xs bg-white w-28">
+                                    <option value="" ${!defaultDiscType ? 'selected' : ''}>-- Tidak Ada --</option>
+                                    <option value="cash" ${defaultDiscType === 'cash' ? 'selected' : ''}>Cash Disc (%)</option>
+                                    <option value="cash_flat" ${defaultDiscType === 'cash_flat' ? 'selected' : ''}>Cash Disc (Rp)</option>
+                                    <option value="other" ${defaultDiscType === 'other' ? 'selected' : ''}>Lainnya</option>
+                                </select>
+                            </div>
+                            <div id="inv_discount_detail" class="${!defaultDiscType ? 'hidden' : 'flex'} gap-2">
+                                <input type="text" id="inv_discount_value" value="${defaultDiscValue}" oninput="refreshInvoiceCalculation()" placeholder="Isi diskon..." class="border border-gray-300 rounded px-2 py-1 text-xs w-24 text-right focus:ring-1 focus:ring-blue-400">
+                            </div>
+                        </div>
+
+                        <div class="flex justify-between items-center text-green-600 mb-1" id="inv_discount_row" style="display:${inheritedDiscountAmount > 0 ? 'flex' : 'none'}">
+                            <span id="inv_discount_label">Diskon:</span>
+                            <span id="inv_discount_display" class="font-medium">- ${formatCurrency(inheritedDiscountAmount)}</span>
+                        </div>
+                        
+                        <div class="flex justify-between items-center border-b pb-2">
+                           <span class="text-gray-600 font-medium">Pajak (PPN %):</span>
+                           <select id="inv_tax_rate" onchange="refreshInvoiceCalculation()" class="border border-gray-300 rounded px-2 py-1 text-xs bg-white w-32">
+                               <option value="0" ${defaultTaxRate === 0 ? 'selected' : ''}>0% (Non-Pajak)</option>
+                               <option value="11" ${defaultTaxRate > 0 ? 'selected' : ''}>11% (PPN)</option>
+                           </select>
+                        </div>
+                        
+                        <div class="flex justify-between items-center text-orange-600 mb-1" id="inv_tax_row">
+                            <span id="inv_tax_label">PPN (${defaultTaxRate}%):</span>
+                            <span id="inv_tax_display" class="font-medium">Rp 0</span>
+                        </div>
+                        
+                        <div class="flex-col gap-1 mt-2 mb-2 p-2 bg-orange-50 rounded border border-orange-100" id="inv_nsfp_row" style="display:${defaultTaxRate > 0 ? 'flex' : 'none'}">
+                            <label class="text-xs font-semibold text-orange-800">No. Seri Faktur Pajak (NSFP)</label>
+                            <input type="text" id="inv_nsfp" placeholder="000.000-00.00000000" class="border border-orange-200 rounded px-2 py-1 text-xs w-full focus:ring-1 focus:ring-orange-400 focus:border-orange-400 bg-white">
+                        </div>
+
+                        <div class="flex justify-between items-center pt-2 mt-2 border-t-2 border-gray-800">
+                            <span class="text-gray-900 font-bold text-lg">Total Tagihan:</span>
+                            <span id="inv_total_display" class="font-bold text-blue-700 text-xl">Rp 0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    const footer = `
+        <button type="button" onclick="saveNewInvoice()" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-white font-medium focus:outline-none sm:ml-3 sm:w-auto sm:text-sm">Buat Invoice</button>
+        <button type="button" onclick="closeModal()" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-gray-700 font-medium sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">Batal</button>
+    `;
+
+    showModal('Buat Sales Invoice', body, footer, 'lg');
+    
+    // Initialize calculation
+    setTimeout(() => {
+        refreshInvoiceCalculation();
+        updateInvDueDate();
+    }, 100);
+};
+
+window.updateInvDueDate = () => {
+    const invDateVal = document.getElementById('inv_date')?.value;
+    const termDays = parseInt(document.getElementById('inv_due_date_term')?.value) || 0;
+    const dueDateInput = document.getElementById('inv_due_date');
+    if (!invDateVal || !dueDateInput) return;
+
+    const date = new Date(invDateVal);
+    date.setDate(date.getDate() + termDays);
+    dueDateInput.value = date.toISOString().split('T')[0];
+};
+
+window.refreshInvoiceCalculation = () => {
+    const baseSubtotal = parseFloat(document.getElementById('inv_base_subtotal').value) || 0;
+    
+    const discType = document.getElementById('inv_discount_type').value;
+    const discVal = document.getElementById('inv_discount_value').value.trim();
+    
+    const discDetailContainer = document.getElementById('inv_discount_detail');
+    if (!discType) {
+        discDetailContainer.classList.add('hidden');
+        document.getElementById('inv_discount_value').value = '';
+    } else {
+        discDetailContainer.classList.remove('hidden');
+        discDetailContainer.classList.add('flex');
+    }
+
+    let discAmt = 0;
+    let discDesc = '';
+    
+    if (discType === 'cash' && discVal) {
+        const pct = parseFloat(discVal) || 0;
+        discAmt = Math.round(baseSubtotal * pct / 100);
+        discDesc = `Cash Disc. ${pct}%`;
+    } else if (discType === 'cash_flat' && discVal) {
+        discAmt = parseFloat(discVal.replace(/[^0-9]/g, '')) || 0;
+        discDesc = 'Cash Discount';
+    } else if (discType === 'other' && discVal) {
+        discDesc = discVal;
+        discAmt = 0;
+    }
+
+    const grandTotalBeforeTax = Math.max(0, baseSubtotal - discAmt);
+    
+    const taxRateStr = document.getElementById('inv_tax_rate').value;
+    const taxRate = parseFloat(taxRateStr) || 0;
+    const isTax = taxRate > 0;
+    const taxAmt = Math.round(grandTotalBeforeTax * taxRate / 100);
+    
+    const grandTotal = grandTotalBeforeTax + taxAmt;
+
+    const discRow = document.getElementById('inv_discount_row');
+    if (discAmt > 0) {
+        discRow.style.display = 'flex';
+        document.getElementById('inv_discount_label').innerText = discDesc + ':';
+        document.getElementById('inv_discount_display').innerText = '- ' + formatCurrency(discAmt);
+    } else {
+        discRow.style.display = 'none';
+    }
+
+    const nsfpRow = document.getElementById('inv_nsfp_row');
+    if (isTax && nsfpRow) {
+        nsfpRow.style.display = 'flex';
+    } else if (nsfpRow) {
+        nsfpRow.style.display = 'none';
+        document.getElementById('inv_nsfp').value = '';
+    }
+
+    document.getElementById('inv_tax_label').innerText = `PPN (${taxRate}%):`;
+    document.getElementById('inv_tax_display').innerText = formatCurrency(taxAmt);
+    document.getElementById('inv_total_display').innerText = formatCurrency(grandTotal);
+
+    const currentInvNumberEl = document.getElementById('inv_number');
+    if (currentInvNumberEl) {
+        currentInvNumberEl.value = generateInvoiceNumber(isTax);
+    }
+
+    window._invCalcState = {
+        discountAmount: discAmt,
+        discountType: discType,
+        discountValue: discVal,
+        discountDescription: discDesc,
+        taxRate: taxRate,
+        taxAmount: taxAmt,
+        totalAmount: grandTotal,
+        isTax: isTax,
+        nsfp: isTax ? (document.getElementById('inv_nsfp')?.value.trim() || '') : ''
+    };
+};
+
+window.saveNewInvoice = () => {
+    const soId = document.getElementById('inv_so_id').value;
+    const so = db.findById('salesOrders', soId);
+    if (!so) return;
+
+    const invoiceNumber = document.getElementById('inv_number').value;
+    const invDateStr = document.getElementById('inv_date').value;
+    const dueDateStr = document.getElementById('inv_due_date')?.value;
+    const notes = document.getElementById('inv_notes').value;
+
+    if (!invDateStr || !dueDateStr) {
+        showToast('Tanggal Transaksi dan Jatuh Tempo harus diisi', 'error');
+        return;
+    }
+
+    const invDate = new Date(invDateStr);
+    const dueDate = new Date(dueDateStr);
+
+    const relatedDO = db.read('deliveryOrders').find(d => d.salesOrderId === so.id && d.status === 'SHIPPED');
+
+    const calcState = window._invCalcState;
+    if (!calcState) return;
+
+    const existing = db.read('salesInvoices') || [];
+    let finalInvoiceNumber = invoiceNumber;
+    if (existing.some(i => i.invoiceNumber === invoiceNumber)) {
+        finalInvoiceNumber = generateInvoiceNumber(calcState.isTax);
+    }
+
+    const inv = db.insert('salesInvoices', {
+        invoiceNumber: finalInvoiceNumber,
+        salesOrderId: so.id,
+        customerId: so.customerId,
+        date: invDate.toISOString(),
+        dueDate: dueDate.toISOString(),
+        totalAmount: calcState.totalAmount,
+        taxType: calcState.isTax ? 'Pajak' : 'Non-Pajak',
+        taxRate: calcState.taxRate,
+        taxAmount: calcState.taxAmount,
+        discountType: calcState.discountType,
+        discountValue: calcState.discountValue,
+        discountAmount: calcState.discountAmount,
+        discountDescription: calcState.discountDescription,
+        nsfp: calcState.nsfp,
+        notes: notes,
+        status: 'UNPAID',
+        items: so.items.map(i => {
+            const doItem = relatedDO ? relatedDO.items.find(di => di.inventoryItemId === i.inventoryItemId) : null;
+            return { 
+                ...i,
+                kemasan: doItem?.kemasan || '-',
+                colly: doItem?.colly || '-'
+            };
+        })
+    });
+
+    if (typeof db.addJournalEntry === 'function') {
+        db.addJournalEntry({
+            date: inv.date,
+            journalNo: inv.invoiceNumber,
+            description: `Invoice Penjualan ${inv.invoiceNumber} (SO ${so.soNumber})`,
+            referenceType: 'SALES_INVOICE',
+            referenceId: inv.id,
+            items: [
+                { accountId: 'acc_ar', debit: inv.totalAmount, credit: 0 },
+                { accountId: 'acc_sales', debit: 0, credit: (inv.totalAmount - inv.taxAmount) },
+                ...(inv.taxAmount > 0 ? [{ accountId: 'acc_tax_payable', debit: 0, credit: inv.taxAmount }] : [])
+            ]
+        });
+    }
+
+    closeModal();
+    showToast('Invoice berhasil dibuat secara manual!', 'success');
     navigateTo('sales-invoices');
 };
 
@@ -2656,9 +5453,26 @@ function renderSalesInvoices() {
     document.getElementById('pageTitle').innerText = 'Sales Invoices';
     const mainContent = document.getElementById('main-content');
 
-    const invoices = db.read('salesInvoices').sort((a, b) => new Date(b.date) - new Date(a.date));
+    let invoices = db.read('salesInvoices').sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // Apply Filters
+    invoices = filterByDateRange(invoices, 'salesInvoices');
+    if (window.currentFilters.salesInvoices.taxType) {
+        invoices = invoices.filter(inv => {
+            const actualType = inv.taxType || (inv.invoiceNumber?.startsWith('INV-') && !inv.invoiceNumber?.startsWith('INVN-') ? 'Pajak' : 'Non-Pajak');
+            return actualType === window.currentFilters.salesInvoices.taxType;
+        });
+    }
+
+    if (window.currentFilters.salesInvoices.status) {
+        invoices = invoices.filter(inv => inv.status === window.currentFilters.salesInvoices.status);
+    }
+
     const customers = db.read('customers');
     const payments = db.read('payments');
+
+    let totalTagihan = 0;
+    let totalTerbayar = 0;
 
     let rows = invoices.map(inv => {
         const customer = customers.find(c => c.id === inv.customerId) || { name: 'Unknown' };
@@ -2668,6 +5482,9 @@ function renderSalesInvoices() {
         const totalPaid = invPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
         const balance = inv.totalAmount - totalPaid;
 
+        totalTagihan += (parseFloat(inv.totalAmount) || 0);
+        totalTerbayar += totalPaid;
+
         let statusBadge = '';
         if (inv.status === 'UNPAID') statusBadge = '<span class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-semibold">UNPAID</span>';
         if (inv.status === 'PAID') statusBadge = '<span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-semibold">PAID</span>';
@@ -2676,13 +5493,19 @@ function renderSalesInvoices() {
         let actionHtml = `<button onclick="viewInvoice('${inv.id}')" class="text-gray-500 hover:text-gray-700 mr-2" title="Detail"><i class="fas fa-eye"></i></button>`;
 
         if (inv.status === 'UNPAID' && balance > 0) {
-            actionHtml += `<button onclick="openPaymentModal('${inv.id}')" class="text-white hover:bg-green-700 bg-green-600 px-2 py-1 rounded text-xs shadow-sm mr-2" title="Bayar">Bayar</button>`;
+            // Menghapus actionHtml Bayar sesuai permintaan user
             actionHtml += `<button onclick="cancelInvoice('${inv.id}')" class="text-red-500 hover:text-red-700" title="Batalkan"><i class="fas fa-times-circle"></i></button>`;
         }
 
+        const actualTaxType = inv.taxType || (inv.invoiceNumber?.startsWith('INV-') && !inv.invoiceNumber?.startsWith('INVN-') ? 'Pajak' : 'Non-Pajak');
+        const taxBadge = actualTaxType === 'Pajak'
+            ? '<span class="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[10px] font-bold border border-blue-100 uppercase">Pajak</span>'
+            : '<span class="px-2 py-0.5 bg-gray-50 text-gray-500 rounded-full text-[10px] font-bold border border-gray-100 uppercase">Non-Pajak</span>';
+
         return `
             <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                <td class="py-3 px-4 text-sm font-medium text-purple-600">${inv.invoiceNumber}</td>
+                <td class="py-3 px-4 text-sm font-medium text-blue-600">${inv.invoiceNumber}</td>
+                <td class="py-3 px-4 text-sm text-center">${taxBadge}</td>
                 <td class="py-3 px-4 text-sm text-gray-800">${formatDate(inv.date).slice(0, 11)}</td>
                 <td class="py-3 px-4 text-sm text-gray-800">${customer.name}</td>
                 <td class="py-3 px-4 text-sm text-gray-800 text-right">${formatCurrency(inv.totalAmount)}</td>
@@ -2693,18 +5516,63 @@ function renderSalesInvoices() {
         `;
     }).join('');
 
-    if (invoices.length === 0) rows = `<tr><td colspan="7" class="py-4 text-center text-gray-500">Belum ada Invoice</td></tr>`;
+    if (invoices.length === 0) rows = `<tr><td colspan="8" class="py-4 text-center text-gray-500">Belum ada Invoice</td></tr>`;
 
     mainContent.innerHTML = `
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-5">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">Laporan Sales Invoice</h2>
+            <div class="flex flex-wrap gap-4 items-end">
+                <div class="flex-1 min-w-[150px]">
+                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Dari Tanggal</label>
+                    <input type="date" id="inv_start_date" value="${window.currentFilters.salesInvoices.start}" 
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 transition-all">
+                </div>
+                <div class="flex-1 min-w-[150px]">
+                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Sampai Tanggal</label>
+                    <input type="date" id="inv_end_date" value="${window.currentFilters.salesInvoices.end}" 
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 transition-all">
+                </div>
+                <div class="flex-1 min-w-[150px]">
+                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Tipe Faktur</label>
+                    <select id="inv_filter_type" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 transition-all">
+                        <option value="" ${window.currentFilters.salesInvoices.taxType === '' ? 'selected' : ''}>Semua</option>
+                        <option value="Pajak" ${window.currentFilters.salesInvoices.taxType === 'Pajak' ? 'selected' : ''}>Pajak</option>
+                        <option value="Non-Pajak" ${window.currentFilters.salesInvoices.taxType === 'Non-Pajak' ? 'selected' : ''}>Non-Pajak</option>
+                    </select>
+                </div>
+                <div class="flex-1 min-w-[150px]">
+                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Status Bayar</label>
+                    <select id="inv_filter_status" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 transition-all">
+                        <option value="" ${window.currentFilters.salesInvoices.status === '' ? 'selected' : ''}>Semua</option>
+                        <option value="PAID" ${window.currentFilters.salesInvoices.status === 'PAID' ? 'selected' : ''}>PAID (Lunas)</option>
+                        <option value="UNPAID" ${window.currentFilters.salesInvoices.status === 'UNPAID' ? 'selected' : ''}>UNPAID (Belum Lunas)</option>
+                    </select>
+                </div>
+                <button onclick="applyInvFilter()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-sm whitespace-nowrap h-[38px]">
+                    <i class="fas fa-search"></i> Tampilkan Laporan
+                </button>
+                <button onclick="resetInvFilter()" class="bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm h-[38px]" title="Reset">
+                    <i class="fas fa-undo"></i>
+                </button>
+            </div>
+        </div>
+
         <div class="bg-white rounded-lg shadow-sm border border-gray-100">
-            <div class="flex justify-between items-center p-4 sm:p-6 border-b border-gray-100">
-                <h2 class="text-lg font-semibold text-gray-800">Daftar Invoice Penjualan</h2>
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 sm:p-6 border-b border-gray-100 gap-4">
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-800">Daftar Sales Invoice</h2>
+                    <p class="text-xs text-gray-500 mt-1">Total: ${invoices.length} invoice</p>
+                </div>
+                <button onclick="openInvoiceFromSOSelectorModal()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md transition-colors text-sm font-medium">
+                    <i class="fas fa-plus mr-2"></i>Buat Invoice
+                </button>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
                     <thead>
                         <tr class="bg-gray-50 border-b border-gray-200">
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">No. INV</th>
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-center">Tipe</th>
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Tanggal</th>
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Customer</th>
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">Total Tagihan</th>
@@ -2714,11 +5582,62 @@ function renderSalesInvoices() {
                         </tr>
                     </thead>
                     <tbody>${rows}</tbody>
+                    <tfoot>
+                        <tr class="bg-gray-100 border-t-2 border-gray-300 font-bold">
+                            <td colspan="4" class="py-3 px-4 text-right text-xs font-black uppercase tracking-wider text-gray-600">TOTAL KESELURUHAN:</td>
+                            <td class="py-3 px-4 text-sm text-right text-blue-800">${formatCurrency(totalTagihan)}</td>
+                            <td class="py-3 px-4 text-sm text-right text-green-700">${formatCurrency(totalTerbayar)}</td>
+                            <td colspan="2" class="py-3 px-4 text-sm text-right text-red-600">Sisa: ${formatCurrency(totalTagihan - totalTerbayar)}</td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </div>
     `;
 }
+
+window.openInvoiceFromSOSelectorModal = () => {
+    const salesOrders = db.read('salesOrders') || [];
+    const invoices = db.read('salesInvoices') || [];
+    const customers = db.read('customers') || [];
+
+    // Filter valid SOs (Only Delivered, not fully invoiced yet)
+    let validSOs = salesOrders.filter(so => {
+        if (so.status !== 'DELIVERED') return false;
+        // Check if there's already an invoice for this SO
+        const hasInvoice = invoices.some(inv => inv.salesOrderId === so.id && inv.status !== 'CANCELLED');
+        return !hasInvoice;
+    });
+
+    if (validSOs.length === 0) {
+        showToast('Tidak ada Sales Order (Status Delivered) yang bisa dibuatkan Invoice.', 'error');
+        return;
+    }
+
+    const soOptions = validSOs.map(so => {
+        const customer = customers.find(c => c.id === so.customerId) || { name: 'Unknown' };
+        return `<option value="${so.id}">SO-${so.soNumber} - ${customer.name} (${formatCurrency(so.totalAmount)})</option>`;
+    }).join('');
+
+    const body = `
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Pilih Sales Order</label>
+                <select id="selector_so_id" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
+                    <option value="" disabled selected>Pilih SO...</option>
+                    ${soOptions}
+                </select>
+            </div>
+        </div>
+    `;
+
+    const footer = `
+        <button type="button" onclick="const soId = document.getElementById('selector_so_id').value; if(soId) { closeModal(); setTimeout(() => openInvoiceModal(soId), 200); } else { showToast('Pilih SO terlebih dahulu', 'error'); }" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-purple-600 text-white font-medium focus:outline-none sm:ml-3 sm:w-auto sm:text-sm">Lanjut Buat</button>
+        <button type="button" onclick="closeModal()" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-gray-700 font-medium sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">Batal</button>
+    `;
+
+    showModal('Pilih Sales Order untuk Invoice', body, footer);
+};
 
 window.cancelInvoice = (id) => {
     if (confirm('Yakin ingin membatalkan invoice ini?')) {
@@ -2737,101 +5656,313 @@ window.viewInvoice = (id) => {
     const totalPaid = invPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
 
     const printableHTML = `
-           <div class="max-w-4xl mx-auto bg-white p-2 sm:p-6 mb-4">
-                <div class="flex justify-between items-start mb-6">
+           <div class="max-w-4xl mx-auto bg-white p-6 shadow-sm rounded-xl border border-gray-100 mb-4">
+                <!-- Header: Premium Look -->
+                <div id="print-internal-header" class="flex justify-between items-start mb-8 pb-6 border-b-2 border-gray-50">
                     <div>
-                        <h2 class="text-3xl font-bold text-gray-800">INVOICE</h2>
-                        <p class="text-gray-500 mt-1">${inv.invoiceNumber}</p>
+                        <div class="bg-blue-600 text-white px-3 py-1 rounded text-[10px] font-black uppercase tracking-widest mb-2 inline-block shadow-sm">Sales Invoice</div>
+                        <h2 class="text-4xl font-black text-slate-800 tracking-tight">${inv.invoiceNumber}</h2>
+                        <p class="text-sm text-slate-400 mt-1 font-medium italic">Referensi SO: <span class="text-blue-600 font-bold">${so ? so.soNumber : '-'}</span></p>
                     </div>
-                    <div class="text-right">
-                        <h1 class="text-xl font-bold text-blue-800">${CONFIG.companyName}</h1>
-                        <p class="text-sm text-gray-500">${CONFIG.companyAddress}</p>
-                        <p class="text-xs text-gray-400">${CONFIG.companyPhone} | ${CONFIG.companyEmail}</p>
+                    <div class="text-right flex flex-col items-end">
+                        ${CONFIG.logo ? `<img src="${CONFIG.logo}" class="h-14 w-auto object-contain mb-3 drop-shadow-sm">` : ''}
+                        <h1 class="text-xl font-black text-slate-900 leading-none">${CONFIG.companyName}</h1>
+                        <p class="text-[10px] text-slate-500 max-w-[220px] leading-relaxed mt-2 uppercase font-bold tracking-tight">${CONFIG.companyAddress}</p>
+                        <div class="flex gap-2 mt-2">
+                            <span class="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">${CONFIG.companyPhone}</span>
+                            <span class="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">${CONFIG.companyEmail}</span>
+                        </div>
                     </div>
                 </div>
                 
-                <div class="grid grid-cols-2 gap-8 mb-8">
-                    <div>
-                        <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Ditagihkan Ke</h3>
-                        <p class="font-medium text-gray-800">${customer ? customer.name : '-'}</p>
-                        ${customer && customer.phone ? `<p class="text-sm text-gray-600">${customer.phone}</p>` : ''}
-                        ${customer && customer.address ? `<p class="text-sm text-gray-600 whitespace-pre-wrap">${customer.address}</p>` : ''}
+                <!-- Info Section -->
+                <div class="grid grid-cols-2 gap-12 mb-10">
+                    <div class="bg-slate-50 p-5 rounded-2xl border border-slate-100 shadow-inner">
+                        <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                            <i class="fas fa-user-tie text-blue-500"></i> DITAGIHKAN KE
+                        </h3>
+                        <p class="text-lg font-black text-slate-800 leading-tight mb-1">${customer ? customer.name : '-'}</p>
+                        <p class="text-sm text-slate-600 font-bold mb-3">${customer?.phone || '-'}</p>
+                        <div class="h-px bg-slate-200 w-12 mb-3"></div>
+                        <p class="text-xs text-slate-500 leading-relaxed font-medium italic">${customer?.address || '-'}</p>
                     </div>
-                    <div class="text-right">
-                        <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Detail Invoice</h3>
-                        <p class="text-gray-800 text-sm mb-1">Tanggal: ${formatDate(inv.createdAt).slice(0, 11)}</p>
-                        <p class="text-gray-800 text-sm mb-1">Ref. SO: ${so ? so.soNumber : '-'}</p>
-                        <p class="text-gray-800 text-sm">Status: <span class="font-medium px-2 py-1 rounded ${inv.status === 'PAID' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">${inv.status}</span></p>
+                    
+                    <div class="flex flex-col justify-between">
+                        <div>
+                             <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center justify-end gap-2 text-right">
+                                DETAIL INVOICE <i class="fas fa-receipt text-orange-500"></i>
+                            </h3>
+                            <div class="space-y-2 text-right">
+                                <p class="text-xs text-slate-500 font-bold uppercase tracking-tighter">Tanggal Penerbitan</p>
+                                <p class="text-sm font-black text-slate-800 mb-2">${formatDate(inv.date).slice(0, 11)}</p>
+                                
+                                <p class="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">Tanggal Jatuh Tempo</p>
+                                <p class="text-sm font-black text-red-600 mb-4">${inv.dueDate ? formatDate(inv.dueDate).slice(0, 11) : '-'}</p>
+
+                                <div class="flex justify-end gap-2">
+                                    <div class="text-right">
+                                        <p class="text-[10px] text-slate-400 font-bold uppercase mb-1">Status Pembayaran</p>
+                                        <span class="inline-block px-4 py-1.5 rounded-full text-xs font-black tracking-widest shadow-sm ${inv.status === 'PAID' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}">${inv.status}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        ${inv.isTax && inv.nsfp ? `
+                        <div class="mt-4 bg-orange-50 border-r-4 border-orange-500 p-3 text-right shadow-sm">
+                             <p class="text-[9px] font-black text-orange-400 uppercase tracking-widest mb-1">Nomor Seri Faktur Pajak (NSFP)</p>
+                             <p class="text-xs font-black text-orange-700 font-mono tracking-tighter">${inv.nsfp}</p>
+                        </div>` : ''}
                     </div>
                 </div>
                 
-                <table class="w-full text-left mb-8 border-collapse">
-                    <thead>
-                        <tr class="border-b-2 border-gray-800 text-gray-800 text-sm">
-                            <th class="py-3 px-2">Produk</th>
-                            <th class="py-3 px-2 text-right">Qty</th>
-                            <th class="py-3 px-2 text-right">Harga Satuan</th>
-                            <th class="py-3 px-2 text-right">Subtotal</th>
-                        </tr>
-                    </thead>
-                    <tbody class="text-gray-700 text-sm">
-                        ${so && so.items ? so.items.map(i => `
-                            <tr class="border-b border-gray-200">
-                                <td class="py-3 px-2">${i.prodText.split(' (')[0]}</td>
-                                <td class="py-3 px-2 text-right">${i.qty}</td>
-                                <td class="py-3 px-2 text-right">${formatCurrency(i.price)}</td>
-                                <td class="py-3 px-2 text-right">${formatCurrency(i.subtotal)}</td>
+                <!-- Items Table -->
+                <div class="overflow-hidden rounded-2xl border border-slate-100 shadow-sm mb-8">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-800 text-white text-[10px] uppercase font-black tracking-widest">
+                                <th class="py-4 px-4">Produk / Layanan</th>
+                                <th class="py-4 px-4 text-center">Colly</th>
+                                <th class="py-4 px-4 text-center">Qty</th>
+                                <th class="py-4 px-4 text-right">Harga Satuan</th>
+                                <th class="py-4 px-4 text-right">Subtotal</th>
                             </tr>
-                        `).join('') : '<tr><td colspan="4" class="py-4 text-center italic text-gray-400">Tidak ada item</td></tr>'}
-                    </tbody>
-                    <tfoot>
-                        <tr>
-                            <td colspan="3" class="py-4 px-2 text-right font-bold text-gray-800">Total Tagihan:</td>
-                            <td class="py-4 px-2 text-right font-bold text-gray-800 border-t-2 border-gray-800">${formatCurrency(inv.totalAmount)}</td>
-                        </tr>
-                        <tr>
-                            <td colspan="3" class="py-2 px-2 text-right font-semibold text-green-600">Total Terbayar:</td>
-                            <td class="py-2 px-2 text-right font-semibold text-green-600">${formatCurrency(totalPaid)}</td>
-                        </tr>
-                        <tr>
-                            <td colspan="3" class="py-2 px-2 text-right font-bold text-red-600 italic">Sisa Tagihan:</td>
-                            <td class="py-2 px-2 text-right font-bold text-red-600 text-lg border-t border-red-200 bg-red-50">${formatCurrency(inv.totalAmount - totalPaid)}</td>
-                        </tr>
-                    </tfoot>
-                </table>
+                        </thead>
+                        <tbody class="text-slate-700 text-sm divide-y divide-slate-50">
+                            ${inv.items ? inv.items.map(i => `
+                                <tr class="hover:bg-slate-50/50 transition-colors text-[11px]">
+                                    <td class="py-3 px-4">
+                                        <div class="font-bold text-slate-800">${i.prodText.split(' (')[0]}</div>
+                                        ${i.kemasan && i.kemasan !== '-' ? `<div class="text-[9px] text-slate-400 italic">Kemasan: ${i.kemasan}</div>` : ''}
+                                    </td>
+                                    <td class="py-3 px-4 text-center font-bold text-blue-600">${i.colly || '-'}</td>
+                                    <td class="py-3 px-4 text-center font-bold text-slate-500">${i.qty}</td>
+                                    <td class="py-3 px-4 text-right font-medium text-slate-600">${formatCurrency(i.price)}</td>
+                                    <td class="py-3 px-4 text-right font-black text-slate-800">${formatCurrency(i.subtotal)}</td>
+                                </tr>
+                            `).join('') : '<tr><td colspan="5" class="py-8 text-center italic text-slate-400 font-medium">Tidak ada item terdaftar</td></tr>'}
+                        </tbody>
+                        <tfoot class="bg-slate-50/80">
+                            <!-- Raw Subtotal (Items) -->
+                            <tr class="border-t-2 border-slate-200">
+                                <td colspan="4" class="py-3 px-4 text-right text-[10px] font-black uppercase tracking-wider text-slate-400">Subtotal:</td>
+                                <td class="py-3 px-4 text-right font-bold text-slate-700">${formatCurrency((inv.totalAmount - (inv.taxAmount || 0)) + (inv.discountAmount || 0))}</td>
+                            </tr>
+                            
+                            <!-- Discount -->
+                            ${inv.discountAmount > 0 ? `
+                            <tr class="text-green-600">
+                                <td colspan="4" class="py-2 px-4 text-right text-[10px] font-black uppercase tracking-wider italic">${inv.discountDescription || 'Discount'}:</td>
+                                <td class="py-2 px-4 text-right font-bold">- ${formatCurrency(inv.discountAmount)}</td>
+                            </tr>
+                            ` : ''}
+
+                            <!-- DPP -->
+                            ${(inv.taxAmount > 0 || inv.discountAmount > 0) ? `
+                            <tr class="bg-slate-100/50">
+                                <td colspan="4" class="py-2 px-4 text-right text-[10px] font-black uppercase tracking-wider text-slate-500">DPP (Tax Base):</td>
+                                <td class="py-2 px-4 text-right font-black text-slate-800">${formatCurrency(inv.totalAmount - (inv.taxAmount || 0))}</td>
+                            </tr>
+                            ` : ''}
+
+                            <!-- Tax -->
+                            ${inv.taxAmount > 0 ? `
+                            <tr class="text-orange-600">
+                                <td colspan="4" class="py-2 px-4 text-right text-[10px] font-black uppercase tracking-wider">PPN (${inv.taxRate || 11}%):</td>
+                                <td class="py-2 px-4 text-right font-bold">${formatCurrency(inv.taxAmount)}</td>
+                            </tr>
+                            ` : ''}
+
+                            <!-- Grand Total -->
+                             <tr class="bg-slate-900 text-white shadow-xl">
+                                <td colspan="4" class="py-5 px-4 text-right text-sm font-black uppercase tracking-[0.2em] italic">Grand Total:</td>
+                                <td class="py-5 px-4 text-right font-black text-2xl">${formatCurrency(inv.totalAmount)}</td>
+                            </tr>
+                            
+                            <!-- Payments info if any -->
+                            ${totalPaid > 0 ? `
+                            <tr class="bg-green-600 text-white">
+                                <td colspan="4" class="py-3 px-4 text-right text-[10px] font-black uppercase tracking-wider">Total Terbayar:</td>
+                                <td class="py-3 px-4 text-right font-black border-t border-green-500">${formatCurrency(totalPaid)}</td>
+                            </tr>
+                            <tr class="bg-red-600 text-white">
+                                <td colspan="3" class="py-4 px-4 text-right text-xs font-black uppercase tracking-widest">Sisa / Balance:</td>
+                                <td class="py-4 px-4 text-right font-black text-xl shadow-lg">${formatCurrency(inv.totalAmount - totalPaid)}</td>
+                            </tr>
+                            ` : ''}
+                        </tfoot>
+                    </table>
+                </div>
 
                 ${invPayments.length > 0 ? `
-                <div class="mt-8">
-                    <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2 border-b pb-1">Riwayat Pembayaran</h3>
+                <div class="mt-12 bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
+                    <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center justify-between">
+                        <span>Riwayat Pembayaran</span>
+                        <span class="h-0.5 bg-slate-100 flex-1 ml-4 rounded-full"></span>
+                    </h3>
                     <table class="w-full text-left text-sm">
                         <thead>
-                            <tr class="text-gray-600 border-b">
+                            <tr class="text-slate-400 text-[10px] uppercase font-black tracking-widest border-b pb-2">
                                 <th class="py-2">Tanggal</th>
                                 <th class="py-2">Metode</th>
                                 <th class="py-2 text-right">Jumlah</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody class="divide-y divide-slate-50">
                             ${invPayments.map(p => `
-                                <tr class="border-b border-gray-100">
-                                    <td class="py-2">${formatDate(p.date).slice(0, 11)}</td>
-                                    <td class="py-2">${p.method}</td>
-                                    <td class="py-2 text-right font-medium text-green-600">${formatCurrency(p.amount)}</td>
+                                <tr class="hover:bg-slate-50 transition-colors">
+                                    <td class="py-3 text-slate-500 font-bold">${formatDate(p.date).slice(0, 11)}</td>
+                                    <td class="py-3"><span class="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[10px] font-black uppercase">${p.method}</span></td>
+                                    <td class="py-3 text-right font-black text-green-600 tracking-tighter">${formatCurrency(p.amount)}</td>
                                 </tr>
                             `).join('')}
                         </tbody>
                     </table>
                 </div>
                 ` : ''}
+                
+                <div class="mt-12 border-t-2 border-dashed border-slate-100 pt-6 text-center">
+                    <p class="text-[10px] text-slate-400 font-black uppercase tracking-[0.3em]">Thank you for your business!</p>
+                </div>
            </div>
         `;
 
+    const message = `Halo ${customer?.name || 'Customer'},\n\nBerikut adalah tagihan untuk Invoice ${inv.invoiceNumber} senilai *${formatCurrency(inv.totalAmount)}*.\n\nMohon untuk segera melakukan pembayaran sesuai dengan kesepakatan.\n\nTerima kasih,\n${CONFIG.companyName}`;
+    const waLink = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    const emailLink = `mailto:${customer?.email || ''}?subject=Sales%20Invoice%20${inv.invoiceNumber}&body=${encodeURIComponent(message)}`;
+
     const footer = `
-            <button onclick='printHTML(\`${printableHTML.replace(/`/g, "\\`").replace(/\n/g, "")}\`, "Invoice ${inv.invoiceNumber}")' class="w-full sm:w-auto inline-flex justify-center items-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-purple-600 text-white font-medium hover:bg-purple-700 sm:text-sm mr-0 mb-3 sm:mb-0 sm:mr-3 transition-colors"> <i class="fas fa-file-pdf mr-2"></i> Print / Save PDF</button>
-            <button onclick="closeModal()" class="w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-gray-700 font-medium hover:bg-gray-50 transition-colors sm:text-sm"> Tutup</button>
-        `;
+        <div class="flex flex-wrap gap-3 w-full sm:w-auto justify-end items-center mt-2 px-4 py-2 bg-slate-50 rounded-xl border border-slate-100">
+            ${inv.isTax ? `<button onclick="printFakturPajak('${inv.id}')" class="group relative flex items-center px-5 py-2.5 bg-orange-600 text-white rounded-lg text-xs font-black hover:bg-orange-700 transition-all shadow-md hover:shadow-orange-200 active:scale-95"><i class="fas fa-receipt mr-2 group-hover:rotate-12 transition-transform"></i> TAX INVOICE</button>` : ''}
+            <a href="${emailLink}" target="_blank" class="flex items-center px-5 py-2.5 bg-slate-800 text-white rounded-lg text-xs font-black hover:bg-slate-900 transition-all shadow-md active:scale-95"><i class="fas fa-envelope mr-2"></i> EMAIL</a>
+            <a href="${waLink}" target="_blank" class="flex items-center px-5 py-2.5 bg-green-600 text-white rounded-lg text-xs font-black hover:bg-green-700 transition-all shadow-md hover:shadow-green-200 active:scale-95"><i class="fab fa-whatsapp mr-2 text-base"></i> WHATSAPP</a>
+            <button onclick='printHTML(\`${printableHTML.replace(/`/g, "\\`").replace(/\n/g, "")}\`, "Invoice ${inv.invoiceNumber}")' class="group flex items-center px-5 py-2.5 bg-blue-600 text-white rounded-lg text-xs font-black hover:bg-blue-700 transition-all shadow-md hover:shadow-blue-200 active:scale-95"><i class="fas fa-file-pdf mr-2 group-hover:-translate-y-0.5 transition-transform"></i> SAVE AS PDF</button>
+            <div class="h-6 w-px bg-slate-300 mx-1 hidden sm:block"></div>
+            <button onclick="closeModal()" class="px-6 py-2.5 border-2 border-slate-200 bg-white text-slate-400 rounded-lg text-xs font-black hover:bg-slate-50 hover:text-slate-600 hover:border-slate-300 transition-all active:scale-95">TUTUP</button>
+        </div>
+    `;
 
     showModal(`Detail Invoice ${inv.invoiceNumber}`, printableHTML, footer);
+};
+
+window.printFakturPajak = (invoiceId) => {
+    const inv = db.findById('salesInvoices', invoiceId);
+    if (!inv) return;
+    const so = db.findById('salesOrders', inv.salesOrderId);
+    const customer = db.findById('customers', inv.customerId);
+
+    const baseSubtotal = inv.items.reduce((s, i) => s + i.subtotal, 0);
+    const dpp = Math.max(0, baseSubtotal - (inv.discountAmount || 0));
+    
+    // Construct items rows
+    const itemRows = inv.items.map((item, idx) => `
+        <tr>
+            <td style="border: 1px solid #000; padding: 5px; text-align: center;">${idx + 1}</td>
+            <td style="border: 1px solid #000; padding: 5px;">${item.prodText.split(' (')[0]}</td>
+            <td style="border: 1px solid #000; padding: 5px; text-align: right;">${formatCurrency(item.price)}</td>
+            <td style="border: 1px solid #000; padding: 5px; text-align: center;">${item.qty}</td>
+            <td style="border: 1px solid #000; padding: 5px; text-align: right;">${formatCurrency(item.subtotal)}</td>
+        </tr>
+    `).join('');
+
+    const htmlFaktur = `
+        <div style="font-family: Arial, sans-serif; font-size: 12px; width: 800px; margin: 0 auto;">
+            <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px;">
+                <h1 style="font-size: 20px; font-weight: bold; margin: 0;">FAKTUR PAJAK</h1>
+            </div>
+            
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px; border: 1px solid #000;">
+                <tr>
+                    <td style="padding: 5px; width: 150px; font-weight: bold; border-bottom: 1px solid #000;">Kode dan Nomor Seri</td>
+                    <td style="padding: 5px; border-bottom: 1px solid #000;">: <span style="font-size: 16px; font-weight: bold;">${inv.nsfp || '-'}</span></td>
+                </tr>
+            </table>
+
+            <table style="width: 100%; border-collapse: collapse; border: 1px solid #000;">
+                <!-- Pengusaha Kena Pajak (Penjual) -->
+                <tr>
+                    <td colspan="2" style="padding: 5px; font-weight: bold; border-bottom: 1px solid #000; background-color: #f3f4f6;">Pengusaha Kena Pajak</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px; width: 150px;">
+                        ${CONFIG.logo ? `<img src="${CONFIG.logo}" style="height: 50px; width: auto; object-fit: contain;">` : ''}
+                    </td>
+                    <td style="padding: 5px;">
+                        <div style="font-weight: bold; font-size: 14px;">${CONFIG.companyName}</div>
+                        <div>${CONFIG.companyAddress}</div>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px; border-bottom: 1px solid #000;">NPWP</td>
+                    <td style="padding: 5px; border-bottom: 1px solid #000;">: -</td>
+                </tr>
+
+                <!-- Pembeli Barang Kena Pajak / Penerima Jasa -->
+                <tr>
+                    <td colspan="2" style="padding: 5px; font-weight: bold; border-bottom: 1px solid #000; background-color: #f3f4f6;">Pembeli Barang Kena Pajak / Penerima Jasa Kena Pajak</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px;">Nama</td>
+                    <td style="padding: 5px;">: ${customer ? customer.name : '-'}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px;">Alamat</td>
+                    <td style="padding: 5px;">: ${customer && customer.address ? customer.address : '-'}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 5px; border-bottom: 1px solid #000;">NPWP/NIK</td>
+                    <td style="padding: 5px; border-bottom: 1px solid #000;">: -</td>
+                </tr>
+            </table>
+
+            <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; border-top: 0;">
+                <thead>
+                    <tr style="background-color: #f3f4f6;">
+                        <th style="border: 1px solid #000; padding: 5px; width: 40px; text-align: center;">No.</th>
+                        <th style="border: 1px solid #000; padding: 5px; text-align: left;">Nama Barang / Jasa Kena Pajak</th>
+                        <th style="border: 1px solid #000; padding: 5px; text-align: right; width: 100px;">Harga Satuan</th>
+                        <th style="border: 1px solid #000; padding: 5px; text-align: center; width: 60px;">Jumlah</th>
+                        <th style="border: 1px solid #000; padding: 5px; text-align: right; width: 140px;">Harga Jual / Penggantian (Rp)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${itemRows}
+                </tbody>
+            </table>
+
+            <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; border-top: 0;">
+                <tr>
+                    <td style="border: 1px solid #000; padding: 5px; text-align: left;" colspan="4">Harga Jual / Penggantian</td>
+                    <td style="border: 1px solid #000; padding: 5px; text-align: right; width: 140px; font-weight: bold;">${formatCurrency(baseSubtotal)}</td>
+                </tr>
+                <tr>
+                    <td style="border: 1px solid #000; padding: 5px; text-align: left;" colspan="4">Dikurangi Potongan Harga / Diskon</td>
+                    <td style="border: 1px solid #000; padding: 5px; text-align: right; width: 140px;">${formatCurrency(inv.discountAmount || 0)}</td>
+                </tr>
+                <tr>
+                    <td style="border: 1px solid #000; padding: 5px; text-align: left;" colspan="4">Dikurangi Uang Muka yang telah diterima</td>
+                    <td style="border: 1px solid #000; padding: 5px; text-align: right; width: 140px;">Rp 0,00</td>
+                </tr>
+                <tr>
+                    <td style="border: 1px solid #000; padding: 5px; text-align: left; font-weight: bold;" colspan="4">Dasar Pengenaan Pajak (DPP)</td>
+                    <td style="border: 1px solid #000; padding: 5px; text-align: right; width: 140px; font-weight: bold;">${formatCurrency(dpp)}</td>
+                </tr>
+                <tr>
+                    <td style="border: 1px solid #000; padding: 5px; text-align: left; font-weight: bold;" colspan="4">PPN = ${inv.taxRate || 0}% x Dasar Pengenaan Pajak</td>
+                    <td style="border: 1px solid #000; padding: 5px; text-align: right; width: 140px; font-weight: bold;">${formatCurrency(inv.taxAmount || 0)}</td>
+                </tr>
+            </table>
+            
+            <div style="margin-top: 40px; text-align: right;">
+                <p style="margin: 0; margin-bottom: 60px;">Jakarta, ${formatDate(inv.createdAt).slice(0, 11)}</p>
+                <div style="display: inline-block; border-bottom: 1px solid #000; width: 200px; text-align: center;">
+                    <strong>[ ${CONFIG.companyName} ]</strong>
+                </div>
+                <p style="margin: 5px 0 0 0; text-align: center; width: 200px; display: inline-block;">Pejabat Berwenang</p>
+            </div>
+        </div>
+    `;
+
+    printHTML(htmlFaktur, `Faktur_Pajak_${inv.invoiceNumber.replace(/\//g, '_')}`);
 };
 
 // To be implemented soon in Payments module
@@ -2842,7 +5973,7 @@ window.openPaymentModal = (invoiceId) => {
 
 // --- Sales Payments Module ---
 function renderSalesPayments(prefillInvoiceId = null) {
-    document.getElementById('pageTitle').innerText = 'Sales Payments';
+    document.getElementById('pageTitle').innerText = 'Sales Payment';
     const mainContent = document.getElementById('main-content');
 
     const payments = db.read('payments').sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -2850,6 +5981,12 @@ function renderSalesPayments(prefillInvoiceId = null) {
     const customers = db.read('customers');
 
     let filteredPayments = payments;
+
+    // Apply Date Filter
+    if (!prefillInvoiceId) {
+        filteredPayments = filterByDateRange(payments, 'salesPayments');
+    }
+
     let recapBannerHtml = '';
 
     if (prefillInvoiceId) {
@@ -2864,26 +6001,26 @@ function renderSalesPayments(prefillInvoiceId = null) {
             filteredPayments = invPayments;
 
             recapBannerHtml = `
-                <div class="mb-6 bg-purple-50 border border-purple-100 rounded-lg p-4 sm:p-6 shadow-sm">
+                <div class="mb-6 bg-blue-50 border border-blue-100 rounded-lg p-4 sm:p-6 shadow-sm">
                     <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
                         <div>
-                            <h3 class="text-purple-800 font-bold text-lg">Rekap Pembayaran: ${inv.invoiceNumber}</h3>
-                            <p class="text-purple-600 text-sm">Customer: <span class="font-semibold">${customer.name}</span></p>
+                            <h3 class="text-blue-800 font-bold text-lg">Rekap Pembayaran: ${inv.invoiceNumber}</h3>
+                            <p class="text-blue-600 text-sm">Customer: <span class="font-semibold">${customer.name}</span></p>
                         </div>
-                        <button onclick="renderSalesPayments(null)" class="mt-2 sm:mt-0 text-purple-700 hover:text-purple-900 text-sm font-medium underline">
+                        <button onclick="renderSalesPayments(null)" class="mt-2 sm:mt-0 text-blue-700 hover:text-blue-900 text-sm font-medium underline">
                             <i class="fas fa-list mr-1"></i>Tampilkan Semua Data
                         </button>
                     </div>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                        <div class="bg-white p-3 rounded border border-purple-100">
+                        <div class="bg-white p-3 rounded border border-blue-100">
                             <p class="text-gray-500 text-xs uppercase font-semibold">Total Tagihan</p>
                             <p class="text-gray-800 font-bold text-lg">${formatCurrency(inv.totalAmount)}</p>
                         </div>
-                        <div class="bg-white p-3 rounded border border-purple-100">
+                        <div class="bg-white p-3 rounded border border-blue-100">
                             <p class="text-gray-500 text-xs uppercase font-semibold">Total Terbayar</p>
                             <p class="text-green-600 font-bold text-lg">${formatCurrency(totalPaid)}</p>
                         </div>
-                        <div class="bg-white p-3 rounded border border-purple-100">
+                        <div class="bg-white p-3 rounded border border-blue-100">
                             <p class="text-gray-500 text-xs uppercase font-semibold">Sisa Tagihan</p>
                             <p class="text-red-600 font-bold text-lg">${formatCurrency(balance)}</p>
                         </div>
@@ -2901,9 +6038,12 @@ function renderSalesPayments(prefillInvoiceId = null) {
             <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                 <td class="py-3 px-4 text-sm font-medium text-gray-800">${p.paymentNumber}</td>
                 <td class="py-3 px-4 text-sm text-gray-800">${formatDate(p.date).slice(0, 11)}</td>
-                <td class="py-3 px-4 text-sm text-purple-600">${inv.invoiceNumber}</td>
+                <td class="py-3 px-4 text-sm text-blue-600">${inv.invoiceNumber}</td>
                 <td class="py-3 px-4 text-sm text-gray-800">${customer.name}</td>
                 <td class="py-3 px-4 text-sm text-gray-800">${p.method}</td>
+                <td class="py-3 px-4 text-sm">
+                    ${p.proofReference ? `<span class="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-[10px] font-bold"><i class="fas fa-paperclip mr-1"></i>${p.proofReference}</span>` : '<span class="text-gray-400 italic text-[10px]">No Proof</span>'}
+                </td>
                 <td class="py-3 px-4 text-sm text-green-600 font-bold text-right">${formatCurrency(p.amount)}</td>
             </tr>
         `;
@@ -2911,14 +6051,41 @@ function renderSalesPayments(prefillInvoiceId = null) {
 
     if (filteredPayments.length === 0) rows = `<tr><td colspan="6" class="py-4 text-center text-gray-500">Belum ada data pembayaran ${prefillInvoiceId ? 'untuk invoice ini' : ''}</td></tr>`;
 
+    let filterHtml = '';
+    if (!prefillInvoiceId) {
+        filterHtml = `
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-5">
+            <h2 class="text-lg font-semibold text-gray-800 mb-4">Sales Payment Report</h2>
+            <div class="flex flex-wrap gap-4 items-end">
+                <div class="flex-1 min-w-[150px]">
+                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Dari Tanggal</label>
+                    <input type="date" id="sales_pay_start_date" value="${window.currentFilters.salesPayments.start}" 
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 transition-all">
+                </div>
+                <div class="flex-1 min-w-[150px]">
+                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Sampai Tanggal</label>
+                    <input type="date" id="sales_pay_end_date" value="${window.currentFilters.salesPayments.end}" 
+                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 transition-all">
+                </div>
+                <button onclick="applySalesPayFilter()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-sm whitespace-nowrap h-[38px]">
+                    <i class="fas fa-search"></i> Tampilkan Laporan
+                </button>
+                <button onclick="resetSalesPayFilter()" class="bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm h-[38px]" title="Reset">
+                    <i class="fas fa-undo"></i>
+                </button>
+            </div>
+        </div>`;
+    }
+
     mainContent.innerHTML = `
         ${recapBannerHtml}
+        ${filterHtml}
         <div class="bg-white rounded-lg shadow-sm border border-gray-100">
-            <div class="flex justify-between items-center p-4 sm:p-6 border-b border-gray-100">
-                <h2 class="text-lg font-semibold text-gray-800">Riwayat Pembayaran</h2>
-                <button onclick="openNewPaymentModal()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md transition-colors text-sm font-medium">
-                    <i class="fas fa-plus mr-2"></i>Terima Pembayaran
-                </button>
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 sm:p-6 border-b border-gray-100 gap-4">
+                <div>
+                    <h2 class="text-lg font-semibold text-gray-800">Sales Payment History</h2>
+                    <p class="text-xs text-gray-500 mt-1">Total: ${filteredPayments.length} transaksi</p>
+                </div>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
@@ -2929,6 +6096,7 @@ function renderSalesPayments(prefillInvoiceId = null) {
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">No. Invoice</th>
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Customer</th>
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Metode</th>
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Bukti TF</th>
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">Jumlah</th>
                         </tr>
                     </thead>
@@ -2995,6 +6163,14 @@ window.openNewPaymentModal = () => {
                     <label class="block text-sm font-medium text-gray-700 mb-1">Jumlah Bayar</label>
                     <input type="number" id="pay_amount" placeholder="0" min="1" class="w-full border border-gray-300 rounded px-3 py-2 text-lg font-bold">
                 </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Bukti Pembayaran (Nama File / Reference)</label>
+                    <input type="text" id="pay_proof" placeholder="Misal: transfer_bca_1103.jpg" class="w-full border border-gray-300 rounded px-3 py-2 text-sm italic">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Catatan</label>
+                    <textarea id="pay_notes" placeholder="Catatan tambahan..." rows="2" class="w-full border border-gray-300 rounded px-3 py-2 text-sm"></textarea>
+                </div>
             </div>
         `;
 
@@ -3023,6 +6199,8 @@ window.saveNewPayment = () => {
     const method = document.getElementById('pay_method').value;
     const inputAmount = parseFloat(document.getElementById('pay_amount').value);
     const dateInput = document.getElementById('pay_date').value;
+    const proofRef = document.getElementById('pay_proof').value.trim();
+    const notes = document.getElementById('pay_notes').value.trim();
 
     if (!invoiceId) { showToast('Pilih invoice terlebih dahulu', 'error'); return; }
     if (!inputAmount || inputAmount <= 0) { showToast('Jumlah bayar tidak valid', 'error'); return; }
@@ -3041,13 +6219,31 @@ window.saveNewPayment = () => {
     }
 
     // Save Payment
-    db.insert('payments', {
+    const payment = db.insert('payments', {
         paymentNumber: 'PAY-' + Date.now().toString().slice(-6),
         invoiceId: inv.id,
         date: dateInput ? new Date(dateInput).toISOString() : new Date().toISOString(),
         method: method,
-        amount: inputAmount
+        amount: inputAmount,
+        proofReference: proofRef,
+        notes: notes
     });
+
+    // Otomatis buat Jurnal: Debit Kas/Bank, Kredit Piutang
+    if (typeof db.addJournalEntry === 'function') {
+        let debitAccount = '11110'; // Default: Kas
+        if (method === 'Transfer Bank') debitAccount = '11110'; // Default: Bank BCA (as seeded)
+
+        db.addJournalEntry({
+            date: payment.date,
+            description: `Pelunasan Invoice ${inv.invoiceNumber} (${method}) ${proofRef ? '- Proof: ' + proofRef : ''}`,
+            reference: payment.paymentNumber,
+            items: [
+                { accountId: method === 'Transfer Bank' ? 'acc_bank' : 'acc_cash', debit: inputAmount, credit: 0 },
+                { accountId: 'acc_ar', debit: 0, credit: inputAmount } // Piutang Usaha
+            ]
+        });
+    }
 
     // Check if fully paid
     const newTotalPaid = totalPaid + inputAmount;
@@ -3069,7 +6265,7 @@ window.saveNewPayment = () => {
 
 // --- Sales Reports Module ---
 function renderSalesReports() {
-    document.getElementById('pageTitle').innerText = 'Sales Reports';
+    document.getElementById('pageTitle').innerText = 'Sales Report';
     const mainContent = document.getElementById('main-content');
 
     // Default date range: current month
@@ -3091,6 +6287,65 @@ function renderSalesReports() {
                         <label class="block text-xs font-medium text-gray-500 mb-1">Sampai Tanggal</label>
                         <input type="date" id="report_to" value="${lastDay}" class="border border-gray-300 rounded px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
                     </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">Filter Wilayah (Opsional)</label>
+                        <select id="report_region" class="border border-gray-300 rounded px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-[150px]">
+                            <option value="">-- Semua Wilayah --</option>
+                            ${(() => {
+                                const regions = [...new Set(db.read('customers').map(c => c.region).filter(Boolean))].sort();
+                                return regions.map(r => `<option value="${r}">${r}</option>`).join('');
+                            })()}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">Filter Customer (Opsional)</label>
+                        <select id="report_customer_id" class="border border-gray-300 rounded px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-[200px]">
+                            <option value="">-- Semua Customer --</option>
+                            ${db.read('customers').map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">Filter Produk (Opsional)</label>
+                        <select id="report_product_id" class="border border-gray-300 rounded px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-[200px]">
+                            <option value="">-- Semua Produk --</option>
+                            ${(() => {
+                                const invItems = db.read('inventoryItems').filter(i => i.category === 'FINISHED_GOODS');
+                                const fromInv = invItems.map(i => ({ id: i.id, name: i.itemName }));
+                                
+                                // Also scan Sales Orders for ad-hoc products not in inventory
+                                const soldItems = [];
+                                db.read('salesOrders').forEach(so => {
+                                    (so.items || []).forEach(item => {
+                                        const actualId = item.inventoryItemId || item.productId;
+                                        const actualName = item.prodText || item.itemName;
+                                        if (actualId && !fromInv.some(fi => fi.id === actualId)) {
+                                            if (!soldItems.some(si => si.id === actualId)) {
+                                                soldItems.push({ id: actualId, name: actualName });
+                                            }
+                                        } else if (!actualId && actualName) {
+                                            if (!soldItems.some(si => si.name === actualName)) {
+                                                soldItems.push({ id: actualName, name: actualName });
+                                            }
+                                        }
+                                    });
+                                });
+                                
+                                const combined = [...fromInv, ...soldItems].sort((a, b) => a.name.localeCompare(b.name));
+                                
+                                // Deduplicate by name
+                                const unique = [];
+                                const seenNames = new Set();
+                                combined.forEach(p => {
+                                    if (!seenNames.has(p.name)) {
+                                        seenNames.add(p.name);
+                                        unique.push(p);
+                                    }
+                                });
+
+                                return unique.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+                            })()}
+                        </select>
+                    </div>
                     <button onclick="runSalesReport()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">
                         <i class="fas fa-search mr-2"></i>Tampilkan Laporan
                     </button>
@@ -3108,18 +6363,46 @@ function renderSalesReports() {
 window.runSalesReport = () => {
     const fromStr = document.getElementById('report_from').value;
     const toStr = document.getElementById('report_to').value;
+    const filterProdId = document.getElementById('report_product_id').value;
+    const filterCustId = document.getElementById('report_customer_id').value;
+    const filterRegion = document.getElementById('report_region').value;
     if (!fromStr || !toStr) { showToast('Isi tanggal dari dan sampai', 'error'); return; }
 
     const from = new Date(fromStr); from.setHours(0, 0, 0, 0);
     const to = new Date(toStr); to.setHours(23, 59, 59, 999);
 
-    const sos = db.read('salesOrders').filter(so => {
+    let sos = db.read('salesOrders').filter(so => {
         const d = new Date(so.date);
         return d >= from && d <= to;
     });
 
     const customers = db.read('customers');
+
+    // Sub-filter by Region
+    if (filterRegion) {
+        sos = sos.filter(so => {
+            const cust = customers.find(c => c.id === so.customerId);
+            return cust && cust.region === filterRegion;
+        });
+    }
+
+    // Sub-filter by Customer
+    if (filterCustId) {
+        sos = sos.filter(so => so.customerId === filterCustId);
+    }
+
+    // Sub-filter by Product
+    if (filterProdId) {
+        sos = sos.filter(so => (so.items || []).some(item => 
+            item.inventoryItemId === filterProdId || 
+            item.productId === filterProdId || 
+            item.prodText === filterProdId ||
+            item.itemName === filterProdId
+        ));
+    }
+
     const invoices = db.read('salesInvoices');
+    const selectedCust = filterCustId ? customers.find(c => c.id === filterCustId) : null;
 
     // Summary stats
     const totalOrders = sos.length;
@@ -3144,21 +6427,23 @@ window.runSalesReport = () => {
         let statusBadge = `<span class="px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-600">${so.status}</span>`;
         if (so.status === 'CONFIRMED') statusBadge = `<span class="px-2 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-700">CONFIRMED</span>`;
         if (so.status === 'DELIVERED') statusBadge = `<span class="px-2 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-700">DELIVERED</span>`;
-        const hasInv = invoices.find(i => i.salesOrderId === so.id);
+        
+        const inv = invoices.find(i => i.salesOrderId === so.id);
+        const invLink = inv ? `<a href="#" onclick="viewInvoice('${inv.id}'); return false;" class="text-blue-600 font-bold hover:underline">${inv.invoiceNumber}</a>` : '<span class="text-gray-400">-</span>';
+        
         return `<tr class="border-b border-gray-100 hover:bg-gray-50 text-sm">
-            <td class="py-2 px-4 font-medium text-blue-600">${so.soNumber}</td>
+            <td class="py-2 px-4 font-medium">${invLink}</td>
             <td class="py-2 px-4 text-gray-600">${formatDate(so.date).slice(0, 11)}</td>
             <td class="py-2 px-4 text-gray-800">${cust.name}</td>
             <td class="py-2 px-4 text-right font-medium text-gray-800">${formatCurrency(so.totalAmount)}</td>
             <td class="py-2 px-4 text-center">${statusBadge}</td>
-            <td class="py-2 px-4 text-center">${hasInv ? '<span class="text-green-600 text-xs font-medium">✓ Invoice</span>' : '<span class="text-gray-400 text-xs">-</span>'}</td>
         </tr>`;
-    }).join('') || `<tr><td colspan="6" class="py-6 text-center text-gray-500 text-sm">Tidak ada order dalam rentang tanggal ini.</td></tr>`;
+    }).join('') || `<tr><td colspan="5" class="py-6 text-center text-gray-500 text-sm">Tidak ada order dalam rentang tanggal ini.</td></tr>`;
 
     const topProdRows = topProducts.map((p, idx) => `
         <tr class="border-b border-gray-100 hover:bg-gray-50 text-sm">
             <td class="py-2 px-4">
-                <span class="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold mr-2 ${idx === 0 ? 'bg-yellow-100 text-yellow-700' : idx === 1 ? 'bg-gray-200 text-gray-600' : idx === 2 ? 'bg-orange-100 text-orange-700' : 'bg-blue-50 text-blue-600'}">${idx + 1}</span>
+                <span class="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold mr-2 ${idx === 0 ? 'bg-yellow-100 text-yellow-700' : idx === 1 ? 'bg-gray-200 text-gray-600' : idx === 2 ? 'bg-orange-100 text-orange-700' : 'bg-indigo-50 text-blue-600'}">${idx + 1}</span>
                 ${p.name}
             </td>
             <td class="py-2 px-4 text-right font-bold text-blue-700">${p.qty.toLocaleString('id-ID')} ${p.unit}</td>
@@ -3167,12 +6452,29 @@ window.runSalesReport = () => {
     `).join('') || `<tr><td colspan="3" class="py-6 text-center text-gray-500 text-sm">Tidak ada data produk.</td></tr>`;
 
     document.getElementById('sales_report_output').innerHTML = `
+        ${selectedCust ? `
+        <div class="bg-indigo-50 border border-indigo-100 rounded-xl p-4 mb-6 flex items-center gap-4">
+            <div class="bg-indigo-600 text-white w-12 h-12 rounded-full flex items-center justify-center text-xl shadow-md">
+                <i class="fas fa-user-tie"></i>
+            </div>
+            <div>
+                <h4 class="text-lg font-bold text-indigo-900">${selectedCust.name}</h4>
+                <p class="text-sm text-indigo-700">${selectedCust.contactPerson ? `PIC: ${selectedCust.contactPerson} | ` : ''}${selectedCust.phone || 'No Phone'}</p>
+            </div>
+            <div class="ml-auto">
+                <button onclick="viewCustomerHistory('${selectedCust.id}')" class="bg-white text-indigo-600 border border-indigo-200 px-4 py-2 rounded-lg text-sm font-bold hover:bg-indigo-600 hover:text-white transition-all shadow-sm">
+                    <i class="fas fa-history mr-2"></i>Full History
+                </button>
+            </div>
+        </div>
+        ` : ''}
+
         <!-- Summary Cards -->
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
             <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex items-center gap-4">
                 <div class="rounded-full bg-blue-100 p-3"><i class="fas fa-shopping-cart text-blue-600 text-lg"></i></div>
                 <div>
-                    <p class="text-xs text-gray-500 font-medium">Total Order Masuk</p>
+                    <p class="text-xs text-gray-500 font-medium">${filterCustId ? 'Order Customer' : 'Total Order Masuk'}</p>
                     <p class="text-2xl font-bold text-gray-800">${totalOrders}</p>
                     <p class="text-xs text-gray-400">${confirmedOrders} dikonfirmasi/dikirim</p>
                 </div>
@@ -3180,17 +6482,17 @@ window.runSalesReport = () => {
             <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex items-center gap-4">
                 <div class="rounded-full bg-green-100 p-3"><i class="fas fa-chart-line text-green-600 text-lg"></i></div>
                 <div>
-                    <p class="text-xs text-gray-500 font-medium">Total Omzet</p>
+                    <p class="text-xs text-gray-500 font-medium">${filterCustId ? 'Nilai Transaksi' : 'Total Omzet'}</p>
                     <p class="text-2xl font-bold text-gray-800">${formatCurrency(totalRevenue)}</p>
                     <p class="text-xs text-gray-400">dari ${fromStr} s/d ${toStr}</p>
                 </div>
             </div>
             <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex items-center gap-4">
-                <div class="rounded-full bg-purple-100 p-3"><i class="fas fa-box text-purple-600 text-lg"></i></div>
+                <div class="rounded-full ${filterProdId ? 'bg-orange-100' : 'bg-purple-100'} p-3"><i class="fas fa-box ${filterProdId ? 'text-orange-600' : 'text-purple-600'} text-lg"></i></div>
                 <div>
-                    <p class="text-xs text-gray-500 font-medium">Jenis Produk Terjual</p>
-                    <p class="text-2xl font-bold text-gray-800">${Object.keys(prodMap).length}</p>
-                    <p class="text-xs text-gray-400">produk berbeda</p>
+                    <p class="text-xs text-gray-500 font-medium">${filterProdId ? 'Total Qty Terjual' : 'Jenis Produk Terjual'}</p>
+                    <p class="text-2xl font-bold text-gray-800">${filterProdId ? (prodMap[Object.keys(prodMap)[0]]?.qty || 0).toLocaleString('id-ID') : Object.keys(prodMap).length}</p>
+                    <p class="text-xs text-gray-400">${filterProdId ? (prodMap[Object.keys(prodMap)[0]]?.unit || '') : 'produk berbeda'}</p>
                 </div>
             </div>
         </div>
@@ -3199,7 +6501,7 @@ window.runSalesReport = () => {
             <!-- Top Products -->
             <div class="bg-white rounded-xl shadow-sm border border-gray-100">
                 <div class="p-5 border-b border-gray-100">
-                    <h3 class="text-base font-semibold text-gray-800"><i class="fas fa-trophy mr-2 text-yellow-500"></i>Produk Terlaris</h3>
+                    <h3 class="text-base font-semibold text-gray-800"><i class="fas fa-trophy mr-2 text-yellow-500"></i>Produk Terlaris ${filterCustId ? 'oleh Customer' : ''}</h3>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full">
@@ -3218,18 +6520,17 @@ window.runSalesReport = () => {
             <!-- Order List -->
             <div class="bg-white rounded-xl shadow-sm border border-gray-100">
                 <div class="p-5 border-b border-gray-100">
-                    <h3 class="text-base font-semibold text-gray-800"><i class="fas fa-list-alt mr-2 text-blue-500"></i>Daftar Pesanan</h3>
+                    <h3 class="text-base font-semibold text-gray-800"><i class="fas fa-list-alt mr-2 text-blue-500"></i>Daftar Pesanan ${filterCustId ? 'Customer' : ''}</h3>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full">
                         <thead>
                             <tr class="bg-gray-50 text-xs uppercase tracking-wider text-gray-500 border-b border-gray-200">
-                                <th class="py-3 px-4 text-left">No. SO</th>
+                                <th class="py-3 px-4 text-left">No. INV</th>
                                 <th class="py-3 px-4 text-left">Tanggal</th>
                                 <th class="py-3 px-4 text-left">Customer</th>
                                 <th class="py-3 px-4 text-right">Total</th>
                                 <th class="py-3 px-4 text-center">Status</th>
-                                <th class="py-3 px-4 text-center">Invoice</th>
                             </tr>
                         </thead>
                         <tbody>${orderRows}</tbody>
@@ -3350,7 +6651,7 @@ window.openLegacyBOMModal = () => {
     `;
 
     window.tempBOMItems = [];
-    showModal('Buat Master BOM Baru', body, footer);
+    showModal('Buat Standar BOM', body, footer, 'xl');
 };
 
 window.addBOMItemRow = () => {
@@ -3552,7 +6853,7 @@ window.openProductionModal = () => {
             <button type="button" onclick="closeModal()" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-gray-700 font-medium sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">Batal</button>
     `;
 
-    showModal('Buat Rencana Produksi', body, footer);
+    showModal('Buat SPK Produksi', body, footer, 'xl');
     setTimeout(() => window.calculateProdEstimation(), 100);
 };
 
@@ -3757,6 +7058,32 @@ window.completeProduction = (id) => {
         completedAt: new Date().toISOString()
     });
 
+    // 4. Otomatis buat Jurnal: Debit FG/WIP, Kredit RM/WIP
+    if (typeof db.addJournalEntry === 'function') {
+        let totalCost = 0;
+        actualUsages.forEach(usage => {
+            const item = db.findById('inventoryItems', usage.productId);
+            totalCost += (item.purchasePrice || 0) * usage.qty;
+        });
+
+        if (totalCost > 0) {
+            const fgItem = db.findById('inventoryItems', bom.productId);
+            let debitAcc = 'acc_inv_fg';
+            if (fgItem.category === 'WIP') debitAcc = 'acc_inv_wip';
+
+            db.addJournalEntry({
+                date: new Date().toISOString(),
+                description: `Penyelesaian Produksi ${prod.prodNumber} (${fgItem.itemName})`,
+                referenceId: prod.id,
+                referenceType: 'PRODUCTION_MO',
+                items: [
+                    { accountId: debitAcc, debit: totalCost, credit: 0 },
+                    { accountId: 'acc_inv_rm', debit: 0, credit: totalCost } // Asumsi RM keluar
+                ]
+            });
+        }
+    }
+
     showToast('Produksi Selesai! Stok Gudang otomatis terupdate.', 'success');
     closeModal();
     renderProductionOrders();
@@ -3867,43 +7194,124 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // Close dropdown when clicking outside
-    document.addEventListener('click', (e) => {
-        const dropdown = document.getElementById('notif-dropdown');
-        const bellBtn = e.target.closest('button[onclick="toggleNotificationDropdown(event)"]');
-        if (dropdown && !dropdown.classList.contains('hidden') && !bellBtn && !dropdown.contains(e.target)) {
-            dropdown.classList.add('hidden');
+    // Sidebar Toggle Logic moved inside DOMContentLoaded for better state context
+    const sidebar = document.getElementById('sidebar');
+    const toggleBtn = document.getElementById('sidebarToggleBtn');
+
+    if (toggleBtn && sidebar) {
+        // Load initial state
+        const isCollapsed = localStorage.getItem('sidebar-collapsed') === 'true';
+        if (isCollapsed) {
+            sidebar.classList.add('w-20');
+            sidebar.classList.remove('w-64');
         }
-    });
+
+        toggleBtn.addEventListener('click', () => {
+            const nowCollapsed = sidebar.classList.contains('w-64');
+            if (nowCollapsed) {
+                sidebar.classList.remove('w-64');
+                sidebar.classList.add('w-20');
+            } else {
+                sidebar.classList.remove('w-20');
+                sidebar.classList.add('w-64');
+            }
+            localStorage.setItem('sidebar-collapsed', nowCollapsed);
+        });
+    }
 
     renderNotifications();
 
-    // Event listeners for Navigation
-    document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
+    // Event listeners for Navigation (DELEGATED for dynamic elements)
+    document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.nav-btn');
+        if (btn && btn.dataset.view) {
             e.preventDefault();
-            navigateTo(e.currentTarget.dataset.view);
-        });
+            navigateTo(btn.dataset.view);
+        }
     });
 
     // Mobile menu toggle
     const mobileMenuBtn = document.getElementById('mobileMenuBtn');
-    const sidebar = document.getElementById('sidebar');
 
     // Mobile setup: Hide sidebar by default on small screens
     if (window.innerWidth < 768) {
         sidebar.classList.add('-translate-x-full', 'absolute');
     }
 
-    mobileMenuBtn.addEventListener('click', () => {
-        if (sidebar.classList.contains('-translate-x-full')) {
-            sidebar.classList.remove('-translate-x-full');
-            sidebar.classList.add('translate-x-0', 'absolute', 'shadow-2xl');
-        } else {
-            sidebar.classList.add('-translate-x-full');
-        }
-    });
+    if (mobileMenuBtn) {
+        mobileMenuBtn.addEventListener('click', () => {
+            if (sidebar.classList.contains('-translate-x-full')) {
+                sidebar.classList.remove('-translate-x-full');
+                sidebar.classList.add('translate-x-0', 'absolute', 'shadow-2xl');
+            } else {
+                sidebar.classList.add('-translate-x-full');
+            }
+        });
+    }
 
     // Load initial view
     navigateTo('launcher');
 });
+
+// --- Date Filter Event Handlers ---
+window.applySOFilter = () => {
+    window.currentFilters.salesOrders.start = document.getElementById('so_start_date').value;
+    window.currentFilters.salesOrders.end = document.getElementById('so_end_date').value;
+    renderSalesOrders();
+};
+window.resetSOFilter = () => {
+    window.currentFilters.salesOrders.start = '';
+    window.currentFilters.salesOrders.end = '';
+    renderSalesOrders();
+};
+
+window.applyPOFilter = () => {
+    window.currentFilters.purchaseOrders.start = document.getElementById('po_start_date').value;
+    window.currentFilters.purchaseOrders.end = document.getElementById('po_end_date').value;
+    renderPurchaseOrders();
+};
+window.resetPOFilter = () => {
+    window.currentFilters.purchaseOrders.start = '';
+    window.currentFilters.purchaseOrders.end = '';
+    renderPurchaseOrders();
+};
+
+window.applyInvFilter = () => {
+    window.currentFilters.salesInvoices.start = document.getElementById('inv_start_date').value;
+    window.currentFilters.salesInvoices.end = document.getElementById('inv_end_date').value;
+    window.currentFilters.salesInvoices.taxType = document.getElementById('inv_filter_type').value;
+    window.currentFilters.salesInvoices.status = document.getElementById('inv_filter_status').value;
+    renderSalesInvoices();
+};
+window.resetInvFilter = () => {
+    window.currentFilters.salesInvoices.start = '';
+    window.currentFilters.salesInvoices.end = '';
+    window.currentFilters.salesInvoices.taxType = '';
+    window.currentFilters.salesInvoices.status = '';
+    renderSalesInvoices();
+};
+
+window.applySupPayFilter = () => {
+    window.currentFilters.supplierPayments.start    = document.getElementById('spay_start_date')?.value || '';
+    window.currentFilters.supplierPayments.end      = document.getElementById('spay_end_date')?.value || '';
+    window.currentFilters.supplierPayments.supplier = document.getElementById('spay_filter_supplier')?.value || '';
+    window.currentFilters.supplierPayments.status   = document.getElementById('spay_filter_status')?.value || '';
+    window.currentFilters.supplierPayments.kategori = document.getElementById('spay_filter_kategori')?.value || '';
+    renderSupplierPayments();
+};
+window.resetSupPayFilter = () => {
+    window.currentFilters.supplierPayments = { start: '', end: '', supplier: '', status: '', kategori: '' };
+    renderSupplierPayments();
+};
+
+window.applySalesPayFilter = () => {
+    window.currentFilters.salesPayments.start = document.getElementById('sales_pay_start_date').value;
+    window.currentFilters.salesPayments.end = document.getElementById('sales_pay_end_date').value;
+    renderSalesPayments();
+};
+window.resetSalesPayFilter = () => {
+    window.currentFilters.salesPayments.start = '';
+    window.currentFilters.salesPayments.end = '';
+    renderSalesPayments();
+};
+

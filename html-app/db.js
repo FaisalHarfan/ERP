@@ -1,6 +1,7 @@
 // db.js - LocalStorage Database Wrapper Simulator
 
-const DB_PREFIX = 'nexerp_';
+const DB_PREFIX = 'unityerp_';
+const OLD_PREFIX = 'nexerp_';
 
 // Core DB Functions
 const db = {
@@ -8,14 +9,28 @@ const db = {
     getTables: () => {
         return ['units', 'products', 'warehouses', 'suppliers', 'customers',
             'purchaseRequests', 'purchaseOrders', 'purchaseInvoices', 'supplierPayments',
-            'salesQuotations', 'salesOrders', 'salesInvoices', 'payments',
+            'salesQuotations', 'purchaseRFQs', 'salesOrders', 'salesInvoices', 'payments',
             'boms', 'productionOrders', 'stockMovements',
             'inventoryItems', 'stockTransactions', 'notifications',
-            'machines', 'bomHeaders', 'bomMaterials', 'manufacturingOrders', 'dailyProductionLogs'];
+            'machines', 'bomHeaders', 'bomMaterials', 'manufacturingOrders', 'dailyProductionLogs', 'productionLineBatches',
+            'accounts', 'expenses', 'journalEntries', 'bankAccounts', 'departments', 'creditNotes', 'debitNotes', // Finance Tables
+            'salesReturns', 'productExchanges', 'deliveryOrders', // Sales Return, Exchange & Delivery Tables
+            'users', 'roles', 'systemLogs'];
     },
 
     // Initialize empty arrays for all tables if not exist
     init: () => {
+        // One-time Migration from nexerp_ to unityerp_
+        db.getTables().forEach(table => {
+            const oldData = localStorage.getItem(OLD_PREFIX + table);
+            const newData = localStorage.getItem(DB_PREFIX + table);
+            if (oldData && !newData) {
+                localStorage.setItem(DB_PREFIX + table, oldData);
+                // We keep old data for safety, or we could remove it. 
+                // Let's keep it for now but the app will use the new one.
+            }
+        });
+
         db.getTables().forEach(table => {
             if (!localStorage.getItem(DB_PREFIX + table)) {
                 localStorage.setItem(DB_PREFIX + table, JSON.stringify([]));
@@ -65,6 +80,17 @@ const db = {
         return db.read(table).find(item => item.id === id);
     },
 
+    logSystemActivity: (action, details = '') => {
+        const sess = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
+        return db.insert('systemLogs', {
+            userId: sess.userId || 'system',
+            userEmail: sess.email || 'system',
+            action,
+            details,
+            timestamp: new Date().toISOString()
+        });
+    },
+
     // --- Business Logic Functions ---
 
     // Calculate current stock for a product
@@ -77,8 +103,14 @@ const db = {
         }, 0);
     },
 
-    // Inject a stock movement record automatically (from PO, SO, Production)
+    // Legacy stock movement (kept for backward compatibility, but redirects to Inventory if possible)
     addStockMovement: (productId, type, qty, referenceType, referenceId, notes = '') => {
+        // Try to find if this productId exists in inventoryItems
+        const invItem = db.read('inventoryItems').find(i => i.productId === productId || i.id === productId);
+        if (invItem) {
+            return db.addInventoryTransaction(invItem.id, type, qty, referenceType, referenceId, notes);
+        }
+        // Fallback to old table if not in inventory master
         return db.insert('stockMovements', {
             date: new Date().toISOString(),
             productId,
@@ -105,9 +137,9 @@ const db = {
         db.init();
     },
 
-    // ─── INVENTORY HELPERS ─────────────────────────────────────
+    // ─── INVENTORY HELPERS ───────────────────────────────────── 
 
-    // Auto-generate Item Code by category prefix
+    // Auto-generate Item Code by category prefix 
     generateItemCode: (category) => {
         const prefix = category === 'RAW_MATERIAL' ? 'RM' : category === 'WIP' ? 'WIP' : 'FG';
         const existing = db.read('inventoryItems').filter(i => i.itemCode && i.itemCode.startsWith(prefix));
@@ -137,6 +169,10 @@ const db = {
         const item = db.findById('inventoryItems', itemId);
         if (!item) return null;
         const txNo = db.generateTxNo(type);
+
+        // Auto-link to Journal if it's a critical movement
+        // (Will be implemented in the respective module callers for better context)
+
         return db.insert('stockTransactions', {
             txNo,
             date: new Date().toISOString(),
@@ -145,7 +181,7 @@ const db = {
             itemName: item.itemName,
             type,
             qty: parseFloat(qty),
-            reference,      // 'PO', 'SO', 'PRODUCTION_IN', 'PRODUCTION_OUT', 'MANUAL'
+            reference,      // 'PO', 'SO', 'PRODUCTION_IN', 'PRODUCTION_OUT', 'MANUAL', 'SALES_OUT'
             referenceId,
             notes,
             createdBy
@@ -189,8 +225,225 @@ const db = {
         const dateStr = date ? date.split('T')[0] : new Date().toISOString().split('T')[0];
         const logs = db.read('dailyProductionLogs').filter(l => l.machineId === machineId && l.date === dateStr);
         return logs.reduce((sum, l) => sum + (parseFloat(l.qtyProduced) || 0), 0);
+    },
+
+    // ─── PRODUCTION LINE (STREAMLINED) HELPERS ────────────────
+    ensureWIPItem: (productId, stageLabel) => {
+        const product = db.findById('inventoryItems', productId);
+        if (!product) return null;
+        
+        const wipCode = `${product.itemCode}-WIP-${stageLabel.toUpperCase().replace(/\s+/g, '')}`;
+        const existing = db.read('inventoryItems').find(i => i.itemCode === wipCode);
+        if (existing) return existing.id;
+
+        const newItem = db.insert('inventoryItems', {
+            itemCode: wipCode,
+            itemName: `${product.itemName} (${stageLabel})`,
+            category: 'WIP',
+            unit: product.unit || 'Kg',
+            minStock: 0,
+            status: 'ACTIVE',
+            createdAt: new Date().toISOString()
+        });
+        return newItem.id;
+    },
+
+    seedWIPItems: () => {
+        const products = db.read('inventoryItems').filter(i => i.category === 'FINISHED_GOODS' && i.status === 'ACTIVE');
+        const stages = ['Mixing', 'Oven Basah', 'Oven Kering', 'Packing'];
+        products.forEach(p => {
+            stages.forEach(s => db.ensureWIPItem(p.id, s));
+        });
+    },
+
+    processStageTransition: (batchId, nextStage, data) => {
+        const batch = db.findById('productionLineBatches', batchId);
+        if (!batch) return null;
+
+        const prevStage = batch.currentStage;
+        const prevQty = batch.currentQty;
+        let newQty = prevQty;
+
+        const stageLabels = { 'MIXING': 'Mixing', 'OVEN_BASAH': 'Oven Basah', 'OVEN_KERING': 'Oven Kering', 'PACKING': 'Packing' };
+
+        if (nextStage === 'OVEN_BASAH') {
+            newQty = parseFloat(data.qty) || prevQty;
+        } else if (nextStage === 'OVEN_KERING') {
+            const shrinkPct = parseFloat(data.shrinkPct) || 0;
+            newQty = prevQty * (1 - (shrinkPct / 100));
+        } else if (nextStage === 'PACKING') {
+            newQty = parseFloat(data.qty) || prevQty;
+        }
+
+        const transition = {
+            fromStage: prevStage,
+            toStage: nextStage,
+            fromQty: prevQty,
+            toQty: newQty,
+            note: data.note || '',
+            timestamp: new Date().toISOString()
+        };
+
+        const updates = {
+            currentStage: nextStage,
+            currentQty: newQty,
+            history: [...(batch.history || []), transition]
+        };
+
+        // --- INVENTORY TRACKING PER STAGE ---
+        if (prevStage && prevStage !== 'COMPLETED') {
+            const prevWipId = db.ensureWIPItem(batch.productId, stageLabels[prevStage] || prevStage);
+            db.addInventoryTransaction(prevWipId, 'OUT', prevQty, 'PRODUCTION_LINE', batch.id, `Pindah Tahap: ${prevStage} -> ${nextStage}`);
+        }
+
+        if (nextStage === 'COMPLETED') {
+            updates.status = 'COMPLETED';
+            updates.completedAt = new Date().toISOString();
+            db.addInventoryTransaction(batch.productId, 'IN', newQty, 'PRODUCTION_LINE', batch.id, `Batch Selesai: ${batch.batchNo}`);
+        } else {
+            const nextWipId = db.ensureWIPItem(batch.productId, stageLabels[nextStage] || nextStage);
+            db.addInventoryTransaction(nextWipId, 'IN', newQty, 'PRODUCTION_LINE', batch.id, `Masuk Tahap: ${nextStage}`);
+        }
+
+        return db.update('productionLineBatches', batchId, updates);
+    },
+
+    // --- Finance Helpers ---
+    generateFinanceTxNo: (type) => {
+        const prefixMap = {
+            'EXPENSE': 'EXP',
+            'PAYMENT': 'PAY',
+            'JOURNAL': 'JRN',
+            'AR': 'INV',
+            'AP': 'BILL',
+            'BANK': 'TRF'
+        };
+        const prefix = prefixMap[type] || 'JRN';
+        const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const existing = db.read('journalEntries').filter(t => t.journalNo && t.journalNo.startsWith(`${prefix}-${dateStr}`));
+        const seq = (existing.length + 1).toString().padStart(3, '0');
+        return `${prefix}-${dateStr}-${seq}`;
+    },
+
+    addJournalEntry: ({ date, journalNo, description, items, referenceType = '', referenceId = '', departmentId = '' }) => {
+        // items: [{ accountId, debit, credit }]
+        const entry = db.insert('journalEntries', {
+            date: date || new Date().toISOString(),
+            journalNo: journalNo || db.generateFinanceTxNo('JOURNAL'),
+            description: description || 'Journal Entry',
+            referenceType,
+            referenceId,
+            departmentId,
+            items: items || [],
+            totalDebit: (items || []).reduce((sum, item) => sum + (parseFloat(item.debit) || 0), 0),
+            totalCredit: (items || []).reduce((sum, item) => sum + (parseFloat(item.credit) || 0), 0)
+        });
+
+        return entry;
+    },
+
+    getAccountBalance: (accountId) => {
+        const entries = db.read('journalEntries');
+        let balance = 0;
+        entries.forEach(entry => {
+            entry.items.forEach(item => {
+                if (item.accountId === accountId) {
+                    balance += (parseFloat(item.debit) || 0) - (parseFloat(item.credit) || 0);
+                }
+            });
+        });
+        return balance;
+    },
+
+    seedDefaultFinanceData: () => {
+        // Seed Departments
+        if (db.read('departments').length === 0) {
+            db.save('departments', [
+                { id: 'dept_sales', name: 'Sales' },
+                { id: 'dept_prod', name: 'Production' },
+                { id: 'dept_inv', name: 'Inventory' },
+                { id: 'dept_fin', name: 'Finance' },
+                { id: 'dept_hr', name: 'HR' },
+                { id: 'dept_mgm', name: 'Management' }
+            ]);
+        }
+
+        // Seed Default Accounts (COA)
+        if (db.read('accounts').length === 0) {
+            db.save('accounts', [
+                // Assets (1000)
+                { id: 'acc_cash', code: '1101', name: 'Kas Utama', type: 'ASSET', description: 'Kas tunai perusahaan', status: 'ACTIVE' },
+                { id: 'acc_bank', code: '1102', name: 'Bank BCA', type: 'ASSET', description: 'Rekening Bank BCA', status: 'ACTIVE' },
+                { id: 'acc_ar', code: '1201', name: 'Piutang Usaha', type: 'ASSET', description: 'Tagihan ke pelanggan', status: 'ACTIVE' },
+                { id: 'acc_inv_rm', code: '1301', name: 'Persediaan Bahan Baku', type: 'ASSET', description: 'Stok Raw Material', status: 'ACTIVE' },
+                { id: 'acc_inv_wip', code: '1303', name: 'Persediaan Barang Dalam Proses', type: 'ASSET', description: 'Stok WIP', status: 'ACTIVE' },
+                { id: 'acc_inv_fg', code: '1302', name: 'Persediaan Barang Jadi', type: 'ASSET', description: 'Stok Finished Goods', status: 'ACTIVE' },
+
+                // Liabilities (2000)
+                { id: 'acc_ap', code: '2101', name: 'Hutang Usaha', type: 'LIABILITY', description: 'Hutang ke supplier', status: 'ACTIVE' },
+                { id: 'acc_tax_payable', code: '2102', name: 'Hutang PPN (Tax Payable)', type: 'LIABILITY', description: 'Hutang Pajak Penjualan/Pembelian', status: 'ACTIVE' },
+
+                // Equity (3000)
+                { id: 'acc_equity', code: '3101', name: 'Modal Disetor', type: 'EQUITY', description: 'Modal awal', status: 'ACTIVE' },
+
+                // Income (4000)
+                { id: 'acc_sales', code: '4101', name: 'Pendapatan Penjualan', type: 'INCOME', description: 'Hasil penjualan produk', status: 'ACTIVE' },
+                { id: 'acc_sales_return', code: '4102', name: 'Retur Penjualan', type: 'INCOME', description: 'Pengurang pendapatan (Retur)', status: 'ACTIVE' },
+
+                // Expense (5000)
+                { id: 'acc_cogs', code: '5101', name: 'Beban Pokok Penjualan (HPP)', type: 'EXPENSE', description: 'Cost of Goods Sold', status: 'ACTIVE' },
+                { id: 'acc_purchase_return', code: '5102', name: 'Retur Pembelian', type: 'EXPENSE', description: 'Pengurang beban (Retur)', status: 'ACTIVE' },
+                { id: 'acc_exp_prod', code: '5201', name: 'Biaya Produksi', type: 'EXPENSE', description: 'Biaya operasional produksi', status: 'ACTIVE' },
+                { id: 'acc_exp_op', code: '5301', name: 'Biaya Operasional', type: 'EXPENSE', description: 'Listrik, Air, Wifi, dll', status: 'ACTIVE' },
+                { id: 'acc_exp_mkt', code: '5302', name: 'Biaya Pemasaran', type: 'EXPENSE', description: 'Iklan dan promosi', status: 'ACTIVE' }
+            ]);
+        }
+
+        // Seed Bank Accounts
+        if (db.read('bankAccounts').length === 0) {
+            db.save('bankAccounts', [
+                { id: 'bank_cash', name: 'Kas Tunai', accountNumber: '-', bankName: 'Cash', accountId: 'acc_cash' },
+                { id: 'bank_bca', name: 'BCA Utama', accountNumber: '1234567890', bankName: 'BCA', accountId: 'acc_bank' }
+            ]);
+        }
+    },
+
+    // ─── SETTINGS / USER HELPERS ───────────────────────────────
+    seedDefaultUsersAndRoles: () => {
+        const defaultModules = ['penjualan', 'pembelian', 'logistik', 'produksi', 'finance', 'pengaturan'];
+        const defaultPermissions = {};
+        defaultModules.forEach(m => { defaultPermissions[m] = { view: true, edit: true }; });
+
+        if (db.read('roles').length === 0) {
+            db.save('roles', [
+                { id: 'role_admin', name: 'Administrator', isSystem: true, permissions: defaultPermissions, createdAt: new Date().toISOString() },
+                { id: 'role_user', name: 'User', isSystem: false, permissions: { penjualan: { view: true, edit: true }, pembelian: { view: true, edit: true }, logistik: { view: true, edit: true }, produksi: { view: true, edit: true }, finance: { view: true, edit: true }, pengaturan: { view: false, edit: false } }, createdAt: new Date().toISOString() }
+            ]);
+        }
+
+        if (db.read('users').length === 0) {
+            db.save('users', [
+                { id: 'user_admin', fullName: 'Administrator', username: 'admin', email: 'admin@tanasubur.co.id', password: 'admin123', roleId: 'role_admin', status: 'AKTIF', avatar: 'AD', createdAt: new Date().toISOString() }
+            ]);
+        }
     }
 };
 
 // Initialize DB on load
 db.init();
+db.seedDefaultFinanceData();
+db.seedDefaultUsersAndRoles();
+
+// Migrate legacy users: add email if missing
+(function migrateUsersToEmail() {
+    const users = db.read('users');
+    let changed = false;
+    users.forEach(u => {
+        if (!u.email) {
+            u.email = u.id === 'user_admin' ? 'admin@tanasubur.co.id'
+                : (u.username ? u.username + '@erp.local' : 'user' + u.id + '@erp.local');
+            changed = true;
+        }
+    });
+    if (changed) db.save('users', users);
+})();

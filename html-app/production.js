@@ -1,6 +1,6 @@
-// production.js — Manufacturing Module
+// production.js â€” Manufacturing Module
 
-// ─── HELPERS ────────────────────────────────────────────────
+// â”€â”€â”€ HELPERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const prodFmt = n => (parseFloat(n) || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 });
 const prodDate = d => d ? new Date(d).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
 const addDays = (dateStr, days) => {
@@ -22,7 +22,7 @@ const moBadge = status => {
     return `<span class="px-2 py-0.5 rounded text-xs font-bold ${s.cls}">${s.label}</span>`;
 };
 
-// ─── 1. PRODUCTION DASHBOARD ─────────────────────────────────
+// â”€â”€â”€ 1. PRODUCTION DASHBOARD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderProductionDashboard() {
     document.getElementById('pageTitle').innerText = 'Dashboard Produksi';
     const mc = document.getElementById('main-content');
@@ -50,7 +50,7 @@ function renderProductionDashboard() {
         <div class="flex items-center gap-3 py-2 border-b last:border-0">
             <div class="flex-1">
                 <p class="text-sm font-medium text-gray-800">${m.machineName}</p>
-                <p class="text-xs text-gray-400">${m.machineCode} · ${cap} kg/hari</p>
+                <p class="text-xs text-gray-400">${m.machineCode} Â· ${cap} kg/hari</p>
             </div>
             <div class="w-32">
                 <div class="flex justify-between text-xs mb-1"><span>${prodFmt(used)} kg</span><span class="${pct >= 100 ? 'text-red-600 font-bold' : ''}">${pct}%</span></div>
@@ -59,7 +59,7 @@ function renderProductionDashboard() {
         </div>`;
     }).join('') || '<p class="text-sm text-gray-400 py-2">Belum ada mesin terdaftar.</p>';
 
-    // MO Running — progress
+    // MO Running â€” progress
     const runningMOs = mos.filter(m => m.status === 'RUNNING');
     const runningRows = runningMOs.map(mo => {
         const target = parseFloat(mo.qtyTarget) || 0;
@@ -71,10 +71,10 @@ function renderProductionDashboard() {
             <div class="flex justify-between items-start">
                 <div>
                     <p class="text-sm font-semibold text-blue-700">${mo.moNumber}</p>
-                    <p class="text-xs text-gray-500">${mo.productName || '-'} · Target: ${prodFmt(target)} kg</p>
+                    <p class="text-xs text-gray-500">${mo.productName || '-'} Â· Target: ${prodFmt(target)} kg</p>
                 </div>
                 <div class="text-right">
-                    ${isLate ? '<span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded font-semibold">⚠ Terlambat</span>' : ''}
+                    ${isLate ? '<span class="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded font-semibold">âš  Terlambat</span>' : ''}
                     <p class="text-xs text-gray-400 mt-0.5">Est: ${prodDate(mo.estFinishDate)}</p>
                 </div>
             </div>
@@ -93,7 +93,7 @@ function renderProductionDashboard() {
                 <p class="text-3xl font-bold text-gray-500">${draft}</p>
                 <p class="text-sm text-gray-500 mt-1">MO Draft</p>
             </div>
-            <div class="bg-white rounded-lg shadow-sm border border-blue-100 p-4 text-center cursor-pointer hover:border-blue-300" onclick="navigateTo('production-mo')">
+            <div class="bg-white rounded-lg shadow-sm border border-blue-100 p-4 text-center cursor-pointer hover:border-blue-600" onclick="navigateTo('production-mo')">
                 <p class="text-3xl font-bold text-blue-600">${running}</p>
                 <p class="text-sm text-gray-500 mt-1">MO Running</p>
             </div>
@@ -113,15 +113,16 @@ function renderProductionDashboard() {
                 ${machineRows}
             </div>
             <div class="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
-                <h3 class="text-sm font-semibold text-gray-700 mb-3"><i class="fas fa-industry mr-2 text-blue-400"></i>MO Sedang Berjalan</h3>
+                <h3 class="text-sm font-semibold text-gray-700 mb-3"><i class="fas fa-industry mr-2 text-blue-600"></i>MO Sedang Berjalan</h3>
                 ${runningRows}
             </div>
         </div>
     </div>`;
 }
 
-// ─── 2. MASTER MESIN ─────────────────────────────────────────
+// â”€â”€â”€ 2. MASTER MESIN â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderProductionMachines() {
+    const canEdit = getModulePermission('produksi').edit;
     document.getElementById('pageTitle').innerText = 'Master Mesin';
     const mc = document.getElementById('main-content');
     const machines = db.read('machines');
@@ -136,9 +137,11 @@ function renderProductionMachines() {
             <td class="py-3 px-4 text-sm text-gray-600">${m.machineType || 'Oven'}</td>
             <td class="py-3 px-4 text-sm text-gray-600 text-right">${prodFmt(m.dailyCapacity)} kg/hari</td>
             <td class="py-3 px-4 text-sm">${statusBadge}</td>
-            <td class="py-3 px-4 text-sm text-right">
+            <td class="py-3 px-4 text-sm text-right whitespace-nowrap">
+                ${canEdit ? `
                 <button onclick="openMachineModal('${m.id}')" class="text-blue-500 hover:text-blue-700 mr-2"><i class="fas fa-edit"></i></button>
                 <button onclick="deleteMachine('${m.id}')" class="text-red-400 hover:text-red-600"><i class="fas fa-trash"></i></button>
+                ` : '<span class="text-gray-400 text-[10px] italic font-medium">VIEW ONLY</span>'}
             </td>
         </tr>`;
     }).join('') || `<tr><td colspan="6" class="py-8 text-center text-gray-400">Belum ada mesin. Tambah mesin baru.</td></tr>`;
@@ -147,9 +150,17 @@ function renderProductionMachines() {
     <div class="bg-white rounded-lg shadow-sm border border-gray-100">
         <div class="flex justify-between items-center p-4 border-b border-gray-100">
             <h2 class="text-lg font-semibold text-gray-800">Master Mesin Produksi</h2>
-            <button onclick="openMachineModal()" class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded text-sm font-medium">
-                <i class="fas fa-plus mr-2"></i>Tambah Mesin
-            </button>
+            <div class="flex gap-2">
+                ${canEdit ? `
+                <button onclick="openMachineModal()" class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded text-sm font-medium">
+                    <i class="fas fa-plus mr-2"></i>Tambah Mesin
+                </button>
+                ` : `
+                <span class="text-xs font-medium text-orange-500 bg-orange-50 border border-orange-100 px-3 py-2 rounded-lg flex items-center gap-2">
+                    <i class="fas fa-info-circle"></i> Mode Lihat Saja
+                </span>
+                `}
+            </div>
         </div>
         <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
@@ -220,8 +231,9 @@ window.deleteMachine = (id) => {
     renderProductionMachines();
 };
 
-// ─── 3. BILL OF MATERIAL ────────────────────────────────────
+// â”€â”€â”€ 3. BILL OF MATERIAL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderProductionBOM() {
+    const canEdit = getModulePermission('produksi').edit;
     document.getElementById('pageTitle').innerText = 'Bill of Material';
     const mc = document.getElementById('main-content');
     const boms = db.read('bomHeaders');
@@ -239,9 +251,11 @@ function renderProductionBOM() {
             <td class="py-3 px-4 text-sm text-gray-600 text-right">${prodFmt(b.outputPerBatch)} kg/batch</td>
             <td class="py-3 px-4 text-sm text-gray-600 text-center">${materials.length} bahan</td>
             <td class="py-3 px-4 text-sm">${statusBadge}</td>
-            <td class="py-3 px-4 text-sm text-right">
+            <td class="py-3 px-4 text-sm text-right whitespace-nowrap">
+                ${canEdit ? `
                 <button onclick="openBOMModal('${b.id}')" class="text-blue-500 hover:text-blue-700 mr-2"><i class="fas fa-edit"></i></button>
                 <button onclick="deleteBOM('${b.id}')" class="text-red-400 hover:text-red-600"><i class="fas fa-trash"></i></button>
+                ` : '<span class="text-gray-400 text-[10px] italic font-medium">VIEW ONLY</span>'}
             </td>
         </tr>`;
     }).join('') || `<tr><td colspan="6" class="py-8 text-center text-gray-400">Belum ada BOM. Buat BOM baru.</td></tr>`;
@@ -250,9 +264,17 @@ function renderProductionBOM() {
     <div class="bg-white rounded-lg shadow-sm border border-gray-100">
         <div class="flex justify-between items-center p-4 border-b border-gray-100">
             <h2 class="text-lg font-semibold text-gray-800">Bill of Material</h2>
-            <button onclick="openBOMModal()" class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded text-sm font-medium">
-                <i class="fas fa-plus mr-2"></i>Buat BOM
-            </button>
+            <div class="flex gap-2">
+                ${canEdit ? `
+                <button onclick="openBOMModal()" class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded text-sm font-medium">
+                    <i class="fas fa-plus mr-2"></i>Buat BOM
+                </button>
+                ` : `
+                <span class="text-xs font-medium text-orange-500 bg-orange-50 border border-orange-100 px-3 py-2 rounded-lg flex items-center gap-2">
+                    <i class="fas fa-info-circle"></i> Mode Lihat Saja
+                </span>
+                `}
+            </div>
         </div>
         <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
@@ -274,7 +296,7 @@ window.openBOMModal = (id = null) => {
     const bom = id ? db.findById('bomHeaders', id) : null;
     const code = bom ? bom.bomCode : db.generateBOMCode();
     const fgItems = db.read('inventoryItems').filter(i => i.category === 'FINISHED_GOODS' && i.status !== 'INACTIVE');
-    const fgOpts = fgItems.map(i => `<option value="${i.id}" ${bom?.productId === i.id ? 'selected' : ''}>${i.itemCode} — ${i.itemName}</option>`).join('');
+    const fgOpts = fgItems.map(i => `<option value="${i.id}" ${bom?.productId === i.id ? 'selected' : ''}>${i.itemCode} â€” ${i.itemName}</option>`).join('');
 
     // Load existing materials
     window._bomRows = bom ? db.read('bomMaterials').filter(m => m.bomId === id).map(m => ({ ...m })) : [];
@@ -315,7 +337,7 @@ window.openBOMModal = (id = null) => {
 
 function renderBOMRows() {
     const rmItems = db.read('inventoryItems').filter(i => i.category === 'RAW_MATERIAL' && i.status !== 'INACTIVE');
-    const rmOpts = rmItems.map(i => `<option value="${i.id}" data-unit="${i.unit}">${i.itemCode} — ${i.itemName}</option>`).join('');
+    const rmOpts = rmItems.map(i => `<option value="${i.id}" data-unit="${i.unit}">${i.itemCode} â€” ${i.itemName}</option>`).join('');
     const el = document.getElementById('bom_rows');
     if (!el) return;
     if (!window._bomRows.length) {
@@ -331,7 +353,7 @@ function renderBOMRows() {
             <th class="py-2 px-2"></th>
         </tr></thead>
         <tbody>${window._bomRows.map((r, idx) => {
-        const selOpts = rmItems.map(i => `<option value="${i.id}" data-unit="${i.unit}" ${r.itemId === i.id ? 'selected' : ''}>${i.itemCode} — ${i.itemName}</option>`).join('');
+        const selOpts = rmItems.map(i => `<option value="${i.id}" data-unit="${i.unit}" ${r.itemId === i.id ? 'selected' : ''}>${i.itemCode} â€” ${i.itemName}</option>`).join('');
         return `<tr class="border-b border-gray-100">
                 <td class="py-1.5 px-2"><select onchange="updateBOMRow(${idx},'itemId',this.value,this.selectedOptions[0]?.dataset.unit)" class="w-full border border-gray-300 rounded px-2 py-1 text-sm bg-white">
                     <option value="">-- Pilih --</option>${selOpts}</select></td>
@@ -403,8 +425,9 @@ window.deleteBOM = (id) => {
     renderProductionBOM();
 };
 
-// ─── 4. MANUFACTURING ORDER ──────────────────────────────────
+// â”€â”€â”€ 4. MANUFACTURING ORDER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderProductionMO() {
+    const canEdit = getModulePermission('produksi').edit;
     document.getElementById('pageTitle').innerText = 'Manufacturing Order';
     const mc = document.getElementById('main-content');
     const mos = db.read('manufacturingOrders').sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -417,13 +440,13 @@ function renderProductionMO() {
         const isLate = mo.status === 'RUNNING' && mo.estFinishDate && today > mo.estFinishDate;
 
         let actions = `<button onclick="viewMO('${mo.id}')" class="text-gray-500 hover:text-gray-700 mr-1" title="Detail"><i class="fas fa-eye"></i></button>`;
-        if (mo.status === 'DRAFT') {
-            actions += `<button onclick="startMO('${mo.id}')" class="text-white bg-blue-600 hover:bg-blue-700 text-xs px-2 py-1 rounded mr-1">▶ Mulai</button>`;
+        if (canEdit && mo.status === 'DRAFT') {
+            actions += `<button onclick="startMO('${mo.id}')" class="text-white bg-blue-600 hover:bg-blue-700 text-xs px-2 py-1 rounded mr-1">â–¶ Mulai</button>`;
             actions += `<button onclick="cancelMO('${mo.id}')" class="text-red-400 hover:text-red-600 mr-1"><i class="fas fa-ban"></i></button>`;
         }
-        if (mo.status === 'RUNNING') {
+        if (canEdit && mo.status === 'RUNNING') {
             actions += `<button onclick="openDailyLogModal('${mo.id}')" class="text-white bg-green-600 hover:bg-green-700 text-xs px-2 py-1 rounded mr-1">+ Log</button>`;
-            actions += `<button onclick="completeMO('${mo.id}')" class="text-white bg-orange-600 hover:bg-orange-700 text-xs px-2 py-1 rounded mr-1">✓ Complete</button>`;
+            actions += `<button onclick="completeMO('${mo.id}')" class="text-white bg-orange-600 hover:bg-orange-700 text-xs px-2 py-1 rounded mr-1">âœ“ Complete</button>`;
         }
 
         return `<tr class="border-b border-gray-100 hover:bg-gray-50 ${isLate ? 'bg-red-50' : ''}">
@@ -439,9 +462,9 @@ function renderProductionMO() {
                 </div>
             </td>
             <td class="py-3 px-4 text-sm text-gray-500">${prodDate(mo.startDate)}</td>
-            <td class="py-3 px-4 text-sm ${isLate ? 'text-red-600 font-semibold' : 'text-gray-500'}">${prodDate(mo.estFinishDate)}${isLate ? ' ⚠' : ''}</td>
+            <td class="py-3 px-4 text-sm ${isLate ? 'text-red-600 font-semibold' : 'text-gray-500'}">${prodDate(mo.estFinishDate)}${isLate ? ' âš ' : ''}</td>
             <td class="py-3 px-4 text-sm">${moBadge(mo.status)}</td>
-            <td class="py-3 px-4 text-sm text-right">${actions}</td>
+            <td class="py-3 px-4 text-sm text-right whitespace-nowrap">${actions}</td>
         </tr>`;
     }).join('') || `<tr><td colspan="8" class="py-8 text-center text-gray-400">Belum ada Manufacturing Order.</td></tr>`;
 
@@ -449,9 +472,17 @@ function renderProductionMO() {
     <div class="bg-white rounded-lg shadow-sm border border-gray-100">
         <div class="flex justify-between items-center p-4 border-b border-gray-100">
             <h2 class="text-lg font-semibold text-gray-800">Manufacturing Order</h2>
-            <button onclick="openMOModal()" class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded text-sm font-medium">
-                <i class="fas fa-plus mr-2"></i>Buat MO
-            </button>
+            <div class="flex gap-2">
+                ${canEdit ? `
+                <button onclick="openMOModal()" class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded text-sm font-medium">
+                    <i class="fas fa-plus mr-2"></i>Buat MO
+                </button>
+                ` : `
+                <span class="text-xs font-medium text-orange-500 bg-orange-50 border border-orange-100 px-3 py-2 rounded-lg flex items-center gap-2">
+                    <i class="fas fa-info-circle"></i> Mode Lihat Saja
+                </span>
+                `}
+            </div>
         </div>
         <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
@@ -477,8 +508,8 @@ window.openMOModal = () => {
     const moNum = db.generateMONumber();
     const today = new Date().toISOString().split('T')[0];
 
-    const fgOpts = fgItems.map(i => `<option value="${i.id}" data-name="${i.itemName}">${i.itemCode} — ${i.itemName}</option>`).join('');
-    const mchOpts = machines.map(m => `<option value="${m.id}" data-cap="${m.dailyCapacity}">${m.machineCode} — ${m.machineName} (${m.dailyCapacity}kg/hari)</option>`).join('');
+    const fgOpts = fgItems.map(i => `<option value="${i.id}" data-name="${i.itemName}">${i.itemCode} â€” ${i.itemName}</option>`).join('');
+    const mchOpts = machines.map(m => `<option value="${m.id}" data-cap="${m.dailyCapacity}">${m.machineCode} â€” ${m.machineName} (${m.dailyCapacity}kg/hari)</option>`).join('');
 
     const body = `
     <div class="space-y-4">
@@ -539,9 +570,9 @@ window.moLoadBOM = () => {
         const stk = db.getInventoryStock(m.itemId);
         const ok = stk >= m.qty;
         return `<tr class="${ok ? '' : 'text-red-600'}">
-            <td class="py-1">${m.itemCode} — ${m.itemName}</td>
+            <td class="py-1">${m.itemCode} â€” ${m.itemName}</td>
             <td class="py-1 px-3 text-right">${prodFmt(m.qty)} ${m.unit}</td>
-            <td class="py-1 text-right">${ok ? '<span class="text-green-600">✓</span>' : '<span class="text-red-600">✗ Kurang</span>'}</td>
+            <td class="py-1 text-right">${ok ? '<span class="text-green-600">âœ“</span>' : '<span class="text-red-600">âœ— Kurang</span>'}</td>
         </tr>`;
     }).join('');
     preview.classList.remove('hidden');
@@ -556,7 +587,7 @@ window.saveMO = () => {
     const qty = parseFloat(document.getElementById('mo_qty')?.value);
     const machSel = document.getElementById('mo_machine');
     const machineId = machSel?.value;
-    const machineName = machSel?.selectedOptions[0]?.textContent?.split(' — ')[1]?.split(' (')[0] || '';
+    const machineName = machSel?.selectedOptions[0]?.textContent?.split(' â€” ')[1]?.split(' (')[0] || '';
     const startDate = document.getElementById('mo_start')?.value;
     const estFinishDate = document.getElementById('mo_est_finish')?.value;
     const notes = document.getElementById('mo_notes')?.value;
@@ -610,7 +641,7 @@ window.startMO = (id) => {
 
         if (!hasStock) {
             const stk = db.getInventoryStock(mat.itemId);
-            errors.push(`⚠ ${mat.itemName}: Butuh ${prodFmt(needed)} ${mat.unit}, Stok: ${prodFmt(stk)} ${mat.unit}`);
+            errors.push(`âš  ${mat.itemName}: Butuh ${prodFmt(needed)} ${mat.unit}, Stok: ${prodFmt(stk)} ${mat.unit}`);
         }
     });
 
@@ -621,15 +652,33 @@ window.startMO = (id) => {
 
     if (!confirm(`Mulai produksi ${mo.moNumber}?\nBahan baku akan dikurangi dari Inventory otomatis.`)) return;
 
-    // Kurangi stok Raw Material dari Inventory (base qty saja, tanpa waste factor)
+    // Kurangi stok Raw Material dari Inventory & Buat Jurnal WIP
+    let totalRmValue = 0;
     materials.forEach(mat => {
         const needed = mat.qty * batchFactor;
         db.addInventoryTransaction(mat.itemId, 'OUT', needed, 'PRODUCTION_OUT', id,
             `Konsumsi produksi ${mo.moNumber}: ${mat.itemName}`);
+
+        const invItem = db.findById('inventoryItems', mat.itemId);
+        if (invItem) {
+            totalRmValue += (needed * (invItem.purchasePrice || 0));
+        }
     });
 
+    if (totalRmValue > 0 && typeof db.addJournalEntry === 'function') {
+        db.addJournalEntry({
+            description: `Pemakaian Bahan Baku MO ${mo.moNumber}`,
+            referenceType: 'MO',
+            referenceId: id,
+            items: [
+                { accountId: 'acc_inv_wip', debit: totalRmValue, credit: 0 },
+                { accountId: 'acc_inv_rm', debit: 0, credit: totalRmValue }
+            ]
+        });
+    }
+
     db.update('manufacturingOrders', id, { status: 'RUNNING' });
-    showToast(`✅ MO ${mo.moNumber} dimulai! Stok bahan baku dikurangi.`, 'success');
+    showToast(`âœ… MO ${mo.moNumber} dimulai! Stok bahan baku dikurangi.`, 'success');
     renderProductionMO();
 };
 
@@ -660,7 +709,7 @@ window.completeMO = (id) => {
 
     const shrinkageRows = window._shrinkMats.map((mat) => `
         <tr class="border-b border-gray-100">
-            <td class="py-2 px-3 text-sm text-gray-700">${mat.itemCode} — ${mat.itemName}</td>
+            <td class="py-2 px-3 text-sm text-gray-700">${mat.itemCode} â€” ${mat.itemName}</td>
             <td class="py-2 px-3 text-sm text-gray-500 text-right">${prodFmt(mat.consumed)}</td>
             <td class="py-2 px-3 text-sm text-gray-500 text-center">${mat.unit}</td>
             <td class="py-2 px-3">
@@ -670,19 +719,19 @@ window.completeMO = (id) => {
                     oninput="calcShrinkPct()"
                     class="w-24 border border-gray-300 rounded px-2 py-1 text-sm text-right">
             </td>
-            <td class="py-2 px-3 text-sm text-right font-semibold" id="shrink_pct_${mat.idx}">—</td>
+            <td class="py-2 px-3 text-sm text-right font-semibold" id="shrink_pct_${mat.idx}">â€”</td>
         </tr>`).join('');
 
     const earlyFinish = mo.estFinishDate && today < mo.estFinishDate
         ? `<div class="bg-yellow-50 border border-yellow-200 rounded p-2 text-sm text-yellow-700 mb-3">
-            ⚠ Est. selesai ${prodDate(mo.estFinishDate)}, hari ini ${prodDate(today)} (lebih awal).
+            âš  Est. selesai ${prodDate(mo.estFinishDate)}, hari ini ${prodDate(today)} (lebih awal).
            </div>` : '';
 
     const body = `
     <div class="space-y-4">
         ${earlyFinish}
         <div class="grid grid-cols-3 gap-3 text-center">
-            <div class="bg-blue-50 rounded-lg p-3">
+            <div class="bg-indigo-50 rounded-lg p-3">
                 <p class="text-xl font-bold text-blue-700">${prodFmt(target)}</p><p class="text-xs text-gray-500">Target (kg)</p>
             </div>
             <div class="bg-green-50 rounded-lg p-3">
@@ -717,7 +766,7 @@ window.completeMO = (id) => {
         </div>
 
         <div><label class="block text-sm font-medium text-gray-700 mb-1">Catatan Penyusutan</label>
-            <textarea id="complete_notes" rows="2" placeholder="Opsional — sebab penyusutan, jenis NG, dll"
+            <textarea id="complete_notes" rows="2" placeholder="Opsional â€” sebab penyusutan, jenis NG, dll"
                 class="w-full border border-gray-300 rounded px-3 py-2 text-sm"></textarea></div>
     </div>`;
 
@@ -727,7 +776,7 @@ window.completeMO = (id) => {
         </button>
         <button onclick="closeModal()" class="mt-3 sm:mt-0 w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 px-4 py-2 bg-white text-gray-700 text-sm font-medium sm:ml-3">Batal</button>`;
 
-    showModal(`Selesaikan MO — ${mo.moNumber}`, body, footer);
+    showModal(`Selesaikan MO â€” ${mo.moNumber}`, body, footer);
 };
 
 // Live-calculate % susut saat user mengetik
@@ -740,7 +789,7 @@ window.calcShrinkPct = () => {
         const pct = mat.consumed > 0 ? (shrinkQty / mat.consumed * 100) : 0;
         const pctEl = document.getElementById(`shrink_pct_${mat.idx}`);
         if (pctEl) {
-            pctEl.textContent = pct > 0 ? pct.toFixed(2) + '%' : '—';
+            pctEl.textContent = pct > 0 ? pct.toFixed(2) + '%' : 'â€”';
             pctEl.className = `py-2 px-3 text-sm text-right font-semibold ${pct > 10 ? 'text-red-600' : pct > 0 ? 'text-orange-600' : 'text-gray-400'}`;
         }
         totalConsumed += mat.consumed;
@@ -788,6 +837,41 @@ window.confirmCompleteMO = (id, materialCount) => {
     db.addInventoryTransaction(mo.productId, 'IN', produced, 'PRODUCTION_IN', id,
         `Output produksi ${mo.moNumber}: ${mo.productName}`);
 
+    // INTEGRASI JURNAL: Transfer WIP ke FG
+    if (typeof db.addJournalEntry === 'function') {
+        const fgItem = db.findById('inventoryItems', mo.productId);
+        const fgValue = produced * (fgItem?.purchasePrice || 0);
+
+        if (fgValue > 0) {
+            db.addJournalEntry({
+                description: `Penyelesaian Produksi MO ${mo.moNumber} (${mo.productName})`,
+                referenceType: 'MO',
+                referenceId: id,
+                items: [
+                    { accountId: 'acc_inv_fg', debit: fgValue, credit: 0 },
+                    { accountId: 'acc_inv_wip', debit: 0, credit: fgValue }
+                ]
+            });
+        }
+
+        // Jurnal untuk Penyusutan (jika ada)
+        shrinkageItems.forEach(s => {
+            const invItem = db.findById('inventoryItems', s.itemId);
+            const shrinkValue = s.qty * (invItem?.purchasePrice || 0);
+            if (shrinkValue > 0) {
+                db.addJournalEntry({
+                    description: `Biaya Penyusutan Produksi MO ${mo.moNumber} (${s.itemName})`,
+                    referenceType: 'MO',
+                    referenceId: id,
+                    items: [
+                        { accountId: 'acc_exp_prod', debit: shrinkValue, credit: 0 },
+                        { accountId: 'acc_inv_rm', debit: 0, credit: shrinkValue }
+                    ]
+                });
+            }
+        });
+    }
+
     db.update('manufacturingOrders', id, {
         status: 'COMPLETED',
         qtyProduced: produced,
@@ -799,7 +883,7 @@ window.confirmCompleteMO = (id, materialCount) => {
     const shrinkInfo = shrinkageItems.length
         ? `\nPenyusutan dicatat: ${shrinkageItems.map(s => `${s.itemName} ${prodFmt(s.qty)} ${s.unit}`).join(', ')}`
         : '';
-    showToast(`✅ MO ${mo.moNumber} selesai! ${prodFmt(produced)} kg ${mo.productName} masuk Inventory.${shrinkInfo}`, 'success');
+    showToast(`âœ… MO ${mo.moNumber} selesai! ${prodFmt(produced)} kg ${mo.productName} masuk Inventory.${shrinkInfo}`, 'success');
     closeModal();
     renderProductionMO();
 };
@@ -834,7 +918,7 @@ window.viewMO = (id) => {
     const batchFactor = target / outputPerBatch;
 
     const matRows = materials.map(m => `<tr class="border-b border-gray-100">
-        <td class="py-2 px-3 text-sm">${m.itemCode} — ${m.itemName}</td>
+        <td class="py-2 px-3 text-sm">${m.itemCode} â€” ${m.itemName}</td>
         <td class="py-2 px-3 text-sm text-right">${prodFmt(m.qty * batchFactor)} ${m.unit}</td>
     </tr>`).join('');
 
@@ -862,7 +946,7 @@ window.viewMO = (id) => {
     const body = `
     <div class="space-y-4">
         <div class="grid grid-cols-3 gap-3 text-center">
-            <div class="bg-blue-50 rounded-lg p-3">
+            <div class="bg-indigo-50 rounded-lg p-3">
                 <p class="text-2xl font-bold text-blue-700">${prodFmt(target)}</p><p class="text-xs text-gray-500">Target (kg)</p>
             </div>
             <div class="bg-green-50 rounded-lg p-3">
@@ -919,11 +1003,12 @@ window.viewMO = (id) => {
         </div>
     </div>`;
     const footer = `<button onclick="closeModal()" class="w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 px-4 py-2 bg-white text-gray-700 text-sm font-medium sm:ml-3">Tutup</button>`;
-    showModal(`Detail MO — ${mo.moNumber}`, body, footer);
+    showModal(`Detail MO â€” ${mo.moNumber}`, body, footer);
 };
 
-// ─── 5. DAILY PRODUCTION LOG ────────────────────────────────
+// â”€â”€â”€ 5. DAILY PRODUCTION LOG â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderProductionLog() {
+    const canEdit = getModulePermission('produksi').edit;
     document.getElementById('pageTitle').innerText = 'Log Produksi Harian';
     const mc = document.getElementById('main-content');
     const logs = db.read('dailyProductionLogs').sort((a, b) => b.date.localeCompare(a.date));
@@ -945,9 +1030,17 @@ function renderProductionLog() {
     <div class="bg-white rounded-lg shadow-sm border border-gray-100">
         <div class="flex justify-between items-center p-4 border-b border-gray-100">
             <h2 class="text-lg font-semibold text-gray-800">Log Produksi Harian</h2>
-            <button onclick="openDailyLogModal()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm font-medium">
-                <i class="fas fa-plus mr-2"></i>Tambah Log
-            </button>
+            <div class="flex gap-2">
+                ${canEdit ? `
+                <button onclick="openDailyLogModal()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm font-medium">
+                    <i class="fas fa-plus mr-2"></i>Tambah Log
+                </button>
+                ` : `
+                <span class="text-xs font-medium text-orange-500 bg-orange-50 border border-orange-100 px-3 py-2 rounded-lg flex items-center gap-2">
+                    <i class="fas fa-info-circle"></i> Mode Lihat Saja
+                </span>
+                `}
+            </div>
         </div>
         <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
@@ -971,7 +1064,7 @@ window.openDailyLogModal = (preselectedMoId = null) => {
     const moOpts = runningMOs.map(m => {
         const produced = db.getMOQtyProduced(m.id);
         const rem = Math.max(0, (parseFloat(m.qtyTarget) || 0) - produced);
-        return `<option value="${m.id}" data-machine="${m.machineId}" data-rem="${rem}" ${preselectedMoId === m.id ? 'selected' : ''}>${m.moNumber} — ${m.productName} (Sisa: ${prodFmt(rem)} kg)</option>`;
+        return `<option value="${m.id}" data-machine="${m.machineId}" data-rem="${rem}" ${preselectedMoId === m.id ? 'selected' : ''}>${m.moNumber} â€” ${m.productName} (Sisa: ${prodFmt(rem)} kg)</option>`;
     }).join('');
 
     if (!runningMOs.length) { showToast('Tidak ada MO yang sedang berjalan.', 'error'); return; }
@@ -1022,8 +1115,8 @@ window.logCheckCapacity = () => {
     infoEl.classList.remove('hidden');
     infoEl.className = `rounded-lg p-3 text-sm ${exceedsCapacity ? 'bg-red-50 border border-red-200' : 'bg-blue-50 border border-blue-200'}`;
     infoEl.innerHTML = `<p class="font-semibold ${exceedsCapacity ? 'text-red-700' : 'text-blue-700'}">${machine.machineName}</p>
-        <p class="${exceedsCapacity ? 'text-red-600' : 'text-blue-600'}">Kapasitas: ${prodFmt(cap)} kg/hari · Sudah terpakai: ${prodFmt(used)} kg · Sisa: ${prodFmt(remaining)} kg</p>
-        ${exceedsCapacity ? `<p class="text-red-700 font-semibold mt-1">⚠ Qty melebihi kapasitas mesin yang tersisa hari ini!</p>` : ''}`;
+        <p class="${exceedsCapacity ? 'text-red-600' : 'text-blue-600'}">Kapasitas: ${prodFmt(cap)} kg/hari Â· Sudah terpakai: ${prodFmt(used)} kg Â· Sisa: ${prodFmt(remaining)} kg</p>
+        ${exceedsCapacity ? `<p class="text-red-700 font-semibold mt-1">âš  Qty melebihi kapasitas mesin yang tersisa hari ini!</p>` : ''}`;
 };
 
 window.saveDailyLog = () => {
@@ -1062,3 +1155,354 @@ window.saveDailyLog = () => {
     renderProductionLog();
 };
 
+
+// --- 5. PRODUCTION LINE (STREAMLINED FLOW) ------------------
+window.renderProductionLine = () => {
+    document.getElementById("pageTitle").innerText = "Alur Produksi Otomatis";
+    const mc = document.getElementById("main-content");
+
+    const batches = db.read("productionLineBatches") || [];
+    const activeBatches = batches.filter(b => b.status !== "COMPLETED");
+
+    const stages = [
+        { id: "MIXING", label: "Mixing", icon: "fa-blender", color: "blue" },
+        { id: "OVEN_BASAH", label: "Oven Basah", icon: "fa-faucet", color: "orange" },
+        { id: "OVEN_KERING", label: "Oven Kering", icon: "fa-fire", color: "red" },
+        { id: "PACKING", label: "Packing", icon: "fa-box-open", color: "green" }
+    ];
+
+    const columnHtml = stages.map(s => {
+        const stageBatches = activeBatches.filter(b => b.currentStage === s.id);
+        const cards = stageBatches.map(b => `
+            <div class="bg-white rounded-lg shadow-sm border-l-4 border-${s.color}-500 p-3 mb-3 animate-fade-in group hover:shadow-md transition-all">
+                <div class="flex justify-between items-start mb-2">
+                    <span class="text-xs font-bold text-gray-400">#${b.batchNo}</span>
+                    <span class="text-[10px] text-gray-400">${prodDate(b.createdAt)}</span>
+                </div>
+                <h4 class="text-sm font-bold text-gray-800 mb-1">${b.productName}</h4>
+                <div class="flex justify-between items-center mb-3">
+                    <p class="text-xs text-gray-500">Qty: <span class="font-bold text-gray-700">${prodFmt(b.currentQty)} kg</span></p>
+                    <span class="text-[9px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 uppercase">${s.label}</span>
+                </div>
+                <div class="pt-2 border-t border-gray-100 flex gap-2">
+                    ${s.id === "MIXING" ? `
+                        <button onclick="openProductionTransitionModal('${b.id}', 'OVEN_BASAH')" class="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-[10px] py-1.5 rounded font-bold transition-colors">
+                            Keluarkan Hasil Basah
+                        </button>` : ""}
+                    ${s.id === "OVEN_BASAH" ? `
+                        <button onclick="openProductionTransitionModal('${b.id}', 'OVEN_KERING')" class="flex-1 bg-orange-600 hover:bg-orange-700 text-white text-[10px] py-1.5 rounded font-bold transition-colors">
+                            Masuk Oven Kering
+                        </button>` : ""}
+                    ${s.id === "OVEN_KERING" ? `
+                        <button onclick="openProductionTransitionModal('${b.id}', 'PACKING')" class="flex-1 bg-red-600 hover:bg-red-700 text-white text-[10px] py-1.5 rounded font-bold transition-colors">
+                            Pindah Packing
+                        </button>` : ""}
+                    ${s.id === "PACKING" ? `
+                        <button onclick="completeProductionBatch('${b.id}')" class="flex-1 bg-green-600 hover:bg-green-700 text-white text-[10px] py-1.5 rounded font-bold transition-colors">
+                            Selesai & Masuk Gudang
+                        </button>` : ""}
+                </div>
+            </div>
+        `).join("") || `<div class="text-center py-10 border-2 border-dashed border-gray-200 rounded-lg text-gray-300 text-xs italic">Kosong</div>`;
+
+        return `
+            <div class="flex-1 min-w-[280px]">
+                <div class="flex items-center gap-2 mb-4">
+                    <div class="w-8 h-8 rounded-lg bg-${s.color}-100 text-${s.color}-600 flex items-center justify-center">
+                        <i class="fas ${s.icon} text-sm"></i>
+                    </div>
+                    <h3 class="font-bold text-gray-700 uppercase tracking-wider text-xs">${s.label}</h3>
+                    <span class="ml-auto bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full text-[10px] font-bold">${stageBatches.length}</span>
+                </div>
+                <div class="max-h-[70vh] overflow-y-auto pr-1">
+                    ${cards}
+                </div>
+            </div>
+        `;
+    }).join("");
+
+    mc.innerHTML = `
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <h2 class="text-xl font-bold text-gray-800">Production Pipeline</h2>
+                <p class="text-sm text-gray-500">Pantau pergerakan batch dari Mixing sampai Gudang Jadi</p>
+            </div>
+            <button onclick="openNewProductionBatchModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-all flex items-center gap-2">
+                <i class="fas fa-plus"></i> Buat Batch Baru
+            </button>
+        </div>
+        <div class="flex gap-6 overflow-x-auto pb-4 custom-scrollbar">
+            ${columnHtml}
+        </div>
+    `;
+};
+
+window.openNewProductionBatchModal = () => {
+    const fgItems = db.read("inventoryItems").filter(i => i.category === "FINISHED_GOODS" && i.status !== "INACTIVE");
+    const fgOpts = fgItems.map(i => `<option value="${i.id}" data-name="${i.itemName}">${i.itemCode} - ${i.itemName}</option>`).join("");
+    const batchNo = "BT-" + Date.now().toString().slice(-6);
+
+    const body = `
+        <div class="space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">No. Batch</label>
+                    <input id="pb_no" value="${batchNo}" readonly class="w-full border border-gray-200 rounded px-3 py-2 bg-gray-50 text-sm font-mono">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Target Qty Basah (kg)</label>
+                    <input type="number" id="pb_qty" placeholder="100" class="w-full border border-gray-300 rounded px-3 py-2 text-sm font-bold">
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Pilih Produk (Finished Goods)</label>
+                <select id="pb_product" class="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white">
+                    <option value="">-- Pilih Produk --</option>
+                    ${fgOpts}
+                </select>
+            </div>
+            
+            <div class="border-t border-gray-100 pt-4">
+                <label class="flex items-center gap-2 mb-3 cursor-pointer group">
+                    <input type="checkbox" id="pb_use_bom" checked onchange="toggleProductionMode(this.checked)" class="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500">
+                    <span class="text-sm font-bold text-gray-700 group-hover:text-blue-600">Gunakan resep standar (BOM)</span>
+                </label>
+                
+                <div id="pb_bom_hint" class="bg-blue-50 border border-blue-100 p-3 rounded-lg">
+                    <p class="text-[11px] text-blue-700 leading-relaxed">
+                        <i class="fas fa-info-circle mr-1"></i> Sistem akan otomatis menghitung pemakaian bahan baku berdasarkan BOM yang terdaftar untuk produk ini.
+                    </p>
+                </div>
+                
+                <div id="pb_manual_area" class="hidden">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-xs font-bold text-gray-600">Daftar Bahan Baku Digunakan:</span>
+                        <button onclick="addManualMaterialRow()" class="text-blue-600 hover:text-blue-700 text-xs font-bold">
+                            <i class="fas fa-plus"></i> Tambah Bahan
+                        </button>
+                    </div>
+                    <div id="manual_materials_list" class="max-h-40 overflow-y-auto border border-gray-200 rounded p-2 bg-gray-50">
+                        <!-- Rows added here -->
+                    </div>
+                </div>
+            </div>
+        </div>`;
+
+    const footer = `
+        <button onclick="saveNewProductionBatch()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold shadow-sm">Mulai Produksi</button>
+        <button onclick="closeModal()" class="ml-3 text-gray-500 hover:text-gray-700 text-sm font-bold">Batal</button>`;
+
+    showModal("Buat Batch Produksi Baru", body, footer, "md");
+};
+
+window.saveNewProductionBatch = () => {
+    const productId = document.getElementById("pb_product").value;
+    const productName = document.getElementById("pb_product").selectedOptions[0]?.dataset.name;
+    const qty = parseFloat(document.getElementById("pb_qty").value);
+    const batchNo = document.getElementById("pb_no").value;
+    const useBom = document.getElementById("pb_use_bom").checked;
+
+    if (!productId || !qty || qty <= 0) return showToast("Lengkapi data produk dan qty", "error");
+
+    let consumedMaterials = [];
+
+    if (useBom) {
+        const bom = db.read("bomHeaders").find(b => b.productId === productId && b.status === "ACTIVE");
+        if (!bom) return showToast("Tidak ada BOM aktif untuk produk ini!", "error");
+        
+        const materials = db.read("bomMaterials").filter(m => m.bomId === bom.id);
+        const factor = qty / bom.outputPerBatch;
+        
+        consumedMaterials = materials.map(m => ({
+            itemId: m.itemId,
+            itemName: m.itemName,
+            qty: m.qty * factor
+        }));
+    } else {
+        const rows = document.querySelectorAll("#manual_materials_list > div");
+        rows.forEach(row => {
+            const itemId = row.querySelector(".mm-item").value;
+            const itemQty = parseFloat(row.querySelector(".mm-qty").value);
+            const itemName = row.querySelector(".mm-item").selectedOptions[0]?.text.split(" - ")[1];
+            if (itemId && itemQty > 0) {
+                consumedMaterials.push({ itemId, itemName, qty: itemQty });
+            }
+        });
+        if (consumedMaterials.length === 0) return showToast("Pilih minimal 1 bahan baku", "error");
+    }
+
+    // Validate & Deduct Stock
+    const stockErrors = [];
+    consumedMaterials.forEach(m => {
+        if (!db.validateInventoryStock(m.itemId, m.qty)) {
+            stockErrors.push(m.itemName);
+        }
+    });
+
+    if (stockErrors.length) return alert("Stok bahan baku tidak cukup: " + stockErrors.join(", "));
+
+    // All good, process transactions
+    consumedMaterials.forEach(m => {
+        db.addInventoryTransaction(m.itemId, "OUT", m.qty, "PRODUCTION_LINE", batchNo, "Produksi Batch: " + batchNo);
+    });
+
+    const newBatch = db.insert("productionLineBatches", {
+        batchNo, productId, productName,
+        initialQty: qty, currentQty: qty,
+        currentStage: "MIXING",
+        status: "RUNNING",
+        useBom,
+        history: [{ stage: "MIXING", qty, timestamp: new Date().toISOString(), note: useBom ? "BOM Consumption" : "Manual Material Input" }]
+    });
+
+    // Record initial WIP IN for MIXING
+    const wipId = db.ensureWIPItem(productId, "Mixing");
+    db.addInventoryTransaction(wipId, "IN", qty, "PRODUCTION_LINE", newBatch.id, "Mulai Batch: " + batchNo);
+
+    showToast("Batch Produksi Berhasil Dimulai!");
+    closeModal();
+    renderProductionLine();
+};
+
+window.openProductionTransitionModal = (batchId, nextStage) => {
+    const b = db.findById("productionLineBatches", batchId);
+    if (!b) return;
+
+    let body = "";
+    if (nextStage === "OVEN_BASAH") {
+        body = `
+            <div class="space-y-4">
+                <p class="text-sm text-gray-600 font-medium">Mixing selesai. Masukkan berat hasil keluaran mixing (hasil basah).</p>
+                <div class="bg-orange-50 border border-orange-200 p-3 rounded-lg mb-4 text-xs text-orange-700">
+                    <i class="fas fa-info-circle mr-1"></i> Qty ini bisa lebih besar dari Qty awal jika ada penambahan air atau bahan lain.
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Qty Hasil Basah (kg)</label>
+                    <input type="number" id="tr_qty" value="${b.currentQty}" step="0.01" class="w-full border border-gray-300 rounded px-3 py-2 text-sm font-bold">
+                </div>
+                <div class="p-3 bg-blue-50 border border-blue-100 rounded text-sm text-blue-700">
+                    <i class="fas fa-info-circle mr-1"></i> Stok saat ini di <strong>Mixing</strong>: <strong>${prodFmt(b.currentQty)} kg</strong>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Qty Masuk Oven Basah (kg)</label>
+                    <input type="number" id="tr_qty" value="${b.currentQty}" step="0.01" class="w-full border border-gray-300 rounded px-3 py-2 text-sm font-bold">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Catatan</label>
+                    <textarea id="tr_note" placeholder="Opsional" class="w-full border border-gray-300 rounded px-3 py-2 text-sm"></textarea>
+                </div>
+            </div>`;
+    } else if (nextStage === "OVEN_KERING") {
+        body = `
+            <div class="space-y-4">
+                <div class="p-3 bg-blue-50 border border-blue-100 rounded text-sm text-blue-700">
+                    <i class="fas fa-info-circle mr-1"></i> Stok saat ini di <strong>Oven Basah</strong>: <strong>${prodFmt(b.currentQty)} kg</strong>
+                </div>
+                <p class="text-sm text-gray-600 font-medium">Berapa besar penyusutan di oven kering (%)?</p>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Persen Susut (%)</label>
+                        <input type="number" id="tr_shrink" value="10" step="0.1" oninput="calcDryQtyPreview(${b.currentQty})" class="w-full border border-gray-300 rounded px-3 py-2 text-sm font-bold">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Estimasi Qty Kering (kg)</label>
+                        <input id="tr_qty_preview" value="${prodFmt(b.currentQty * 0.9)}" readonly class="w-full border border-gray-200 rounded px-3 py-2 text-sm bg-gray-50 font-bold text-red-600">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Catatan</label>
+                    <textarea id="tr_note" placeholder="Opsional" class="w-full border border-gray-300 rounded px-3 py-2 text-sm"></textarea>
+                </div>
+            </div>`;
+    } else if (nextStage === "PACKING") {
+        body = `
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Qty Akhir untuk Packing (kg)</label>
+                    <input type="number" id="tr_qty" value="${b.currentQty}" step="0.01" class="w-full border border-gray-300 rounded px-3 py-2 text-sm font-bold">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Catatan</label>
+                    <textarea id="tr_note" placeholder="Opsional" class="w-full border border-gray-300 rounded px-3 py-2 text-sm"></textarea>
+                </div>
+            </div>`;
+    }
+
+    const titleMap = { "OVEN_BASAH": "Hasil Mixing (WET)", "OVEN_KERING": "Masuk Oven Kering", "PACKING": "Selesai Oven (Kering)" };
+    const footer = `
+        <button onclick="saveProductionTransition('${batchId}', '${nextStage}')" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-bold">Konfirmasi Perubahan</button>
+        <button onclick="closeModal()" class="ml-3 border border-gray-300 px-4 py-2 rounded text-sm font-medium text-gray-600 hover:bg-gray-50">Batal</button>`;
+
+    showModal(titleMap[nextStage], body, footer, "sm");
+};
+
+window.calcDryQtyPreview = (currentQty) => {
+    const shrink = parseFloat(document.getElementById("tr_shrink").value) || 0;
+    const preview = document.getElementById("tr_qty_preview");
+    if (preview) preview.value = prodFmt(currentQty * (1 - (shrink / 100)));
+};
+
+window.saveProductionTransition = (batchId, nextStage) => {
+    const note = document.getElementById("tr_note")?.value;
+    let data = { note };
+
+    if (nextStage === "OVEN_BASAH" || nextStage === "PACKING") {
+        data.qty = parseFloat(document.getElementById("tr_qty").value);
+        if (isNaN(data.qty) || data.qty < 0) return showToast("Qty tidak valid", "error");
+    } else if (nextStage === "OVEN_KERING") {
+        data.shrinkPct = parseFloat(document.getElementById("tr_shrink").value);
+        if (isNaN(data.shrinkPct) || data.shrinkPct < 0) return showToast("Persen tidak valid", "error");
+    }
+
+    db.processStageTransition(batchId, nextStage, data);
+    showToast("Tahap berhasil diperbarui");
+    closeModal();
+    renderProductionLine();
+};
+
+window.completeProductionBatch = (batchId) => {
+    const b = db.findById("productionLineBatches", batchId);
+    if (!confirm("Selesaikan batch #" + b.batchNo + " dan masukkan ke stok gudang?")) return;
+
+    db.processStageTransition(batchId, "COMPLETED", { note: "Final Packing" });
+    showToast("Batch selesai! Stok Barang Jadi bertambah.");
+    renderProductionLine();
+};
+
+// --- 6. PRODUCTION LINE HELPERS (MANUAL MATERIALS) ----------
+window.addManualMaterialRow = () => {
+    const container = document.getElementById("manual_materials_list");
+    const id = "rm_" + Date.now();
+    const items = db.read("inventoryItems").filter(i => i.category === "RAW_MATERIAL");
+    const options = items.map(i => `<option value="${i.id}">${i.itemCode} - ${i.itemName}</option>`).join("");
+    
+    const div = document.createElement("div");
+    div.id = id;
+    div.className = "flex gap-2 mb-2 animate-fade-in";
+    div.innerHTML = `
+        <select class="flex-1 border border-gray-300 rounded px-2 py-1.5 text-xs bg-white mm-item">
+            <option value="">-- Pilih Bahan --</option>
+            ${options}
+        </select>
+        <input type="number" placeholder="Qty" class="w-20 border border-gray-300 rounded px-2 py-1.5 text-xs mm-qty">
+        <button onclick="this.parentElement.remove()" class="text-red-500 hover:text-red-700 p-1">
+            <i class="fas fa-trash"></i>
+        </button>
+    `;
+    container.appendChild(div);
+};
+
+window.toggleProductionMode = (useBom) => {
+    const bomHint = document.getElementById("pb_bom_hint");
+    const manualArea = document.getElementById("pb_manual_area");
+    if (useBom) {
+        bomHint.classList.remove("hidden");
+        manualArea.classList.add("hidden");
+    } else {
+        bomHint.classList.add("hidden");
+        manualArea.classList.remove("hidden");
+        if (document.getElementById("manual_materials_list").children.length === 0) {
+            addManualMaterialRow();
+        }
+    }
+};

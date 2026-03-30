@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NexERP - Food Manufacturing System</title>
+    <title>Tana Subur Nusantara - Food Manufacturing System</title>
 
     <!-- Google Fonts: Inter -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -15,7 +15,7 @@
     <!-- Tailwind CSS (via CDN for simplicity) -->
     <script src="https://cdn.tailwindcss.com"></script>
 
-    <!-- Tailwind Config for Inter font -->
+    <!-- Tailwind Config for Inter font and new Indigo/Slate theme -->
     <script>
         tailwind.config = {
             theme: {
@@ -24,8 +24,8 @@
                         sans: ['Inter', 'sans-serif'],
                     },
                     colors: {
-                        primary: '#2563eb', // blue-600
-                        secondary: '#475569', // slate-600
+                        primary: '#1b91f0', // Unity ERP Blue
+                        secondary: '#64748b', // slate-500
                     }
                 }
             }
@@ -39,224 +39,336 @@
 <body class="bg-gray-50 text-gray-800 font-sans antialiased h-screen flex overflow-hidden">
 
     <!-- Sidebar -->
-    <aside class="w-64 bg-slate-900 text-slate-300 flex flex-col h-full shrink-0 transition-all duration-300 z-20"
+    <aside
+        class="w-64 bg-white border-r border-gray-200 text-slate-700 flex flex-col h-full shrink-0 transition-all duration-300 z-20 overflow-hidden"
         id="sidebar">
-        <div class="h-16 flex items-center px-6 border-b border-slate-800">
-            <span class="text-white text-xl font-bold tracking-tight"><span class="text-blue-500">Nex</span>ERP</span>
+        <div class="h-16 flex items-center px-6 border-b border-gray-100 shrink-0">
+            <div class="flex items-center gap-2 sidebar-label">
+                <img src="assets/logo.png" alt="UnityERP Logo"
+                    class="w-8 h-8 rounded-lg shadow-sm object-contain logo-main">
+                <span class="text-slate-900 text-lg font-bold tracking-tight">Tana Subur</span>
+            </div>
+            <div class="sidebar-icon-only hidden logo-collapsed-container">
+                <img src="assets/logo.png" alt="U" class="w-10 h-10 rounded-lg shadow-sm object-contain logo-collapsed">
+            </div>
         </div>
 
-        <nav class="flex-1 overflow-y-auto py-2 px-3 space-y-1" id="nav-links">
-            <div class="nav-group inventory hidden">
-                <div class="pt-2 pb-1">
-                    <p class="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Persediaan</p>
+        <nav class="flex-1 overflow-y-auto py-4 px-3 space-y-4 custom-scrollbar" id="nav-links">
+            <!-- DASHBOARD -->
+            <a href="#" data-view="launcher"
+                class="nav-btn flex items-center px-3 py-2.5 text-sm font-semibold rounded-lg hover:bg-slate-50 transition-all group relative">
+                <div class="active-indicator"></div>
+                <span class="sidebar-label text-slate-700">Dashboard</span>
+            </a>
+
+            <div class="nav-group-parent hidden" id="penjualan-group-parent">
+                <div class="flex items-center px-3 py-2 text-slate-900 font-bold">
+                    <i class="fas fa-shopping-cart w-5 text-center mr-3 text-slate-600"></i>
+                    <span class="sidebar-label">Sales</span>
                 </div>
-
-                <!-- Master -->
-                <a href="#" data-view="inventory-master"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-boxes w-6 text-center mr-2 text-slate-400"></i>
-                    Master Item
-                </a>
-
-                <!-- Penerimaan -->
-                <p class="px-3 pt-3 pb-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Penerimaan
-                </p>
-                <a href="#" data-view="inventory-po-receipt"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-truck-loading w-6 text-center mr-2 text-yellow-400"></i>
-                    Terima dari PO
-                </a>
-                <a href="#" data-view="inventory-stock-in"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-arrow-down w-6 text-center mr-2 text-green-400"></i>
-                    Stock In Manual
-                </a>
-
-                <!-- Pengeluaran -->
-                <p class="px-3 pt-3 pb-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Pengeluaran
-                </p>
-                <a href="#" data-view="inventory-delivery"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-truck w-6 text-center mr-2 text-blue-400"></i>
-                    Surat Jalan / Kirim
-                </a>
-                <a href="#" data-view="inventory-stock-out"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-arrow-up w-6 text-center mr-2 text-red-400"></i>
-                    Stock Out Manual
-                </a>
-                <a href="#" data-view="inventory-production"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-industry w-6 text-center mr-2 text-orange-400"></i>
-                    Konsumsi Produksi
-                </a>
-
-                <!-- Laporan -->
-                <p class="px-3 pt-3 pb-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Laporan</p>
-                <a href="#" data-view="inventory-card"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-list-alt w-6 text-center mr-2 text-slate-400"></i>
-                    Kartu Stok
-                </a>
-                <a href="#" data-view="inventory-report"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-chart-bar w-6 text-center mr-2 text-slate-400"></i>
-                    Laporan Stok
-                </a>
+                <div id="penjualan-group" class="nav-group space-y-1">
+                    <a href="#" data-view="sales-dashboard"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label font-bold text-blue-600">Sales Dashboard</span>
+                    </a>
+                    <a href="#" data-view="sales-quotations"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Quotations</span>
+                    </a>
+                    <a href="#" data-view="sales-orders"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Sales Orders</span>
+                    </a>
+                    <a href="#" data-view="sales-invoices"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Sales Invoices</span>
+                    </a>
+                    <a href="#" data-view="sales-delivery-orders"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Delivery Order (Surat Jalan)</span>
+                    </a>
+                    <a href="#" data-view="sales-reports"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Sales Reports</span>
+                    </a>
+                    <a href="#" data-view="sales-customers"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Customer Data</span>
+                    </a>
+                </div>
             </div>
 
-            <div class="nav-group purchase hidden">
-                <div class="pt-2 pb-1">
-                    <p class="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Pembelian</p>
+            <!-- PURCHASING -->
+            <div class="nav-group-parent hidden" id="pembelian-group-parent">
+                <div class="flex items-center px-3 py-2 text-slate-900 font-bold">
+                    <i class="fas fa-shopping-cart w-5 text-center mr-3 text-slate-600"></i>
+                    <span class="sidebar-label">Purchasing</span>
                 </div>
-
-                <!-- Master -->
-                <a href="#" data-view="master-suppliers"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-truck w-6 text-center mr-2 text-slate-400"></i>
-                    Master Supplier
-                </a>
-
-                <!-- Transaksi -->
-                <p class="px-3 pt-3 pb-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Transaksi
-                </p>
-                <a href="#" data-view="purchase-requests"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-clipboard-list w-6 text-center mr-2 text-yellow-400"></i>
-                    Purchase Request
-                </a>
-                <a href="#" data-view="purchase-orders"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-shopping-cart w-6 text-center mr-2 text-blue-400"></i>
-                    Purchase Order
-                </a>
-
-                <!-- Keuangan -->
-                <p class="px-3 pt-3 pb-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Keuangan</p>
-                <a href="#" data-view="purchase-invoices"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-file-invoice w-6 text-center mr-2 text-orange-400"></i>
-                    Supplier Invoice
-                </a>
-                <a href="#" data-view="supplier-payments"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-hand-holding-usd w-6 text-center mr-2 text-green-400"></i>
-                    Pembayaran
-                </a>
-
-                <!-- Laporan -->
-                <p class="px-3 pt-3 pb-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Laporan</p>
-                <a href="#" data-view="purchase-reports"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-chart-bar w-6 text-center mr-2 text-slate-400"></i>
-                    Laporan Pembelian
-                </a>
+                <div id="pembelian-group" class="nav-group space-y-1">
+                    <a href="#" data-view="purchase-dashboard"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label font-bold text-blue-600">Purchasing Dashboard</span>
+                    </a>
+                    <a href="#" data-view="purchase-rfqs"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">RFQs (Request For Quotation)</span>
+                    </a>
+                    <a href="#" data-view="purchase-orders"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Purchase Orders</span>
+                    </a>
+                    <a href="#" data-view="purchase-receiving"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Penerimaan Barang (GR)</span>
+                    </a>
+                    <a href="#" data-view="purchase-invoices"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Supplier Invoices</span>
+                    </a>
+                    <a href="#" data-view="supplier-payments"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Supplier Payments</span>
+                    </a>
+                    <a href="#" data-view="purchase-reports"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Purchasing Reports</span>
+                    </a>
+                    <a href="#" data-view="master-suppliers"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Supplier</span>
+                    </a>
+                </div>
             </div>
 
-
-            <div class="nav-group sales hidden">
-                <div class="pt-2 pb-1">
-                    <p class="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Penjualan</p>
+            <!-- INVENTORY -->
+            <div class="nav-group-parent hidden" id="logistik-group-parent">
+                <div class="flex items-center px-3 py-2 text-slate-900 font-bold">
+                    <i class="fas fa-boxes w-5 text-center mr-3 text-slate-600"></i>
+                    <span class="sidebar-label">Inventory</span>
                 </div>
-
-                <!-- Master -->
-                <a href="#" data-view="master-customers"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-users w-6 text-center mr-2 text-slate-400"></i>
-                    Master Customer
-                </a>
-
-                <!-- Transaksi -->
-                <p class="px-3 pt-3 pb-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Transaksi
-                </p>
-                <a href="#" data-view="sales-quotations"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-file-contract w-6 text-center mr-2 text-yellow-400"></i>
-                    Penawaran (QT)
-                </a>
-                <a href="#" data-view="sales-orders"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-shopping-bag w-6 text-center mr-2 text-blue-400"></i>
-                    Sales Order
-                </a>
-
-                <!-- Keuangan -->
-                <p class="px-3 pt-3 pb-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Keuangan</p>
-                <a href="#" data-view="sales-invoices"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-file-invoice-dollar w-6 text-center mr-2 text-orange-400"></i>
-                    Invoice
-                </a>
-                <a href="#" data-view="sales-payments"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-money-bill-wave w-6 text-center mr-2 text-green-400"></i>
-                    Pembayaran
-                </a>
-
-                <!-- Laporan -->
-                <p class="px-3 pt-3 pb-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Laporan</p>
-                <a href="#" data-view="sales-reports"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-chart-line w-6 text-center mr-2 text-slate-400"></i>
-                    Laporan Penjualan
-                </a>
+                <div id="logistik-group" class="nav-group space-y-1">
+                    <a href="#" data-view="inventory-dashboard"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label font-bold text-blue-600">Inventory Dashboard</span>
+                    </a>
+                    <a href="#" data-view="inventory-po-receipt"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">PO Receipts</span>
+                    </a>
+                    <a href="#" data-view="inventory-delivery"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Shipment Processing / DO</span>
+                    </a>
+                    <a href="#" data-view="inventory-card"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Stock Cards</span>
+                    </a>
+                    <a href="#" data-view="inventory-shrinkage"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Shrinkage Reports</span>
+                    </a>
+                    <a href="#" data-view="inventory-monthly-report"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Monthly Stock Reports</span>
+                    </a>
+                    <a href="#" data-view="sales-returns"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-red-600 hover:text-red-700 rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label flex items-center gap-2"><i class="fas fa-undo-alt text-xs"></i>
+                            Sales Returns</span>
+                    </a>
+                    <a href="#" data-view="sales-exchanges"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-orange-600 hover:text-orange-700 rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label flex items-center gap-2"><i class="fas fa-exchange-alt text-xs"></i>
+                            Sales Exchanges</span>
+                    </a>
+                    <a href="#" data-view="sales-return-reports"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Return Reports</span>
+                    </a>
+                </div>
             </div>
 
-            <div class="nav-group production hidden">
-                <div class="pt-2 pb-1">
-                    <p class="px-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Produksi</p>
+            <!-- MANUFACTURING -->
+            <div class="nav-group-parent hidden" id="produksi-group-parent">
+                <div class="flex items-center px-3 py-2 text-slate-900 font-bold">
+                    <i class="fas fa-industry w-5 text-center mr-3 text-slate-600"></i>
+                    <span class="sidebar-label">Manufacturing</span>
                 </div>
+                <div id="produksi-group" class="nav-group space-y-1">
+                    <a href="#" data-view="production-dashboard"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Manufacturing Dashboard</span>
+                    </a>
+                    <a href="#" data-view="production-mo"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Manufacturing Orders (MO)</span>
+                    </a>
+                    <a href="#" data-view="production-log"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Daily Production Logs</span>
+                    </a>
+                    <a href="#" data-view="production-line"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-blue-600 font-bold hover:text-blue-700 rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Alur Produksi (Otomatis)</span>
+                    </a>
+                </div>
+            </div>
 
-                <!-- Overview -->
-                <a href="#" data-view="production-dashboard"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-tachometer-alt w-6 text-center mr-2 text-orange-400"></i>
-                    Dashboard Produksi
-                </a>
+            <!-- FINANCE -->
+            <div class="nav-group-parent hidden" id="finance-group-parent">
+                <div class="flex items-center px-3 py-2 text-slate-900 font-bold">
+                    <i class="fas fa-money-bill-wave w-5 text-center mr-3 text-slate-600"></i>
+                    <span class="sidebar-label">Finance</span>
+                </div>
+                <div id="finance-group" class="nav-group space-y-1">
+                    <a href="#" data-view="finance-dashboard"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label font-bold text-blue-600">Finance Dashboard</span>
+                    </a>
+                    <a href="#" data-view="finance-expenses"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Expenses</span>
+                    </a>
+                    <a href="#" data-view="finance-ar"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Accounts Receivable (AR)</span>
+                    </a>
+                    <a href="#" data-view="finance-credit-notes"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Credit Notes (AR)</span>
+                    </a>
+                    <a href="#" data-view="finance-ap"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Accounts Payable (AP)</span>
+                    </a>
+                    <a href="#" data-view="finance-debit-notes"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Debit Notes (AP)</span>
+                    </a>
+                    <a href="#" data-view="finance-settings"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span
+                            class="sidebar-label font-medium text-slate-500 border-t border-gray-100 mt-1 pt-1 w-full flex items-center gap-2">
+                            <i class="fas fa-cog"></i> Finance Settings
+                        </span>
+                    </a>
+                    <a href="#" data-view="finance-journal"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Journal Entries</span>
+                    </a>
+                </div>
+            </div>
 
-                <!-- Master -->
-                <p class="px-3 pt-3 pb-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Master</p>
-                <a href="#" data-view="production-machines"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-cog w-6 text-center mr-2 text-slate-400"></i>
-                    Master Mesin
-                </a>
-                <a href="#" data-view="production-bom"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-clipboard-list w-6 text-center mr-2 text-slate-400"></i>
-                    Bill of Material
-                </a>
+            <!-- SETTINGS -->
+            <div class="nav-group-parent hidden" id="pengaturan-group-parent">
+                <div class="flex items-center px-3 py-2 text-slate-900 font-bold">
+                    <i class="fas fa-cog w-5 text-center mr-3 text-slate-600"></i>
+                    <span class="sidebar-label">Settings</span>
+                </div>
+                <div id="pengaturan-group" class="nav-group space-y-1">
 
-                <!-- Produksi -->
-                <p class="px-3 pt-3 pb-1 text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Eksekusi</p>
-                <a href="#" data-view="production-mo"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-industry w-6 text-center mr-2 text-blue-400"></i>
-                    Manufacturing Order
-                </a>
-                <a href="#" data-view="production-log"
-                    class="nav-btn flex items-center px-3 py-2 text-sm font-medium rounded-md hover:bg-slate-800 hover:text-white transition-colors">
-                    <i class="fas fa-calendar-check w-6 text-center mr-2 text-green-400"></i>
-                    Log Harian
-                </a>
+
+                    <a href="#" data-view="inventory-master"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Warehouses & Stock [Inventory]</span>
+                    </a>
+                    <a href="#" data-view="production-machines"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Machines [Manufacturing]</span>
+                    </a>
+                    <a href="#" data-view="production-bom"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Bill of Materials [Manufacturing]</span>
+                    </a>
+                    <a href="#" data-view="finance-accounts"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Cash & Bank [Finance]</span>
+                    </a>
+                    <a href="#" data-view="settings-users"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Users</span>
+                    </a>
+                    <a href="#" data-view="settings-roles"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Roles & Permissions</span>
+                    </a>
+                    <a href="#" data-view="settings-company"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">Company Profile</span>
+                    </a>
+                    <a href="#" data-view="settings-system"
+                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <span class="sidebar-label">System Configuration</span>
+                    </a>
+                </div>
             </div>
         </nav>
 
-        <!-- User Profile minimal -->
-        <div class="p-4 border-t border-slate-800">
-            <div class="flex items-center space-x-3">
-                <div
-                    class="h-8 w-8 rounded-full bg-slate-700 flex items-center justify-center text-white font-bold text-sm">
-
+        <!-- Sidebar Footer / Profile -->
+        <div class="sidebar-footer p-4 border-t border-gray-100 mt-auto sidebar-label">
+            <div class="flex items-center gap-3 mb-3">
+                <div id="sidebar-avatar"
+                    class="w-10 h-10 rounded-full bg-[#1b91f0] flex items-center justify-center text-white font-bold shrink-0 shadow-sm border-2 border-white text-sm">
+                    --
                 </div>
-                <div>
-                    <p class="text-sm font-medium text-white">Admin Gudang</p>
-                    <p class="text-xs text-slate-400">admin@nexerp.com</p>
+                <div class="flex-1 min-w-0 overflow-hidden">
+                    <p id="sidebar-name" class="text-sm font-semibold text-slate-900 truncate">-</p>
+                    <p id="sidebar-role"
+                        class="text-[10px] font-medium text-slate-400 truncate uppercase tracking-widest">-</p>
                 </div>
             </div>
+            <button onclick="doLogout()"
+                class="w-full flex items-center justify-center gap-2 text-sm font-semibold text-red-500 hover:text-white hover:bg-red-500 border border-red-200 hover:border-red-500 py-2 rounded-lg transition-all duration-200">
+                <i class="fas fa-sign-out-alt"></i>
+                <span>Keluar</span>
+            </button>
             <button id="resetDataBtn"
-                class="mt-4 w-full text-xs text-red-400 hover:text-red-300 py-1 border border-red-900 rounded hover:bg-red-900/30 transition-colors">
-                <i class="fas fa-trash-alt mr-1"></i> Reset All DB Data
+                class="mt-2 w-full text-xs text-slate-400 hover:text-red-500 py-1 border border-gray-100 rounded hover:bg-red-50 transition-colors">
+                <i class="fas fa-trash-alt mr-1"></i> Reset Data
             </button>
         </div>
     </aside>
@@ -268,14 +380,14 @@
             class="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 sm:px-6 z-10 transition-all duration-300"
             id="top-header">
             <div class="flex items-center">
-                <button id="mobileMenuBtn" class="md:hidden mr-4 text-gray-500 hover:text-gray-700">
+                <button id="sidebarToggleBtn"
+                    class="hidden md:flex mr-4 text-gray-500 hover:text-indigo-600 transition-colors w-10 h-10 items-center justify-center rounded-lg hover:bg-indigo-50">
                     <i class="fas fa-bars text-xl"></i>
                 </button>
-                <button id="homeBtn" class="mr-4 text-gray-400 hover:text-blue-600 transition-colors hidden"
-                    onclick="navigateTo('launcher')">
-                    <i class="fas fa-th text-xl"></i>
+                <button id="mobileMenuBtn" class="md:hidden mr-4 text-gray-400 hover:text-gray-700">
+                    <i class="fas fa-bars text-xl"></i>
                 </button>
-                <h1 id="pageTitle" class="text-xl font-semibold text-gray-800">Apps</h1>
+                <h1 id="pageTitle" class="text-xl font-semibold text-gray-800 ml-4">Apps</h1>
             </div>
             <div class="flex items-center space-x-4">
                 <span class="text-sm text-gray-500 hidden sm:block">Sistem Informasi Manufaktur</span>
@@ -292,7 +404,7 @@
                         <div class="px-4 py-2 border-b border-gray-100 flex justify-between items-center">
                             <h3 class="text-sm font-semibold text-gray-700">Notifikasi</h3>
                             <button onclick="markAllNotifRead()"
-                                class="text-xs text-blue-600 hover:text-blue-800">Tandai sudah dibaca</button>
+                                class="text-xs text-indigo-600 hover:text-indigo-800">Tandai sudah dibaca</button>
                         </div>
                         <div id="notif-list" class="max-h-64 overflow-y-auto w-full">
                             <!-- Items here -->
@@ -315,12 +427,60 @@
     <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2"></div>
 
     <!-- Application Scripts -->
+    <script>
+            // ── Session Guard ──────────────────────────────────────────
+            (function () {
+                // Support migration for the very first time
+                if (!localStorage.getItem('unityerp_session') && localStorage.getItem('nexerp_session')) {
+                    localStorage.setItem('unityerp_session', localStorage.getItem('nexerp_session'));
+                    localStorage.removeItem('nexerp_session');
+                }
+
+                const session = localStorage.getItem('unityerp_session');
+                if (!session) { window.location.href = 'login.html'; return; }
+                try {
+                    const s = JSON.parse(session);
+                    if (!s || !s.userId) throw new Error();
+                    // Inject user info in sidebar
+                    window._session = s;
+                } catch (e) {
+                    localStorage.removeItem('unityerp_session');
+                    window.location.href = 'login.html';
+                }
+            })();
+
+        function doLogout() {
+            if (!confirm('Yakin ingin keluar?')) return;
+            localStorage.removeItem('unityerp_session');
+            window.location.href = 'login.html';
+        }
+    </script>
     <script src="db.js"></script>
     <script src="data.js"></script>
     <script src="export.js"></script>
     <script src="inventory.js"></script>
     <script src="production.js"></script>
+    <script src="finance.js"></script>
+    <script src="sales_return.js"></script>
+    <script src="delivery_order.js"></script>
+    <script src="settings.js"></script>
     <script src="app.js"></script>
+    <script>
+        // ── Populate sidebar with session user ─────────────────────
+        (function () {
+            const s = window._session;
+            if (!s) return;
+            const avatarEl = document.getElementById('sidebar-avatar');
+            const nameEl = document.getElementById('sidebar-name');
+            const roleEl = document.getElementById('sidebar-role');
+            if (avatarEl) avatarEl.textContent = s.avatar || s.fullName?.slice(0, 2).toUpperCase() || '--';
+            if (nameEl) nameEl.textContent = s.fullName || s.email || s.username;
+            // Get role name
+            const roles = db.read('roles');
+            const role = roles.find(r => r.id === s.roleId);
+            if (roleEl) roleEl.textContent = role ? role.name : 'User';
+        })();
+    </script>
 </body>
 
 </html>

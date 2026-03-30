@@ -20,12 +20,23 @@ const seedData = () => {
 
     // 2. Seed Customers
     const customers = [
-        { name: 'Toko Sejahtera', phone: '08123456789', address: 'Jl. Merdeka No. 10, Jakarta' },
+        { name: 'Toko Sejahtera', phone: '#1b91f023456789', address: 'Jl. Merdeka No. 10, Jakarta' },
         { name: 'Catering Berkah', phone: '087766554433', address: 'Komp. Graha Asri Blok B5, Bekasi' },
         { name: 'IndoFood Sukses', phone: '021-555666', address: 'Kawasan Industri Jababeka, Cikarang' }
     ];
 
     customers.forEach(c => db.insert('customers', c));
+
+    // 3. Seed Accounts
+    const accounts = [
+        { code: '1101', name: 'Kas Kecil', type: 'ASSET' },
+        { code: '1102', name: 'Bank BCA', type: 'ASSET' },
+        { code: '4101', name: 'Pendapatan Penjualan', type: 'INCOME' },
+        { code: '5101', name: 'Beban Operasional', type: 'EXPENSE' },
+        { code: '5102', name: 'Beban Gaji', type: 'EXPENSE' }
+    ];
+
+    accounts.forEach(a => db.insert('accounts', a));
 
     console.log("Seeding completed.");
 };

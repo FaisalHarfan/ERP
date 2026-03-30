@@ -1,19 +1,67 @@
 /* style.css - Custom UI Tweaks and Animations */
 
+:root {
+    --primary: #1b91f0;
+    /* Unity ERP Blue */
+    --primary-dark: #157ed2;
+    --secondary: #64748b;
+    --bg-sidebar: #ffffff;
+    --border-color: #e2e8f0;
+}
+
+/* Logo Styles */
+.logo-main,
+.logo-collapsed {
+    transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    filter: drop-shadow(0 2px 4px rgba(27, 145, 240, 0.1));
+}
+
+.logo-main:hover,
+.logo-collapsed:hover {
+    transform: scale(1.1) rotate(-5deg);
+}
+
+.logo-collapsed-container {
+    padding: 0.5rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+}
+
 /* Custom Animations */
 @keyframes slideUp {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
 }
 
 @keyframes slideLeft {
-    from { opacity: 0; transform: translateX(20px); }
-    to { opacity: 1; transform: translateX(0); }
+    from {
+        opacity: 0;
+        transform: translateX(20px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
 }
 
 .animate-slide-up {
@@ -28,7 +76,44 @@
     animation: slideLeft 0.3s ease-out forwards;
 }
 
+/* Sidebar States */
+#sidebar.w-20 .sidebar-label {
+    display: none;
+}
+
+#sidebar.w-20 .sidebar-icon-only {
+    display: block;
+}
+
+#sidebar.w-20 .sidebar-icon {
+    margin-right: 0;
+    width: 100%;
+}
+
+#sidebar.w-20 .nav-btn {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+}
+
 /* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
 ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -52,11 +137,103 @@ tbody tr:hover {
     background-color: #f8fafc;
 }
 
+/* Navigation Active State */
+.nav-btn.active {
+    background-color: #f8fafc !important;
+    /* slate-50 */
+    color: var(--primary) !important;
+}
+
+.nav-btn.active i {
+    color: var(--primary) !important;
+}
+
+.nav-btn.active .active-indicator {
+    display: block !important;
+}
+
+/* Enterprise Sidebar Enhancements */
+.nav-group-title {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #94a3b8;
+    /* slate-400 */
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 1.25rem 0.75rem 0.5rem;
+}
+
+.nav-sub-menu {
+    border-left: 1px solid #f1f5f9;
+    /* slate-100 */
+    margin-left: 1.5rem;
+    padding-left: 0;
+    /* Remove internal padding to align indicators precisely */
+}
+
+.nav-sub-menu .nav-btn {
+    padding-left: 1rem;
+    font-size: 0.8125rem;
+}
+
+.active-indicator {
+    position: absolute;
+    left: -12px;
+    top: 0.25rem;
+    bottom: 0.25rem;
+    width: 4px;
+    background-color: var(--primary);
+    border-radius: 0 4px 4px 0;
+    display: none;
+}
+
+.nav-sub-menu .active-indicator {
+    left: -1px;
+    /* Position exactly on the 1px border */
+    width: 3px;
+    z-index: 10;
+}
+
+.nav-btn-parent[aria-expanded="true"] i.fa-chevron-down {
+    transform: rotate(180deg);
+}
+
+.nav-btn-parent {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #475569;
+    /* slate-600 */
+}
+
+.nav-btn-parent:hover {
+    color: #1e293b;
+    /* slate-800 */
+    background-color: #f8fafc !important;
+}
+
+#sidebar.w-20 .nav-sub-menu,
+#sidebar.w-20 .nav-group-title,
+#sidebar.w-20 .fa-chevron-down {
+    display: none !important;
+}
+
+#sidebar.w-20 .nav-btn-parent {
+    justify-content: center;
+}
+
+#sidebar.w-20 .nav-group {
+    padding: 0.25rem 0;
+}
+
 /* Print utility */
 @media print {
-    #sidebar, header, .no-print {
+
+    #sidebar,
+    header,
+    .no-print {
         display: none !important;
     }
+
     #main-content {
         padding: 0;
         margin: 0;
