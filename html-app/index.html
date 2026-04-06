@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tana Subur Nusantara - Food Manufacturing System</title>
+    <title>UnityERP - Food Manufacturing System</title>
 
     <!-- Google Fonts: Inter -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -40,13 +40,14 @@
 
     <!-- Sidebar -->
     <aside
-        class="w-64 bg-white border-r border-gray-200 text-slate-700 flex flex-col h-full shrink-0 transition-all duration-300 z-20 overflow-hidden"
+        class="w-[280px] bg-white border-r border-gray-200 text-slate-700 flex flex-col h-full shrink-0 transition-all duration-300 z-20 overflow-hidden"
         id="sidebar">
         <div class="h-16 flex items-center px-6 border-b border-gray-100 shrink-0">
             <div class="flex items-center gap-2 sidebar-label">
                 <img src="assets/logo.png" alt="UnityERP Logo"
                     class="w-8 h-8 rounded-lg shadow-sm object-contain logo-main">
-                <span class="text-slate-900 text-lg font-bold tracking-tight">Tana Subur</span>
+                <span class="text-slate-900 text-lg font-bold tracking-tight">Unity<span
+                        class="text-blue-600">ERP</span></span>
             </div>
             <div class="sidebar-icon-only hidden logo-collapsed-container">
                 <img src="assets/logo.png" alt="U" class="w-10 h-10 rounded-lg shadow-sm object-contain logo-collapsed">
@@ -68,39 +69,53 @@
                 </div>
                 <div id="penjualan-group" class="nav-group space-y-1">
                     <a href="#" data-view="sales-dashboard"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label font-bold text-blue-600">Sales Dashboard</span>
+                        <i
+                            class="fas fa-chart-pie text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Sales Dashboard</span>
                     </a>
                     <a href="#" data-view="sales-quotations"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-file-contract text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         <span class="sidebar-label">Quotations</span>
                     </a>
                     <a href="#" data-view="sales-orders"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-shopping-bag text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         <span class="sidebar-label">Sales Orders</span>
                     </a>
                     <a href="#" data-view="sales-invoices"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-file-invoice-dollar text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         <span class="sidebar-label">Sales Invoices</span>
                     </a>
                     <a href="#" data-view="sales-delivery-orders"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label">Delivery Order (Surat Jalan)</span>
+                        <i
+                            class="fas fa-truck text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Delivery Orders</span>
                     </a>
                     <a href="#" data-view="sales-reports"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-chart-line text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         <span class="sidebar-label">Sales Reports</span>
                     </a>
                     <a href="#" data-view="sales-customers"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label">Customer Data</span>
+                        <i
+                            class="fas fa-users text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Customers</span>
                     </a>
                 </div>
             </div>
@@ -113,44 +128,65 @@
                 </div>
                 <div id="pembelian-group" class="nav-group space-y-1">
                     <a href="#" data-view="purchase-dashboard"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label font-bold text-blue-600">Purchasing Dashboard</span>
+                        <span class="sidebar-label">Purchasing Dashboard</span>
                     </a>
                     <a href="#" data-view="purchase-rfqs"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label">RFQs (Request For Quotation)</span>
+                        <i
+                            class="fas fa-file-signature text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">RFQs</span>
                     </a>
                     <a href="#" data-view="purchase-orders"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-shopping-cart text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         <span class="sidebar-label">Purchase Orders</span>
                     </a>
                     <a href="#" data-view="purchase-receiving"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label">Penerimaan Barang (GR)</span>
+                        <i
+                            class="fas fa-truck-loading text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Receiving (GR)</span>
+                    </a>
+                    <a href="#" data-view="purchase-receiving-history"
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-history text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Riwayat GR</span>
                     </a>
                     <a href="#" data-view="purchase-invoices"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-file-invoice text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         <span class="sidebar-label">Supplier Invoices</span>
                     </a>
                     <a href="#" data-view="supplier-payments"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-money-check-alt text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         <span class="sidebar-label">Supplier Payments</span>
                     </a>
                     <a href="#" data-view="purchase-reports"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-chart-bar text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         <span class="sidebar-label">Purchasing Reports</span>
                     </a>
                     <a href="#" data-view="master-suppliers"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label">Supplier</span>
+                        <i
+                            class="fas fa-user-tag text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Supplier Master</span>
                     </a>
                 </div>
             </div>
@@ -163,51 +199,67 @@
                 </div>
                 <div id="logistik-group" class="nav-group space-y-1">
                     <a href="#" data-view="inventory-dashboard"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label font-bold text-blue-600">Inventory Dashboard</span>
+                        <i
+                            class="fas fa-th-large text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Dashboard Stok</span>
+                    </a>
+                    <a href="#" data-view="inventory-master"
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-boxes text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Master Barang / Stok</span>
                     </a>
                     <a href="#" data-view="inventory-po-receipt"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label">PO Receipts</span>
+                        <i
+                            class="fas fa-file-import text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Penerimaan Barang</span>
                     </a>
                     <a href="#" data-view="inventory-delivery"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label">Shipment Processing / DO</span>
-                    </a>
-                    <a href="#" data-view="inventory-card"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
-                        <div class="active-indicator"></div>
-                        <span class="sidebar-label">Stock Cards</span>
-                    </a>
-                    <a href="#" data-view="inventory-shrinkage"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
-                        <div class="active-indicator"></div>
-                        <span class="sidebar-label">Shrinkage Reports</span>
+                        <i
+                            class="fas fa-shipping-fast text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Pengiriman (DO)</span>
                     </a>
                     <a href="#" data-view="inventory-monthly-report"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label">Monthly Stock Reports</span>
+                        <i
+                            class="fas fa-calendar-alt text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Mutasi Stok Bulanan</span>
                     </a>
                     <a href="#" data-view="sales-returns"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-red-600 hover:text-red-700 rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label flex items-center gap-2"><i class="fas fa-undo-alt text-xs"></i>
-                            Sales Returns</span>
+                        <i
+                            class="fas fa-undo-alt text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Retur Penjualan</span>
                     </a>
                     <a href="#" data-view="sales-exchanges"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-orange-600 hover:text-orange-700 rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label flex items-center gap-2"><i class="fas fa-exchange-alt text-xs"></i>
-                            Sales Exchanges</span>
+                        <i
+                            class="fas fa-exchange-alt text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Tukar Guling</span>
+                    </a>
+                    <a href="#" data-view="inventory-judgment"
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-exclamation-triangle text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Judgment / Barang NG</span>
                     </a>
                     <a href="#" data-view="sales-return-reports"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label">Return Reports</span>
+                        <i
+                            class="fas fa-file-invoice text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Laporan Retur</span>
                     </a>
                 </div>
             </div>
@@ -220,24 +272,53 @@
                 </div>
                 <div id="produksi-group" class="nav-group space-y-1">
                     <a href="#" data-view="production-dashboard"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label">Manufacturing Dashboard</span>
+                        <i
+                            class="fas fa-terminal text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Produksi Dashboard</span>
+                    </a>
+                    <a href="#" data-view="production-bom"
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-list-ul text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Bill Of Material ( BOM )</span>
+                    </a>
+                    <a href="#" data-view="master-machines"
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-cogs text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Master Mesin</span>
                     </a>
                     <a href="#" data-view="production-mo"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label">Manufacturing Orders (MO)</span>
+                        <i
+                            class="fas fa-tasks text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Manufacturing Order ( MO )</span>
                     </a>
-                    <a href="#" data-view="production-log"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                    <a href="#" data-view="production-wip-stock"
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label">Daily Production Logs</span>
+                        <i
+                            class="fas fa-boxes-stacked text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Stok WIP & History</span>
                     </a>
-                    <a href="#" data-view="production-line"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-blue-600 font-bold hover:text-blue-700 rounded-md relative group">
+                    <a href="#" data-view="inventory-shrinkage"
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label">Alur Produksi (Otomatis)</span>
+                        <i
+                            class="fas fa-percentage text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Laporan Susut</span>
+                    </a>
+                    <a href="#" data-view="production-reports"
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-file-contract text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Production Reports</span>
                     </a>
                 </div>
             </div>
@@ -250,47 +331,81 @@
                 </div>
                 <div id="finance-group" class="nav-group space-y-1">
                     <a href="#" data-view="finance-dashboard"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label font-bold text-blue-600">Finance Dashboard</span>
+                        <i
+                            class="fas fa-chart-line text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Finance Dashboard</span>
                     </a>
-                    <a href="#" data-view="finance-expenses"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                    <a href="#" data-view="finance-accounts"
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label">Expenses</span>
+                        <i
+                            class="fas fa-book-open text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Chart of Accounts</span>
                     </a>
                     <a href="#" data-view="finance-ar"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label">Accounts Receivable (AR)</span>
+                        <i
+                            class="fas fa-hand-holding-usd text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Receivables (AR)</span>
                     </a>
                     <a href="#" data-view="finance-credit-notes"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label">Credit Notes (AR)</span>
+                        <i
+                            class="fas fa-file-invoice-dollar text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Credit Notes</span>
                     </a>
                     <a href="#" data-view="finance-ap"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label">Accounts Payable (AP)</span>
+                        <i
+                            class="fas fa-receipt text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Payables (AP)</span>
                     </a>
                     <a href="#" data-view="finance-debit-notes"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label">Debit Notes (AP)</span>
+                        <i
+                            class="fas fa-file-prescription text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Debit Notes</span>
                     </a>
                     <a href="#" data-view="finance-settings"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span
-                            class="sidebar-label font-medium text-slate-500 border-t border-gray-100 mt-1 pt-1 w-full flex items-center gap-2">
-                            <i class="fas fa-cog"></i> Finance Settings
-                        </span>
+                        <i
+                            class="fas fa-sliders-h text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Finance Config</span>
+                    </a>
+                    <a href="#" data-view="finance-hpp"
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-boxes text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Laporan HPP</span>
+                    </a>
+                    <a href="#" data-view="finance-rugilaba"
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-chart-line text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Laba Rugi</span>
+                    </a>
+                    <a href="#" data-view="finance-neracasaldo"
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-balance-scale text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Neraca Saldo</span>
                     </a>
                     <a href="#" data-view="finance-journal"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label">Journal Entries</span>
+                        <i
+                            class="fas fa-book text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Journal Voucher</span>
                     </a>
                 </div>
             </div>
@@ -304,45 +419,34 @@
                 <div id="pengaturan-group" class="nav-group space-y-1">
 
 
-                    <a href="#" data-view="inventory-master"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
-                        <div class="active-indicator"></div>
-                        <span class="sidebar-label">Warehouses & Stock [Inventory]</span>
-                    </a>
-                    <a href="#" data-view="production-machines"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
-                        <div class="active-indicator"></div>
-                        <span class="sidebar-label">Machines [Manufacturing]</span>
-                    </a>
-                    <a href="#" data-view="production-bom"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
-                        <div class="active-indicator"></div>
-                        <span class="sidebar-label">Bill of Materials [Manufacturing]</span>
-                    </a>
-                    <a href="#" data-view="finance-accounts"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
-                        <div class="active-indicator"></div>
-                        <span class="sidebar-label">Cash & Bank [Finance]</span>
-                    </a>
+
                     <a href="#" data-view="settings-users"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label">Users</span>
+                        <i
+                            class="fas fa-user-shield text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">User Management</span>
                     </a>
                     <a href="#" data-view="settings-roles"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-key text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         <span class="sidebar-label">Roles & Permissions</span>
                     </a>
                     <a href="#" data-view="settings-company"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-hospital-symbol text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         <span class="sidebar-label">Company Profile</span>
                     </a>
                     <a href="#" data-view="settings-system"
-                        class="nav-btn flex items-center px-4 py-2 text-sm text-slate-600 hover:text-primary rounded-md relative group">
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
-                        <span class="sidebar-label">System Configuration</span>
+                        <i
+                            class="fas fa-tools text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">System Setup</span>
                     </a>
                 </div>
             </div>

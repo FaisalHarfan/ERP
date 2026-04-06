@@ -15,7 +15,7 @@ window.calculateColly = function (qty, kemasan) {
     else if (kemasan === '15 Kg') factor = 15;
     else if (kemasan === '5 Kg') factor = 5;
     else if (kemasan === '800 Gram') factor = 0.8;
-    
+
     const result = factor > 0 ? qty / factor : 0;
     return Number.isInteger(result) ? result : result.toFixed(2);
 };
@@ -201,7 +201,7 @@ window.addBlankDOItem = function () {
     container.appendChild(div);
 };
 
-window.updateCollyValue = function(id) {
+window.updateCollyValue = function (id) {
     const qty = parseFloat(document.getElementById(`doi_qty_${id}`).value) || 0;
     const kemasan = document.getElementById(`doi_kemasan_${id}`).value;
     const collyInput = document.getElementById(`doi_colly_${id}`);
@@ -245,7 +245,7 @@ window.saveBlankDeliveryOrder = function () {
         const kemasan = row.querySelector('.doi-kemasan')?.value || '';
         const colly = row.querySelector('.doi-colly')?.value || 0;
         const remark = row.querySelector('.doi-remark')?.value.trim();
-        if (name && qty > 0) items.push({ 
+        if (name && qty > 0) items.push({
             name, unit, qty, remark,
             kemasan,
             colly
@@ -435,7 +435,7 @@ window.loadSOForDO = function () {
             </table>
         `;
 
-        window.updateSOColly = function(idx) {
+        window.updateSOColly = function (idx) {
             const qty = parseFloat(document.getElementById(`dosi_qty_${idx}`).innerText) || 0;
             const kemasan = document.getElementById(`dosi_kemasan_${idx}`).value;
             const display = document.getElementById(`dosi_colly_display_${idx}`);
@@ -464,7 +464,7 @@ window.saveDeliveryFromSO = function () {
     if (!recipient) { showToast('Nama penerima harus diisi.', 'error'); return; }
 
     const so = db.findById('salesOrders', soId);
-    
+
     // Collect items from preview table
     const preview = document.getElementById('dos_items_preview');
     const rows = preview.querySelectorAll('tbody tr');
@@ -474,10 +474,10 @@ window.saveDeliveryFromSO = function () {
         const qty = parseFloat(row.cells[1].innerText) || 0;
         const kemasan = row.querySelector('.dosi-kemasan')?.value || '';
         const colly = row.querySelector(`#dosi_colly_display_${idx}`)?.innerText || 0;
-        
+
         // Find original SO item for metadata
         const soItem = so.items.find(si => (si.prodText || si.itemName) === name);
-        
+
         items.push({
             name,
             qty,
@@ -719,7 +719,20 @@ window.printDeliveryOrder = function (id) {
 window.renderWarehouseDeliveryOrders = function () {
     document.getElementById('pageTitle').innerText = 'Logistics / Approval';
     const mc = document.getElementById('main-content');
-    const doList = db.read('deliveryOrders').sort((a, b) => new Date(b.date) - new Date(a.date));
+    let doList = db.read('deliveryOrders').sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    if (!window._whDoActiveTab) window._whDoActiveTab = 'pending';
+
+    // Apply Date Filter
+    doList = filterByDateRange(doList, 'inventoryDelivery');
+
+    // Filter based on Tab
+    let filteredDOs = [];
+    if (window._whDoActiveTab === 'pending') {
+        filteredDOs = doList.filter(d => d.status !== 'SHIPPED');
+    } else {
+        filteredDOs = doList.filter(d => d.status === 'SHIPPED');
+    }
 
     const statusBadge = (s) => {
         if (s === 'DRAFT' || s === 'PENDING') return '<span class="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-[10px] font-bold uppercase">Waiting Approval</span>';
@@ -728,67 +741,110 @@ window.renderWarehouseDeliveryOrders = function () {
         return `<span class="px-2 py-1 bg-gray-100 text-gray-500 rounded text-[10px] font-bold uppercase">${s || 'DRAFT'}</span>`;
     };
 
+    const rows = filteredDOs.map(d => {
+        let showApprove = ['DRAFT', 'PENDING', 'HOLD'].includes(d.status);
+
+        // Real-time stock check for display
+        let stockStatus = '<span class="text-green-600 font-bold text-xs"><i class="fas fa-check-circle mr-1"></i>READY</span>';
+        let hasIssue = false;
+        (d.items || []).forEach(item => {
+            if (item.inventoryItemId && !db.validateInventoryStock(item.inventoryItemId, item.qty)) {
+                hasIssue = true;
+            }
+        });
+
+        if (hasIssue) {
+            stockStatus = '<span class="text-red-500 font-bold text-xs"><i class="fas fa-exclamation-triangle mr-1"></i>STOK KURANG</span>';
+        }
+
+        return `
+            <tr class="hover:bg-gray-50/50 transition-colors">
+                <td class="px-4 py-3 font-bold text-blue-700">${d.doNumber}</td>
+                <td class="px-4 py-3">
+                    <div class="font-medium text-gray-800">${d.recipientName || '-'}</div>
+                    <div class="text-[10px] text-gray-400">${d.soNumber || d.invoiceNumber || '-'}</div>
+                </td>
+                <td class="px-4 py-3 text-gray-600">${window._whDoActiveTab === 'pending' ? stockStatus : doDate(d.shippedAt)}</td>
+                <td class="px-4 py-3">${statusBadge(d.status)}</td>
+                <td class="px-4 py-3 text-right space-x-1">
+                    ${window._whDoActiveTab === 'pending' ? (showApprove ? `
+                        <button onclick="openConfirmShipmentModal('${d.id}')" 
+                            class="${hasIssue ? 'bg-orange-500 hover:bg-orange-600' : 'bg-green-600 hover:bg-green-700'} text-white shadow-sm px-3 py-1.5 rounded-lg font-bold text-xs transition-all">
+                            ${hasIssue ? 'Approve (Stok Low)' : 'Approve & Kirim'}
+                        </button>
+                    ` : '') : `
+                        <button onclick="viewShipmentDetails('${d.id}')" class="text-blue-500 hover:text-blue-700 text-xs font-bold mr-2">
+                            <i class="fas fa-eye mr-1"></i>Detail
+                        </button>
+                    `}
+                    <button onclick="printDeliveryOrder('${d.id}')" class="text-gray-400 hover:text-blue-500 p-1 transition-colors">
+                        <i class="fas fa-print"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    const emptyState = `
+        <tr>
+            <td colspan="5" class="py-20 text-center">
+                <div class="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-300">
+                    <i class="fas fa-paper-plane text-4xl"></i>
+                </div>
+                <h3 class="text-gray-800 font-bold text-lg">${window._whDoActiveTab === 'pending' ? 'Tidak Ada Antrian Pengiriman' : 'Belum Ada Riwayat'}</h3>
+                <p class="text-gray-500 text-sm mt-1">${window._whDoActiveTab === 'pending' ? 'Semua pesanan telah diproses atau belum ada Sales Order baru.' : 'Belum ada pengiriman yang tercatat selesai.'}</p>
+            </td>
+        </tr>
+    `;
+
     mc.innerHTML = `
-        <div class="space-y-4">
-            <div class="flex justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100">
+        <div class="flex items-center gap-4 mb-6 border-b border-gray-200">
+            <button onclick="window._whDoActiveTab='pending'; renderWarehouseDeliveryOrders()" 
+                class="px-4 py-2 text-sm font-bold border-b-2 transition-all ${window._whDoActiveTab === 'pending' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'}">
+                Antrean Pengiriman
+            </button>
+            <button onclick="window._whDoActiveTab='history'; renderWarehouseDeliveryOrders()" 
+                class="px-4 py-2 text-sm font-bold border-b-2 transition-all ${window._whDoActiveTab === 'history' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'}">
+                Riwayat Pengiriman
+            </button>
+        </div>        <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-5 mb-5">
+            <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-2"><i class="fas fa-filter text-blue-500"></i> FILTER PENCARIAN</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end mb-4">
                 <div>
-                    <h3 class="text-lg font-bold text-gray-800">Persetujuan Pengiriman (Gudang)</h3>
-                    <p class="text-xs text-gray-500">Cek ketersediaan stok dan setujui untuk pengiriman.</p>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Dari Tanggal SJ</label>
+                    <input type="date" id="whdo_start_date" value="${window.currentFilters.inventoryDelivery.start || ''}" 
+                        class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Sampai Tanggal SJ</label>
+                    <input type="date" id="whdo_end_date" value="${window.currentFilters.inventoryDelivery.end || ''}" 
+                        class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
                 </div>
             </div>
+            <div class="flex gap-2">
+                <button onclick="applyWhDOFilter()" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all shadow-sm">
+                    <i class="fas fa-search mr-2"></i> TAMPILKAN
+                </button>
+                <button onclick="resetWhDOFilter()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-lg transition-all shadow-sm" title="Reset">
+                    <i class="fas fa-undo"></i>
+                </button>
+            </div>
+        </div>
 
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
                     <thead class="bg-gray-50 text-slate-500 text-[11px] uppercase tracking-wider">
                         <tr>
                             <th class="px-4 py-3 border-b border-gray-100">No. SJ</th>
                             <th class="px-4 py-3 border-b border-gray-100">Tujuan</th>
-                            <th class="px-4 py-3 border-b border-gray-100">Status Stok</th>
+                            <th class="px-4 py-3 border-b border-gray-100">${window._whDoActiveTab === 'pending' ? 'Status Stok' : 'Tgl Kirim'}</th>
                             <th class="px-4 py-3 border-b border-gray-100">Progress</th>
                             <th class="px-4 py-3 border-b border-gray-100 text-right">Aksi</th>
                         </tr>
                     </thead>
                     <tbody class="text-sm divide-y divide-gray-100">
-                        ${doList.length === 0 ? '<tr><td colspan="5" class="px-6 py-12 text-center text-gray-400 italic">Tidak ada pengiriman yang perlu diproses.</td></tr>' :
-            doList.map(d => {
-                let showApprove = ['DRAFT', 'PENDING', 'HOLD'].includes(d.status);
-                
-                // Real-time stock check for display
-                let stockStatus = '<span class="text-green-600 font-bold text-xs"><i class="fas fa-check-circle mr-1"></i>READY</span>';
-                let hasIssue = false;
-                (d.items || []).forEach(item => {
-                    if (item.inventoryItemId && !db.validateInventoryStock(item.inventoryItemId, item.qty)) {
-                        hasIssue = true;
-                    }
-                });
-                
-                if (hasIssue) {
-                    stockStatus = '<span class="text-red-500 font-bold text-xs"><i class="fas fa-exclamation-triangle mr-1"></i>STOK KURANG</span>';
-                }
-
-                return `
-                    <tr class="hover:bg-gray-50/50 transition-colors">
-                        <td class="px-4 py-3 font-bold text-blue-700">${d.doNumber}</td>
-                        <td class="px-4 py-3">
-                            <div class="font-medium text-gray-800">${d.recipientName || '-'}</div>
-                            <div class="text-[10px] text-gray-400">${d.soNumber || '-'}</div>
-                        </td>
-                        <td class="px-4 py-3">${stockStatus}</td>
-                        <td class="px-4 py-3">${statusBadge(d.status)}</td>
-                        <td class="px-4 py-3 text-right space-x-1">
-                            ${showApprove ? `
-                                <button onclick="openConfirmShipmentModal('${d.id}')" 
-                                    class="${hasIssue ? 'bg-orange-500 hover:bg-orange-600' : 'bg-green-600 hover:bg-green-700'} text-white shadow-sm px-3 py-1.5 rounded-lg font-bold text-xs transition-all">
-                                    ${hasIssue ? 'Approve (Stok Low)' : 'Approve & Kirim'}
-                                </button>
-                            ` : ''}
-                            <button onclick="printDeliveryOrder('${d.id}')" class="text-gray-400 hover:text-blue-500 p-1 transition-colors">
-                                <i class="fas fa-print"></i>
-                            </button>
-                        </td>
-                    </tr>
-                `;
-            }).join('')}
+                        ${rows || emptyState}
                     </tbody>
                 </table>
             </div>
@@ -796,136 +852,223 @@ window.renderWarehouseDeliveryOrders = function () {
     `;
 };
 
-window.updateDOStatus = function(id, status) {
-    db.update('deliveryOrders', id, { status: status });
-    showToast(`DO status updated to ${status}`);
+window.applyWhDOFilter = function() {
+    const start = document.getElementById('whdo_start_date').value;
+    const end = document.getElementById('whdo_end_date').value;
+    window.currentFilters.inventoryDelivery = { start, end };
+    renderWarehouseDeliveryOrders();
+};
+
+window.resetWhDOFilter = function() {
+    window.currentFilters.inventoryDelivery = { start: '', end: '' };
     renderWarehouseDeliveryOrders();
 };
 
 window.openConfirmShipmentModal = function(id) {
     const d = db.findById('deliveryOrders', id);
-    
+    if (!d) return;
+
     let issues = [];
-    (d.items || []).forEach(item => {
-        if (item.inventoryItemId) {
-            const stock = db.getInventoryStock(item.inventoryItemId);
-            if (stock < item.qty) {
-                issues.push(`${item.name} (Stok: ${stock}, Butuh: ${item.qty})`);
-            }
+    const itemRows = (d.items || []).map(i => {
+        const stock = i.inventoryItemId ? db.getInventoryStock(i.inventoryItemId) : 0;
+        const isOk = !i.inventoryItemId || stock >= i.qty;
+        
+        if (!isOk) {
+            issues.push(`<strong>${i.name}</strong>: Butuh ${invFmt(i.qty)}, Sisa ${invFmt(stock)}`);
         }
-    });
+
+        return `
+            <tr class="border-b border-gray-50">
+                <td class="py-2 px-1">
+                    <span class="block font-bold text-gray-800 text-xs">${i.name}</span>
+                    <span class="text-[10px] text-gray-400 capitalize">${i.kemasan || '-'}</span>
+                </td>
+                <td class="py-2 px-1 text-right font-black text-blue-700">${invFmt(i.qty)}</td>
+                <td class="py-2 px-1 text-right font-bold ${isOk ? 'text-green-600' : 'text-red-500'}">
+                    ${invFmt(stock)}
+                </td>
+                <td class="py-2 px-1 text-center">
+                    ${isOk ? '<i class="fas fa-check-circle text-green-500"></i>' : '<i class="fas fa-times-circle text-red-500"></i>'}
+                </td>
+            </tr>
+        `;
+    }).join('');
 
     const hasIssue = issues.length > 0;
+
     const body = `
         <div class="space-y-4">
             ${hasIssue ? `
-                <div class="p-4 bg-orange-50 text-orange-700 rounded-lg border border-orange-200">
-                    <p class="font-bold mb-2 uppercase text-[10px] flex items-center gap-2">
-                        <i class="fas fa-exclamation-triangle"></i> PERINGATAN: STOK TIDAK CUKUP
-                    </p>
-                    <p class="text-[11px] mb-2">Item berikut memiliki stok kurang di sistem, namun tetap bisa dikirim (stok akan menjadi negatif):</p>
-                    <ul class="text-[11px] list-disc pl-5 space-y-1 font-medium">
-                        ${issues.map(i => `<li>${i}</li>`).join('')}
+                <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-xl">
+                    <div class="flex items-center gap-3 mb-2">
+                        <i class="fas fa-ban text-red-600 text-xl"></i>
+                        <h4 class="text-sm font-black text-red-700 uppercase tracking-widest">Pengiriman Diblokir</h4>
+                    </div>
+                    <p class="text-xs text-red-600 mb-2 font-medium">Stok tidak mencukupi untuk item berikut. Harap lakukan pembelian atau produksi terlebih dahulu.</p>
+                    <ul class="text-[11px] text-red-700 list-disc list-inside space-y-1 bg-white/50 p-2 rounded-lg border border-red-100">
+                        ${issues.map(m => `<li>${m}</li>`).join('')}
                     </ul>
                 </div>
             ` : `
-                <div class="p-3 bg-green-50 text-green-700 rounded-lg text-xs font-medium border border-green-100 flex items-center gap-2">
-                    <i class="fas fa-check-circle"></i> Stok tersedia. Masukkan detail pengiriman untuk memproses stok keluar.
+                <div class="bg-green-50 border-l-4 border-green-500 p-4 rounded-r-xl">
+                    <div class="flex items-center gap-3">
+                        <i class="fas fa-check-circle text-green-600 text-xl"></i>
+                        <div>
+                            <h4 class="text-sm font-black text-green-700 uppercase tracking-widest">Stok Ready</h4>
+                            <p class="text-[11px] text-green-600 font-medium tracking-tight">Semua item tersedia di inventory. Anda dapat melanjutkan pengiriman.</p>
+                        </div>
+                    </div>
                 </div>
             `}
+
+            <div class="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                <div class="grid grid-cols-2 gap-4 text-xs">
+                    <div><span class="text-gray-400 block font-bold uppercase text-[9px] mb-0.5">Customer</span> <strong class="text-gray-800 font-black">${d.recipientName}</strong></div>
+                    <div><span class="text-gray-400 block font-bold uppercase text-[9px] mb-0.5">No. SJ</span> <strong class="text-blue-700 font-black">${d.doNumber}</strong></div>
+                </div>
+            </div>
+
+            <div class="max-h-[250px] overflow-y-auto rounded-xl border border-gray-100">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-50 sticky top-0 shadow-sm">
+                        <tr class="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100">
+                            <th class="py-2 px-2">Item</th>
+                            <th class="py-2 px-2 text-right">Qty</th>
+                            <th class="py-2 px-2 text-right">Stok</th>
+                            <th class="py-2 px-2 text-center">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>${itemRows}</tbody>
+                </table>
+            </div>
+
             <div class="grid grid-cols-2 gap-4">
                 <div>
-                    <label class="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-tight">Kurir / Driver</label>
-                    <input id="ship_carrier" value="${d.driverName || ''}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-400" placeholder="Contoh: JNE / Pak Budi">
+                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">No. Resi / Tracking (Opsional)</label>
+                    <input type="text" id="dos_track_no" placeholder="Contoh: RESI-12345" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 font-bold">
                 </div>
-                <div>
-                    <label class="block text-xs font-bold text-gray-600 mb-1 uppercase tracking-tight">No. Resi / Plat</label>
-                    <input id="ship_tracking" value="${d.vehicleNo || ''}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-400" placeholder="Opsional">
+                 <div>
+                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Keterangan Tambahan</label>
+                    <input type="text" id="dos_final_notes" value="${d.notes || ''}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500">
                 </div>
             </div>
         </div>
     `;
+
     const footer = `
-        <button onclick="confirmShipment('${id}')" class="bg-green-600 text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-green-700 shadow-lg transition-transform active:scale-95">Setujui & Kirim Barang</button>
-        <button onclick="closeModal()" class="px-6 py-2 text-sm font-bold text-gray-500 hover:bg-gray-100 rounded-lg">Batal</button>
+        <button onclick="confirmShipment('${id}')" 
+            ${hasIssue ? 'disabled' : ''} 
+            class="w-full sm:w-auto inline-flex justify-center rounded-lg ${hasIssue ? 'bg-gray-300 cursor-not-allowed opacity-50' : 'bg-green-600 hover:bg-green-700 shadow-lg shadow-green-100'} px-8 py-2.5 text-white text-xs font-black uppercase tracking-widest transition-all">
+            ${hasIssue ? 'Stok Tidak Cukup' : 'Setujui & Kirim Barang'}
+        </button>
+        <button onclick="closeModal()" class="mt-3 sm:mt-0 w-full sm:w-auto inline-flex justify-center rounded-lg border border-gray-300 px-8 py-2.5 bg-white text-gray-500 text-xs font-black uppercase tracking-widest hover:bg-gray-50 transition-all">Batal</button>
     `;
-    showModal('Konfirmasi Pengiriman', body, footer, 'max-w-md');
+
+    showModal('Konfirmasi Pengiriman Gudang', body, footer, 'max-w-xl');
 };
 
 window.confirmShipment = function(id) {
     const d = db.findById('deliveryOrders', id);
-    const carrier = document.getElementById('ship_carrier').value;
-    const tracking = document.getElementById('ship_tracking').value;
+    if (!d) return;
 
-    db.update('deliveryOrders', id, {
-        status: 'SHIPPED',
-        driverName: carrier,
-        trackingNo: tracking,
-        shippedAt: new Date().toISOString()
-    });
-
-    // Reduce inventory stock now!
-    let totalCogs = 0;
+    // Final inventory check before finalizing
+    let errors = [];
     (d.items || []).forEach(item => {
         if (item.inventoryItemId) {
-            db.addInventoryTransaction(item.inventoryItemId, 'OUT', item.qty, 'SALES_OUT', id, `SJ ${d.doNumber}`);
-            const product = db.findById('inventoryItems', item.inventoryItemId);
-            if (product) totalCogs += (item.qty * (product.purchasePrice || 0));
+            const stock = db.getInventoryStock(item.inventoryItemId);
+            if (stock < item.qty) {
+                errors.push(`${item.name}: Sisa ${invFmt(stock)}`);
+            }
         }
     });
 
-    // Journal COGS & Inventory
-    if (totalCogs > 0 && typeof db.addJournalEntry === 'function') {
-        db.addJournalEntry({
-            description: `HPP Pengiriman DO ${d.doNumber}`,
-            referenceType: 'DO',
-            referenceId: id,
-            items: [
-                { accountId: 'acc_cogs', debit: totalCogs, credit: 0 },
-                { accountId: 'acc_inv_fg', debit: 0, credit: totalCogs }
-            ]
-        });
+    if (errors.length > 0) {
+        showToast("Gagal Kirim! Stok berubah/tidak cukup: " + errors.join("; "), 'error');
+        openConfirmShipmentModal(id); // Refresh modal to show updated status
+        return;
     }
 
-    // Update SO status to DELIVERED
+    const trackingNo = document.getElementById('dos_track_no')?.value || '';
+    const finalNotes = document.getElementById('dos_final_notes')?.value || '';
+
+    // 1. Update status
+    db.update('deliveryOrders', id, {
+        status: 'SHIPPED',
+        shippedAt: new Date().toISOString(),
+        trackingNo: trackingNo,
+        notes: finalNotes
+    });
+
+    // 2. Potong Stok & Add Transactions
+    (d.items || []).forEach(item => {
+        if (item.inventoryItemId) {
+            db.addInventoryTransaction(
+                item.inventoryItemId,
+                'OUT',
+                item.qty,
+                'SALES_OUT',
+                id,
+                `Delivery Order ${d.doNumber}: ${item.name}`,
+                'Admin',
+                'WHS' // Deduct from main warehouse
+            );
+        }
+    });
+
+    // 3. Update Sales Order status if all items shipped (simplified)
     if (d.salesOrderId) {
         db.update('salesOrders', d.salesOrderId, { status: 'DELIVERED' });
     }
 
-    showToast(`Shipment confirmed! Stock reduced.`);
+    showToast(`Pengiriman SJ ${d.doNumber} berhasil dikonfirmasi. Stok telah diperbarui.`, 'success');
     closeModal();
     renderWarehouseDeliveryOrders();
 };
 
-window.openDOFromSO = function(soId) {
-    const so = db.findById('salesOrders', soId);
-    if (!so) return;
+window.viewShipmentDetails = function(id) {
+    const d = db.findById('deliveryOrders', id);
+    if (!d) return;
 
-    const customer = db.findById('customers', so.customerId);
-    
-    // Auto-create DO in DRAFT status
-    const doNum = doGenNum();
-    const items = (so.items || []).map(i => ({
-        inventoryItemId: i.inventoryItemId,
-        name: i.prodText,
-        qty: i.qty,
-        unit: i.prodUnit || 'PCS'
-    }));
+    const itemRows = (d.items || []).map(i => `
+        <tr class="border-b border-gray-100 text-sm text-gray-700">
+            <td class="py-3 px-2 font-medium">${i.name || '-'}</td>
+            <td class="py-3 px-2 text-right font-bold text-blue-600">${invFmt(i.qty)} ${i.unit || ''}</td>
+            <td class="py-3 px-2 text-center text-gray-500">${i.kemasan || '-'}</td>
+            <td class="py-3 px-2 text-center font-semibold text-gray-700">${i.colly || '-'}</td>
+        </tr>
+    `).join('');
 
-    const saved = db.insert('deliveryOrders', {
-        doNumber: doNum,
-        date: new Date().toISOString(),
-        status: 'DRAFT',
-        salesOrderId: soId,
-        soNumber: so.soNumber,
-        customerId: so.customerId,
-        recipientName: customer?.name || 'Unknown',
-        address: customer?.address || '',
-        items: items,
-        driverName: '',
-        vehicleNo: ''
-    });
+    const body = `
+        <div class="space-y-4">
+            <div class="grid grid-cols-2 gap-x-6 gap-y-3 text-sm bg-gray-50 p-4 rounded-xl border border-gray-100">
+                <div><span class="text-gray-400 block text-[10px] uppercase font-bold">No. Surat Jalan</span> <strong class="text-blue-700">${d.doNumber}</strong></div>
+                <div><span class="text-gray-400 block text-[10px] uppercase font-bold">Penerima</span> <strong>${d.recipientName}</strong></div>
+                <div><span class="text-gray-400 block text-[10px] uppercase font-bold">Tanggal Kirim</span> <strong class="text-green-600">${doDate(d.shippedAt)}</strong></div>
+                <div><span class="text-gray-400 block text-[10px] uppercase font-bold">Ref Order</span> <strong class="text-gray-700">${d.soNumber || d.invoiceNumber || '-'}</strong></div>
+                <div class="col-span-2 border-t border-gray-200 mt-1 pt-2">
+                    <span class="text-gray-400 block text-[10px] uppercase font-bold">Alamat</span>
+                    <p class="text-gray-700 italic text-[11px]">${d.address || '-'}</p>
+                </div>
+                <div class="col-span-2 grid grid-cols-2 gap-4 mt-1">
+                    <div><span class="text-gray-400 block text-[10px] uppercase font-bold">Driver</span> <strong>${d.driverName || '-'}</strong></div>
+                    <div><span class="text-gray-400 block text-[10px] uppercase font-bold">Kendaraan / Resi</span> <strong>${d.vehicleNo || d.trackingNo || '-'}</strong></div>
+                </div>
+            </div>
+            
+            <table class="w-full text-left">
+                <thead>
+                    <tr class="border-b-2 border-gray-100 text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                        <th class="py-2 px-2">Nama Barang</th>
+                        <th class="py-2 px-2 text-right">Qty Kirim</th>
+                        <th class="py-2 px-2 text-center">Kemasan</th>
+                        <th class="py-2 px-2 text-center">Colly</th>
+                    </tr>
+                </thead>
+                <tbody>${itemRows}</tbody>
+            </table>
+            ${d.notes ? `<div class="p-3 bg-yellow-50 border border-yellow-100 rounded text-xs text-gray-600"><strong>Catatan:</strong> ${d.notes}</div>` : ''}
+        </div>
+    `;
 
-    showToast(`Delivery Order ${doNum} created for Warehouse processing.`);
-    renderSalesOrders(); // Refresh SO list to show "Processing"
+    showModal(`Detail Pengiriman — ${d.doNumber}`, body, `<button onclick="closeModal()" class="px-6 py-2 bg-gray-800 text-white rounded text-xs font-black uppercase tracking-widest hover:bg-black transition-all">Tutup</button>`, 'max-w-xl');
 };

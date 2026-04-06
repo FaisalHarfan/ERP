@@ -38,16 +38,87 @@ function srGenerateNumber(prefix) {
 window.renderSalesReturns = function () {
     document.getElementById('pageTitle').innerText = 'Retur Penjualan';
     const mc = document.getElementById('main-content');
-    const returns = db.read('salesReturns').sort((a, b) => new Date(b.date) - new Date(a.date));
+    
+    // Initialize & Persist Filters
+    window._srFilters = window._srFilters || { start: '', end: '', customerId: '', status: '', condition: '' };
+    const f = window._srFilters;
     const perm = getModulePermission('penjualan');
+
+    let returns = db.read('salesReturns') || [];
+
+    // Apply Filters
+    if (f.start) {
+        const startDate = new Date(f.start);
+        startDate.setHours(0,0,0,0);
+        returns = returns.filter(r => new Date(r.date) >= startDate);
+    }
+    if (f.end) {
+        const endDate = new Date(f.end);
+        endDate.setHours(23,59,59,999);
+        returns = returns.filter(r => new Date(r.date) <= endDate);
+    }
+    if (f.customerId) {
+        returns = returns.filter(r => r.customerId === f.customerId);
+    }
+    if (f.status) {
+        returns = returns.filter(r => r.status === f.status);
+    }
+    if (f.condition) {
+        returns = returns.filter(r => r.condition === f.condition);
+    }
+
+    returns.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // Options for Filters
+    const customers = db.read('customers') || [];
+    const custOpts = customers.map(c => `<option value="${c.id}" ${f.customerId === c.id ? 'selected' : ''}>${c.name}</option>`).join('');
+    const statusOpts = [
+        ['REQUESTED', 'Diminta'], ['APPROVED', 'Disetujui'], ['GOODS_RECEIVED', 'Barang Diterima'], 
+        ['REFUNDED', 'Refund'], ['COMPLETED', 'Selesai'], ['REJECTED', 'Ditolak']
+    ].map(([v, l]) => `<option value="${v}" ${f.status === v ? 'selected' : ''}>${l}</option>`).join('');
 
     mc.innerHTML = `
         <div class="space-y-4">
-            <!-- Header -->
+            <!-- Standard Filter Bar (Premium Spacing) -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-wrap items-end gap-x-6 gap-y-4">
+                <div class="flex-1 min-w-[160px]">
+                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Dari Tanggal</label>
+                    <input type="date" id="sr_filter_start" value="${f.start}" class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-500 outline-none transition-shadow bg-gray-50/30">
+                </div>
+                <div class="flex-1 min-w-[160px]">
+                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Sampai Tanggal</label>
+                    <input type="date" id="sr_filter_end" value="${f.end}" class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-500 outline-none transition-shadow bg-gray-50/30">
+                </div>
+                <div class="flex-[1.5] min-w-[240px]">
+                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Nama Pelanggan</label>
+                    <select id="sr_filter_customer" class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm bg-gray-50/30 focus:ring-2 focus:ring-red-500 outline-none appearance-none cursor-pointer">
+                        <option value="">-- Semua Pelanggan --</option>${custOpts}
+                    </select>
+                </div>
+                <div class="w-44">
+                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Status Progres</label>
+                    <select id="sr_filter_status" class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm bg-gray-50/30 focus:ring-2 focus:ring-red-500 outline-none cursor-pointer">
+                        <option value="">-- Semua --</option>${statusOpts}
+                    </select>
+                </div>
+                <div class="w-36">
+                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Kondisi</label>
+                    <select id="sr_filter_condition" class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm bg-gray-50/30 focus:ring-2 focus:ring-red-500 outline-none cursor-pointer">
+                        <option value="">-- Semua --</option>
+                        <option value="Good" ${f.condition === 'Good' ? 'selected' : ''}>Bagus</option>
+                        <option value="Damaged" ${f.condition === 'Damaged' ? 'selected' : ''}>Rusak</option>
+                    </select>
+                </div>
+                <div class="flex gap-2 min-w-max">
+                    <button onclick="updateSRFilters()" class="bg-red-600 hover:bg-red-700 text-white px-8 py-2.5 rounded-lg text-sm font-black flex items-center gap-2 shadow-sm transition-all hover:scale-[1.02] active:scale-95"><i class="fas fa-search"></i> CARI</button>
+                    <button onclick="resetSRFilters()" class="bg-gray-100 hover:bg-gray-200 text-gray-500 px-4 py-2.5 rounded-lg text-sm font-bold transition-all">Reset</button>
+                </div>
+            </div>
+
+            <!-- Content Header -->
             <div class="flex flex-wrap justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100 gap-3">
                 <div>
-                    <h3 class="text-lg font-bold text-gray-800">Manajemen Retur Penjualan</h3>
-                    <p class="text-xs text-gray-500">Kelola barang yang dikembalikan oleh pelanggan.</p>
+                    <h3 class="text-lg font-black text-gray-800 uppercase tracking-tight">Riwayat Retur Penjualan</h3>
                 </div>
                 ${perm.edit ? `<button onclick="openSalesReturnModal()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm flex items-center gap-2"><i class="fas fa-plus"></i> Buat Retur Baru</button>` : ''}
             </div>
@@ -55,20 +126,20 @@ window.renderSalesReturns = function () {
             <!-- Table -->
             <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <table class="w-full text-left border-collapse">
-                    <thead class="bg-gray-50 text-slate-500 text-[11px] uppercase tracking-wider">
+                    <thead class="bg-gray-50 text-slate-500 text-[10px] font-black uppercase tracking-widest">
                         <tr>
                             <th class="px-4 py-3 border-b border-gray-100">No. Retur</th>
                             <th class="px-4 py-3 border-b border-gray-100">Tanggal</th>
                             <th class="px-4 py-3 border-b border-gray-100">Pelanggan</th>
                             <th class="px-4 py-3 border-b border-gray-100">Produk</th>
-                            <th class="px-4 py-3 border-b border-gray-100 text-center">Qty</th>
+                            <th class="px-4 py-3 border-b border-gray-100 text-right">Qty</th>
                             <th class="px-4 py-3 border-b border-gray-100">Kondisi</th>
                             <th class="px-4 py-3 border-b border-gray-100">Status</th>
                             <th class="px-4 py-3 border-b border-gray-100 text-right">Aksi</th>
                         </tr>
                     </thead>
                     <tbody class="text-sm divide-y divide-gray-100">
-                        ${returns.length === 0 ? '<tr><td colspan="8" class="px-6 py-12 text-center text-gray-400 italic">Belum ada data retur penjualan.</td></tr>' : ''}
+                        ${returns.length === 0 ? '<tr><td colspan="8" class="px-6 py-12 text-center text-gray-400 italic">Belum ada data retur sesuai filter.</td></tr>' : ''}
                         ${returns.map(r => {
         const customer = db.findById('customers', r.customerId);
         let actions = '';
@@ -88,16 +159,17 @@ window.renderSalesReturns = function () {
                                 <tr class="hover:bg-gray-50/50 transition-colors">
                                     <td class="px-4 py-3 font-bold text-red-600">${r.returnNumber}</td>
                                     <td class="px-4 py-3 text-gray-600">${srDate(r.date)}</td>
-                                    <td class="px-4 py-3 text-gray-800">${customer?.name || 'N/A'}</td>
-                                    <td class="px-4 py-3 text-gray-700">${r.productName} <span class="text-xs text-gray-400">x${r.qtyReturned}</span></td>
-                                    <td class="px-4 py-3 text-center font-bold">${r.qtyReturned}</td>
+                                    <td class="px-4 py-3 text-gray-800"><strong>${customer?.name || 'N/A'}</strong></td>
+                                    <td class="px-4 py-3 text-gray-700">${r.productName}</td>
+                                    <td class="px-4 py-3 text-right font-bold">${r.qtyReturned}</td>
+                                    <td class="px-4 py-3 text-gray-500 text-xs">${db.findById('inventoryItems', r.productId)?.unit || '-'}</td>
                                     <td class="px-4 py-3">
                                         ${r.condition === 'Good'
-                ? '<span class="px-2 py-1 bg-green-100 text-green-700 rounded text-[10px] font-bold">Bagus</span>'
-                : '<span class="px-2 py-1 bg-red-100 text-red-700 rounded text-[10px] font-bold">Rusak</span>'}
+                ? '<span class="px-2 py-1 bg-green-50 text-green-700 rounded text-[10px] font-bold uppercase ring-1 ring-green-200">Bagus</span>'
+                : '<span class="px-2 py-1 bg-red-50 text-red-700 rounded text-[10px] font-bold uppercase ring-1 ring-red-200">Rusak</span>'}
                                     </td>
                                     <td class="px-4 py-3">${srStatusBadge(r.status)}</td>
-                                    <td class="px-4 py-3 text-right space-x-2">${actions || '-'}</td>
+                                    <td class="px-4 py-3 text-right space-x-2 whitespace-nowrap">${actions || '<span class="text-gray-300">-</span>'}</td>
                                 </tr>
                             `;
     }).join('')}
@@ -106,6 +178,22 @@ window.renderSalesReturns = function () {
             </div>
         </div>
     `;
+};
+
+window.updateSRFilters = function() {
+    window._srFilters = {
+        start: document.getElementById('sr_filter_start').value,
+        end: document.getElementById('sr_filter_end').value,
+        customerId: document.getElementById('sr_filter_customer').value,
+        status: document.getElementById('sr_filter_status').value,
+        condition: document.getElementById('sr_filter_condition').value
+    };
+    renderSalesReturns();
+};
+
+window.resetSRFilters = function() {
+    window._srFilters = { start: '', end: '', customerId: '', status: '', condition: '' };
+    renderSalesReturns();
 };
 
 window.openSalesReturnModal = function (soId = null) {
@@ -248,33 +336,39 @@ window.approveReturn = function (id, approved) {
 window.receiveReturnGoods = function (id) {
     const ret = db.findById('salesReturns', id);
     if (!ret) return;
-    if (!confirm(`Konfirmasi penerimaan barang retur ${ret.returnNumber}?\nBarang kondisi ${ret.condition === 'Good' ? '"Bagus" akan ditambah kembali ke stok' : '"Rusak" akan dicatat ke Damaged Stock'}.`)) return;
+    const conditionText = ret.condition === 'Good' ? 'Bagus' : 'Rusak';
+    if (!confirm(`Konfirmasi penerimaan barang retur (${conditionText}) ${ret.returnNumber}?\n${ret.condition === 'Good' ? 'Stok akan bertambah.' : 'Masuk ke histori NG/Judgment.'}`)) return;
 
-    // Update stock in Inventory using central helper
     if (ret.productId) {
         const invItem = db.findById('inventoryItems', ret.productId);
         if (invItem) {
-            const conditionText = ret.condition === 'Good' ? 'Bagus' : 'Rusak';
-            const type = ret.condition === 'Good' ? 'IN' : 'SHRINKAGE';
+            // Condition Logic
+            if (ret.condition === 'Good') {
+                // Add to sellable stock
+                db.addInventoryTransaction(invItem.id, 'IN', ret.qtyReturned, 'SALES_RETURN', ret.id, `Retur Bagus ${ret.returnNumber}: ${invItem.itemName}`);
+            } else {
+                // Damaged -> Add to NG Story (not in main stock)
+                db.insert('inventoryJudgments', {
+                    date: new Date().toISOString().split('T')[0],
+                    itemId: invItem.id,
+                    qty: ret.qtyReturned,
+                    location: 'WHS',
+                    status: 'DAMAGE (RUSAK FISIK)',
+                    notes: `Retur dari ${ret.returnNumber}: ${ret.reason || 'Barang Rusak'}`,
+                    createdBy: 'Admin'
+                });
+                // Record as NG_IN for history card (ignores total available)
+                db.addInventoryTransaction(invItem.id, 'NG_IN', ret.qtyReturned, 'SALES_RETURN', ret.id, `Retur Rusak (NG) ${ret.returnNumber}: ${invItem.itemName}`);
+            }
 
-            db.addInventoryTransaction(
-                invItem.id,
-                type,
-                ret.qtyReturned,
-                'SALES_RETURN',
-                ret.id,
-                `Retur ${conditionText} ${ret.returnNumber}: ${invItem.itemName}`
-            );
-
-            // Jurnal Keuangan: Balik HPP (Debit Persediaan, Kredit HPP)
-            if (ret.condition === 'Good' && typeof db.addJournalEntry === 'function') {
+            // Journal Entry
+            if (typeof db.addJournalEntry === 'function') {
                 const modalPrice = invItem.purchasePrice || 0;
                 const totalModal = ret.qtyReturned * modalPrice;
                 if (totalModal > 0) {
                     db.addJournalEntry({
-                        description: `Penerimaan Barang Retur ${ret.returnNumber}`,
-                        referenceType: 'RETURN',
-                        referenceId: ret.id,
+                        description: `Penerimaan Barang Retur ${ret.returnNumber} [${conditionText}]`,
+                        referenceType: 'RETURN', referenceId: ret.id,
                         items: [
                             { accountId: 'acc_inv_fg', debit: totalModal, credit: 0 },
                             { accountId: 'acc_cogs', debit: 0, credit: totalModal }
@@ -286,7 +380,7 @@ window.receiveReturnGoods = function (id) {
     }
 
     db.update('salesReturns', id, { status: 'GOODS_RECEIVED', receivedAt: new Date().toISOString() });
-    showToast(`Barang retur ${ret.returnNumber} telah diterima dan stok diperbarui.`);
+    showToast(`Barang retur (${conditionText}) diterima.`);
     renderSalesReturns();
 };
 
@@ -337,22 +431,83 @@ window.processReturnRefund = function (id) {
 window.renderProductExchanges = function () {
     document.getElementById('pageTitle').innerText = 'Tukar Guling Produk';
     const mc = document.getElementById('main-content');
-    const exchanges = db.read('productExchanges').sort((a, b) => new Date(b.date) - new Date(a.date));
+    
+    // Initialize & Persist Filters
+    window._exFilters = window._exFilters || { start: '', end: '', customerId: '', status: '' };
+    const f = window._exFilters;
     const perm = getModulePermission('penjualan');
+
+    let exchanges = db.read('productExchanges') || [];
+
+    // Apply Filters
+    if (f.start) {
+        const startDate = new Date(f.start);
+        startDate.setHours(0,0,0,0);
+        exchanges = exchanges.filter(ex => new Date(ex.date) >= startDate);
+    }
+    if (f.end) {
+        const endDate = new Date(f.end);
+        endDate.setHours(23,59,59,999);
+        exchanges = exchanges.filter(ex => new Date(ex.date) <= endDate);
+    }
+    if (f.customerId) {
+        exchanges = exchanges.filter(ex => ex.customerId === f.customerId);
+    }
+    if (f.status) {
+        exchanges = exchanges.filter(ex => ex.status === f.status);
+    }
+
+    exchanges.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // Options for Filters
+    const customers = db.read('customers') || [];
+    const custOpts = customers.map(c => `<option value="${c.id}" ${f.customerId === c.id ? 'selected' : ''}>${c.name}</option>`).join('');
+    const statusOpts = [
+        ['REQUESTED', 'Diminta'], ['APPROVED', 'Disetujui'], ['RETURN_RECEIVED', 'Retur Diterima'], 
+        ['REPLACEMENT_SENT', 'Pengganti Dikirim'], ['COMPLETED', 'Selesai'], ['REJECTED', 'Ditolak']
+    ].map(([v, l]) => `<option value="${v}" ${f.status === v ? 'selected' : ''}>${l}</option>`).join('');
 
     mc.innerHTML = `
         <div class="space-y-4">
+            <!-- Standard Filter Bar (Premium Spacing) -->
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-wrap items-end gap-x-8 gap-y-4">
+                <div class="flex-1 min-w-[180px]">
+                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Dari Tanggal</label>
+                    <input type="date" id="ex_filter_start" value="${f.start}" class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-orange-500 outline-none transition-shadow bg-gray-50/30">
+                </div>
+                <div class="flex-1 min-w-[180px]">
+                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Sampai Tanggal</label>
+                    <input type="date" id="ex_filter_end" value="${f.end}" class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-orange-500 outline-none transition-shadow bg-gray-50/30">
+                </div>
+                <div class="flex-[2] min-w-[280px]">
+                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Nama Customer</label>
+                    <select id="ex_filter_customer" class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm bg-gray-50/30 focus:ring-2 focus:ring-orange-500 outline-none appearance-none cursor-pointer">
+                        <option value="">-- Semua Pelanggan --</option>${custOpts}
+                    </select>
+                </div>
+                <div class="w-56">
+                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Status Penukaran</label>
+                    <select id="ex_filter_status" class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm bg-gray-50/30 focus:ring-2 focus:ring-orange-500 outline-none cursor-pointer">
+                        <option value="">-- Semua Status --</option>${statusOpts}
+                    </select>
+                </div>
+                <div class="flex gap-2 min-w-max">
+                    <button onclick="updateEXFilters()" class="bg-orange-600 hover:bg-orange-700 text-white px-8 py-2.5 rounded-lg text-sm font-black flex items-center gap-2 shadow-sm transition-all hover:scale-[1.02] active:scale-95"><i class="fas fa-search"></i> CARI</button>
+                    <button onclick="resetEXFilters()" class="bg-gray-100 hover:bg-gray-200 text-gray-500 px-4 py-2.5 rounded-lg text-sm font-bold transition-all">Reset</button>
+                </div>
+            </div>
+
+            <!-- Content Header -->
             <div class="flex flex-wrap justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100 gap-3">
                 <div>
-                    <h3 class="text-lg font-bold text-gray-800">Manajemen Tukar Guling Produk</h3>
-                    <p class="text-xs text-gray-500">Penukaran produk dari pelanggan dengan produk pengganti.</p>
+                    <h3 class="text-lg font-black text-gray-800 uppercase tracking-tight">Riwayat Tukar Guling Produk</h3>
                 </div>
                 ${perm.edit ? `<button onclick="openExchangeModal()" class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm flex items-center gap-2"><i class="fas fa-exchange-alt"></i> Buat Tukar Guling</button>` : ''}
             </div>
 
             <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <table class="w-full text-left border-collapse">
-                    <thead class="bg-gray-50 text-slate-500 text-[11px] uppercase tracking-wider">
+                    <thead class="bg-gray-50 text-slate-500 text-[10px] font-black uppercase tracking-widest">
                         <tr>
                             <th class="px-4 py-3 border-b border-gray-100">No. Exchange</th>
                             <th class="px-4 py-3 border-b border-gray-100">Tanggal</th>
@@ -364,7 +519,7 @@ window.renderProductExchanges = function () {
                         </tr>
                     </thead>
                     <tbody class="text-sm divide-y divide-gray-100">
-                        ${exchanges.length === 0 ? '<tr><td colspan="7" class="px-6 py-12 text-center text-gray-400 italic">Belum ada data tukar guling.</td></tr>' : ''}
+                        ${exchanges.length === 0 ? '<tr><td colspan="7" class="px-6 py-12 text-center text-gray-400 italic">Belum ada data tukar guling sesuai filter.</td></tr>' : ''}
                         ${exchanges.map(ex => {
         const customer = db.findById('customers', ex.customerId);
         let actions = '';
@@ -389,15 +544,15 @@ window.renderProductExchanges = function () {
                                 <tr class="hover:bg-gray-50/50 transition-colors">
                                     <td class="px-4 py-3 font-bold text-orange-600">${ex.exchangeNumber}</td>
                                     <td class="px-4 py-3 text-gray-600">${srDate(ex.date)}</td>
-                                    <td class="px-4 py-3 text-gray-800">${customer?.name || 'N/A'}</td>
+                                    <td class="px-4 py-3 text-gray-800"><strong>${customer?.name || 'N/A'}</strong></td>
                                     <td class="px-4 py-3 text-gray-700 text-sm">
-                                        <span class="text-red-500">${ex.returnedProductName}</span>
-                                        <i class="fas fa-arrow-right text-gray-400 mx-1 text-xs"></i>
-                                        <span class="text-green-600">${ex.replacementProductName}</span>
+                                        <span class="text-red-500 font-medium">${ex.returnedProductName}</span>
+                                        <i class="fas fa-arrow-right text-gray-400 mx-1 text-[10px]"></i>
+                                        <span class="text-green-600 font-medium">${ex.replacementProductName}</span>
                                     </td>
                                     <td class="px-4 py-3 text-right">${diffDisplay}</td>
                                     <td class="px-4 py-3">${srStatusBadge(ex.status)}</td>
-                                    <td class="px-4 py-3 text-right">${actions || '-'}</td>
+                                    <td class="px-4 py-3 text-right whitespace-nowrap">${actions || '<span class="text-gray-300">-</span>'}</td>
                                 </tr>
                             `;
     }).join('')}
@@ -406,6 +561,21 @@ window.renderProductExchanges = function () {
             </div>
         </div>
     `;
+};
+
+window.updateEXFilters = function() {
+    window._exFilters = {
+        start: document.getElementById('ex_filter_start').value,
+        end: document.getElementById('ex_filter_end').value,
+        customerId: document.getElementById('ex_filter_customer').value,
+        status: document.getElementById('ex_filter_status').value
+    };
+    renderProductExchanges();
+};
+
+window.resetEXFilters = function() {
+    window._exFilters = { start: '', end: '', customerId: '', status: '' };
+    renderProductExchanges();
 };
 
 window.openExchangeModal = function (soId = null) {
@@ -440,6 +610,19 @@ window.openExchangeModal = function (soId = null) {
                     <select id="ex_returned_product" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-orange-400">
                         <option value="">-- Pilih SO Dulu --</option>
                     </select>
+                </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Kondisi Barang Retur</label>
+                    <select id="ex_condition" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-orange-400">
+                        <option value="Good">Bagus / Good (Masuk Stok)</option>
+                        <option value="Damaged">Rusak / Damaged (NG / Judgment)</option>
+                    </select>
+                </div>
+                <div>
+                     <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Alasan Penukaran</label>
+                     <input type="text" id="ex_reason" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-400" placeholder="Alasan...">
                 </div>
             </div>
             <div class="grid grid-cols-3 gap-4">
@@ -545,6 +728,7 @@ window.saveExchange = function () {
         replacementProductName: replacementSel.options[replacementSel.selectedIndex]?.text || 'Produk Baru',
         replacementQty: repQty, replacementPrice: repPrice,
         priceDifference: diff,
+        condition: document.getElementById('ex_condition').value,
         reason, status: 'REQUESTED'
     });
 
@@ -564,29 +748,38 @@ window.approveExchange = function (id, approved) {
 window.receiveExchangeReturn = function (id) {
     const ex = db.findById('productExchanges', id);
     if (!ex) return;
-    if (!confirm(`Terima barang retur untuk Exchange ${ex.exchangeNumber}?\nStok "${ex.returnedProductName}" akan bertambah ${ex.returnedQty} unit.`)) return;
+    const conditionText = ex.condition === 'Good' ? 'Bagus' : 'Rusak';
+    if (!confirm(`Terima barang retur (${conditionText}) untuk Exchange ${ex.exchangeNumber}?\n${ex.condition === 'Good' ? 'Stok akan bertambah.' : 'Masuk ke histori NG/Judgment.'}`)) return;
 
-    // Update stock & Journal for returned product (IN)
     const returnedItem = db.findById('inventoryItems', ex.returnedProductId);
     if (returnedItem) {
-        db.addInventoryTransaction(
-            returnedItem.id,
-            'IN',
-            ex.returnedQty,
-            'SALES_RETURN',
-            ex.id,
-            `Retur Masuk Tukar Guling ${ex.exchangeNumber}: ${returnedItem.itemName}`
-        );
+        // Condition Logic
+        if (ex.condition === 'Good') {
+            // Ad to main stock (IN)
+            db.addInventoryTransaction(returnedItem.id, 'IN', ex.returnedQty, 'EXCHANGE_RETURN', ex.id, `Tukar Guling ${ex.exchangeNumber}: ${returnedItem.itemName}`);
+        } else {
+            // Damaged -> Add to NG Story (not in main stock)
+            db.insert('inventoryJudgments', {
+                date: new Date().toISOString().split('T')[0],
+                itemId: returnedItem.id,
+                qty: ex.returnedQty,
+                location: 'WHS',
+                status: 'DAMAGE (RUSAK FISIK)',
+                notes: `Retur dari ${ex.exchangeNumber}: ${ex.reason || 'Barang Rusak'}`,
+                createdBy: 'Admin'
+            });
+            // Record as NG_IN for history card (ignores total available)
+            db.addInventoryTransaction(returnedItem.id, 'NG_IN', ex.returnedQty, 'EXCHANGE_RETURN', ex.id, `Retur NG dari ${ex.exchangeNumber}: ${returnedItem.itemName}`);
+        }
 
-        // Jurnal Retur Masuk (mengembalikan stok ke gudang)
+        // Journal Entry (same regardless of condition, but usually we return to inventory)
         if (typeof db.addJournalEntry === 'function') {
             const modalPrice = returnedItem.purchasePrice || 0;
             const totalModal = ex.returnedQty * modalPrice;
             if (totalModal > 0) {
                 db.addJournalEntry({
-                    description: `Retur Masuk Tukar Guling ${ex.exchangeNumber}`,
-                    referenceType: 'PRODUCT_EXCHANGE',
-                    referenceId: ex.id,
+                    description: `Retur Masuk Tukar Guling ${ex.exchangeNumber} [${conditionText}]`,
+                    referenceType: 'PRODUCT_EXCHANGE', referenceId: ex.id,
                     items: [
                         { accountId: 'acc_inv_fg', debit: totalModal, credit: 0 },
                         { accountId: 'acc_cogs', debit: 0, credit: totalModal }
@@ -597,7 +790,7 @@ window.receiveExchangeReturn = function (id) {
     }
 
     db.update('productExchanges', id, { status: 'RETURN_RECEIVED', returnReceivedAt: new Date().toISOString() });
-    showToast(`Barang retur diterima. Stok "${ex.returnedProductName}" diperbarui.`);
+    showToast(`Barang retur (${conditionText}) diterima.`);
     renderProductExchanges();
 };
 

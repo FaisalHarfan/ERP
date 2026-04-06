@@ -19,7 +19,9 @@ window.currentFilters = {
     salesInvoices: { start: '', end: '', taxType: '', status: '' },
     supplierPayments: { start: '', end: '', supplier: '', status: '', kategori: '' },
     salesPayments: { start: '', end: '' },
-    inventoryPOReceipt: { start: '', end: '' }
+    inventoryPOReceipt: { start: '', end: '', supplier: '', status: '' },
+    inventoryDelivery: { start: '', end: '', customer: '', status: '' },
+    purchaseReceivingHistory: { start: '', end: '', supplier: '' }
 };
 
 window.activeDepartment = null; // Track current active department for sidebar filtering
@@ -63,11 +65,10 @@ const views = {
     'inventory-master': renderInventoryMaster,
     'inventory-stock-in': renderInventoryStockIn,
     'inventory-stock-out': renderInventoryStockOut,
-    'inventory-delivery': renderWarehouseDeliveryOrders,  // Focused on WH process (picking/packing/shipping)
-    'inventory-production': renderInventoryProduction,
-    'inventory-card': renderInventoryCard,
-    'inventory-shrinkage': renderInventoryShrinkageReport,
-    'inventory-monthly-report': renderMonthlyStockReport,
+    'inventory-delivery': window.renderWarehouseDeliveryOrders,  // Focused on WH process (picking/packing/shipping)
+    'inventory-production': renderProductionBoard,
+    'inventory-shrinkage': window.renderInventoryShrinkageReport,
+    'inventory-monthly-report': window.renderMonthlyStockReport,
     'inventory-report': renderInventoryReport,
     'inventory-po-receipt': renderInventoryPOReceipt,
     // Purchase Module
@@ -77,6 +78,7 @@ const views = {
     'supplier-payments': renderSupplierPayments,
     'purchase-reports': renderPurchaseReports,
     'purchase-receiving': renderPurchaseReceiving,
+    'purchase-receiving-history': renderPurchaseReceivingHistory,
     // Sales Module
     'sales-quotations': renderSalesQuotations,
     'sales-orders': renderSalesOrders,
@@ -90,22 +92,26 @@ const views = {
     'sales-return-reports': window.renderSalesReturnReports,
     'sales-delivery-orders': window.renderSalesDeliveryOrders,
     // Production Module (New)
-    'production-dashboard': renderProductionDashboard,
-    'production-machines': renderProductionMachines,
-    'production-bom': renderProductionBOM,
-    'production-mo': renderProductionMO,
-    'production-log': renderProductionLog,
-    'production-line': () => window.renderProductionLine(),
+    'production-dashboard': renderProductionBoard,
+    'production-bom': window.renderBOMManagement,
+    'production-mo': window.renderProductionMO,
+    'production-wip-stock': window.renderProductionWIPStock,
+    'production-reports': window.renderProductionReports,
+    'master-machines': window.renderMachineMaster,
     // Finance Module (New)
     'finance-dashboard': window.renderFinanceDashboard,
     'finance-accounts': window.renderFinanceAccounts,
-    'finance-expenses': window.renderFinanceExpenses,
+
     'finance-ar': window.renderFinanceAR,
     'finance-ap': window.renderFinanceAP,
     'finance-journal': window.renderFinanceJournal,
     'finance-settings': window.renderFinanceSettings,
     'finance-credit-notes': window.renderFinanceCreditNotes,
     'finance-debit-notes': window.renderFinanceDebitNotes,
+    'finance-hpp': window.renderFinanceHPP,
+    'finance-rugilaba': window.renderFinanceProfitLoss,
+    'finance-neracasaldo': window.renderFinanceTrialBalance,
+    'inventory-judgment': window.renderInventoryJudgment,
     // Settings Module
     'settings-users': window.renderSettingsUsers,
     'settings-roles': window.renderSettingsRoles,
@@ -121,14 +127,13 @@ const MODULE_VIEW_MAP = {
     'purchase-orders': 'pembelian', 'purchase-invoices': 'pembelian', 'purchase-dashboard': 'pembelian', 'purchase-dashboard': 'pembelian',
     'supplier-payments': 'pembelian', 'purchase-reports': 'pembelian', 'master-suppliers': 'pembelian', 'purchase-receiving': 'pembelian',
     'master-products': 'logistik', 'stock-card': 'logistik',
-    'inventory-dashboard': 'logistik', 'inventory-master': 'logistik', 'inventory-po-receipt': 'logistik', 'inventory-delivery': 'logistik',
-    'inventory-card': 'logistik', 'inventory-shrinkage': 'logistik', 'inventory-monthly-report': 'logistik',
-    'production-dashboard': 'produksi', 'production-machines': 'produksi', 'production-mo': 'produksi',
-    'production-bom': 'produksi', 'production-log': 'produksi', 'production-line': 'produksi',
+    'inventory-dashboard': 'logistik', 'inventory-master': 'logistik', 'inventory-po-receipt': 'logistik', 'inventory-delivery': 'logistik', 'inventory-monthly-report': 'logistik', 'inventory-shrinkage': 'logistik', 'inventory-judgment': 'logistik',
+    'inventory-card': 'logistik', 'inventory-shrinkage': 'produksi', 'inventory-monthly-report': 'logistik',
+    'production-dashboard': 'produksi', 'production-bom': 'produksi', 'production-mo': 'produksi', 'production-wip-stock': 'produksi', 'production-reports': 'produksi', 'master-machines': 'produksi',
     'sales-returns': 'logistik', 'sales-exchanges': 'logistik', 'sales-return-reports': 'logistik',
-    'finance-dashboard': 'finance', 'finance-accounts': 'finance', 'finance-expenses': 'finance',
+    'finance-dashboard': 'finance', 'finance-accounts': 'finance',
     'finance-ar': 'finance', 'finance-ap': 'finance', 'finance-journal': 'finance', 'finance-settings': 'finance',
-    'finance-credit-notes': 'finance', 'finance-debit-notes': 'finance',
+    'finance-credit-notes': 'finance', 'finance-debit-notes': 'finance', 'finance-hpp': 'finance', 'finance-rugilaba': 'finance', 'finance-neracasaldo': 'finance',
     'settings-users': 'pengaturan', 'settings-roles': 'pengaturan', 'settings-company': 'pengaturan',
     'settings-system': 'pengaturan', 'settings-dashboard': 'pengaturan',
     'sales-delivery-orders': 'penjualan'
@@ -345,7 +350,7 @@ function navigateTo(viewId) {
         if (btn.dataset.view === viewId) {
             btn.classList.add('active');
             btn.classList.remove('text-slate-600');
-            btn.classList.add('text-primary'); // Uses Tailwind Blue from config
+            btn.classList.add('text-slate-900');
 
             // Auto-expand parent group
             const parentGroup = btn.closest('.nav-group');
@@ -1399,10 +1404,12 @@ window.navigateToSupplierPage = () => {
 
 
 
-window.openPOModal = (fromPrId = null) => {
+window.openPOModal = (fromPrId = null, fromRfqId = null) => {
     const suppliers = db.read('suppliers');
     if (!window.tempPOItems) window.tempPOItems = [];
-    if (!fromPrId) { window.tempPOItems = []; window.tempPOFromPR = null; }
+    if (!fromPrId && !fromRfqId) { window.tempPOItems = []; window.tempPOFromPR = null; window.tempPOFromRFQ = null; }
+    if (fromRfqId) window.tempPOFromRFQ = fromRfqId;
+    if (fromPrId) window.tempPOFromPR = fromPrId;
 
     const supOpts = suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
 
@@ -1593,7 +1600,7 @@ window.savePO = () => {
     const total = dpp + taxAmount;
 
     const newPO = db.insert('purchaseOrders', {
-        poNumber: poNum, supplierId: supId, requestId: window.tempPOFromPR || null,
+        poNumber: poNum, requestId: window.tempPOFromPR || window.tempPOFromRFQ || null,
         date: (poDateEl && poDateEl.value) ? new Date(poDateEl.value).toISOString() : new Date().toISOString(),
         paymentTerms,
         dueDate,
@@ -1609,7 +1616,12 @@ window.savePO = () => {
         notes: notes,
         items: window.tempPOItems
     });
-    window.tempPOItems = []; window.tempPOFromPR = null;
+
+    if (window.tempPOFromRFQ) {
+        db.update('purchaseRFQs', window.tempPOFromRFQ, { status: 'PO_CREATED' });
+    }
+
+    window.tempPOItems = []; window.tempPOFromPR = null; window.tempPOFromRFQ = null;
     showToast('PO Draft berhasil dibuat!', 'success');
     closeModal();
     renderPurchaseOrders();
@@ -2331,8 +2343,11 @@ function renderSupplierPayments(prefillInvoiceId = null) {
             <td class="py-3 px-4 text-sm text-blue-600">${inv.invoiceNumber}</td>
             <td class="py-3 px-4 text-sm text-gray-800">${sup.name}</td>
             <td class="py-3 px-4 text-sm text-gray-600">${p.method}</td>
-            <td class="py-3 px-4 text-sm text-gray-500">${p.referenceNote || '-'}</td>
-        <td class="py-3 px-4 text-sm text-green-600 font-bold text-right">${formatCurrency(p.amount)}</td>
+            <td class="py-3 px-4 text-sm text-gray-500">${p.referenceNote || p.notes || '-'}</td>
+            <td class="py-3 px-4 text-sm text-green-600 font-bold text-right">${formatCurrency(p.amount)}</td>
+            <td class="py-3 px-4 text-sm text-right">
+                ${p.receiptBase64 ? `<button onclick="viewSupPayReceipt('${p.id}')" class="text-blue-500 hover:text-blue-700 p-1.5 px-3 bg-blue-50 rounded" title="Lihat Bukti Transfer"><i class="fas fa-file-invoice mr-1"></i> Bukti</button>` : `<span class="text-gray-300">-</span>`}
+            </td>
         </tr>`;
     }).join('');
     if (!rows) rows = `<tr><td colspan="7" class="py-4 text-center text-gray-500">Belum ada data pembayaran${prefillInvoiceId ? ' untuk invoice ini' : ''}</td></tr>`;
@@ -2375,37 +2390,37 @@ function renderSupplierPayments(prefillInvoiceId = null) {
     let filterHtml = '';
     if (!prefillInvoiceId) {
         filterHtml = `
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-5">
-            <h2 class="text-lg font-semibold text-gray-800 mb-4">Filter Supplier Payment</h2>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3 items-end">
-                <div class="lg:col-span-1">
-                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Dari Tanggal</label>
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-5 mb-5">
+            <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-3"><i class="fas fa-filter text-blue-500"></i> FILTER PENCARIAN</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 items-end mb-4">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Dari Tanggal</label>
                     <input type="date" id="spay_start_date" value="${window.currentFilters.supplierPayments.start}"
-                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 transition-all">
+                        class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
                 </div>
-                <div class="lg:col-span-1">
-                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Sampai Tanggal</label>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Sampai Tanggal</label>
                     <input type="date" id="spay_end_date" value="${window.currentFilters.supplierPayments.end}"
-                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 transition-all">
+                        class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
                 </div>
-                <div class="lg:col-span-1">
-                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Supplier</label>
-                    <select id="spay_filter_supplier" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Supplier</label>
+                    <select id="spay_filter_supplier" class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
                         <option value="">Semua Supplier</option>
                         ${suppliers.map(s => `<option value="${s.id}" ${window.currentFilters.supplierPayments.supplier === s.id ? 'selected' : ''}>${s.name}</option>`).join('')}
                     </select>
                 </div>
-                <div class="lg:col-span-1">
-                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Status Invoice</label>
-                    <select id="spay_filter_status" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Status Invoice</label>
+                    <select id="spay_filter_status" class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
                         <option value="">Semua Status</option>
                         <option value="PAID" ${window.currentFilters.supplierPayments.status === 'PAID' ? 'selected' : ''}>PAID</option>
                         <option value="UNPAID" ${window.currentFilters.supplierPayments.status === 'UNPAID' ? 'selected' : ''}>UNPAID</option>
                     </select>
                 </div>
-                <div class="lg:col-span-1">
-                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Keterangan (Kategori)</label>
-                    <select id="spay_filter_kategori" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Keterangan (Kategori)</label>
+                    <select id="spay_filter_kategori" class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
                         <option value="">Semua Kategori</option>
                         <option value="Bahan Baku" ${window.currentFilters.supplierPayments.kategori === 'Bahan Baku' ? 'selected' : ''}>Bahan Baku</option>
                         <option value="Packaging" ${window.currentFilters.supplierPayments.kategori === 'Packaging' ? 'selected' : ''}>Packaging</option>
@@ -2414,10 +2429,12 @@ function renderSupplierPayments(prefillInvoiceId = null) {
                         <option value="Sparepart" ${window.currentFilters.supplierPayments.kategori === 'Sparepart' ? 'selected' : ''}>Sparepart</option>
                     </select>
                 </div>
-                <button onclick="applySupPayFilter()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-sm whitespace-nowrap h-[38px]">
-                    <i class="fas fa-search"></i> Filter
+            </div>
+            <div class="flex gap-2">
+                <button onclick="applySupPayFilter()" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all shadow-sm">
+                    <i class="fas fa-search mr-2"></i> TAMPILKAN
                 </button>
-                <button onclick="resetSupPayFilter()" class="bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm h-[38px]" title="Reset">
+                <button onclick="resetSupPayFilter()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-lg transition-all shadow-sm" title="Reset">
                     <i class="fas fa-undo"></i>
                 </button>
             </div>
@@ -2444,6 +2461,7 @@ function renderSupplierPayments(prefillInvoiceId = null) {
                         <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Metode</th>
                         <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Referensi</th>
                         <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Jumlah</th>
+                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Bukti TF</th>
                     </tr></thead>
                     <tbody>${rows}</tbody>
                 </table>
@@ -2455,6 +2473,19 @@ function renderSupplierPayments(prefillInvoiceId = null) {
         if (inv && inv.status === 'UNPAID') setTimeout(() => openSupplierPaymentModal(prefillInvoiceId), 100);
     }
 }
+
+window.viewSupPayReceipt = (id) => {
+    const payment = db.findById('supplierPayments', id);
+    if (!payment || !payment.receiptBase64) return;
+    const isPdf = payment.receiptBase64.startsWith('data:application/pdf');
+    let content = '';
+    if (isPdf) {
+        content = `<iframe src="${payment.receiptBase64}" class="w-full h-[600px] rounded-lg" frameborder="0"></iframe>`;
+    } else {
+        content = `<div class="flex justify-center max-h-[80vh] overflow-y-auto"><img src="${payment.receiptBase64}" class="max-w-full h-auto rounded-lg shadow-sm border border-gray-100 object-contain" alt="Bukti Transfer"></div>`;
+    }
+    showModal(`Bukti Transfer - ${payment.paymentNumber}`, content, `<button onclick="closeModal()" class="w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 px-4 py-2 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50">Tutup</button>`, 'xl');
+};
 
 window.openSupplierPaymentModal = (invoiceId = null) => {
     if (invoiceId) window.currentSupPayInvoiceId = invoiceId;
@@ -2968,48 +2999,57 @@ function renderStockCard(activeTab = 'recap') {
             </div>
         `;
     } else if (activeTab === 'card') {
-        // Stock Card (Movements)
-        const movements = db.read('stockMovements').sort((a, b) => new Date(b.date) - new Date(a.date));
-        const products = db.read('products');
+        // Stock Card (New: using stockTransactions)
+        const txs = db.read('stockTransactions').sort((a, b) => new Date(b.date) - new Date(a.date));
+        const items = db.read('inventoryItems');
 
-        let rows = movements.map(m => {
-            const product = products.find(p => p.id === m.productId) || { name: 'Unknown', unit: '' };
-            const typeColor = m.type === 'IN' ? 'text-green-600 bg-green-50' : 'text-red-600 bg-red-50';
-            const icon = m.type === 'IN' ? 'fa-arrow-down' : 'fa-arrow-up';
+        let rows = txs.map(t => {
+            const item = items.find(i => i.id === t.itemId) || { itemName: t.itemName || 'Unknown', unit: t.unit || '' };
+            
+            // Color logic based on transaction type
+            let typeColor = 'text-gray-600 bg-gray-50';
+            let icon = 'fa-dot-circle';
+            if (t.type === 'IN') { typeColor = 'text-green-600 bg-green-50'; icon = 'fa-arrow-down'; }
+            else if (t.type === 'OUT' || t.type === 'SHRINKAGE') { typeColor = 'text-red-600 bg-red-50'; icon = 'fa-arrow-up'; }
+            else if (t.type === 'NG_IN') { typeColor = 'text-orange-600 bg-orange-50'; icon = 'fa-exclamation-triangle'; }
 
             return `
-        <tr class="border-b border-gray-100">
-                    <td class="py-3 px-4 text-sm text-gray-500">${formatDate(m.date)}</td>
-                    <td class="py-3 px-4 text-sm text-gray-800 font-medium">${product.name}</td>
-                    <td class="py-3 px-4 text-sm">
-                        <span class="px-2 py-1 rounded text-xs font-semibold ${typeColor}">
-                            <i class="fas ${icon} mr-1"></i>${m.type}
+                <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                    <td class="py-3 px-4 text-xs font-mono text-gray-500">${t.date ? t.date.slice(0, 16).replace('T', ' ') : '-'}</td>
+                    <td class="py-3 px-4 text-sm font-medium text-gray-800">${item.itemName}</td>
+                    <td class="py-3 px-4 text-xs font-bold text-gray-400 uppercase tracking-widest">${t.location || 'WHS'}</td>
+                    <td class="py-3 px-4 text-sm text-center">
+                        <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${typeColor}">
+                            <i class="fas ${icon} mr-1"></i>${t.type}
                         </span>
                     </td>
-                    <td class="py-3 px-4 text-sm text-gray-800 text-right font-medium">${m.qty} ${product.unit}</td>
-                    <td class="py-3 px-4 text-sm text-gray-600">${m.referenceType}</td>
-                    <td class="py-3 px-4 text-sm text-gray-500 truncate max-w-[150px]" title="${m.notes}">${m.notes || '-'}</td>
+                    <td class="py-3 px-4 text-sm text-right font-black ${t.type === 'IN' ? 'text-green-600' : t.type === 'NG_IN' ? 'text-orange-600' : 'text-red-600'}">
+                        ${t.type === 'IN' || t.type === 'NG_IN' ? '+' : '-'}${invFmt(t.qty)} <span class="text-[10px] font-normal text-gray-400 ml-1 uppercase">${item.unit || ''}</span>
+                    </td>
+                    <td class="py-3 px-4 text-xs text-gray-500 font-medium">${t.reference || '-'}</td>
+                    <td class="py-3 px-4 text-xs text-gray-400 italic">${t.notes || '-'}</td>
                 </tr>
-        `;
+            `;
         }).join('');
 
-        if (movements.length === 0) rows = `<tr > <td colspan="6" class="py-4 text-center text-gray-500">Belum ada pergerakan stok</td></tr> `;
+        if (txs.length === 0) rows = `<tr><td colspan="7" class="py-8 text-center text-gray-400 italic">Belum ada pergerakan stok (Transaksi kosong).</td></tr>`;
 
         contentHtml = `
-        <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse">
-                <thead>
-                    <tr class="bg-gray-50 border-b border-gray-200">
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Tanggal</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Produk</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Tipe</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">Qty</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Referensi</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Keterangan</th>
-                    </tr>
-                </thead>
-                <tbody>${rows}</tbody>
-            </table>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-gray-50 text-gray-400 text-[10px] uppercase font-black tracking-widest">
+                        <tr>
+                            <th class="py-3 px-4 border-b border-gray-200">Tanggal/Jam</th>
+                            <th class="py-3 px-4 border-b border-gray-200">Item</th>
+                            <th class="py-3 px-4 border-b border-gray-200">Gudang</th>
+                            <th class="py-3 px-4 border-b border-gray-200 text-center">Tipe</th>
+                            <th class="py-3 px-4 border-b border-gray-200 text-right">Kuantitas</th>
+                            <th class="py-3 px-4 border-b border-gray-200">Ref</th>
+                            <th class="py-3 px-4 border-b border-gray-200">Keterangan</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">${rows}</tbody>
+                </table>
             </div>
         `;
     } else if (activeTab === 'sales') {
@@ -3174,30 +3214,32 @@ function renderPurchaseOrders() {
     if (pos.length === 0) rows = `<tr > <td colspan="8" class="py-4 text-center text-gray-500">Belum ada Purchase Order</td></tr> `;
 
     mainContent.innerHTML = `
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-5">
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-5 mb-5">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-lg font-semibold text-gray-800">Laporan Purchase Order</h2>
+                <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-3"><i class="fas fa-filter text-blue-500"></i> FILTER PENCARIAN</h3>
                 ${!canEdit ? `
                 <span class="text-[10px] font-bold text-orange-500 bg-orange-50 border border-orange-100 px-2 py-1 rounded flex items-center gap-1 uppercase tracking-tighter">
                     <i class="fas fa-info-circle"></i> Lihat Saja
                 </span>
                 ` : ''}
             </div>
-            <div class="flex flex-wrap gap-4 items-end">
-                <div class="flex-1 min-w-[150px]">
-                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Dari Tanggal</label>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end mb-4">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Dari Tanggal</label>
                     <input type="date" id="po_start_date" value="${window.currentFilters.purchaseOrders.start}"
-                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 transition-all">
+                        class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
                 </div>
-                <div class="flex-1 min-w-[150px]">
-                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Sampai Tanggal</label>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Sampai Tanggal</label>
                     <input type="date" id="po_end_date" value="${window.currentFilters.purchaseOrders.end}"
-                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 transition-all">
+                        class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
                 </div>
-                <button onclick="applyPOFilter()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-sm whitespace-nowrap h-[38px]">
-                    <i class="fas fa-search"></i> Tampilkan Laporan
+            </div>
+            <div class="flex gap-2">
+                <button onclick="applyPOFilter()" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all shadow-sm">
+                    <i class="fas fa-search mr-2"></i> TAMPILKAN
                 </button>
-                <button onclick="resetPOFilter()" class="bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm h-[38px]" title="Reset">
+                <button onclick="resetPOFilter()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-lg transition-all shadow-sm" title="Reset">
                     <i class="fas fa-undo"></i>
                 </button>
             </div>
@@ -3322,8 +3364,8 @@ function renderPurchaseReceiving() {
         const sup = suppliers.find(s => s.id === po.supplierId) || { name: 'Unknown' };
         
         let statusBadge = '';
-        if (po.status === 'APPROVED') statusBadge = '<span class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">APPROVED</span>';
-        if (po.status === 'PARTIALLY RECEIVED') statusBadge = '<span class="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-semibold">PARTIAL</span>';
+        if (po.status === 'APPROVED') statusBadge = '<span class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold uppercase tracking-wider">APPROVED</span>';
+        if (po.status === 'PARTIALLY RECEIVED') statusBadge = '<span class="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs font-semibold uppercase tracking-wider">PARTIAL</span>';
 
         const totalQty = (po.items || []).reduce((s, i) => s + (i.qty || 0), 0);
         const receivedQty = (po.items || []).reduce((s, i) => s + (i.receivedQty || 0), 0);
@@ -3331,25 +3373,27 @@ function renderPurchaseReceiving() {
 
         return `
         <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-            <td class="py-3 px-4 text-sm font-medium text-blue-600">${po.poNumber}</td>
-            <td class="py-3 px-4 text-sm text-gray-600">${formatDate(po.date).split(' ')[0]}</td>
-            <td class="py-3 px-4 text-sm text-gray-800 font-medium">${sup.name}</td>
-            <td class="py-3 px-4 text-sm">
+            <td class="py-4 px-4 text-sm font-black text-blue-600 cursor-pointer hover:underline" onclick="viewPO('${po.id}')">${po.poNumber}</td>
+            <td class="py-4 px-4 text-xs font-medium text-gray-500 italic">${formatDate(po.date).split(' ')[0]}</td>
+            <td class="py-4 px-4 text-sm text-gray-800 font-bold">${sup.name}</td>
+            <td class="py-4 px-4 text-sm">
                 <div class="flex items-center gap-3">
-                    <div class="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden" style="min-width:100px">
-                        <div class="h-full bg-green-500 rounded-full" style="width: ${progressPct}%"></div>
+                    <div class="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden" style="min-width:120px">
+                        <div class="h-full bg-indigo-500 rounded-full transition-all duration-1000" style="width: ${progressPct}%"></div>
                     </div>
-                    <span class="text-[10px] font-bold text-gray-500">${receivedQty} / ${totalQty}</span>
+                    <span class="text-[10px] font-black text-slate-500 tracking-tighter">${receivedQty} / ${totalQty} Unit</span>
                 </div>
             </td>
-            <td class="py-3 px-4 text-sm text-center">${statusBadge}</td>
-            <td class="py-3 px-4 text-sm text-right">
-                <button onclick="viewPO('${po.id}')" class="text-gray-400 hover:text-gray-600 mr-3" title="Detail PO"><i class="fas fa-eye"></i></button>
-                ${canEdit ? `
-                <button onclick="receiveGoodsPO('${po.id}')" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold shadow-sm flex items-center gap-1 ml-auto">
-                    <i class="fas fa-truck-loading"></i> Terima Barang
-                </button>
-                ` : ''}
+            <td class="py-4 px-4 text-center">${statusBadge}</td>
+            <td class="py-4 px-4 text-right">
+                <div class="flex items-center justify-end gap-3">
+                    <button onclick="viewPO('${po.id}')" class="text-slate-400 hover:text-indigo-600 transition-colors" title="Detail PO"><i class="fas fa-eye text-lg"></i></button>
+                    ${canEdit ? `
+                    <button onclick="receiveGoodsPO('${po.id}')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest shadow-sm flex items-center gap-2 transition-all active:scale-95">
+                        <i class="fas fa-truck-loading"></i> Terima Barang
+                    </button>
+                    ` : ''}
+                </div>
             </td>
         </tr>
         `;
@@ -3357,53 +3401,174 @@ function renderPurchaseReceiving() {
 
     const emptyState = `
         <tr>
-            <td colspan="6" class="py-20 text-center">
-                <div class="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-300">
-                    <i class="fas fa-box-open text-4xl"></i>
+            <td colspan="6" class="py-24 text-center">
+                <div class="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-200 border border-slate-100">
+                    <i class="fas fa-box-open text-5xl"></i>
                 </div>
-                <h3 class="text-gray-800 font-bold text-lg">Tidak Ada Antrian Penerimaan</h3>
-                <p class="text-gray-500 text-sm mt-1">Semua Purchase Order telah diterima atau belum disetujui.</p>
+                <h3 class="text-slate-800 font-black text-xl uppercase tracking-tight">Antrian Kosong</h3>
+                <p class="text-slate-400 text-xs font-medium mt-1">Belum ada Purchase Order yang disetujui untuk diterima.</p>
             </td>
         </tr>
     `;
 
     mainContent.innerHTML = `
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
-            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div class="animate-in fade-in duration-300">
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6 flex justify-between items-center">
                 <div>
-                    <h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">
-                        <i class="fas fa-truck-loading text-green-600"></i> Antrian Penerimaan Barang (GR)
+                    <h2 class="text-xl font-black text-gray-800 flex items-center gap-3 uppercase tracking-tight">
+                        <i class="fas fa-hourglass-start text-indigo-600"></i> Antrian Penerimaan Barang (GR)
                     </h2>
-                    <p class="text-sm text-gray-500 mt-1">Daftar Purchase Order yang sudah disetujui dan menunggu kedatangan barang.</p>
+                    <p class="text-[11px] text-gray-400 font-bold uppercase tracking-wider mt-1">Daftar PO yang menunggu kedatangan stok barang</p>
                 </div>
-                ${!canEdit ? `
-                <span class="text-[10px] font-bold text-orange-500 bg-orange-50 border border-orange-100 px-3 py-1.5 rounded-lg uppercase">
-                    <i class="fas fa-info-circle mr-1"></i> Mode Lihat Saja
-                </span>
-                ` : ''}
+                <button onclick="navigateView('purchase-receiving-history')" class="bg-slate-100 hover:bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">
+                    <i class="fas fa-history mr-2"></i> Buka Riwayat GR
+                </button>
             </div>
-        </div>
 
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="bg-gray-50 border-b border-gray-200">
-                            <th class="py-4 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest">No. PO</th>
-                            <th class="py-4 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Tanggal</th>
-                            <th class="py-4 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Supplier</th>
-                            <th class="py-4 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest">Progres Penerimaan</th>
-                            <th class="py-4 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest text-center">Status</th>
-                            <th class="py-4 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-widest text-right">Aksi</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-100">
-                        ${rows || emptyState}
-                    </tbody>
-                </table>
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50/80 border-b border-gray-200">
+                                <th class="py-5 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">No. PO</th>
+                                <th class="py-5 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Tgl. Order</th>
+                                <th class="py-5 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Supplier</th>
+                                <th class="py-5 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Progres Terima</th>
+                                <th class="py-5 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">Status</th>
+                                <th class="py-5 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            ${rows || emptyState}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     `;
+}
+
+function renderPurchaseReceivingHistory() {
+    document.getElementById('pageTitle').innerText = 'Riwayat Penerimaan (History GR)';
+    const mainContent = document.getElementById('main-content');
+    
+    // Filters Header
+    const filters = window.currentFilters.purchaseReceivingHistory;
+    const suppliers = db.read('suppliers');
+    const supOptions = suppliers.map(s => `<option value="${s.id}" ${filters.supplier === s.id ? 'selected' : ''}>${s.name}</option>`).join('');
+
+    let pos = db.read('purchaseOrders').filter(po => po.status === 'RECEIVED').sort((a, b) => new Date(b.actualDeliveryDate || b.date) - new Date(a.actualDeliveryDate || a.date));
+
+    // Apply Filters
+    if (filters.start) {
+        const d = new Date(filters.start); d.setHours(0,0,0,0);
+        pos = pos.filter(po => new Date(po.actualDeliveryDate || po.date) >= d);
+    }
+    if (filters.end) {
+        const d = new Date(filters.end); d.setHours(23,59,59,999);
+        pos = pos.filter(po => new Date(po.actualDeliveryDate || po.date) <= d);
+    }
+    if (filters.supplier) {
+        pos = pos.filter(po => po.supplierId === filters.supplier);
+    }
+
+    const rows = pos.map(po => {
+        const sup = suppliers.find(s => s.id === po.supplierId) || { name: 'Unknown' };
+        const totalQty = (po.items || []).reduce((s, i) => s + (i.qty || 0), 0);
+        return `
+        <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+            <td class="py-4 px-4 text-sm font-black text-blue-600 font-mono">${po.poNumber}</td>
+            <td class="py-4 px-4 text-xs font-medium text-green-600 bg-green-50/30 font-mono text-center">${po.actualDeliveryDate ? formatDate(po.actualDeliveryDate).split(' ')[0] : '-'}</td>
+            <td class="py-4 px-4 text-sm text-gray-800 font-bold">${sup.name}</td>
+            <td class="py-4 px-4 text-sm text-right font-black text-slate-700">${totalQty} <span class="text-[10px] text-gray-400 font-normal">UNIT</span></td>
+            <td class="py-4 px-4 text-center">
+                <span class="px-3 py-1 bg-green-100 text-green-700 rounded-lg text-[10px] font-black uppercase tracking-widest border border-green-200 shadow-sm">RECEIVED</span>
+            </td>
+            <td class="py-4 px-4 text-right">
+                <button onclick="viewPO('${po.id}')" class="bg-indigo-50 border border-indigo-100 text-indigo-600 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-600 hover:text-white transition-all shadow-sm active:scale-95">
+                    <i class="fas fa-file-invoice mr-2"></i> Lihat Detail
+                </button>
+            </td>
+        </tr>`;
+    }).join('');
+
+    const emptyState = `<tr><td colspan="6" class="py-24 text-center text-slate-400 italic text-sm font-bold uppercase tracking-widest"><i class="fas fa-history text-4xl mb-4 opacity-20"></i><br>Tidak ada riwayat penerimaan</td></tr>`;
+
+    mainContent.innerHTML = `
+        <div class="animate-in fade-in duration-300">
+            <!-- Filter Bar Standar -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-6">
+                <div class="flex items-center gap-3 mb-5">
+                    <div class="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center border border-indigo-100">
+                        <i class="fas fa-filter"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest">Filter Riwayat GR</h3>
+                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Cari data penerimaan barang lampau</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 items-end mb-4">
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Dari Tanggal</label>
+                        <input type="date" id="gr_hist_start" value="${filters.start || ''}" class="w-full border-2 border-slate-100 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 focus:border-indigo-500 outline-none transition-all bg-slate-50/50">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Sampai Tanggal</label>
+                        <input type="date" id="gr_hist_end" value="${filters.end || ''}" class="w-full border-2 border-slate-100 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 focus:border-indigo-500 outline-none transition-all bg-slate-50/50">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Pilih Supplier</label>
+                        <select id="gr_hist_supplier" class="w-full border-2 border-slate-100 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 focus:border-indigo-500 outline-none transition-all bg-slate-50/50">
+                            <option value="">-- Semua Supplier --</option>
+                            ${supOptions}
+                        </select>
+                    </div>
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button onclick="applyGRHistoryFilter()" class="bg-indigo-600 hover:bg-slate-900 text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
+                        <i class="fas fa-search mr-2"></i> TAMPILKAN DATA
+                    </button>
+                    <button onclick="resetGRHistoryFilter()" class="bg-slate-100 hover:bg-slate-200 text-slate-500 px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm">
+                        <i class="fas fa-undo mr-2"></i> RESET
+                    </button>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50/80 border-b border-gray-200">
+                                <th class="py-5 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">No. PO</th>
+                                <th class="py-5 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">Tgl. Diterima</th>
+                                <th class="py-5 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Supplier</th>
+                                <th class="py-5 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Total Qty</th>
+                                <th class="py-5 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">Status</th>
+                                <th class="py-5 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 font-sans">
+                            ${rows || emptyState}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+window.applyGRHistoryFilter = () => {
+    window.currentFilters.purchaseReceivingHistory = {
+        start: document.getElementById('gr_hist_start').value,
+        end: document.getElementById('gr_hist_end').value,
+        supplier: document.getElementById('gr_hist_supplier').value
+    };
+    renderPurchaseReceivingHistory();
+};
+
+window.resetGRHistoryFilter = () => {
+    window.currentFilters.purchaseReceivingHistory = { start: '', end: '', supplier: '' };
+    renderPurchaseReceivingHistory();
 }
 
 // --- Purchase Orders Helper Functions ---
@@ -3783,6 +3948,7 @@ function renderPurchaseRFQs() {
         let statusColor = 'bg-gray-100 text-gray-700';
         if (rfq.status === 'SENT') statusColor = 'bg-blue-100 text-blue-700';
         if (rfq.status === 'CONFIRMED') statusColor = 'bg-green-100 text-green-700';
+        if (rfq.status === 'PO_CREATED') statusColor = 'bg-purple-100 text-purple-700';
         if (rfq.status === 'CANCELLED') statusColor = 'bg-red-100 text-red-700';
 
         let actionHtml = `<button onclick="viewPurchaseRFQ('${rfq.id}')" class="text-gray-500 hover:text-gray-700 mr-2" title="Detail"><i class="fas fa-eye"></i></button>`;
@@ -3802,6 +3968,17 @@ function renderPurchaseRFQs() {
             actionHtml = `
                 <button onclick="openSendPurchaseRFQModal('${rfq.id}')" class="text-blue-500 hover:text-blue-700 mr-2 border border-blue-500 px-2 py-1 rounded text-xs" title="Send Options">Kirim Ulang</button>
                 <button onclick="updatePurchaseRFQStatus('${rfq.id}', 'CONFIRMED')" class="text-green-500 hover:text-green-700 mr-2 border border-green-500 px-2 py-1 rounded text-xs" title="Confirm">Confirm</button>
+                <button onclick="viewPurchaseRFQ('${rfq.id}')" class="text-gray-500 hover:text-gray-700 mr-2" title="Detail"><i class="fas fa-eye"></i></button>
+                <button onclick="deletePurchaseRFQ('${rfq.id}')" class="text-red-500 hover:text-red-700" title="Delete"><i class="fas fa-trash"></i></button>
+            `;
+        } else if (canEdit && rfq.status === 'CONFIRMED') {
+            actionHtml = `
+                <button onclick="convertRFQtoPO('${rfq.id}')" class="bg-orange-500 hover:bg-orange-600 text-white mr-2 px-3 py-1 rounded text-[10px] font-black uppercase tracking-widest shadow-sm" title="Buat Purchase Order">Buat PO</button>
+                <button onclick="viewPurchaseRFQ('${rfq.id}')" class="text-gray-500 hover:text-gray-700 mr-2" title="Detail"><i class="fas fa-eye"></i></button>
+                <button onclick="deletePurchaseRFQ('${rfq.id}')" class="text-red-500 hover:text-red-700" title="Delete"><i class="fas fa-trash"></i></button>
+            `;
+        } else if (rfq.status === 'PO_CREATED') {
+            actionHtml = `
                 <button onclick="viewPurchaseRFQ('${rfq.id}')" class="text-gray-500 hover:text-gray-700 mr-2" title="Detail"><i class="fas fa-eye"></i></button>
                 <button onclick="deletePurchaseRFQ('${rfq.id}')" class="text-red-500 hover:text-red-700" title="Delete"><i class="fas fa-trash"></i></button>
             `;
@@ -3930,6 +4107,38 @@ window.openPurchaseRFQModal = () => {
 
     window.tempRFQItems = [];
     showModal('Buat Request For Quotation (Purchase)', body, footer, 'lg');
+};
+
+window.convertRFQtoPO = (rfqId) => {
+    const rfq = db.findById('purchaseRFQs', rfqId);
+    if (!rfq) return;
+
+    // Prefill tempPOItems based on RFQ items
+    window.tempPOItems = rfq.items.map(it => ({
+        ...it,
+        price: it.price || 0,
+        subtotal: (it.price || 0) * (it.qty || 0)
+    }));
+
+    // Open PO Modal with RFQ link
+    window.openPOModal(null, rfqId);
+
+    // Initial prefill values via timeout to ensure DOM is ready
+    setTimeout(() => {
+        const supSel = document.getElementById('po_supplier');
+        if (supSel) {
+            supSel.value = rfq.supplierId;
+            supSel.dispatchEvent(new Event('change'));
+        }
+
+        const catSel = document.getElementById('po_category');
+        if (catSel) catSel.value = 'Bahan Baku'; // Default for RFQ items
+
+        const poNotes = document.getElementById('po_notes');
+        if (poNotes) poNotes.value = `Ditransfer dari RFQ No: ${rfq.rfqNumber}`;
+
+        renderPOItemsList();
+    }, 200);
 };
 
 window.addPurchaseRFQItemRow = () => {
@@ -4528,30 +4737,32 @@ function renderSalesOrders() {
     if (sos.length === 0) rows = `<tr > <td colspan="6" class="py-4 text-center text-gray-500">Belum ada Sales Order</td></tr> `;
 
     mainContent.innerHTML = `
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-5">
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-5 mb-5">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-lg font-semibold text-gray-800">Laporan Sales Order</h2>
+                <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-3"><i class="fas fa-filter text-blue-500"></i> FILTER PENCARIAN</h3>
                 ${!canEdit ? `
                 <span class="text-[10px] font-bold text-orange-500 bg-orange-50 border border-orange-100 px-2 py-1 rounded flex items-center gap-1 uppercase tracking-tighter">
                     <i class="fas fa-info-circle"></i> Lihat Saja
                 </span>
                 ` : ''}
             </div>
-            <div class="flex flex-wrap gap-4 items-end">
-                <div class="flex-1 min-w-[150px]">
-                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Dari Tanggal</label>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end mb-4">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Dari Tanggal</label>
                     <input type="date" id="so_start_date" value="${window.currentFilters.salesOrders.start}" 
-                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 transition-all">
+                        class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
                 </div>
-                <div class="flex-1 min-w-[150px]">
-                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Sampai Tanggal</label>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Sampai Tanggal</label>
                     <input type="date" id="so_end_date" value="${window.currentFilters.salesOrders.end}" 
-                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 transition-all">
+                        class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
                 </div>
-                <button onclick="applySOFilter()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-sm whitespace-nowrap h-[38px]">
-                    <i class="fas fa-search"></i> Tampilkan Laporan
+            </div>
+            <div class="flex gap-2">
+                <button onclick="applySOFilter()" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all shadow-sm">
+                    <i class="fas fa-search mr-2"></i> TAMPILKAN
                 </button>
-                <button onclick="resetSOFilter()" class="bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm h-[38px]" title="Reset">
+                <button onclick="resetSOFilter()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-lg transition-all shadow-sm" title="Reset">
                     <i class="fas fa-undo"></i>
                 </button>
             </div>
@@ -6277,7 +6488,7 @@ function renderSalesReports() {
         <div class="space-y-6">
             <!-- Filter Panel -->
             <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-                <h3 class="text-sm font-semibold text-gray-600 uppercase tracking-wider mb-4"><i class="fas fa-filter mr-2 text-blue-500"></i>Filter Laporan</h3>
+                <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-3"><i class="fas fa-filter text-blue-500"></i> FILTER LAPORAN</h3>
                 <div class="flex flex-wrap items-end gap-4">
                     <div>
                         <label class="block text-xs font-medium text-gray-500 mb-1">Dari Tanggal</label>

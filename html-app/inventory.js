@@ -2,13 +2,17 @@
 
 // ─── HELPERS ──────────────────────────────────────────────────
 const CATEGORY_LABELS = {
-    RAW_MATERIAL: 'RawMatrial',
+    RAW_MATERIAL: 'Raw Material',
     WIP: 'WIP',
+    MIXING_STOCK: 'Stock Mixing',
+    OVEN_BASAH_STOCK: 'Oven Basah',
     FINISHED_GOODS: 'Finishgoods'
 };
 const CATEGORY_COLORS = {
     RAW_MATERIAL: 'bg-yellow-100 text-yellow-800',
     WIP: 'bg-blue-100 text-blue-800',
+    MIXING_STOCK: 'bg-blue-50 text-blue-700',
+    OVEN_BASAH_STOCK: 'bg-orange-100 text-orange-800',
     FINISHED_GOODS: 'bg-green-100 text-green-800'
 };
 const REF_LABELS = { PO: 'Purchase Receipt', SO: 'Sales Delivery', PRODUCTION_IN: 'Hasil Produksi', PRODUCTION_OUT: 'Konsumsi Produksi', SHRINKAGE: 'Penyusutan/NG', MANUAL: 'Manual' };
@@ -30,17 +34,30 @@ window.renderInventoryDashboard = () => {
     // Data SO (Surat Jalan/Pengiriman)
     const sos = db.read('salesOrders') || [];
     const pendingDeliveries = sos.filter(s => s.status === 'CONFIRMED');
-    // Overdue delivery if SO date is more than 2 days ago and still pending
     const overdueDeliveries = pendingDeliveries.filter(s => {
         const diff = (new Date() - new Date(s.date)) / (1000 * 60 * 60 * 24);
         return diff > 2;
     });
 
+    // Data SJ (Delivery Orders)
+    const dos = db.read('deliveryOrders') || [];
+    const draftSJs = dos.filter(d => ['DRAFT', 'PENDING', 'HOLD'].includes(d.status));
+    const overdueSJs = draftSJs.filter(d => {
+        const diff = (new Date() - new Date(d.date)) / (1000 * 60 * 60 * 24);
+        return diff > 1;
+    });
+
     // Data MO (Produksi)
-    const mos = db.read('manufacturingOrders') || [];
-    const runningMOs = mos.filter(m => m.status === 'RUNNING');
+    const mos = db.read('productionOrders') || [];
+    const runningMOs = mos.filter(m => m.status === 'IN_PROGRESS');
     const draftMOs = mos.filter(m => m.status === 'DRAFT');
-    const overdueMOs = runningMOs.filter(m => m.estFinishDate && m.estFinishDate < today);
+    const overdueMOs = runningMOs.filter(m => {
+        const diffHours = (new Date() - new Date(m.createdAt)) / (1000 * 60 * 60);
+        return diffHours > 24; 
+    });
+
+    const lowStockItems = db.read('inventoryItems').filter(it => db.getInventoryStock(it.id) < it.minStock);
+    const lowStockCount = lowStockItems.length;
 
     const card = (title, count, overdue, actionLabel, viewId, icon, color) => `
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
@@ -64,12 +81,11 @@ window.renderInventoryDashboard = () => {
         </div>`;
 
     mc.innerHTML = `
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
             ${card('Penerimaan', pendingReceipts.length, overdueReceipts.length, 'Untuk Diterima', 'inventory-po-receipt', 'fas fa-download', 'bg-blue-50 text-blue-600')}
-            ${card('Surat Jalan', (db.read('deliveryOrders') || []).length, 0, 'Manajemen SJ', 'sales-delivery-orders', 'fas fa-truck-loading', 'bg-teal-50 text-teal-600')}
+            ${card('Surat Jalan', draftSJs.length, overdueSJs.length, 'Manajemen SJ', 'inventory-delivery', 'fas fa-truck-loading', 'bg-teal-50 text-teal-600')}
             ${card('Produksi', runningMOs.length + draftMOs.length, overdueMOs.length, 'Produksi', 'production-mo', 'fas fa-industry', 'bg-purple-50 text-purple-600')}
-            ${card('Retur Penjualan', (db.read('salesReturns') || []).filter(r => r.status === 'APPROVED').length, 0, 'Terima Retur', 'sales-returns', 'fas fa-undo-alt', 'bg-red-50 text-red-600')}
-            ${card('Tukar Guling', (db.read('productExchanges') || []).filter(e => e.status === 'APPROVED').length, 0, 'Tukar Produk', 'sales-exchanges', 'fas fa-exchange-alt', 'bg-orange-50 text-orange-600')}
+
         </div>
         
         <div class="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -95,14 +111,50 @@ window.renderInventoryDashboard = () => {
                            <div class="flex items-center gap-3">
                                <div class="p-2 bg-orange-100 text-orange-600 rounded-lg"><i class="fas fa-truck"></i></div>
                                <div>
-                                   <p class="text-sm font-bold text-orange-800">${overdueDeliveries.length} Pengiriman Tertunda</p>
-                                   <p class="text-xs text-orange-600">SO terkonfirmasi > 2 hari belum dikirim</p>
+                                   <p class="text-sm font-bold text-orange-800">${overdueDeliveries.length} Pengiriman Belum Ber-SJ</p>
+                                   <p class="text-xs text-orange-600">SO terkonfirmasi > 2 hari belum dibuat SJ</p>
                                </div>
                            </div>
-                           <button onclick="navigateTo('inventory-delivery')" class="text-xs font-bold text-orange-700 hover:underline">Lihat</button>
+                           <button onclick="navigateTo('sales-delivery-orders')" class="text-xs font-bold text-orange-700 hover:underline">Lihat</button>
                         </div>
                     ` : ''}
-                    ${!overdueReceipts.length && !overdueDeliveries.length ? `<p class="text-center py-6 text-gray-400 text-sm italic">🎉 Semua berjalan sesuai jadwal!</p>` : ''}
+                    ${overdueSJs.length ? `
+                        <div class="flex items-center justify-between p-3 bg-teal-50 rounded-lg border border-teal-100">
+                           <div class="flex items-center gap-3">
+                               <div class="p-2 bg-teal-100 text-teal-600 rounded-lg"><i class="fas fa-file-invoice"></i></div>
+                               <div>
+                                   <p class="text-sm font-bold text-teal-800">${overdueSJs.length} SJ Belum Diproses</p>
+                                   <p class="text-xs text-teal-600">Surat Jalan > 24 jam belum dikirim/approve</p>
+                               </div>
+                           </div>
+                           <button onclick="navigateTo('inventory-delivery')" class="text-xs font-bold text-teal-700 hover:underline">Lihat</button>
+                        </div>
+                    ` : ''}
+                    ${overdueMOs.length ? `
+                        <div class="flex items-center justify-between p-3 bg-purple-50 rounded-lg border border-purple-100">
+                           <div class="flex items-center gap-3">
+                               <div class="p-2 bg-purple-100 text-purple-600 rounded-lg"><i class="fas fa-industry"></i></div>
+                               <div>
+                                   <p class="text-sm font-bold text-purple-800">${overdueMOs.length} Produksi Belum Selesai</p>
+                                   <p class="text-xs text-purple-600">Proses produksi > 24 jam belum selesai</p>
+                               </div>
+                           </div>
+                           <button onclick="navigateTo('production-mo')" class="text-xs font-bold text-purple-700 hover:underline">Lihat</button>
+                        </div>
+                    ` : ''}
+                    ${lowStockCount > 0 ? `
+                        <div class="flex items-center justify-between p-3 bg-rose-50 rounded-lg border border-rose-100">
+                           <div class="flex items-center gap-3">
+                               <div class="p-2 bg-rose-100 text-rose-600 rounded-lg"><i class="fas fa-boxes"></i></div>
+                               <div>
+                                   <p class="text-sm font-bold text-rose-800">${lowStockCount} Item Stok Rendah</p>
+                                   <p class="text-xs text-rose-600">Segera lakukan pembelian atau produksi</p>
+                               </div>
+                           </div>
+                           <button onclick="navigateTo('inventory-master')" class="text-xs font-bold text-rose-700 hover:underline">Lihat</button>
+                        </div>
+                    ` : ''}
+                    ${!overdueReceipts.length && !overdueDeliveries.length && !overdueSJs.length && !overdueMOs.length && lowStockCount === 0 ? `<p class="text-center py-6 text-gray-400 text-sm italic">🎉 Semua berjalan sesuai jadwal!</p>` : ''}
                 </div>
              </div>
 
@@ -132,38 +184,97 @@ function renderInventoryMaster() {
     const canEdit = getModulePermission('logistik').edit;
     document.getElementById('pageTitle').innerText = 'Master Item';
     const mc = document.getElementById('main-content');
-    const items = db.read('inventoryItems');
+    
+    // Persist filters
+    window._inventoryFilters = window._inventoryFilters || { category: '', name: '' };
+    const f = window._inventoryFilters;
 
+    let items = db.read('inventoryItems') || [];
+    
+    // Apply Filters
+    if (f.category) {
+        items = items.filter(it => it.category === f.category);
+    }
+    if (f.name) {
+        const q = f.name.toLowerCase();
+        items = items.filter(it => it.itemName.toLowerCase().includes(q) || it.itemCode.toLowerCase().includes(q));
+    }
+
+    // Current month range for detailed mutation
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    const allTxs = db.read('stockTransactions') || [];
+
+    // Calculate low stock count for current filtered items
     const lowStockCount = items.filter(it => db.getInventoryStock(it.id) < it.minStock).length;
 
     const rows = items.length ? items.map(it => {
         const stock = db.getInventoryStock(it.id);
         const isLow = stock < it.minStock;
         const isActive = it.status !== 'INACTIVE';
+
         return `<tr class="border-b border-gray-100 hover:bg-gray-50 ${isLow ? 'bg-red-50/40' : ''}">
             <td class="py-3 px-4 text-sm font-mono font-medium text-gray-700">${it.itemCode}</td>
             <td class="py-3 px-4 text-sm font-medium text-gray-800">${it.itemName}${isLow ? ' <span class="ml-1 px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-[10px] font-bold">LOW</span>' : ''}</td>
             <td class="py-3 px-4 text-sm"><span class="px-2 py-0.5 rounded text-xs font-semibold ${CATEGORY_COLORS[it.category] || 'bg-gray-100 text-gray-700'}">${CATEGORY_LABELS[it.category] || it.category}</span></td>
-            <td class="py-3 px-4 text-sm text-gray-600">${it.unit}</td>
-            <td class="py-3 px-4 text-sm text-right font-medium ${isLow ? 'text-red-600' : 'text-gray-800'}">${invFmt(stock)}</td>
-            <td class="py-3 px-4 text-sm text-right text-gray-500">${invFmt(it.minStock)}</td>
+            <td class="py-3 px-4 text-xs font-bold text-gray-400 uppercase tracking-widest">${it.unit}</td>
+            <td class="py-3 px-4 text-sm text-right font-black ${isLow ? 'text-red-700' : 'text-blue-800'}">${invFmt(stock)}</td>
+            <td class="py-3 px-4 text-sm text-right text-gray-400 font-medium">${invFmt(it.minStock)}</td>
             <td class="py-3 px-4 text-sm"><span class="px-2 py-0.5 rounded text-xs font-semibold ${isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}">${isActive ? 'Active' : 'Non-Active'}</span></td>
             <td class="py-3 px-4 text-sm text-right whitespace-nowrap">
                 ${canEdit ? `
-                ${isCurrentUserAdmin() ? `<button onclick="openStockAdjustmentModal('${it.id}')" class="text-orange-500 hover:text-orange-700 mr-2" title="Penyesuaian Stok"><i class="fas fa-sync-alt"></i></button>` : ''}
+                ${isCurrentUserAdmin() ? `
+                    <button onclick="openStockAdjustmentModal('${it.id}')" class="text-orange-500 hover:text-orange-700 mr-2" title="Penyesuaian Stok"><i class="fas fa-sync-alt"></i></button>
+                    <button onclick="deleteInventoryItem('${it.id}')" class="text-red-500 hover:text-red-700 mr-2" title="Hapus Permanen"><i class="fas fa-trash-alt"></i></button>
+                ` : ''}
                 <button onclick="openInventoryItemModal('${it.id}')" class="text-blue-500 hover:text-blue-700 mr-2" title="Edit"><i class="fas fa-edit"></i></button>
                 <button onclick="toggleInventoryItemStatus('${it.id}')" class="text-gray-400 hover:text-gray-600" title="${isActive ? 'Non-Aktifkan' : 'Aktifkan'}"><i class="fas fa-${isActive ? 'toggle-on text-green-500' : 'toggle-off'}"></i></button>
                 ` : '<span class="text-gray-400 text-[10px] italic font-medium uppercase tracking-tight">View Only</span>'}
             </td>
         </tr>`;
-    }).join('') : `<tr><td colspan="8" class="py-8 text-center text-gray-400">Belum ada item. Tambah item pertama.</td></tr>`;
+    }).join('') : `<tr><td colspan="8" class="py-8 text-center text-gray-400">Belum ada item yang sesuai filter.</td></tr>`;
+
+    const catOpts = Object.entries(CATEGORY_LABELS).map(([v, l]) => `<option value="${v}" ${f.category === v ? 'selected' : ''}>${l}</option>`).join('');
 
     mc.innerHTML = `
     <div class="space-y-4">
-        ${lowStockCount ? `<div class="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700"><i class="fas fa-exclamation-triangle"></i><span><strong>${lowStockCount} item</strong> di bawah minimum stok!</span></div>` : ''}
+        ${lowStockCount ? `<div class="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700"><i class="fas fa-exclamation-triangle"></i><span><strong>${lowStockCount} item</strong> di bawah minimum stok (Total Aktif)!</span></div>` : ''}
+        
+        <!-- Standard Filter Bar -->
+        <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-100 mb-5">
+            <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-3"><i class="fas fa-filter text-blue-500"></i> FILTER PENCARIAN</h3>
+            <div class="flex flex-wrap gap-4 items-end">
+            <div class="flex-1 min-w-[240px]">
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Pencarian Barang</label>
+                <div class="relative">
+                    <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                    <input type="text" id="filter_item_name" value="${f.name}" placeholder="Cari Nama atau Kode Item..." 
+                        class="w-full border border-gray-200 rounded-lg pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all">
+                </div>
+            </div>
+            <div class="w-56">
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Kategori</label>
+                <select id="filter_item_category" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white transition-all">
+                    <option value="">-- Semua Kategori --</option>
+                    ${catOpts}
+                </select>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="updateInventoryFilters()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all">
+                    <i class="fas fa-filter"></i> Tampilkan
+                </button>
+                <button onclick="resetInventoryFilters()" class="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                    Reset
+                </button>
+            </div>
+        </div>
+
         <div class="bg-white rounded-lg shadow-sm border border-gray-100">
             <div class="flex justify-between items-center p-4 sm:p-6 border-b border-gray-100">
-                <h2 class="text-lg font-semibold text-gray-800">Master Item Inventory</h2>
+                <h2 class="text-lg font-black text-gray-800 uppercase tracking-tight flex items-center gap-2">
+                    <i class="fas fa-boxes text-blue-600"></i> Master Barang / Stok
+                </h2>
                 <div class="flex gap-2">
                     ${canEdit ? `
                     <button onclick="openInventoryItemModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium">
@@ -179,14 +290,14 @@ function renderInventoryMaster() {
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
                     <thead><tr class="bg-gray-50 border-b border-gray-200">
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Kode</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Nama Item</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Kategori</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Satuan</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Stok Saat Ini</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Min. Stok</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Status</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Aksi</th>
+                        <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Kode</th>
+                        <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Nama Item</th>
+                        <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Kategori</th>
+                        <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Unit</th>
+                        <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Stok Saat Ini</th>
+                        <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right text-slate-300">Min. Stok</th>
+                        <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                        <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Aksi</th>
                     </tr></thead>
                     <tbody>${rows}</tbody>
                 </table>
@@ -195,11 +306,24 @@ function renderInventoryMaster() {
     </div>`;
 }
 
+window.updateInventoryFilters = () => {
+    window._inventoryFilters = {
+        name: document.getElementById('filter_item_name')?.value || '',
+        category: document.getElementById('filter_item_category')?.value || ''
+    };
+    renderInventoryMaster();
+};
+
+window.resetInventoryFilters = () => {
+    window._inventoryFilters = { name: '', category: '' };
+    renderInventoryMaster();
+};
+
 window.openInventoryItemModal = (id = null) => {
     const item = id ? db.findById('inventoryItems', id) : null;
     const units = ['KG', 'GR', 'L', 'PCS', 'BOX', 'SAK', 'KARTON', 'LITER'];
     const unitOpts = units.map(u => `<option ${item?.unit === u ? 'selected' : ''}>${u}</option>`).join('');
-    const cats = [['RAW_MATERIAL', 'Raw Material'], ['WIP', 'WIP (Setengah Jadi)'], ['FINISHED_GOODS', 'Finished Goods']];
+    const cats = [['RAW_MATERIAL', 'Raw Material'], ['WIP', 'WIP'], ['MIXING_STOCK', 'Stock Mixing'], ['OVEN_BASAH_STOCK', 'Oven Basah'], ['FINISHED_GOODS', 'Finished Goods']];
     const catOpts = cats.map(([v, l]) => `<option value="${v}" ${item?.category === v ? 'selected' : ''}>${l}</option>`).join('');
     const previewCode = item ? item.itemCode : '(auto-generate)';
 
@@ -281,6 +405,89 @@ window.toggleInventoryItemStatus = (id) => {
     const newStatus = item.status === 'INACTIVE' ? 'ACTIVE' : 'INACTIVE';
     db.update('inventoryItems', id, { status: newStatus });
     showToast(`Item di-${newStatus === 'ACTIVE' ? 'aktifkan' : 'non-aktifkan'}`);
+    renderInventoryMaster();
+};
+
+window.deleteInventoryItem = (id) => {
+    const item = db.findById('inventoryItems', id);
+    if (!item) return;
+
+    if (!confirm(`⚠ HAPUS PERMANEN: ${item.itemName} (${item.itemCode})?\n\nSemua transaksi (Masuk/Keluar), history di Stock Card, item di SO/PO/RFQ, serta BOM yang menggunakan item ini di SELURUH departemen akan ikut TERHAPUS.\n\nLanjutkan?`)) return;
+
+    // 1. Array of all collections that might contain this item
+    const collections = [
+        'stockTransactions', 'stockCard', 'purchaseRFQs', 'purchaseOrders', 
+        'salesQuotations', 'salesOrders', 'productionOrders', 'inventoryBOM',
+        'salesInvoices', 'purchaseInvoices', 'deliveryOrders', 'salesReturns',
+        'productExchanges', 'inventoryShrinkage'
+    ];
+
+    // 2. Deep clean across all collections
+    collections.forEach(col => {
+        let data = db.read(col) || [];
+        let modified = false;
+
+        if (col === 'stockTransactions' || col === 'stockCard') {
+            const initialLen = data.length;
+            data = data.filter(t => t.itemId !== id);
+            if (data.length !== initialLen) modified = true;
+        } 
+        else if (col === 'productExchanges') {
+            const initialLen = data.length;
+            data = data.filter(t => t.fromItemId !== id && t.toItemId !== id);
+            if (data.length !== initialLen) modified = true;
+        }
+        else if (col === 'inventoryBOM') {
+            const initialLen = data.length;
+            // Remove the BOM if it's for this product
+            data = data.filter(b => b.parentId !== id);
+            // Also remove this product from components of other BOMs
+            data = data.map(b => {
+                if (b.components) {
+                    const cLen = b.components.length;
+                    b.components = b.components.filter(c => c.itemId !== id);
+                    if (b.components.length !== cLen) modified = true;
+                }
+                return b;
+            });
+            if (data.length !== initialLen) modified = true;
+        }
+        else {
+            // General structure: docs with "items" array
+            data = data.map(doc => {
+                if (doc.items) {
+                    const initialItemsLen = doc.items.length;
+                    doc.items = doc.items.filter(it => it.inventoryItemId !== id);
+                    if (doc.items.length !== initialItemsLen) {
+                        modified = true;
+                        // Recalculate totals if necessary (simplified)
+                        if (doc.totalAmount !== undefined) {
+                            const newDPP = doc.items.reduce((s, i) => s + (parseFloat(i.subtotal) || 0), 0);
+                            const taxRate = parseFloat(doc.taxRate) || 0;
+                            doc.dppAmount = newDPP;
+                            doc.taxAmount = Math.round(newDPP * taxRate / 100);
+                            doc.totalAmount = newDPP + doc.taxAmount;
+                        }
+                    }
+                }
+                return doc;
+            });
+            
+            // Optional: Remove parent documents if they now have 0 items (e.g. PO with no items is invalid)
+            const preFilterLen = data.length;
+            data = data.filter(doc => doc.items ? doc.items.length > 0 : true);
+            if (data.length !== preFilterLen) modified = true;
+        }
+
+        if (modified) {
+            localStorage.setItem(`db_${col}`, JSON.stringify(data));
+        }
+    });
+
+    // 3. Finally delete the item itself
+    db.delete('inventoryItems', id);
+
+    showToast(`Barang ${item.itemName} dan seluruh data terkait telah dihapus dari sistem.`, 'success');
     renderInventoryMaster();
 };
 
@@ -408,7 +615,8 @@ function renderInventoryStockIn() {
                 <select id="si_fcat" class="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
                     <option value="">-- Semua Kategori --</option>
                     <option value="RAW_MATERIAL">Raw Material</option>
-                    <option value="WIP">WIP</option>
+                    <option value="MIXING_STOCK">Stock Mixing</option>
+                    <option value="OVEN_BASAH_STOCK">Oven Basah</option>
                     <option value="FINISHED_GOODS">Finished Goods</option>
                 </select></div>
             <div><label class="block text-xs font-medium text-gray-500 mb-1">Dari</label>
@@ -556,7 +764,8 @@ function renderInventoryStockOut() {
                 <select id="sout_fcat" class="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
                     <option value="">-- Semua Kategori --</option>
                     <option value="RAW_MATERIAL">Raw Material</option>
-                    <option value="WIP">WIP</option>
+                    <option value="MIXING_STOCK">Stock Mixing</option>
+                    <option value="OVEN_BASAH_STOCK">Oven Basah</option>
                     <option value="FINISHED_GOODS">Finished Goods</option>
                 </select></div>
             <div><label class="block text-xs font-medium text-gray-500 mb-1">Dari</label>
@@ -678,405 +887,460 @@ window.saveStockOut = () => {
     renderInventoryStockOut();
 };
 
-// ─── 4. PRODUCTION CONSUMPTION ────────────────────────────────
-function renderInventoryProduction() {
+// ─── 4. PRODUCTION COMMAND CENTER (UNIFIED) ───────────────────
+function renderProductionBoard() {
     const canEdit = getModulePermission('logistik').edit;
-    document.getElementById('pageTitle').innerText = 'Konsumsi Produksi';
+    document.getElementById('pageTitle').innerText = 'Production Command Center';
     const mc = document.getElementById('main-content');
-
-    const prodTxs = db.read('stockTransactions')
-        .filter(t => ['PRODUCTION_IN', 'PRODUCTION_OUT', 'SHRINKAGE'].includes(t.reference))
-        .sort((a, b) => new Date(b.date) - new Date(a.date));
-
-    const grouped = {};
-    prodTxs.forEach(t => {
-        const key = t.referenceId || t.txNo;
-        if (!grouped[key]) grouped[key] = [];
-        grouped[key].push(t);
-    });
-
-    const rows = Object.entries(grouped).length ? Object.entries(grouped).map(([key, txList]) => {
-        const date = invDate(txList[0].date);
-        const ins = txList.filter(t => t.reference === 'PRODUCTION_IN');
-        const outs = txList.filter(t => t.reference === 'PRODUCTION_OUT' || t.reference === 'SHRINKAGE');
-        const isShrinkOnly = !ins.length;
-        return `<tr class="border-b border-gray-100 hover:bg-gray-50 ${isShrinkOnly ? 'bg-orange-50/30' : ''}">
-            <td class="py-3 px-4 text-sm text-gray-600">${date}</td>
-            <td class="py-3 px-4 text-sm">${isShrinkOnly
-                ? '<span class="px-2 py-0.5 rounded text-xs font-semibold bg-orange-100 text-orange-700">⚠ Penyusutan/NG</span>'
-                : '<span class="px-2 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-700">Produksi</span>'}
-            </td>
-            <td class="py-3 px-4 text-sm">
-                ${outs.map(t => `<div class="text-xs text-red-600 font-medium">-${invFmt(t.qty)} ${t.itemName}</div>`).join('')}
-            </td>
-            <td class="py-3 px-4 text-sm">
-                ${ins.length
-                ? ins.map(t => `<div class="text-xs text-green-600 font-medium">+${invFmt(t.qty)} ${t.itemName}</div>`).join('')
-                : '<span class="text-xs text-orange-500">— tidak ada (murni susut)</span>'}
-            </td>
-            <td class="py-3 px-4 text-sm text-gray-500 text-xs">${txList[0].notes || '-'}</td>
-            <td class="py-3 px-4 text-sm text-gray-400 text-xs">${txList[0].createdBy}</td>
-        </tr>`;
-    }).join('') : `<tr><td colspan="6" class="py-8 text-center text-gray-400">Belum ada data konsumsi produksi</td></tr>`;
-
-    mc.innerHTML = `
-    <div class="space-y-4">
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div class="bg-indigo-50 border border-blue-100 rounded-lg p-3 text-sm text-blue-700">
-                <i class="fas fa-industry mr-2"></i><strong>Produksi Normal:</strong> RM keluar → FG masuk (dengan auto-hitung penyusutan)
-            </div>
-            <div class="bg-orange-50 border border-orange-100 rounded-lg p-3 text-sm text-orange-700">
-                <i class="fas fa-exclamation-triangle mr-2"></i><strong>Penyusutan/NG:</strong> RM keluar saja — stok <em>hilang</em>, tidak masuk ke mana-mana
-            </div>
-        </div>
-        <div class="bg-white rounded-lg shadow-sm border border-gray-100">
-            <div class="flex justify-between items-center p-4 sm:p-6 border-b border-gray-100">
-                <h2 class="text-lg font-semibold text-gray-800">Konsumsi Produksi</h2>
-                <div class="flex gap-2">
-                    ${canEdit ? `
-                    <button onclick="openProductionConsumptionModal()" class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-md text-sm font-medium">
-                        <i class="fas fa-plus mr-2"></i>Input Produksi / Penyusutan
-                    </button>
-                    ` : `
-                    <span class="text-xs font-medium text-orange-500 bg-orange-50 border border-orange-100 px-3 py-1.5 rounded-lg flex items-center gap-2">
-                        <i class="fas fa-info-circle"></i> Mode Lihat Saja
-                    </span>
-                    `}
-                </div>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead><tr class="bg-gray-50 border-b border-gray-200">
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Tanggal</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Tipe</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Bahan Baku Keluar</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Hasil / FG Masuk</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Keterangan</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">User</th>
-                    </tr></thead>
-                    <tbody>${rows}</tbody>
-                </table>
-            </div>
-        </div>
-    </div>`;
-}
-
-window.openProductionConsumptionModal = () => {
+    
     const todayStr = new Date().toISOString().split('T')[0];
-    const rmOpts = getActiveItemOpts('RAW_MATERIAL');
-    const fgOpts = getActiveItemOpts('FINISHED_GOODS');
+    const mos = db.read('productionOrders') || [];
+    const activeMOs = mos.filter(m => m.status === 'IN_PROGRESS');
+    const finishedToday = mos.filter(m => m.status === 'DONE' && m.updatedAt?.startsWith(todayStr));
+    
+    // Calculate Stats
+    const todayOutput = finishedToday.reduce((s, m) => s + (m.outputQty || 0), 0);
+    const avgYield = finishedToday.length ? (finishedToday.reduce((s, m) => s + (m.yield || 100), 0) / finishedToday.length).toFixed(1) : '100';
 
-    const body = `<div class="space-y-4">
-        <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Tipe Transaksi</label>
-            <div class="grid grid-cols-2 gap-2">
-                <button type="button" id="mode_prod" onclick="setProdMode('production')"
-                    class="py-2 px-3 rounded-lg border-2 border-blue-500 bg-indigo-50 text-blue-700 text-sm font-semibold text-center transition-all">
-                    <i class="fas fa-industry mr-1"></i>Produksi Normal<br>
-                    <span class="text-xs font-normal">RM keluar → FG masuk</span>
-                </button>
-                <button type="button" id="mode_shrink" onclick="setProdMode('shrinkage')"
-                    class="py-2 px-3 rounded-lg border-2 border-gray-200 bg-gray-50 text-gray-500 text-sm font-semibold text-center transition-all">
-                    <i class="fas fa-exclamation-triangle mr-1"></i>Penyusutan / NG<br>
-                    <span class="text-xs font-normal">RM keluar saja (hilang)</span>
-                </button>
-            </div>
-        </div>
+    const STAGES = [
+        { 
+            id: 'MIXING', label: 'LANE 1: MIXING', category: 'MIXING_STOCK', icon: 'fas fa-blender', 
+            tw: { badge: 'bg-blue-100 text-blue-700', iconBg: 'bg-gradient-to-br from-blue-100 to-blue-50 text-blue-600 border-blue-200/50', btn: 'bg-gradient-to-r from-blue-600 to-indigo-600 shadow-blue-500/30', dot: 'bg-blue-500', dotPulse: 'bg-blue-400', gradientL: 'from-blue-50/80', tagBg: 'bg-blue-50 text-blue-600' },
+            monitorLocation: 'MIXING' 
+        },
+        { 
+            id: 'OVEN_BASAH', label: 'LANE 2: OVEN BASAH', category: 'OVEN_BASAH_STOCK', icon: 'fas fa-fire', 
+            tw: { badge: 'bg-orange-100 text-orange-700', iconBg: 'bg-gradient-to-br from-orange-100 to-orange-50 text-orange-600 border-orange-200/50', btn: 'bg-gradient-to-r from-orange-500 to-red-500 shadow-orange-500/30', dot: 'bg-orange-500', dotPulse: 'bg-orange-400', gradientL: 'from-orange-50/80', tagBg: 'bg-orange-50 text-orange-600' },
+            monitorLocation: 'OVEN_BASAH' 
+        },
+        { 
+            id: 'OVEN_KERING', label: 'LANE 3: OVEN KERING', category: 'FINISHED_GOODS', icon: 'fas fa-sun', 
+            tw: { badge: 'bg-emerald-100 text-emerald-700', iconBg: 'bg-gradient-to-br from-emerald-100 to-emerald-50 text-emerald-600 border-emerald-200/50', btn: 'bg-gradient-to-r from-emerald-500 to-green-600 shadow-emerald-500/30', dot: 'bg-emerald-500', dotPulse: 'bg-emerald-400', gradientL: 'from-emerald-50/80', tagBg: 'bg-emerald-50 text-emerald-600' },
+            monitorLocation: 'WHS' 
+        }
+    ];
 
-        <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Tanggal Produksi</label>
-            <input type="date" id="pc_date" value="${todayStr}" class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
-        </div>
-
-        <div class="border border-red-100 rounded-lg p-4 bg-red-50/30">
-            <h4 class="text-sm font-semibold text-red-700 mb-3">
-                <i class="fas fa-arrow-up mr-1"></i>Bahan Baku / Raw Material (Stock OUT)
-            </h4>
-            <div id="pc_rm_list" class="space-y-2"></div>
-            <button onclick="addRMRow()" class="mt-2 text-xs text-red-600 hover:text-red-800 border border-red-200 px-3 py-1 rounded">
-                <i class="fas fa-plus mr-1"></i>Tambah Bahan Baku
-            </button>
-        </div>
-
-        <div id="pc_fg_section" class="border border-green-100 rounded-lg p-4 bg-green-50/30">
-            <h4 class="text-sm font-semibold text-green-700 mb-3">
-                <i class="fas fa-arrow-down mr-1"></i>Hasil Produksi — Finished Goods (Stock IN)
-            </h4>
-            <div class="p-2 mb-3 bg-orange-50 border border-orange-100 rounded text-xs text-orange-700">
-                <i class="fas fa-info-circle mr-1"></i>
-                <strong>Penyusutan otomatis:</strong> Masukkan % susut → qty FG dihitung otomatis dari total RM dikurangi penyusutan.
-            </div>
-            <div class="grid grid-cols-3 gap-3 mb-3">
-                <div class="col-span-2">
-                    <label class="block text-xs text-gray-600 mb-1">Item Finished Goods <span class="text-red-500">*</span></label>
-                    <select id="pc_fg_item" onchange="invUpdateUnit('pc_fg_item','pc_fg_unit_disp')" class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm bg-white">${fgOpts}</select>
+    const statsHeader = `
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
+            <div class="bg-gradient-to-br from-white to-blue-50/50 p-5 rounded-2xl shadow-sm border border-blue-100 flex flex-col relative overflow-hidden group hover:shadow-md transition-all">
+                <div class="absolute -right-4 -top-4 w-20 h-20 bg-blue-100 rounded-full blur-2xl opacity-50 group-hover:scale-110 transition-transform"></div>
+                <div class="absolute top-4 right-4 text-blue-200 group-hover:text-blue-500 transition-colors duration-500"><i class="fas fa-layer-group fa-2x"></i></div>
+                <p class="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-2 z-10 relative">Batch Aktif</p>
+                <div class="flex items-end gap-2 mt-auto z-10 relative">
+                    <span class="text-4xl font-black text-slate-800 tracking-tighter">${activeMOs.length}</span>
+                    <span class="text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Orders</span>
                 </div>
-                <div>
-                    <label class="block text-xs text-gray-600 mb-1">% Penyusutan</label>
-                    <div class="flex items-center gap-1">
-                        <input type="number" id="pc_waste_pct" min="0" max="99" step="0.1" value="0"
-                            oninput="invCalcFGQty()"
-                            class="w-full border border-gray-300 rounded px-2 py-1.5 text-sm"> <span class="text-xs text-gray-400">%</span>
+            </div>
+            
+            <div class="bg-gradient-to-br from-white to-emerald-50/50 p-5 rounded-2xl shadow-sm border border-emerald-100 flex flex-col relative overflow-hidden group hover:shadow-md transition-all">
+                <div class="absolute -right-4 -top-4 w-20 h-20 bg-emerald-100 rounded-full blur-2xl opacity-50 group-hover:scale-110 transition-transform"></div>
+                <div class="absolute top-4 right-4 text-emerald-200 group-hover:text-emerald-500 transition-colors duration-500"><i class="fas fa-box-open fa-2x"></i></div>
+                <p class="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-2 z-10 relative">Output Hari Ini</p>
+                <div class="flex items-end gap-2 mt-auto z-10 relative">
+                    <span class="text-4xl font-black text-slate-800 tracking-tighter">${invFmt(todayOutput)}</span>
+                    <span class="text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Kg</span>
+                </div>
+            </div>
+
+            <div class="bg-gradient-to-br from-white to-orange-50/50 p-5 rounded-2xl shadow-sm border border-orange-100 flex flex-col relative overflow-hidden group hover:shadow-md transition-all">
+                <div class="absolute -right-4 -top-4 w-20 h-20 bg-orange-100 rounded-full blur-2xl opacity-50 group-hover:scale-110 transition-transform"></div>
+                <div class="absolute top-4 right-4 text-orange-200 group-hover:text-orange-500 transition-colors duration-500"><i class="fas fa-chart-line fa-2x"></i></div>
+                <p class="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-2 z-10 relative">Rata-rata Yield</p>
+                <div class="flex items-end gap-2 mt-auto z-10 relative">
+                    <span class="text-4xl font-black text-slate-800 tracking-tighter">${avgYield}%</span>
+                    <span class="text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Efisiensi</span>
+                </div>
+            </div>
+
+        </div>
+    `;
+
+    const getStageData = (stageId, category, monitorLocation) => {
+        const items = db.read('inventoryItems');
+        const allTxs = db.read('stockTransactions');
+        const stageItems = items.filter(i => i.category === category);
+        const loc = monitorLocation || stageId;
+
+        return stageItems.map(item => {
+            const txs = allTxs.filter(t => t.itemId === item.id && t.location === loc);
+            const awal = txs.filter(t => t.date < todayStr).reduce((s, t) => t.type === 'IN' ? s + t.qty : s - t.qty, 0);
+            const masuk = txs.filter(t => t.date >= todayStr && t.type === 'IN').reduce((s, t) => s + t.qty, 0);
+            const keluar = txs.filter(t => t.date >= todayStr && t.type === 'OUT').reduce((s, t) => s + t.qty, 0);
+            const akhir = awal + masuk - keluar;
+            if (awal === 0 && masuk === 0 && keluar === 0 && akhir === 0) return null;
+            return { item, awal, masuk, keluar, akhir };
+        }).filter(Boolean);
+    };
+
+    const renderLane = (st) => {
+        const laneMOs = activeMOs.filter(m => m.stage === st.id);
+        const stockData = getStageData(st.id, st.category, st.monitorLocation);
+        
+        const moCards = laneMOs.map(mo => `
+            <div class="bg-white rounded-xl border border-slate-200/60 p-4 mb-3 shadow-sm hover:shadow-md hover:border-slate-300 transition-all cursor-pointer relative overflow-hidden group" onclick="viewProductionMO('${mo.id}')">
+                <div class="absolute -right-4 -top-4 w-16 h-16 bg-slate-50 rounded-full rotate-12 opacity-50 group-hover:scale-150 transition-all duration-500"></div>
+                <div class="absolute top-4 right-4 opacity-20 text-slate-400 transform group-hover:rotate-12 group-hover:scale-110 transition-all duration-500">
+                    <i class="${st.icon} fa-2x"></i>
+                </div>
+                
+                <div class="relative z-10">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-[10px] font-black ${st.tw.badge} px-2 py-1 rounded-md uppercase tracking-wider shadow-[0_1px_2px_rgba(0,0,0,0.05)] border border-white/50">${mo.moNumber}</span>
+                        <span class="text-[10px] font-bold text-slate-400 flex items-center gap-1.5"><i class="far fa-clock"></i>${new Date(mo.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
+                    </div>
+                    <p class="text-sm font-black text-slate-800 mb-4 pr-8 leading-tight tracking-tight">${mo.productName}</p>
+                    
+                    <div class="grid grid-cols-2 gap-2 mb-4">
+                        <div class="bg-slate-50/80 p-2 rounded-lg border border-slate-100">
+                            <span class="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Target Produksi</span>
+                            <span class="block text-xs font-black text-slate-700">${invFmt(mo.targetQty)} Kg</span>
+                        </div>
+                        <div class="bg-slate-50/80 p-2 rounded-lg border border-slate-100">
+                            <span class="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Mesin/Jalur</span>
+                            <span class="block text-[10px] font-bold text-slate-600 truncate">${mo.machineName || '-'}</span>
+                        </div>
+                    </div>
+                    
+                    <button onclick="event.stopPropagation(); openCompleteMOModal('${mo.id}')" 
+                        class="w-full ${st.tw.btn} text-white py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-md hover:shadow-lg hover:scale-[1.01] active:scale-95 transition-all flex items-center justify-center gap-2">
+                        <i class="fas fa-check-circle"></i> Selesaikan Tahap
+                    </button>
+                </div>
+            </div>
+        `).join('');
+
+        const stockRows = stockData.map(d => `
+            <div class="flex justify-between items-center py-2 px-3 hover:bg-slate-50 rounded-lg transition-colors border-b border-slate-50 last:border-0">
+                <div class="flex items-center gap-2">
+                    <div class="w-1.5 h-1.5 rounded-full ${st.tw.dot}"></div>
+                    <span class="text-[11px] font-bold text-slate-700">${d.item.itemName}</span>
+                </div>
+                <span class="text-[11px] font-black text-slate-800 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200/60 shadow-sm">${invFmt(d.akhir)}</span>
+            </div>
+        `).join('');
+
+        return `
+            <div class="flex flex-col h-full min-w-[340px] max-w-[360px]">
+                <!-- Lane Header -->
+                <div class="bg-white rounded-2xl rounded-b-none p-5 border border-b-0 border-slate-200/80 shadow-sm relative overflow-hidden z-10">
+                    <div class="absolute right-0 top-0 w-32 h-full bg-gradient-to-l ${st.tw.gradientL} to-transparent opacity-80"></div>
+                    <div class="flex items-center gap-4 relative z-10">
+                        <div class="w-12 h-12 rounded-2xl ${st.tw.iconBg} flex items-center justify-center text-xl shadow-sm border">
+                            <i class="${st.icon} drop-shadow-[0_2px_4px_rgba(0,0,0,0.1)]"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest drop-shadow-sm">${st.label}</h3>
+                            <p class="text-[10px] font-black text-slate-500 mt-0.5 flex items-center gap-2 uppercase tracking-wider">
+                                <span class="relative flex h-2 w-2">
+                                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full ${st.tw.dotPulse} opacity-75"></span>
+                                  <span class="relative inline-flex rounded-full h-2 w-2 ${st.tw.dot}"></span>
+                                </span>
+                                ${laneMOs.length} Menunggu
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Lane Body (Active Jobs) -->
+                <div class="flex-1 bg-slate-100 p-4 border-x border-slate-200/80 overflow-y-auto max-h-[500px] shadow-inner styled-scrollbar">
+                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                        <i class="fas fa-stream"></i> Antrean Proses
+                    </p>
+                    ${moCards || `
+                    <div class="py-12 text-center border-2 border-dashed border-slate-200/80 rounded-2xl bg-slate-50 border-white/50 shadow-sm">
+                        <div class="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-3 shadow-sm border border-slate-100">
+                            <i class="fas fa-inbox text-slate-300 text-2xl"></i>
+                        </div>
+                        <p class="text-xs font-black text-slate-400 uppercase tracking-widest">Kosong</p>
+                        <p class="text-[10px] font-bold text-slate-400 mt-1">Tidak ada job di antrean</p>
+                    </div>`}
+                </div>
+
+                <!-- Lane Footer (WIP Stock) -->
+                <div class="bg-white rounded-2xl rounded-t-none p-4 border border-slate-200/80 shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.03)] z-10 relative">
+                    <div class="absolute inset-0 bg-gradient-to-b from-slate-50/50 to-transparent rounded-2xl pointer-events-none"></div>
+                    <div class="flex items-center justify-between mb-4 px-1 relative z-10">
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                            <i class="fas fa-boxes text-slate-300"></i> Buffer WIP
+                        </p>
+                        <span class="text-[9px] font-black ${st.tw.tagBg} px-2 py-1 rounded-md shadow-sm border border-white/50">${stockData.length} Varian</span>
+                    </div>
+                    <div class="space-y-1 relative z-10">
+                        ${stockRows || '<div class="py-4 text-center text-[10px] font-bold italic text-slate-400 bg-slate-50 rounded-lg">Stok Kosong / Tidak Tercatat</div>'}
                     </div>
                 </div>
             </div>
-            <div class="grid grid-cols-3 gap-3">
-                <div>
-                    <label class="block text-xs text-gray-600 mb-1">Total RM (auto)</label>
-                    <input type="text" id="pc_rm_total" readonly value="0" class="w-full border border-gray-200 rounded px-2 py-1.5 text-sm bg-gray-50 text-gray-500">
-                </div>
-                <div>
-                    <label class="block text-xs text-gray-600 mb-1">Qty Susut (auto)</label>
-                    <input type="text" id="pc_waste_qty" readonly value="0" class="w-full border border-orange-200 rounded px-2 py-1.5 text-sm bg-orange-50 text-orange-600">
-                </div>
-                <div>
-                    <label class="block text-xs text-gray-600 mb-1">Qty FG <span class="text-red-500">*</span></label>
-                    <input type="number" id="pc_fg_qty" min="0.01" step="0.01" placeholder="0"
-                        class="w-full border border-green-300 rounded px-2 py-1.5 text-sm bg-green-50 font-semibold">
-                </div>
+        `;
+    };
+
+    mc.innerHTML = `
+        <div class="animate-in fade-in slide-in-from-bottom-4 duration-500">
+            ${statsHeader}
+            
+            <div class="flex gap-6 overflow-x-auto pb-6">
+                ${STAGES.map(st => renderLane(st)).join('')}
             </div>
-            <input type="text" id="pc_fg_unit_disp" readonly class="mt-2 w-24 border border-gray-200 rounded px-2 py-1 text-xs bg-gray-50 text-gray-400">
         </div>
+    `;
+}
 
-        <div id="pc_shrink_notice" class="hidden border border-orange-200 rounded-lg p-3 bg-orange-50 text-sm text-orange-700">
-            <i class="fas fa-exclamation-triangle mr-2"></i>
-            <strong>Mode Penyusutan/NG:</strong> Stok Raw Material akan <strong>dikurangi</strong> dan <strong>tidak ada</strong> yang masuk ke Finished Goods. Ini untuk mencatat hilangnya bahan karena air menguap, NG, atau reject produksi.
+window.openTransferToMixingModal = () => {
+    const rmOpts = getActiveItemOpts('RAW_MATERIAL');
+    const body = `
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Pilih Bahan Baku</label>
+                <select id="trans_item" class="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white">${rmOpts}</select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Qty di Kirim</label>
+                <input type="number" id="trans_qty" min="0.01" step="0.01" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" placeholder="0.00">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Keterangan</label>
+                <input type="text" id="trans_notes" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" placeholder="Opsional">
+            </div>
         </div>
-
-        <div>
-            <label class="block text-sm font-medium text-gray-700 mb-1">Keterangan / Batch No.</label>
-            <input type="text" id="pc_notes" placeholder="cth: Batch #001 — keripik singkong" class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
-        </div>
-    </div>`;
-
+    `;
     const footer = `
-        <button onclick="saveProductionConsumption()" class="w-full sm:w-auto inline-flex justify-center rounded-md bg-orange-500 px-4 py-2 text-white text-sm font-medium hover:bg-orange-600 sm:ml-3">Simpan</button>
-        <button onclick="closeModal()" class="mt-3 sm:mt-0 w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 px-4 py-2 bg-white text-gray-700 text-sm font-medium sm:ml-3">Batal</button>`;
-
-    window._prodMode = 'production';
-    showModal('Input Konsumsi Produksi', body, footer);
-    addRMRow();
+        <button onclick="saveTransferToMixing()" class="bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold">Kirim ke Mixing</button>
+        <button onclick="closeModal()" class="text-gray-500 px-4 py-2 text-sm">Batal</button>
+    `;
+    showModal('Kirim Bahan ke Mixing', body, footer);
 };
 
-window.setProdMode = (mode) => {
-    window._prodMode = mode;
-    const btnProd = document.getElementById('mode_prod');
-    const btnShrink = document.getElementById('mode_shrink');
-    const fgSection = document.getElementById('pc_fg_section');
-    const shrinkNotice = document.getElementById('pc_shrink_notice');
-    if (mode === 'production') {
-        btnProd.className = 'py-2 px-3 rounded-lg border-2 border-blue-500 bg-indigo-50 text-blue-700 text-sm font-semibold text-center transition-all';
-        btnShrink.className = 'py-2 px-3 rounded-lg border-2 border-gray-200 bg-gray-50 text-gray-500 text-sm font-semibold text-center transition-all';
-        fgSection.classList.remove('hidden');
-        shrinkNotice.classList.add('hidden');
-    } else {
-        btnShrink.className = 'py-2 px-3 rounded-lg border-2 border-orange-400 bg-orange-50 text-orange-700 text-sm font-semibold text-center transition-all';
-        btnProd.className = 'py-2 px-3 rounded-lg border-2 border-gray-200 bg-gray-50 text-gray-500 text-sm font-semibold text-center transition-all';
-        fgSection.classList.add('hidden');
-        shrinkNotice.classList.remove('hidden');
-    }
-};
+window.saveTransferToMixing = () => {
+    const itemId = document.getElementById('trans_item').value;
+    const qty = parseFloat(document.getElementById('trans_qty').value);
+    const notes = document.getElementById('trans_notes').value;
+    if (!itemId || !qty) return showToast('Isi semua data!', 'error');
 
-window.invCalcFGQty = () => {
-    // Recalculate RM total from all rows
-    let total = 0;
-    document.querySelectorAll('[id^="rm_qty_"]').forEach(inp => { total += parseFloat(inp.value) || 0; });
-    const wastePct = parseFloat(document.getElementById('pc_waste_pct')?.value) || 0;
-    const wasteQty = total * wastePct / 100;
-    const fgQty = Math.max(0, total - wasteQty);
-    const rmTotal = document.getElementById('pc_rm_total');
-    const wasteQtyEl = document.getElementById('pc_waste_qty');
-    const fgQtyEl = document.getElementById('pc_fg_qty');
-    if (rmTotal) rmTotal.value = invFmt(total);
-    if (wasteQtyEl) wasteQtyEl.value = invFmt(wasteQty);
-    if (fgQtyEl && wastePct > 0) fgQtyEl.value = fgQty.toFixed(2);
-};
+    if (!db.validateInventoryStock(itemId, qty)) return showToast('Stok tidak cukup!', 'error');
 
-window.addRMRow = () => {
-    const rmOpts = getActiveItemOpts('RAW_MATERIAL') + getActiveItemOpts('WIP').replace('<option value="">-- Pilih Item --</option>', '');
-    const rowId = Date.now();
-    const container = document.getElementById('pc_rm_list');
-    if (!container) return;
-    const div = document.createElement('div');
-    div.className = 'flex gap-2 items-center';
-    div.id = `rm_row_${rowId}`;
-    div.innerHTML = `
-        <select id="rm_item_${rowId}" class="flex-1 border border-gray-300 rounded px-2 py-1.5 text-sm bg-white">${getActiveItemOpts('RAW_MATERIAL')}</select>
-        <input type="number" id="rm_qty_${rowId}" min="0.01" step="0.01" placeholder="Qty"
-            oninput="invCalcFGQty()"
-            class="w-24 border border-gray-300 rounded px-2 py-1.5 text-sm">
-        <button onclick="document.getElementById('rm_row_${rowId}').remove(); invCalcFGQty()" class="text-red-400 hover:text-red-600 px-1"><i class="fas fa-times"></i></button>`;
-    container.appendChild(div);
-};
+    const txId = 'TRF-' + Date.now().toString().slice(-6);
+    // WHS OUT
+    db.addInventoryTransaction(itemId, 'OUT', qty, 'STAGE_TRANSFER', txId, notes, 'Admin', 'WHS');
+    // MIXING IN
+    db.addInventoryTransaction(itemId, 'IN', qty, 'STAGE_TRANSFER', txId, notes, 'Admin', 'MIXING');
 
-window.saveProductionConsumption = () => {
-    const mode = window._prodMode || 'production';
-    const notes = document.getElementById('pc_notes').value.trim() || (mode === 'shrinkage' ? 'Penyusutan/NG' : 'Konsumsi Produksi');
-    const batchId = 'PROD-' + Date.now().toString().slice(-6);
-
-    // Collect RM rows
-    const rmRows = document.querySelectorAll('[id^="rm_row_"]');
-    const rmItems = [];
-    let hasError = false;
-    rmRows.forEach(row => {
-        const rowId = row.id.replace('rm_row_', '');
-        const itemId = document.getElementById(`rm_item_${rowId}`)?.value;
-        const qty = parseFloat(document.getElementById(`rm_qty_${rowId}`)?.value);
-        if (!itemId || !qty || qty <= 0) { hasError = true; return; }
-        if (!db.validateInventoryStock(itemId, qty)) {
-            const item = db.findById('inventoryItems', itemId);
-            showToast(`Stok ${item?.itemName || 'item'} tidak mencukupi!`, 'error');
-            hasError = true;
-        }
-        rmItems.push({ itemId, qty });
-    });
-    if (hasError) return;
-    if (!rmItems.length) { showToast('Tambah minimal 1 bahan baku', 'error'); return; }
-
-    if (mode === 'production') {
-        // Normal production: RM OUT + FG IN
-        const fgItemId = document.getElementById('pc_fg_item')?.value;
-        const fgQty = parseFloat(document.getElementById('pc_fg_qty')?.value);
-        if (!fgItemId || !fgQty || fgQty <= 0) { showToast('Pilih item FG dan isi qty yang dihasilkan', 'error'); return; }
-        let totalCost = 0;
-        rmItems.forEach(({ itemId, qty }) => {
-            const item = db.findById('inventoryItems', itemId);
-            totalCost += (item.purchasePrice || 0) * qty;
-            db.addInventoryTransaction(itemId, 'OUT', qty, 'PRODUCTION_OUT', batchId, notes);
-        });
-        db.addInventoryTransaction(fgItemId, 'IN', fgQty, 'PRODUCTION_IN', batchId, notes);
-
-        // Jurnal Produksi: Debit Persediaan FG, Kredit Persediaan RM
-        if (typeof db.addJournalEntry === 'function' && totalCost > 0) {
-            db.addJournalEntry({
-                description: `Produksi ${notes} (Batch ${batchId})`,
-                referenceId: batchId,
-                referenceType: 'PRODUCTION',
-                items: [
-                    { accountId: 'acc_inv_fg', debit: totalCost, credit: 0 },
-                    { accountId: 'acc_inv_rm', debit: 0, credit: totalCost }
-                ]
-            });
-        }
-        showToast('Produksi berhasil disimpan! Jurnal otomatis dibuat.', 'success');
-    } else {
-        // Shrinkage only: RM OUT, nothing IN
-        let totalLoss = 0;
-        rmItems.forEach(({ itemId, qty }) => {
-            const item = db.findById('inventoryItems', itemId);
-            totalLoss += (item.purchasePrice || 0) * qty;
-            db.addInventoryTransaction(itemId, 'OUT', qty, 'SHRINKAGE', batchId, notes);
-        });
-
-        // Jurnal Penyusutan: Debit Biaya Operasional/Produksi, Kredit Persediaan RM
-        if (typeof db.addJournalEntry === 'function' && totalLoss > 0) {
-            db.addJournalEntry({
-                description: `Penyusutan/NG: ${notes} (Batch ${batchId})`,
-                referenceId: batchId,
-                referenceType: 'SHRINKAGE',
-                items: [
-                    { accountId: 'acc_exp_prod', debit: totalLoss, credit: 0 },
-                    { accountId: 'acc_inv_rm', debit: 0, credit: totalLoss }
-                ]
-            });
-        }
-        showToast('Penyusutan/NG dicatat & Jurnal otomatis dibuat.', 'success');
-    }
-
+    showToast('Berhasil dikirim ke Mixing', 'success');
     closeModal();
     renderInventoryProduction();
 };
 
-// ─── 5. STOCK CARD / HISTORY ──────────────────────────────────
-function renderInventoryCard() {
-    document.getElementById('pageTitle').innerText = 'Kartu Stok';
-    const mc = document.getElementById('main-content');
+window.openMixingProcessModal = () => {
+    const rmItemsInMixing = db.read('inventoryItems').filter(i => i.category === 'RAW_MATERIAL');
+    // Filter items that have stock in Mixing
+    const validOpts = rmItemsInMixing.map(i => {
+        const stock = db.getInventoryStock(i.id, 'MIXING');
+        if (stock <= 0) return null;
+        return `<option value="${i.id}" data-stock="${stock}">${i.itemName} (Stok: ${stock})</option>`;
+    }).filter(Boolean).join('');
 
-    mc.innerHTML = `
-    <div class="space-y-4">
-        <div class="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
-            <div class="flex flex-wrap gap-3 items-end">
-                <div><label class="block text-xs font-medium text-gray-600 mb-1">Kategori</label>
-                    <select id="card_item_filter" class="border border-gray-300 rounded px-3 py-2 text-sm bg-white min-w-[180px]">
-                        <option value="">-- Semua Kategori --</option>
-                        <option value="RAW_MATERIAL">Raw Material</option>
-                        <option value="WIP">WIP (Setengah Jadi)</option>
-                        <option value="FINISHED_GOODS">Finished Goods</option>
-                    </select></div>
-                <div><label class="block text-xs font-medium text-gray-600 mb-1">Dari</label>
-                    <input type="date" id="card_from" class="border border-gray-300 rounded px-3 py-2 text-sm"></div>
-                <div><label class="block text-xs font-medium text-gray-600 mb-1">Sampai</label>
-                    <input type="date" id="card_to" class="border border-gray-300 rounded px-3 py-2 text-sm"></div>
-                <button onclick="renderInventoryCardTable()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium">
-                    <i class="fas fa-search mr-2"></i>Tampilkan
-                </button>
+    const wipOpts = getActiveItemOpts('WIP');
+
+    const body = `
+        <div class="space-y-4">
+            <div class="p-3 bg-blue-50 border border-blue-100 rounded text-xs text-blue-700">
+                Langkah ini mengonsumsi Bahan Baku di <strong>Mixing</strong> dan menghasilkan Adonan di <strong>Oven Basah</strong>.
+            </div>
+            <div id="mixing_rm_rows" class="space-y-2">
+                <div class="flex gap-2">
+                    <select class="flex-1 border border-gray-300 rounded px-2 py-1.5 text-xs bg-white">${validOpts}</select>
+                    <input type="number" class="w-24 border border-gray-300 rounded px-2 py-1.5 text-xs" placeholder="Qty">
+                </div>
+            </div>
+            <button onclick="addMixingRMRow('${validOpts.replace(/'/g, "\\'")}')" class="text-[10px] text-blue-600 font-bold uppercase"><i class="fas fa-plus"></i> Tambah Bahan</button>
+            <hr>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Hasil Adonan (Oven Basah)</label>
+                <select id="mix_output_item" class="w-full border border-gray-300 rounded px-3 py-2 text-xs bg-white">${wipOpts}</select>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Total Hasil (Incl. Air)</label>
+                    <input type="number" id="mix_output_qty" class="w-full border border-green-300 rounded px-3 py-2 text-sm bg-green-50 font-bold" placeholder="0.00">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Keterangan</label>
+                    <input type="text" id="mix_notes" class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
+                </div>
             </div>
         </div>
-        <div id="card_table_area"></div>
-    </div>`;
-    renderInventoryCardTable();
-}
+    `;
+    const footer = `
+        <button onclick="saveMixingProcess()" class="bg-orange-500 text-white px-4 py-2 rounded text-sm font-bold">Proses Mixing</button>
+        <button onclick="closeModal()" class="text-gray-500 px-4 py-2 text-sm">Batal</button>
+    `;
+    showModal('Proses Mixing & Tambah Air', body, footer);
+};
 
-window.renderInventoryCardTable = () => {
-    const sel = document.getElementById('card_item_filter');
-    const category = sel?.value;
-    const fromDate = document.getElementById('card_from')?.value;
-    const toDate = document.getElementById('card_to')?.value;
+window.addMixingRMRow = (opts) => {
+    const div = document.createElement('div');
+    div.className = 'flex gap-2 transition-all animate-fadeIn';
+    div.innerHTML = `<select class="flex-1 border border-gray-300 rounded px-2 py-1.5 text-xs bg-white">${opts}</select>
+                     <input type="number" class="w-24 border border-gray-300 rounded px-2 py-1.5 text-xs" placeholder="Qty">
+                     <button onclick="this.parentElement.remove()" class="text-red-400"><i class="fas fa-times"></i></button>`;
+    document.getElementById('mixing_rm_rows').appendChild(div);
+};
 
-    const catLabels = { RAW_MATERIAL: 'Raw Material', WIP: 'WIP (Setengah Jadi)', FINISHED_GOODS: 'Finished Goods' };
+window.saveMixingProcess = () => {
+    const outputItemId = document.getElementById('mix_output_item').value;
+    const outputQty = parseFloat(document.getElementById('mix_output_qty').value);
+    const notes = document.getElementById('mix_notes').value;
+    const txId = 'MIX-' + Date.now().toString().slice(-6);
 
-    // Filter transaksi by kategori item
-    let txs = db.read('stockTransactions');
-    if (category) {
-        const categoryItemIds = db.read('inventoryItems')
-            .filter(i => i.category === category)
-            .map(i => i.id);
-        txs = txs.filter(t => categoryItemIds.includes(t.itemId));
-    }
-    if (fromDate) txs = txs.filter(t => t.date >= fromDate);
-    if (toDate) txs = txs.filter(t => t.date.split('T')[0] <= toDate);
-    txs = txs.sort((a, b) => new Date(a.date) - new Date(b.date));
+    if (!outputItemId || !outputQty) return showToast('Isi hasil adonan!', 'error');
 
-    let balance = 0;
-    const rows = txs.length ? txs.map(t => {
-        const qtyIn = t.type === 'IN' ? t.qty : 0;
-        const qtyOut = t.type === 'OUT' ? t.qty : 0;
-        balance += qtyIn - qtyOut;
-        return `<tr class="border-b border-gray-100 hover:bg-gray-50">
-            <td class="py-2.5 px-4 text-sm text-gray-600">${invDate(t.date)}</td>
-            <td class="py-2.5 px-4 text-sm font-mono ${t.type === 'IN' ? 'text-blue-600' : 'text-red-600'}">${t.txNo}</td>
-            <td class="py-2.5 px-4 text-sm"><span class="px-2 py-0.5 rounded text-xs font-bold ${t.type === 'IN' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">${t.type}</span></td>
-            <td class="py-2.5 px-4 text-sm text-gray-700">${t.itemCode} — ${t.itemName}</td>
-            <td class="py-2.5 px-4 text-sm text-right font-medium text-green-700">${qtyIn > 0 ? '+' + invFmt(qtyIn) : '-'}</td>
-            <td class="py-2.5 px-4 text-sm text-right font-medium text-red-700">${qtyOut > 0 ? '-' + invFmt(qtyOut) : '-'}</td>
-            <td class="py-2.5 px-4 text-sm text-right font-bold text-gray-800">${invFmt(balance)}</td>
-            <td class="py-2.5 px-4 text-sm text-gray-400 text-xs">${REF_LABELS[t.reference] || t.reference}</td>
-        </tr>`;
-    }).join('') : `<tr><td colspan="8" class="py-8 text-center text-gray-400">Tidak ada data</td></tr>`;
+    const rows = document.getElementById('mixing_rm_rows').querySelectorAll('div');
+    const consumptions = [];
+    let error = null;
 
-    document.getElementById('card_table_area').innerHTML = `
-    <div class="bg-white rounded-lg shadow-sm border border-gray-100">
-        ${category ? `
-        <div class="px-4 pt-4 pb-2 border-b border-gray-100 flex items-center gap-3">
-            <span class="font-semibold text-gray-800">${catLabels[category] || category}</span>
-            <span class="text-xs text-gray-400">${txs.length} transaksi</span>
-        </div>` : ''}
-        <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse">
-                <thead><tr class="bg-gray-50 border-b border-gray-200">
-                    <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Tanggal</th>
-                    <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">No. Tx</th>
-                    <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Tipe</th>
-                    <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Item</th>
-                    <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Qty Masuk</th>
-                    <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Qty Keluar</th>
-                    <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Balance</th>
-                    <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Referensi</th>
-                </tr></thead>
-                <tbody>${rows}</tbody>
-            </table>
+    rows.forEach(row => {
+        const id = row.querySelector('select').value;
+        const qty = parseFloat(row.querySelector('input').value);
+        if (id && qty > 0) {
+            if (db.getInventoryStock(id, 'MIXING') < qty) {
+                error = 'Stok di Mixing tidak cukup!';
+            }
+            consumptions.push({ id, qty });
+        }
+    });
+
+    if (error) return showToast(error, 'error');
+    if (!consumptions.length) return showToast('Pilih minimal 1 bahan baku!', 'error');
+
+    // 1. Consume RM from Mixing
+    consumptions.forEach(c => {
+        db.addInventoryTransaction(c.id, 'OUT', c.qty, 'PRODUCTION_MIXING', txId, notes, 'Admin', 'MIXING');
+    });
+
+    // 2. Add WIP to Oven Basah
+    db.addInventoryTransaction(outputItemId, 'IN', outputQty, 'PRODUCTION_MIXING', txId, notes, 'Admin', 'OVEN_BASAH');
+
+    showToast('Proses Mixing selesai', 'success');
+    closeModal();
+    renderInventoryProduction();
+};
+
+window.openOvenProcessModal = () => {
+    const wipInWet = db.read('inventoryItems').filter(i => i.category === 'WIP');
+    const validOpts = wipInWet.map(i => {
+        const stock = db.getInventoryStock(i.id, 'OVEN_BASAH');
+        if (stock <= 0) return null;
+        return `<option value="${i.id}" data-stock="${stock}">${i.itemName} (Stok: ${stock})</option>`;
+    }).filter(Boolean).join('');
+
+    const body = `
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Pilih Item di Oven Basah</label>
+                <select id="oven_input_item" class="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white" onchange="document.getElementById('oven_in_qty').value=this.selectedOptions[0].dataset.stock">${validOpts}</select>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Qty Masuk Oven</label>
+                    <input type="number" id="oven_in_qty" class="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-gray-50" readonly>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Hasil Oven (Oven Kering)</label>
+                    <input type="number" id="oven_out_qty" class="w-full border border-red-300 rounded px-3 py-2 text-sm font-bold bg-red-50" placeholder="0.00">
+                </div>
+            </div>
+             <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Keterangan</label>
+                <input type="text" id="oven_notes" class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
+            </div>
         </div>
-    </div>`;
+    `;
+    const footer = `
+        <button onclick="saveOvenProcess()" class="bg-red-600 text-white px-4 py-2 rounded text-sm font-bold">Mulai Baking / Dioven</button>
+        <button onclick="closeModal()" class="text-gray-500 px-4 py-2 text-sm">Batal</button>
+    `;
+    showModal('Proses Oven (Penyusutan)', body, footer);
+    // Trigger initial qty
+    setTimeout(() => { const el = document.getElementById('oven_input_item'); if(el) el.dispatchEvent(new Event('change')); }, 100);
+};
+
+window.saveOvenProcess = () => {
+    const itemId = document.getElementById('oven_input_item').value;
+    const inQty = parseFloat(document.getElementById('oven_in_qty').value);
+    const outQty = parseFloat(document.getElementById('oven_out_qty').value);
+    const notes = document.getElementById('oven_notes').value;
+
+    if (!itemId || !outQty) return showToast('Isi hasil oven!', 'error');
+
+    const txId = 'OVN-' + Date.now().toString().slice(-6);
+
+    // 1. OUT from Oven Basah
+    db.addInventoryTransaction(itemId, 'OUT', inQty, 'PRODUCTION_OVEN', txId, notes, 'Admin', 'OVEN_BASAH');
+    // 2. IN to Oven Kering
+    db.addInventoryTransaction(itemId, 'IN', outQty, 'PRODUCTION_OVEN', txId, notes, 'Admin', 'OVEN_KERING');
+
+    showToast('Proses Baking selesai', 'success');
+    closeModal();
+    renderInventoryProduction();
+};
+
+window.openFinalizeProdModal = () => {
+    const wipInDry = db.read('inventoryItems').filter(i => i.category === 'WIP');
+    const wipOpts = wipInDry.map(i => {
+        const stock = db.getInventoryStock(i.id, 'OVEN_KERING');
+        if (stock <= 0) return null;
+        return `<option value="${i.id}" data-stock="${stock}">${i.itemName} (Stok: ${stock})</option>`;
+    }).filter(Boolean).join('');
+
+    const fgOpts = getActiveItemOpts('FINISHED_GOODS');
+
+    const body = `
+        <div class="space-y-4">
+             <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Item di Oven Kering</label>
+                <select id="fin_input_item" class="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white" onchange="document.getElementById('fin_in_qty').value=this.selectedOptions[0].dataset.stock">${wipOpts}</select>
+            </div>
+             <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Qty Tersedia</label>
+                    <input type="number" id="fin_in_qty" class="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-gray-50" readonly>
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-600 mb-1">Qty Jadi FG</label>
+                    <input type="number" id="fin_out_qty" class="w-full border border-green-300 rounded px-3 py-2 text-sm font-bold bg-green-50" placeholder="0.00">
+                </div>
+            </div>
+            <hr>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Simpan sebagai Finished Good</label>
+                <select id="fin_output_item" class="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white">${fgOpts}</select>
+            </div>
+        </div>
+    `;
+    const footer = `
+        <button onclick="saveFinalizeProd()" class="bg-green-600 text-white px-4 py-2 rounded text-sm font-bold">Selesai Produksi (STOK FG)</button>
+        <button onclick="closeModal()" class="text-gray-500 px-4 py-2 text-sm">Batal</button>
+    `;
+    showModal('Finalisasi Produksi ke Gudang FG', body, footer);
+    setTimeout(() => { const el = document.getElementById('fin_input_item'); if(el) el.dispatchEvent(new Event('change')); }, 100);
+};
+
+window.saveFinalizeProd = () => {
+    const inputItemId = document.getElementById('fin_input_item').value;
+    const outputItemId = document.getElementById('fin_output_item').value;
+    const inQty = parseFloat(document.getElementById('fin_in_qty').value);
+    const outQty = parseFloat(document.getElementById('fin_out_qty').value);
+
+    if (!inputItemId || !outputItemId || !outQty) return showToast('Pilih item dan isi qty!', 'error');
+
+    const txId = 'FIN-' + Date.now().toString().slice(-6);
+
+    // 1. OUT from Oven Kering (WIP)
+    db.addInventoryTransaction(inputItemId, 'OUT', inQty, 'PRODUCTION_FINALIZE', txId, '', 'Admin', 'OVEN_KERING');
+    // 2. IN to WHS (FG)
+    db.addInventoryTransaction(outputItemId, 'IN', outQty, 'PRODUCTION_FINALIZE', txId, '', 'Admin', 'WHS');
+
+    showToast('Produksi Selesai! Stok FG bertambah.', 'success');
+    closeModal();
+    renderInventoryProduction();
 };
 
 // ─── 6. STOCK REPORT ─────────────────────────────────────────
@@ -1098,10 +1362,10 @@ function renderInventoryReport() {
                 <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Kode</th>
                 <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Nama Item</th>
                 <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Kategori</th>
-                <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Satuan</th>
-                <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Stok Saat Ini</th>
+                <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Stok</th>
                 <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Min. Stok</th>
                 <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Status Stok</th>
+                <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Aksi</th>
             </tr></thead>
             <tbody>${filtered.map(it => {
             const isLow = it.currentStock < it.minStock;
@@ -1116,6 +1380,10 @@ function renderInventoryReport() {
                         ${isLow
                     ? '<span class="px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-700">⚠ Low Stock</span>'
                     : '<span class="px-2 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-700">✓ Normal</span>'}
+                    </td>
+                    <td class="py-3 px-4 text-sm text-right whitespace-nowrap">
+                        ${it.category === 'FINISHED_GOODS' ? `<button onclick="openRepackModal('${it.id}')" class="text-blue-600 hover:text-blue-800 font-bold text-xs bg-blue-50 px-2 py-1 rounded border border-blue-100 mr-2"><i class="fas fa-box-open mr-1"></i>Repack</button>` : ''}
+                        <button onclick="openInventoryItemModal('${it.id}')" class="text-slate-400 hover:text-slate-600 p-1"><i class="fas fa-edit"></i></button>
                     </td>
                 </tr>`;
         }).join('')}</tbody>
@@ -1225,307 +1493,10 @@ window.switchInvReportTab = (cat) => {
 };
 
 // ─── 6. PENGIRIMAN BARANG (SURAT JALAN / DELIVERY) ────────────
-function renderInventoryDelivery() {
-    const canEdit = getModulePermission('logistik').edit;
-    document.getElementById('pageTitle').innerText = 'Surat Jalan / Pengiriman';
-    const mc = document.getElementById('main-content');
+// renderWarehouseDeliveryOrders removed - using the version in delivery_order.js
 
-    // Ambil SO yang statusnya CONFIRMED, DELIVERED, HOLD
-    const sos = db.read('salesOrders')
-        .filter(so => ['CONFIRMED', 'DELIVERED', 'HOLD'].includes(so.status))
-        .sort((a, b) => new Date(b.date) - new Date(a.date));
-    const customers = db.read('customers');
+// Legacy logistics section removed. Using delivery_order.js instead.
 
-    const rows = sos.length ? sos.map(so => {
-        const cust = customers.find(c => c.id === so.customerId) || { name: 'Unknown' };
-
-        // Cek total qty item
-        const totalQty = so.items.reduce((sum, item) => sum + (parseFloat(item.qty) || 0), 0);
-
-        let statusBadge = '';
-        if (so.status === 'CONFIRMED') statusBadge = '<span class="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs font-semibold">MENUNGGU KIRIM</span>';
-        if (so.status === 'HOLD') statusBadge = '<span class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-semibold">HOLD</span>';
-        if (so.status === 'DELIVERED') statusBadge = '<span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-semibold">DELIVERED</span>';
-
-        let actionHtml = `<button onclick="viewSODetailInv('${so.id}')" class="text-gray-500 hover:text-gray-700 mr-2" title="Detail SO"><i class="fas fa-eye"></i></button>`;
-
-        if (canEdit && (so.status === 'CONFIRMED' || so.status === 'HOLD')) {
-            actionHtml += `<button onclick="processDelivery('${so.id}')" class="text-white hover:bg-blue-700 bg-blue-600 px-2 py-1 rounded text-xs shadow-sm mr-2" title="Proses Kirim"><i class="fas fa-truck mr-1"></i>Kirim</button>`;
-
-            if (so.status === 'CONFIRMED') {
-                actionHtml += `<button onclick="holdDelivery('${so.id}')" class="text-orange-600 hover:text-orange-800 border border-orange-200 bg-orange-50 px-2 py-1 rounded text-xs shadow-sm" title="Tahan Pengiriman"><i class="fas fa-hand-paper"></i> Hold</button>`;
-            }
-        }
-
-        if (so.status === 'DELIVERED') {
-            actionHtml += `<button onclick="printSuratJalan('${so.id}')" class="text-white hover:bg-purple-700 bg-purple-600 px-2 py-1 rounded text-xs shadow-sm" title="Cetak Surat Jalan"><i class="fas fa-print mr-1"></i>Cetak SJ</button>`;
-        }
-
-        return `
-            <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                <td class="py-3 px-4 text-sm font-medium text-blue-600">${so.soNumber}</td>
-                <td class="py-3 px-4 text-sm text-gray-800">${formatDate(so.date).split(' ')[0]}</td>
-                <td class="py-3 px-4 text-sm text-gray-800">${cust.name}</td>
-                <td class="py-3 px-4 text-sm text-gray-800 text-center">${invFmt(totalQty)} Item</td>
-                <td class="py-3 px-4 text-sm text-center">${statusBadge}</td>
-                <td class="py-3 px-4 text-sm text-right whitespace-nowrap">${actionHtml}</td>
-            </tr>
-        `;
-    }).join('') : `<tr><td colspan="6" class="py-6 text-center text-gray-400 border-b border-gray-100">Belum ada SO yang siap dikirim.</td></tr>`;
-
-    mc.innerHTML = `
-        <div class="bg-white rounded-lg shadow-sm border border-gray-100 p-4 sm:p-6 mb-4">
-            <div class="flex justify-between items-center">
-                <div>
-                    <h2 class="text-lg font-semibold text-gray-800 mb-1"><i class="fas fa-truck-loading text-blue-500 mr-2"></i>Pengiriman & Surat Jalan</h2>
-                    <p class="text-sm text-gray-500">Daftar Sales Order yang sudah disetujui Sales dan siap diproses kirim oleh Gudang.</p>
-                </div>
-                ${!canEdit ? `
-                <span class="text-xs font-medium text-orange-500 bg-orange-50 border border-orange-100 px-3 py-1.5 rounded-lg flex items-center gap-2">
-                    <i class="fas fa-info-circle"></i> Mode Lihat Saja
-                </span>
-                ` : ''}
-            </div>
-        </div>
-        
-        <div class="bg-white rounded-lg shadow-sm border border-gray-100">
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="bg-gray-50 border-b border-gray-200">
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">No. SO</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Tanggal SO</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Customer</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-center">Total Item</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-center">Status Gudang</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">Aksi</th>
-                        </tr>
-                    </thead>
-                    <tbody>${rows}</tbody>
-                </table>
-            </div>
-        </div>
-    `;
-}
-
-window.viewSODetailInv = (id) => {
-    // Re-use viewSO logic from app.js, but read-only mode typically
-    if (typeof viewSO === 'function') {
-        viewSO(id); // Using the global app.js view
-    }
-};
-
-window.holdDelivery = (id) => {
-    const reason = prompt("Masukkan alasan pengiriman di-hold (misal: stok kurang, dll):");
-    if (reason === null) return;
-    const so = db.findById('salesOrders', id);
-    if (so && typeof addNotification === 'function') {
-        addNotification('Pengiriman Di-Hold', `SO ${so.soNumber} ditahan oleh Gudang. Alasan: ${reason}`);
-    }
-    showToast('SO di-hold.', 'warning');
-    renderInventoryDelivery();
-};
-
-window.processDelivery = (id) => {
-    const so = db.findById('salesOrders', id);
-    if (!so) return;
-
-    // Validation Step
-    const stockErrors = [];
-    so.items.forEach(item => {
-        const invId = item.inventoryItemId || item.productId;
-        if (invId) {
-            const hasEnough = db.validateInventoryStock(invId, item.qty);
-            if (!hasEnough) {
-                const itemData = db.findById('inventoryItems', invId);
-                const itemName = itemData ? itemData.itemName : item.prodText || item.description;
-                const currentStk = db.getInventoryStock(invId);
-                stockErrors.push(`Stok [${itemName}] kurang! Butuh: ${item.qty}, Tersedia: ${currentStk}`);
-            }
-        }
-    });
-
-    if (stockErrors.length > 0) {
-        alert("GAGAL PROSES KIRIM:\n\n" + stockErrors.join("\n"));
-        return;
-    }
-
-    if (!confirm(`Proses pengiriman untuk SO ${so.soNumber}?\nStok Finished Goods akan langsung dipotong dari Inventory.`)) return;
-
-    const deliveryDate = new Date().toISOString();
-
-    // Execution Step (Deduct Stock using Inventory Module)
-    let totalCogs = 0;
-    so.items.forEach(item => {
-        const invId = item.inventoryItemId || item.productId;
-        if (invId) {
-            db.addInventoryTransaction(
-                invId,
-                'OUT',
-                item.qty,
-                'SALES_OUT',
-                so.id,
-                `Pengiriman Surat Jalan SO ${so.soNumber}: ${item.prodText || item.description || ''}`
-            );
-
-            // Hitung Cogs
-            const invItem = db.findById('inventoryItems', invId);
-            if (invItem) {
-                totalCogs += (item.qty * (invItem.purchasePrice || 0));
-            }
-        }
-    });
-
-    // INTEGRASI JURNAL COGS
-    if (totalCogs > 0 && typeof db.addJournalEntry === 'function') {
-        db.addJournalEntry({
-            description: `HPP Pengiriman SO ${so.soNumber} (Gudang)`,
-            referenceType: 'SO',
-            referenceId: so.id,
-            items: [
-                { accountId: 'acc_cogs', debit: totalCogs, credit: 0 },
-                { accountId: 'acc_inv_fg', debit: 0, credit: totalCogs }
-            ]
-        });
-    }
-
-    db.update('salesOrders', so.id, {
-        status: 'DELIVERED',
-        deliveryDate: deliveryDate,
-        deliveryDOIdentifier: 'DO-' + so.soNumber.substring(3)
-    });
-
-    // Simpan ke tabel deliveryOrders (untuk sinkronisasi dengan modul Sales)
-    db.insert('deliveryOrders', {
-        doNumber: 'DO-' + so.soNumber.substring(3),
-        date: deliveryDate,
-        type: 'INVOICE',
-        recipientName: cust.name,
-        address: cust.address || '-',
-        driverName: '', // Bisa ditambahkan input di modal jika perlu
-        vehicleNo: '',
-        items: so.items.map(item => ({
-            name: item.prodText || item.description || 'Produk',
-            unit: item.unit || 'PCS',
-            qty: item.qty,
-            remark: '',
-            inventoryItemId: item.inventoryItemId || item.productId
-        })),
-        notes: so.notes || '',
-        invoiceId: null, // Akan terisi jika invoice dibuat
-        invoiceNumber: so.soNumber.replace('SO-', 'INV-') // Estimasi nomer invoice
-    });
-
-    if (typeof addNotification === 'function') {
-        addNotification('Barang Terkirim', `SO ${so.soNumber} telah dikirim oleh Gudang dengan No. DO: DO-${so.soNumber.substring(3)}`);
-    }
-
-    showToast('Barang berhasil dikirim. Stok dikurangi & Surat Jalan dicatat.', 'success');
-    renderInventoryDelivery();
-
-    // Langsung buka modal cetak Surat Jalan
-    setTimeout(() => printSuratJalan(id), 500);
-};
-
-window.printSuratJalan = (id) => {
-    const so = db.findById('salesOrders', id);
-    if (!so) return;
-    const cust = db.findById('customers', so.customerId) || { name: 'Unknown', address: '-', phone: '-' };
-    const doRef = so.deliveryDOIdentifier || ('DO-' + so.soNumber.substring(3));
-    const delivDate = so.deliveryDate ? invDate(so.deliveryDate) : invDate(new Date());
-
-    const itemRows = so.items.map((item, idx) => `
-        <tr class="border-b border-gray-400">
-            <td class="py-2 text-center">${idx + 1}</td>
-            <td class="py-2 font-medium">${item.description}</td>
-            <td class="py-2 text-center">${invFmt(item.qty)}</td>
-            <td class="py-2 text-center">KG/PCS</td>
-            <td class="py-2 text-center"></td>
-        </tr>
-    `).join('');
-
-    const printableContent = `
-        <div id="printArea" class="bg-white p-8 text-black" style="font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; color: #000;">
-            <div class="flex justify-between items-start border-b-2 border-black pb-4 mb-6">
-                <div>
-                    <h1 class="text-3xl font-bold uppercase tracking-wider">Surat Jalan</h1>
-                    <p class="text-sm mt-1">NO. DO : <strong>${doRef}</strong></p>
-                    <p class="text-sm">Tanggal : ${delivDate}</p>
-                    <p class="text-sm">Ref. SO : ${so.soNumber}</p>
-                </div>
-                <div class="text-right">
-                    <h2 class="text-xl font-bold">PT Tana Subur Nusantara</h2>
-                    <p class="text-sm">J8WR+3JQ, Jl. Akses Tol Karawang Tim.<br>Anggadita, Kec. Klari, Karawang<br>Jawa Barat 41371</p>
-                </div>
-            </div>
-
-            <div class="mb-6 flex space-x-12">
-                <div class="flex-1">
-                    <p class="text-sm font-bold border-b border-gray-400 mb-2">Kepada Yth:</p>
-                    <p class="font-bold text-lg">${cust.name}</p>
-                    <p class="text-sm whitespace-pre-wrap">${cust.address || '-'}</p>
-                    <p class="text-sm mt-1">Telp: ${cust.phone || '-'}</p>
-                </div>
-                <div class="flex-1">
-                    <p class="text-sm font-bold border-b border-gray-400 mb-2">Instruksi Pengiriman:</p>
-                    <p class="text-sm italic">${so.deliveryNotes || 'Mohon diterima dengan baik.'}</p>
-                </div>
-            </div>
-
-            <table class="w-full text-left border-collapse mb-8 border border-black">
-                <thead>
-                    <tr class="border-b-2 border-black bg-gray-100">
-                        <th class="py-2 px-2 text-center w-12 border-r border-black">No</th>
-                        <th class="py-2 px-2 border-r border-black">Deskripsi Barang</th>
-                        <th class="py-2 px-2 text-center w-24 border-r border-black">Qty</th>
-                        <th class="py-2 px-2 text-center w-24 border-r border-black">Satuan</th>
-                        <th class="py-2 px-2 text-center w-32">Keterangan</th>
-                    </tr>
-                </thead>
-                <tbody class="border-b border-black">
-                    ${itemRows}
-                </tbody>
-            </table>
-
-            <p class="text-xs mb-8"><em>* Barang telah diterima dalam kondisi baik dan sesuai pesanan.</em></p>
-
-            <div class="flex justify-between text-center mt-12 px-8">
-                <div>
-                    <p class="mb-16">Penerima,</p>
-                    <p class="border-t border-black pt-1 w-40 mx-auto">( Tanda Tangan & Cap )</p>
-                </div>
-                <div>
-                    <p class="mb-16">Pengemudi,</p>
-                    <p class="border-t border-black pt-1 w-40 mx-auto">( Nama Jelas )</p>
-                </div>
-                <div>
-                    <p class="mb-16">Hormat Kami,</p>
-                    <p class="border-t border-black pt-1 w-40 mx-auto">Bag. Gudang</p>
-                </div>
-            </div>
-            
-            <style>
-                @media print {
-                    body * { visibility: hidden; }
-                    #modal-container { visibility: visible; }
-                    #printArea, #printArea * { visibility: visible; }
-                    #printArea { position: fixed; left: 0; top: 0; width: 100%; height: 100vh; padding: 2cm; }
-                    .no-print { display: none !important; }
-                }
-            </style>
-        </div>
-    `;
-
-    const footer = `
-        <button onclick="window.print()" class="no-print w-full sm:w-auto inline-flex justify-center rounded-md bg-purple-600 px-6 py-2 text-white text-sm font-bold hover:bg-purple-700 sm:ml-3 shadow-md">
-            <i class="fas fa-print mr-2 mt-1"></i> Print Sekarang
-        </button>
-        <button onclick="closeModal()" class="no-print mt-3 sm:mt-0 w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 px-4 py-2 bg-white text-gray-700 text-sm font-medium sm:ml-3 hover:bg-gray-50">Tutup</button>
-    `;
-
-    // Gunakan div container yang cukup besar untuk print area
-    showModal('Cetak Surat Jalan', `<div class="overflow-x-auto print-container" style="max-height: 70vh;">${printableContent}</div>`, footer);
-};
 
 // ─── PENERIMAAN BARANG DARI PO ───────────────────────────────
 function renderInventoryPOReceipt() {
@@ -1535,30 +1506,57 @@ function renderInventoryPOReceipt() {
     let pos = db.read('purchaseOrders').sort((a, b) => new Date(b.date) - new Date(a.date));
     const suppliers = db.read('suppliers');
 
+    if (!window._porActiveTab) window._porActiveTab = 'pending';
+
     // Apply Date Filter
     pos = filterByDateRange(pos, 'inventoryPOReceipt');
 
-    // Filter PO yang masih perlu diterima
-    const pendingPOs = pos.filter(po => {
-        if (['RECEIVED', 'CANCELLED', 'DRAFT'].includes(po.status)) return false;
-        const hasUnreceived = (po.items || []).some(i => (i.receivedQty || 0) < i.qty);
-        return hasUnreceived || po.status === 'APPROVED' || po.status === 'PARTIALLY RECEIVED';
+    // Filter logic
+    let filteredPOs = pos.filter(po => {
+        // Apply Supplier Filter
+        if (window.currentFilters.inventoryPOReceipt.supplier && po.supplierId !== window.currentFilters.inventoryPOReceipt.supplier) return false;
+
+        // Apply Status Filter
+        const stFilter = window.currentFilters.inventoryPOReceipt.status;
+        if (stFilter === 'PENDING') {
+            if (['RECEIVED', 'CANCELLED', 'DRAFT'].includes(po.status)) return false;
+            const hasUnreceived = (po.items || []).some(i => (i.receivedQty || 0) < i.qty);
+            if (!hasUnreceived && po.status !== 'APPROVED' && po.status !== 'PARTIALLY RECEIVED') return false;
+        } else if (stFilter === 'RECEIVED') {
+            if (po.status !== 'RECEIVED' && !(po.status === 'PARTIALLY RECEIVED' && (po.items || []).some(i => (i.receivedQty || 0) > 0))) return false;
+        } else if (stFilter === 'UNRECEIVED') {
+            // Specifically only those with NO goods received yet
+            const noReceived = (po.items || []).every(i => (i.receivedQty || 0) === 0);
+            if (!noReceived || po.status === 'RECEIVED' || po.status === 'CANCELLED') return false;
+        }
+
+        // Apply Tab Filter (Current behavior fallback)
+        if (window._porActiveTab === 'pending') {
+            if (['RECEIVED', 'CANCELLED', 'DRAFT'].includes(po.status)) return false;
+            const hasUnreceived = (po.items || []).some(i => (i.receivedQty || 0) < i.qty);
+            if (!hasUnreceived && po.status !== 'APPROVED' && po.status !== 'PARTIALLY RECEIVED') return false;
+        } else {
+            if (po.status !== 'RECEIVED' && !(po.status === 'PARTIALLY RECEIVED' && (po.items || []).some(i => (i.receivedQty || 0) > 0))) return false;
+        }
+        
+        return true;
     });
 
-    const rows = pendingPOs.map(po => {
+    const rows = filteredPOs.map(po => {
         const sup = suppliers.find(s => s.id === po.supplierId) || { name: '-' };
         const totalOrdered = (po.items || []).reduce((s, i) => s + i.qty, 0);
         const totalReceived = (po.items || []).reduce((s, i) => s + (i.receivedQty || 0), 0);
-        const sisa = totalOrdered - totalReceived;
         const pct = totalOrdered > 0 ? Math.round((totalReceived / totalOrdered) * 100) : 0;
 
         let statusBadge = `<span class="px-2 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-700">${po.status}</span>`;
         if (po.status === 'PARTIALLY RECEIVED') statusBadge = `<span class="px-2 py-0.5 rounded text-xs font-semibold bg-orange-100 text-orange-700">PARTIAL</span>`;
+        if (po.status === 'RECEIVED') statusBadge = `<span class="px-2 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-700">RECEIVED</span>`;
 
         return `<tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
             <td class="py-3 px-4 text-sm font-medium text-blue-600">${po.poNumber}</td>
             <td class="py-3 px-4 text-sm text-gray-700">${invDate(po.date)}</td>
             <td class="py-3 px-4 text-sm text-gray-800">${sup.name}</td>
+            <td class="py-3 px-4 text-sm text-gray-600">${po.status === 'RECEIVED' ? invDate(po.receivedAt) : '-'}</td>
             <td class="py-3 px-4 text-sm">
                 <div class="flex items-center gap-2">
                     <div class="flex-1 bg-gray-200 rounded-full h-1.5" style="min-width:60px">
@@ -1569,11 +1567,14 @@ function renderInventoryPOReceipt() {
             </td>
             <td class="py-3 px-4 text-center">${statusBadge}</td>
             <td class="py-3 px-4 text-right">
-                ${canEdit ? `
+                ${window._porActiveTab === 'pending' ? (canEdit ? `
                 <button onclick="openPOReceiptModal('${po.id}')" class="text-white bg-green-600 hover:bg-green-700 text-xs px-3 py-1.5 rounded font-medium shadow-sm transition-colors">
                     <i class="fas fa-truck-loading mr-1"></i>Terima Barang
+                </button>` : '<span class="text-gray-400 text-[10px] italic font-medium">VIEW ONLY</span>') : `
+                <button onclick="viewPOReceiptDetails('${po.id}')" class="text-blue-500 hover:text-blue-700 text-xs font-bold">
+                    <i class="fas fa-eye mr-1"></i>Detail
                 </button>
-                ` : '<span class="text-gray-400 text-[10px] italic font-medium">VIEW ONLY</span>'}
+                `}
             </td>
         </tr>`;
     }).join('');
@@ -1584,8 +1585,9 @@ function renderInventoryPOReceipt() {
                 <table class="w-full text-left">
                     <thead><tr class="bg-gray-50 border-b border-gray-200">
                         <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider">No. PO</th>
-                        <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Tanggal</th>
+                        <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Tgl PO</th>
                         <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Supplier</th>
+                        <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Tgl Terima</th>
                         <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Progress</th>
                         <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-center">Status</th>
                         <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-right">Aksi</th>
@@ -1598,28 +1600,57 @@ function renderInventoryPOReceipt() {
             <div class="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-300">
                 <i class="fas fa-box-open text-4xl"></i>
             </div>
-            <h3 class="text-gray-800 font-bold text-lg">Tidak Ada Antrian Penerimaan</h3>
-            <p class="text-gray-500 text-sm mt-1">Semua Purchase Order telah diterima atau belum disetujui.</p>
+            <h3 class="text-gray-800 font-bold text-lg">${window._porActiveTab === 'pending' ? 'Tidak Ada Antrian Penerimaan' : 'Belum Ada Riwayat'}</h3>
+            <p class="text-gray-500 text-sm mt-1">${window._porActiveTab === 'pending' ? 'Semua Purchase Order telah diterima atau belum disetujui.' : 'Belum ada PO yang tercatat diterima.'}</p>
         </div>`;
 
     mc.innerHTML = `
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-8">
-            <h2 class="text-lg font-semibold text-gray-800 mb-4 tracking-tight">Cari Antrian Penerimaan PO</h2>
-            <div class="flex flex-wrap gap-4 items-end">
-                <div class="flex-1 min-w-[150px]">
-                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Dari Tanggal PO</label>
+        <div class="flex items-center gap-4 mb-6 border-b border-gray-200">
+            <button onclick="window._porActiveTab='pending'; renderInventoryPOReceipt()" 
+                class="px-4 py-2 text-sm font-bold border-b-2 transition-all ${window._porActiveTab === 'pending' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'}">
+                Antrean Penerimaan
+            </button>
+            <button onclick="window._porActiveTab='history'; renderInventoryPOReceipt()" 
+                class="px-4 py-2 text-sm font-bold border-b-2 transition-all ${window._porActiveTab === 'history' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'}">
+                Riwayat Penerimaan
+            </button>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-5 mb-5">
+            <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-3"><i class="fas fa-filter text-blue-500"></i> FILTER PENCARIAN</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end mb-4">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Supplier</label>
+                    <select id="por_supplier" class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
+                        <option value="">Semua Supplier</option>
+                        ${suppliers.map(s => `<option value="${s.id}" ${window.currentFilters.inventoryPOReceipt.supplier === s.id ? 'selected' : ''}>${s.name}</option>`).join('')}
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Status</label>
+                    <select id="por_status" class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
+                        <option value="" ${!window.currentFilters.inventoryPOReceipt.status ? 'selected' : ''}>Semua Status</option>
+                        <option value="PENDING" ${window.currentFilters.inventoryPOReceipt.status === 'PENDING' ? 'selected' : ''}>Menunggu / Antrean</option>
+                        <option value="UNRECEIVED" ${window.currentFilters.inventoryPOReceipt.status === 'UNRECEIVED' ? 'selected' : ''}>Unreceived (Nol Penerimaan)</option>
+                        <option value="RECEIVED" ${window.currentFilters.inventoryPOReceipt.status === 'RECEIVED' ? 'selected' : ''}>Selesai / Riwayat</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Dari Tanggal PO</label>
                     <input type="date" id="por_start_date" value="${window.currentFilters.inventoryPOReceipt.start}" 
-                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 transition-all outline-none">
+                        class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
                 </div>
-                <div class="flex-1 min-w-[150px]">
-                    <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Sampai Tanggal PO</label>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Sampai Tanggal PO</label>
                     <input type="date" id="por_end_date" value="${window.currentFilters.inventoryPOReceipt.end}" 
-                        class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 transition-all outline-none">
+                        class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
                 </div>
-                <button onclick="applyPORFilter()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-sm whitespace-nowrap h-[38px]">
-                    <i class="fas fa-search"></i> Tampilkan
+            </div>
+            <div class="flex gap-2">
+                <button onclick="applyPORFilter()" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all shadow-sm">
+                    <i class="fas fa-search mr-2"></i> TAMPILKAN
                 </button>
-                <button onclick="resetPORFilter()" class="bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-sm h-[38px]" title="Reset">
+                <button onclick="resetPORFilter()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-lg transition-all shadow-sm" title="Reset">
                     <i class="fas fa-undo"></i>
                 </button>
             </div>
@@ -1630,12 +1661,13 @@ function renderInventoryPOReceipt() {
 window.applyPORFilter = () => {
     window.currentFilters.inventoryPOReceipt.start = document.getElementById('por_start_date').value;
     window.currentFilters.inventoryPOReceipt.end = document.getElementById('por_end_date').value;
+    window.currentFilters.inventoryPOReceipt.supplier = document.getElementById('por_supplier').value;
+    window.currentFilters.inventoryPOReceipt.status = document.getElementById('por_status').value;
     renderInventoryPOReceipt();
 };
 
 window.resetPORFilter = () => {
-    window.currentFilters.inventoryPOReceipt.start = '';
-    window.currentFilters.inventoryPOReceipt.end = '';
+    window.currentFilters.inventoryPOReceipt = { start: '', end: '', supplier: '', status: '' };
     renderInventoryPOReceipt();
 };
 
@@ -1723,10 +1755,49 @@ window.confirmPOReceipt = (id) => {
     renderInventoryPOReceipt();
 };
 
+window.viewPOReceiptDetails = (id) => {
+    const po = db.findById('purchaseOrders', id);
+    if (!po) return;
+    const suppliers = db.read('suppliers');
+    const sup = suppliers.find(s => s.id === po.supplierId) || { name: '-' };
+
+    const itemRows = (po.items || []).map(i => `
+        <tr class="border-b border-gray-100 text-sm text-gray-700">
+            <td class="py-3 px-2 font-medium">${i.prodText || i.itemName || '-'}</td>
+            <td class="py-3 px-2 text-right">${invFmt(i.qty)} ${i.unit || ''}</td>
+            <td class="py-3 px-2 text-right font-bold text-green-600">${invFmt(i.receivedQty || 0)} ${i.unit || ''}</td>
+        </tr>
+    `).join('');
+
+    const body = `
+        <div class="space-y-4">
+            <div class="grid grid-cols-2 gap-4 text-sm bg-gray-50 p-4 rounded-xl border border-gray-100">
+                <div><span class="text-gray-400">No. PO:</span> <strong class="text-blue-600">${po.poNumber}</strong></div>
+                <div><span class="text-gray-400">Supplier:</span> <strong>${sup.name}</strong></div>
+                <div><span class="text-gray-400">Tgl Order:</span> <strong>${invDate(po.date)}</strong></div>
+                <div><span class="text-gray-400">Tgl Terima:</span> <strong class="text-green-600">${invDate(po.receivedAt)}</strong></div>
+            </div>
+            
+            <table class="w-full text-left">
+                <thead>
+                    <tr class="border-b-2 border-gray-100 text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                        <th class="py-2 px-2">Nama Produk / Item</th>
+                        <th class="py-2 px-2 text-right">Order Qty</th>
+                        <th class="py-2 px-2 text-right text-green-600">Terima Qty</th>
+                    </tr>
+                </thead>
+                <tbody>${itemRows}</tbody>
+            </table>
+        </div>
+    `;
+
+    showModal(`Detail Penerimaan — ${po.poNumber}`, body, `<button onclick="closeModal()" class="btn-secondary">Tutup</button>`);
+};
+
 
 // ─── 7. SHRINKAGE REPORT ─────────────────────────────────────
 window.renderInventoryShrinkageReport = () => {
-    const canEdit = getModulePermission('logistik').edit;
+    const canEdit = getModulePermission('produksi').edit;
     document.getElementById('pageTitle').innerText = 'Laporan Penyusutan';
     const mc = document.getElementById('main-content');
 
@@ -1778,37 +1849,136 @@ window.runShrinkageReport = () => {
     const from = new Date(fromVal); from.setHours(0, 0, 0, 0);
     const to = new Date(toVal); to.setHours(23, 59, 59, 999);
 
-    const txs = db.read('stockTransactions').filter(t => {
+    const items = db.read('inventoryItems');
+
+    // ── 1. Penyusutan dari MO (productionOrders) — tidak double-count mutasi stok ──
+    const moShrinkages = (db.read('productionOrders') || []).filter(mo => {
+        if (mo.status !== 'DONE') return false;
+        if (mo.stage !== 'OVEN_KERING') return false; // Hanya Oven Kering yang ada susut
+        const kg = parseFloat(mo.shrinkageKg) || 0;
+        if (kg <= 0) return false;
+        const d = new Date(mo.completedAt || mo.updatedAt || mo.createdAt);
+        return d >= from && d <= to;
+    }).map(mo => {
+        const inputItem = mo.inputItemId ? items.find(i => i.id === mo.inputItemId) : null;
+        return {
+            date: mo.completedAt || mo.updatedAt || mo.createdAt,
+            itemCode: inputItem?.itemCode || '-',
+            itemName: inputItem?.itemName || `WIP ${mo.stage} (${mo.productName || '-'})`,
+            itemId: mo.inputItemId || null,
+            qty: parseFloat(mo.shrinkageKg) || 0,
+            unit: inputItem?.unit || 'Kg',
+            notes: `Susut ${mo.stage === 'OVEN_KERING' ? 'Oven Kering' : mo.stage} MO ${mo.moNumber}: ${(parseFloat(mo.shrinkageKg)||0).toFixed(2)} Kg (${mo.shrinkagePct || 0}%)`,
+            source: 'MO'
+        };
+    });
+
+    // ── 2. Penyusutan manual (dari stockTransactions dengan reference SHRINKAGE) ──
+    const manualTxs = (db.read('stockTransactions') || []).filter(t => {
         const d = new Date(t.date);
         return d >= from && d <= to && t.reference === 'SHRINKAGE';
-    });
+    }).map(t => ({
+        date: t.date,
+        itemCode: t.itemCode || '-',
+        itemName: t.itemName,
+        itemId: t.itemId,
+        qty: parseFloat(t.qty) || 0,
+        unit: items.find(i => i.id === t.itemId)?.unit || t.unit || 'Kg',
+        notes: t.notes || 'Penyusutan Manual',
+        source: 'MANUAL'
+    }));
 
-    const items = db.read('inventoryItems');
+    // ── Gabungkan & sort terbaru dulu ──
+    const allEntries = [...moShrinkages, ...manualTxs]
+        .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // ── Summary per item ──
     const summary = {};
-    txs.forEach(t => {
-        if (!summary[t.itemId]) summary[t.itemId] = { itemName: t.itemName, itemCode: t.itemCode, totalQty: 0, count: 0, unit: t.unit };
-        summary[t.itemId].totalQty += t.qty;
-        summary[t.itemId].count += 1;
+    allEntries.forEach(e => {
+        const key = e.itemId || e.itemName;
+        if (!summary[key]) summary[key] = { itemName: e.itemName, itemCode: e.itemCode, totalQty: 0, count: 0, unit: e.unit };
+        summary[key].totalQty += e.qty;
+        summary[key].count += 1;
     });
 
-    const rows = Object.values(summary).sort((a, b) => b.totalQty - a.totalQty).map(s => {
-        const it = items.find(i => i.id === s.itemId);
+    // ── Detail rows ──
+    const detailRows = allEntries.map(e => {
+        const sourceBadge = e.source === 'MO'
+            ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-black bg-orange-100 text-orange-700 uppercase">MO</span>`
+            : `<span class="px-1.5 py-0.5 rounded text-[9px] font-black bg-gray-100 text-gray-500 uppercase">Manual</span>`;
+        return `
+            <tr class="border-b border-gray-100 hover:bg-orange-50/30 transition-colors">
+                <td class="py-2.5 px-4 text-xs text-gray-500">${invDate(e.date)}</td>
+                <td class="py-2.5 px-4 text-xs font-mono font-bold text-blue-600">${e.itemCode}</td>
+                <td class="py-2.5 px-4 text-sm font-medium text-gray-800">${e.itemName}</td>
+                <td class="py-2.5 px-4 text-xs text-gray-500 italic max-w-[240px] truncate" title="${e.notes}">
+                    ${sourceBadge} ${e.notes}
+                </td>
+                <td class="py-2.5 px-4 text-sm text-right font-black text-red-600">-${invFmt(e.qty)}</td>
+                <td class="py-2.5 px-4 text-xs font-bold text-gray-400 uppercase">${e.unit}</td>
+            </tr>
+        `;
+    }).join('') || '<tr><td colspan="6" class="py-10 text-center text-gray-400 text-sm italic">Tidak ada data penyusutan dalam periode ini.</td></tr>';
+
+    // ── Summary rows ──
+    const summaryRows = Object.values(summary).sort((a, b) => b.totalQty - a.totalQty).map(s => {
+        const it = items.find(i => i.id === s.itemId || i.itemCode === s.itemCode);
         return `
             <tr class="border-b border-gray-100 hover:bg-gray-50">
                 <td class="py-3 px-4 text-sm font-mono text-blue-600">${s.itemCode}</td>
                 <td class="py-3 px-4 text-sm font-medium text-gray-800">${s.itemName}</td>
-                <td class="py-3 px-4 text-sm"><span class="px-2 py-0.5 rounded text-xs font-semibold ${CATEGORY_COLORS[it?.category] || 'bg-gray-100'}">${it ? CATEGORY_LABELS[it.category] : '-'}</span></td>
-                <td class="py-3 px-4 text-sm text-right font-bold text-red-600">-${invFmt(s.totalQty)} ${it?.unit || s.unit || ''}</td>
+                <td class="py-3 px-4 text-sm"><span class="px-2 py-0.5 rounded text-xs font-semibold ${CATEGORY_COLORS[it?.category] || 'bg-gray-100'}">${it ? CATEGORY_LABELS[it.category] : 'WIP'}</span></td>
+                <td class="py-3 px-4 text-sm text-right font-black text-red-600">-${invFmt(s.totalQty)} ${s.unit}</td>
                 <td class="py-3 px-4 text-sm text-center text-gray-500">${s.count} kali</td>
             </tr>
         `;
-    }).join('') || '<tr><td colspan="5" class="py-10 text-center text-gray-400">Tidak ada data penyusutan dalam periode ini.</td></tr>';
+    }).join('') || '<tr><td colspan="5" class="py-8 text-center text-gray-400 text-sm italic">Tidak ada data.</td></tr>';
+
+    const totalSusutKg = allEntries.reduce((s, e) => s + e.qty, 0);
 
     output.innerHTML = `
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+            <div class="bg-red-50 border border-red-100 rounded-xl p-4">
+                <p class="text-[10px] font-black text-red-400 uppercase tracking-widest mb-1">Total Susut</p>
+                <p class="text-2xl font-black text-red-600">${invFmt(totalSusutKg)} <span class="text-sm font-bold">Kg</span></p>
+            </div>
+            <div class="bg-orange-50 border border-orange-100 rounded-xl p-4">
+                <p class="text-[10px] font-black text-orange-400 uppercase tracking-widest mb-1">Jumlah Kejadian</p>
+                <p class="text-2xl font-black text-orange-600">${allEntries.length} <span class="text-sm font-bold">Entri</span></p>
+            </div>
+            <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 col-span-2 md:col-span-1">
+                <p class="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Item Terdampak</p>
+                <p class="text-2xl font-black text-blue-600">${Object.keys(summary).length} <span class="text-sm font-bold">Item</span></p>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-6">
+            <div class="p-4 bg-slate-50 border-b border-gray-100 flex justify-between items-center">
+                <h3 class="font-bold text-gray-700 flex items-center gap-2">
+                    <i class="fas fa-history text-orange-500"></i> Riwayat Penyusutan Detail
+                </h3>
+                <span class="text-xs text-gray-500">${allEntries.length} Entri</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead>
+                        <tr class="bg-gray-50/50 border-b border-gray-200">
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Tanggal</th>
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Kode</th>
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Nama Item</th>
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Keterangan / Sumber</th>
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Susut (Kg)</th>
+                        </tr>
+                    </thead>
+                    <tbody>${detailRows}</tbody>
+                </table>
+            </div>
+        </div>
+
         <div class="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
             <div class="p-4 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
-                <h3 class="font-bold text-gray-700">Ringkasan Penyusutan</h3>
-                <span class="text-xs text-gray-500">${txs.length} Transaksi Terdeteksi</span>
+                <h3 class="font-bold text-gray-700"><i class="fas fa-chart-bar mr-2 text-blue-500"></i>Ringkasan per Item</h3>
+                <span class="text-xs text-gray-500">${Object.keys(summary).length} Item</span>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-left">
@@ -1821,7 +1991,7 @@ window.runShrinkageReport = () => {
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-center">Frekuensi</th>
                         </tr>
                     </thead>
-                    <tbody>${rows}</tbody>
+                    <tbody>${summaryRows}</tbody>
                 </table>
             </div>
         </div>
@@ -1902,10 +2072,9 @@ window.renderMonthlyStockReport = () => {
             <nav class="flex overflow-x-auto no-scrollbar" id="msr_tabs_nav">
                 ${[
                     ['RAW_MATERIAL', 'RawMatrial'],
-                    ['WIP_MIXING', 'Mixing'],
+                    ['MIXING_STOCK', 'Mixing'],
                     ['WIP_OVEN_BASAH', 'Oven Basah'],
                     ['WIP_OVEN_KERING', 'Oven Kering'],
-                    ['WIP_PACKING', 'Packing'],
                     ['FINISHED_GOODS', 'Finishgoods']
                 ].map(([cat, label]) =>
                     `<button onclick="switchMonthlyReportTab('${cat}')" id="msr_tab_${cat}" 
@@ -1953,10 +2122,22 @@ window.runMonthlyStockReport = () => {
 
     if (cat === 'RAW_MATERIAL') {
         filteredItems = items.filter(it => it.category === 'RAW_MATERIAL');
+    } else if (cat === 'MIXING_STOCK') {
+        filteredItems = items.filter(it => it.category === 'MIXING_STOCK');
     } else if (cat === 'FINISHED_GOODS') {
         filteredItems = items.filter(it => it.category === 'FINISHED_GOODS');
+    } else if (cat === 'WIP_OVEN_BASAH') {
+        // Include items explicitly in OVEN_BASAH_STOCK category OR items in WIP category with "Oven Basah" in name
+        filteredItems = items.filter(it => 
+            it.category === 'OVEN_BASAH_STOCK' || 
+            (it.category === 'WIP' && it.itemName.toLowerCase().includes('oven basah'))
+        );
+    } else if (cat === 'WIP_OVEN_KERING') {
+        filteredItems = items.filter(it => 
+            (it.category === 'WIP' && it.itemName.toLowerCase().includes('oven kering'))
+        );
     } else if (cat.startsWith('WIP_')) {
-        const stageName = cat.replace('WIP_', '').replace('_', ' '); // MIXING, OVEN BASAH, etc
+        const stageName = cat.replace('WIP_', '').replace('_', ' ');
         filteredItems = items.filter(it => it.category === 'WIP' && it.itemName.toLowerCase().includes(stageName.toLowerCase()));
     } else {
         filteredItems = items;
@@ -1971,15 +2152,16 @@ window.runMonthlyStockReport = () => {
         const monthTxs = allTxs.filter(t => t.itemId === it.id && new Date(t.date) >= startDate && new Date(t.date) <= endDate);
         const totalIn = monthTxs.filter(t => t.type === 'IN').reduce((sum, t) => sum + t.qty, 0);
         const totalOut = monthTxs.filter(t => t.type === 'OUT').reduce((sum, t) => sum + t.qty, 0);
+        const closingStock = openingStock + totalIn - totalOut;
 
         return {
             ...it,
             openingStock,
             totalIn,
             totalOut,
-            closingStock: openingStock + totalIn - totalOut
+            closingStock
         };
-    }).filter(it => it.category === 'WIP' || it.openingStock !== 0 || it.totalIn !== 0 || it.totalOut !== 0);
+    }).filter(it => ['WIP', 'MIXING_STOCK', 'OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'].includes(it.category) || it.openingStock !== 0 || it.totalIn !== 0 || it.totalOut !== 0);
 
     const rows = reportData.length ? reportData.map(s => `
         <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
@@ -1990,9 +2172,14 @@ window.runMonthlyStockReport = () => {
             <td class="py-3 px-4 text-sm text-right font-bold text-green-600">+${invFmt(s.totalIn)}</td>
             <td class="py-3 px-4 text-sm text-right font-bold text-red-600">-${invFmt(s.totalOut)}</td>
             <td class="py-3 px-4 text-sm text-right font-black text-blue-700 bg-blue-50/10">${invFmt(s.closingStock)}</td>
+            <td class="py-3 px-4 text-right">
+                <button onclick="viewProductStockCard('${s.id}', '${monthVal}')" class="text-blue-600 hover:text-blue-800 text-xs font-bold bg-blue-50 px-2 py-1 rounded border border-blue-100 transition-colors">
+                    <i class="fas fa-eye mr-1"></i>Kartu
+                </button>
+            </td>
         </tr>
-    `).join('') : `<tr><td colspan="7" class="py-20 text-center text-gray-400">
-        <i class="fas fa-history text-3xl mb-3 opacity-20"></i><br>
+    `).join('') : `<tr><td colspan="8" class="py-20 text-center text-gray-400">
+        <i class="fas fa-history text-3xl mb-3 opacity-20"></i><br/>
         <span class="text-sm">Tidak ada pergerakan stok untuk kategori "${CATEGORY_LABELS[window.currentMonthlyReportCategory] || 'Semua'}" di bulan ini.</span>
     </td></tr>`;
 
@@ -2008,6 +2195,7 @@ window.runMonthlyStockReport = () => {
                         <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-right">Masuk (+)</th>
                         <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-right">Keluar (-)</th>
                         <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-right">Stok Akhir</th>
+                        <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-right">Aksi</th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>
@@ -2015,19 +2203,726 @@ window.runMonthlyStockReport = () => {
         </div>`;
 };
 
-// Ekspor views untuk router di app.js
-window.inventoryViews = {
-    'inventory-dashboard': window.renderInventoryDashboard,
-    'inventory-master': renderInventoryMaster,
-    'inventory-stock-in': renderInventoryStockIn,
-    'inventory-stock-out': renderInventoryStockOut,
-    'inventory-delivery': renderInventoryDelivery,
-    'inventory-production': renderInventoryProduction,
-    'inventory-card': renderInventoryCard,
-    'inventory-shrinkage': renderInventoryShrinkageReport,
-    'inventory-monthly-report': renderMonthlyStockReport,
-    'inventory-report': renderInventoryReport,
-    'inventory-po-receipt': renderInventoryPOReceipt
+// --- Repacking Logic ---
+window.openRepackModal = (id) => {
+    const item = db.findById('inventoryItems', id);
+    if (!item) return;
+    const items = db.read('inventoryItems');
+    const fgItems = items.filter(it => it.category === 'FINISHED_GOODS' && it.id !== id);
+    const fgOpts = fgItems.map(it => `<option value="${it.id}">${it.itemName} (${it.unit})</option>`).join('');
+
+    const body = `
+    <div class="space-y-4">
+        <div class="p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm text-blue-800">
+            <i class="fas fa-info-circle mr-2"></i><strong>Repacking</strong>: Mengonversi stok dari satu item ke item lainnya (contoh: dari Karung 25kg ke Kemasan 5kg).
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Item Asal (Source)</label>
+            <input type="text" value="${item.itemName} (Stok: ${db.getInventoryStock(item.id)} ${item.unit})" class="w-full border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 text-gray-600 text-sm" readonly>
+        </div>
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Jumlah Akan Di-repack (${item.unit}) <span class="text-red-500">*</span></label>
+                <input type="number" id="repack_source_qty" min="0.01" step="0.01" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="0">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Pilih Item Tujuan (Target) <span class="text-red-500">*</span></label>
+                <select id="repack_target_id" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white font-bold">
+                    <option value="">-- Pilih SKU Tujuan --</option>${fgOpts}
+                </select>
+            </div>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Jumlah Hasil Terbentuk (Target Unit) <span class="text-red-500">*</span></label>
+            <input type="number" id="repack_target_qty" min="0.01" step="0.01" class="w-full border-2 border-green-200 rounded-lg px-3 py-2 text-lg font-bold text-green-700" placeholder="Hasil akhir">
+            <p class="text-[10px] text-gray-400 mt-1">Contoh: Repack 25 Kg menjadi 5 pack ukuran 5 Kg.</p>
+        </div>
+    </div>`;
+
+    const footer = `
+        <button onclick="saveRepacking('${id}')" class="w-full sm:w-auto inline-flex justify-center rounded-lg bg-blue-600 px-5 py-2 text-white text-sm font-bold hover:bg-blue-700 sm:ml-3">Proses Repacking</button>
+        <button onclick="closeModal()" class="mt-3 sm:mt-0 w-full sm:w-auto inline-flex justify-center rounded-lg border border-gray-300 px-5 py-2 bg-white text-gray-700 text-sm font-medium sm:ml-3">Batal</button>`;
+
+    showModal('Repackaging Finished Goods', body, footer);
+};
+
+window.saveRepacking = (sourceId) => {
+    const srcQty = parseFloat(document.getElementById('repack_source_qty')?.value);
+    const targetId = document.getElementById('repack_target_id')?.value;
+    const targetQty = parseFloat(document.getElementById('repack_target_qty')?.value);
+
+    if (!srcQty || srcQty <= 0 || !targetId || !targetQty || targetQty <= 1) {
+        showToast('Lengkapi semua data repacking dengan benar', 'error');
+        return;
+    }
+
+    const srcItem = db.findById('inventoryItems', sourceId);
+    const targetItem = db.findById('inventoryItems', targetId);
+
+    if (!db.validateInventoryStock(sourceId, srcQty)) {
+        showToast(`Stok ${srcItem.itemName} tidak mencukupi untuk repacking`, 'error');
+        return;
+    }
+
+    // Transactions
+    db.addInventoryTransaction(sourceId, 'OUT', srcQty, 'PRODUCTION_OUT', null, `Repacking: ${srcItem.itemName} -> ${targetItem.itemName}`);
+    db.addInventoryTransaction(targetId, 'IN', targetQty, 'PRODUCTION_IN', null, `Repacking: ${srcItem.itemName} -> ${targetItem.itemName}`);
+
+    showToast('Repacking berhasil dilakukan!', 'success');
+    closeModal();
+    if (typeof renderInventoryMaster === 'function') renderInventoryMaster();
+};
+
+// --- Integrated Stock Card ---
+window.viewProductStockCard = (productId, monthStr) => {
+    const item = db.findById('inventoryItems', productId);
+    if (!item) return;
+
+    const [year, month] = monthStr.split('-').map(Number);
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59);
+
+    const allTxs = db.read('stockTransactions');
+    const openingTxs = allTxs.filter(t => t.itemId === productId && new Date(t.date) < startDate);
+    const openingStock = openingTxs.reduce((sum, t) => sum + (t.type === 'IN' ? t.qty : -t.qty), 0);
+
+    const monthTxs = allTxs.filter(t => t.itemId === productId && new Date(t.date) >= startDate && new Date(t.date) <= endDate)
+        .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    let balance = openingStock;
+    const itemRows = monthTxs.map(t => {
+        const qtyIn = t.type === 'IN' ? t.qty : 0;
+        const qtyOut = t.type === 'OUT' ? t.qty : 0;
+        balance += qtyIn - qtyOut;
+        return `
+            <tr class="border-b border-gray-100 text-xs">
+                <td class="py-2 px-2 text-gray-500">${invDate(t.date)}</td>
+                <td class="py-2 px-2 font-mono text-gray-400">${t.txNo}</td>
+                <td class="py-2 px-2 font-medium text-gray-700">${t.itemName}</td>
+                <td class="py-2 px-2 text-right text-green-600 font-bold">${qtyIn > 0 ? '+' + invFmt(qtyIn) : '-'}</td>
+                <td class="py-2 px-2 text-right text-red-600 font-bold">${qtyOut > 0 ? '-' + invFmt(qtyOut) : '-'}</td>
+                <td class="py-2 px-2 text-right font-black text-gray-800">${invFmt(balance)}</td>
+                <td class="py-2 px-2 text-[10px] text-gray-400 capitalize italic">${t.reference.toLowerCase()}</td>
+            </tr>`;
+    }).join('');
+
+    const body = `
+    <div class="space-y-4">
+        <div class="bg-gray-50 p-4 rounded-xl border border-gray-100 grid grid-cols-2 gap-4 text-sm">
+            <div><span class="text-gray-400 block text-[10px] uppercase font-bold">Produk</span> <strong class="text-blue-700">${item.itemName}</strong></div>
+            <div><span class="text-gray-400 block text-[10px] uppercase font-bold">Periode</span> <strong>${monthStr}</strong></div>
+            <div><span class="text-gray-400 block text-[10px] uppercase font-bold">Kode Barang</span> <strong>${item.itemCode || '-'}</strong></div>
+            <div><span class="text-gray-400 block text-[10px] uppercase font-bold">Stok Awal</span> <strong class="text-orange-600">${invFmt(openingStock)} ${item.unit}</strong></div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left">
+                <thead>
+                    <tr class="border-b-2 border-gray-100 text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                        <th class="py-2 px-2">Tanggal</th>
+                        <th class="py-2 px-2">No. Bukti</th>
+                        <th class="py-2 px-2">Keterangan</th>
+                        <th class="py-2 px-2 text-right">Masuk</th>
+                        <th class="py-2 px-2 text-right">Keluar</th>
+                        <th class="py-2 px-2 text-right">Saldo</th>
+                        <th class="py-2 px-2">Ref</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr class="bg-orange-50/50 text-[10px] font-bold italic text-gray-500">
+                        <td colspan="5" class="py-1 px-2">SALDO AWAL PERIODE</td>
+                        <td class="py-1 px-2 text-right">${invFmt(openingStock)}</td>
+                        <td></td>
+                    </tr>
+                    ${itemRows || '<tr><td colspan="7" class="py-10 text-center text-gray-300 italic">Tidak ada mutasi di periode ini</td></tr>'}
+                </tbody>
+            </table>
+        </div>
+    </div>`;
+
+    const footer = `
+        <button onclick="printProductStockCard('${productId}', '${monthStr}')" class="bg-gray-800 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-black transition-all flex items-center gap-2">
+            <i class="fas fa-print"></i> Cetak Kartu Stok
+        </button>
+        <button onclick="closeModal()" class="px-4 py-2 text-xs font-bold text-gray-500 hover:bg-gray-100 rounded-lg">Tutup</button>
+    `;
+
+    showModal(`Kartu Stok — ${item.itemName}`, body, footer, 'max-w-3xl');
+};
+
+window.printProductStockCard = (productId, monthStr) => {
+    const item = db.findById('inventoryItems', productId);
+    if (!item) return;
+
+    const [year, month] = monthStr.split('-').map(Number);
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59);
+
+    const allTxs = db.read('stockTransactions');
+    const openingTxs = allTxs.filter(t => t.itemId === productId && new Date(t.date) < startDate);
+    const openingStock = openingTxs.reduce((sum, t) => sum + (t.type === 'IN' ? t.qty : -t.qty), 0);
+
+    const monthTxs = allTxs.filter(t => t.itemId === productId && new Date(t.date) >= startDate && new Date(t.date) <= endDate)
+        .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    let balance = openingStock;
+    const rows = monthTxs.map(t => {
+        const qtyIn = t.type === 'IN' ? t.qty : 0;
+        const qtyOut = t.type === 'OUT' ? t.qty : 0;
+        balance += qtyIn - qtyOut;
+        return `
+            <tr>
+                <td style="border:1px solid #ddd;padding:8px;text-align:center;">${invDate(t.date)}</td>
+                <td style="border:1px solid #ddd;padding:8px;">${t.txNo}</td>
+                <td style="border:1px solid #ddd;padding:8px;">${t.itemName}</td>
+                <td style="border:1px solid #ddd;padding:8px;text-align:right;">${qtyIn > 0 ? invFmt(qtyIn) : '-'}</td>
+                <td style="border:1px solid #ddd;padding:8px;text-align:right;">${qtyOut > 0 ? invFmt(qtyOut) : '-'}</td>
+                <td style="border:1px solid #ddd;padding:8px;text-align:right;font-weight:bold;">${invFmt(balance)}</td>
+                <td style="border:1px solid #ddd;padding:8px;text-align:center;">${t.reference}</td>
+            </tr>`;
+    }).join('');
+
+    const printHtml = `
+    <html>
+    <head>
+        <title>Kartu Stok - ${item.itemName}</title>
+        <style>
+            body { font-family: sans-serif; font-size: 12px; margin: 40px; }
+            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 10px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th { background: #f2f2f2; border: 1px solid #ddd; padding: 10px; text-align: left; }
+            td { border: 1px solid #ddd; padding: 8px; }
+            .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+            .meta-box { background: #f9f9f9; padding: 10px; border: 1px solid #eee; border-radius: 5px; }
+        </style>
+    </head>
+    <body onload="window.print()">
+        <div class="header">
+            <h1 style="margin:0;font-size:20px;">KARTU STOK PERSEDIAAN</h1>
+            <p style="margin:5px 0;color:#666;">${CONFIG.companyName}</p>
+        </div>
+        <div class="meta">
+            <div class="meta-box">
+                <strong>Nama Barang:</strong> ${item.itemName}<br>
+                <strong>Kode Barang:</strong> ${item.itemCode || '-'}<br>
+                <strong>Kategori:</strong> ${item.category}
+            </div>
+            <div class="meta-box">
+                <strong>Periode:</strong> ${monthStr}<br>
+                <strong>Satuan:</strong> ${item.unit}<br>
+                <strong>Saldo Awal:</strong> ${invFmt(openingStock)}
+            </div>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Tanggal</th>
+                    <th>No. Bukti</th>
+                    <th>Keterangan</th>
+                    <th style="text-align:right;">Masuk</th>
+                    <th style="text-align:right;">Keluar</th>
+                    <th style="text-align:right;">Saldo</th>
+                    <th>Keterangan</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td colspan="5" style="background:#fefce8;font-weight:bold;font-style:italic;">SALDO AWAL PERIODE</td>
+                    <td style="background:#fefce8;text-align:right;font-weight:bold;">${invFmt(openingStock)}</td>
+                    <td style="background:#fefce8;"></td>
+                </tr>
+                 ${rows || '<tr><td colspan="7" style="text-align:center;padding:40px;color:#999;">Tidak ada transaksi</td></tr>'}
+            </tbody>
+        </table>
+        <div style="margin-top:50px;text-align:right;">
+            <p>Dicetak pada: ${new Date().toLocaleString()}</p>
+        </div>
+    </body>
+    </html>`;
+
+    const win = window.open('', '_blank');
+    win.document.write(printHtml);
+    win.document.close();
+};
+
+// inventoryViews removed - using the centralized router in app.js
+
+// ─── 5. STOK WIP & HISTORY (PRODUCTION SPECIFIC) ──────────────
+window.renderProductionWIPStock = function() {
+    document.getElementById('pageTitle').innerText = 'Stok WIP & History Tracking';
+    const mc = document.getElementById('main-content');
+    
+    if (!window.currentWIPMutationCategory) window.currentWIPMutationCategory = 'MIXING';
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    mc.innerHTML = `
+    <div class="animate-in fade-in duration-300">
+        <!-- Month Filter -->
+        <!-- Month Filter -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-5 mb-5">
+            <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-3"><i class="fas fa-filter text-blue-500"></i> FILTER PENCARIAN</h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end mb-4">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Pilih Bulan Mutasi</label>
+                    <input type="month" id="wip_msr_month" value="${currentMonth}" class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
+                </div>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="runWIPMutationReport()" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all shadow-sm">
+                    <i class="fas fa-search mr-2"></i> TAMPILKAN
+                </button>
+            </div>
+        </div>
+
+        <!-- Tabs & Table -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 mb-5 overflow-hidden">
+            <!-- Tabs Nav -->
+            <div class="border-b border-gray-100 bg-gray-50/30">
+                <nav class="flex overflow-x-auto no-scrollbar">
+                    ${[
+                        ['MIXING', 'Mixing'],
+                        ['OVEN_BASAH', 'Oven Basah']
+                    ].map(([loc, label]) =>
+                        `<button onclick="switchWIPMutationTab('${loc}')" id="wip_tab_${loc}" 
+                                 class="whitespace-nowrap py-4 px-6 font-bold text-xs uppercase tracking-wider border-b-2 transition-all 
+                                 ${(window.currentWIPMutationCategory === loc) ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'}">${label}</button>`
+                    ).join('')}
+                </nav>
+            </div>
+            
+            <!-- Table Output -->
+            <div id="wip_mutation_report_output">
+                <div class="py-20 text-center text-gray-300 italic"><i class="fas fa-spinner fa-spin mr-2"></i>Loading data...</div>
+            </div>
+        </div>
+    </div>`;
+
+    setTimeout(() => { if (window.runWIPMutationReport) window.runWIPMutationReport(); }, 50);
+}
+
+window.switchWIPMutationTab = (loc) => {
+    window.currentWIPMutationCategory = loc;
+    document.querySelectorAll('[id^="wip_tab_"]').forEach(btn => {
+        btn.classList.remove('border-blue-600', 'text-blue-600');
+        btn.classList.add('border-transparent', 'text-gray-400', 'hover:text-gray-600');
+    });
+    const active = document.getElementById(`wip_tab_${loc}`);
+    if (active) {
+        active.classList.add('border-blue-600', 'text-blue-600');
+        active.classList.remove('border-transparent', 'text-gray-400', 'hover:text-gray-600');
+    }
+    window.runWIPMutationReport();
+};
+
+window.runWIPMutationReport = () => {
+    try {
+        const monthVal = document.getElementById('wip_msr_month')?.value;
+        const output = document.getElementById('wip_mutation_report_output');
+        if (!monthVal || !output) return;
+
+        const [year, month] = monthVal.split('-').map(Number);
+        const startDate = new Date(year, month - 1, 1);
+        const endDate = new Date(year, month, 0, 23, 59, 59);
+        const loc = window.currentWIPMutationCategory || 'MIXING';
+
+        const items = db.read('inventoryItems') || [];
+        const allTxs = db.read('stockTransactions') || [];
+
+        const reportData = items.map(it => {
+            const locTxs = allTxs.filter(t => t.itemId === it.id && t.location === loc);
+            const openingStock = locTxs.filter(t => new Date(t.date) < startDate).reduce((sum, t) => sum + (t.type === 'IN' ? t.qty : -t.qty), 0);
+            const monthTxs = locTxs.filter(t => new Date(t.date) >= startDate && new Date(t.date) <= endDate);
+            const totalIn = monthTxs.filter(t => t.type === 'IN').reduce((sum, t) => sum + t.qty, 0);
+            const totalOut = monthTxs.filter(t => t.type === 'OUT').reduce((sum, t) => sum + t.qty, 0);
+            const closingStock = openingStock + totalIn - totalOut;
+
+            return { ...it, openingStock, totalIn, totalOut, closingStock, loc };
+        }).filter(it => it.openingStock !== 0 || it.totalIn !== 0 || it.totalOut !== 0);
+
+        const rows = reportData.length ? reportData.map(s => `
+            <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                <td class="py-3 px-4 text-xs font-mono text-gray-400">${s.itemCode}</td>
+                <td class="py-3 px-4 text-sm font-bold text-gray-800">${s.itemName}</td>
+                <td class="py-3 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">${s.unit}</td>
+                <td class="py-3 px-4 text-sm text-right font-medium text-gray-500 bg-gray-50/30">${invFmt(s.openingStock)}</td>
+                <td class="py-3 px-4 text-sm text-right font-bold text-green-600">+${invFmt(s.totalIn)}</td>
+                <td class="py-3 px-4 text-sm text-right font-bold text-red-600">-${invFmt(s.totalOut)}</td>
+                <td class="py-3 px-4 text-sm text-right font-black text-blue-700 bg-blue-50/10">${invFmt(s.closingStock)}</td>
+                <td class="py-3 px-4 text-right">
+                    <button onclick="openWIPHistoryModal('${s.id}', '${loc}')" class="text-blue-600 hover:text-blue-800 text-xs font-bold bg-blue-50 px-3 py-1.5 rounded transition-all shadow-sm">
+                        <i class="fas fa-eye mr-1"></i> Kartu
+                    </button>
+                </td>
+            </tr>
+        `).join('') : `<tr><td colspan="8" class="py-20 text-center text-gray-400 italic text-sm">
+            <i class="fas fa-folder-open text-3xl mb-3 opacity-20"></i><br>
+            Tidak ada pergerakan stok di lokasi "${loc}" pada periode ini.
+        </td></tr>`;
+
+        output.innerHTML = `
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-100/50 border-b border-gray-200">
+                        <tr>
+                            <th class="py-3 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Kode</th>
+                            <th class="py-3 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Nama Item</th>
+                            <th class="py-3 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Unit</th>
+                            <th class="py-3 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Stok Awal</th>
+                            <th class="py-3 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Masuk (+)</th>
+                            <th class="py-3 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Keluar (-)</th>
+                            <th class="py-3 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Stok Akhir</th>
+                            <th class="py-3 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100">${rows}</tbody>
+                </table>
+            </div>`;
+    } catch (e) {
+        console.error(e);
+        const output = document.getElementById('wip_mutation_report_output');
+        if (output) output.innerHTML = `<div class="py-20 text-center text-red-500 font-bold text-sm">Terjadi kesalahan saat memuat data.</div>`;
+    }
+};
+
+function openWIPHistoryModal(itemId, location) {
+    const item = db.findById('inventoryItems', itemId);
+    if (!item) return;
+
+    const allTxs = db.read('stockTransactions') || [];
+    const txs = allTxs.filter(t => t.itemId === itemId && t.location === location)
+                      .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    const rows = txs.map(t => `
+        <tr class="border-b border-gray-50 text-[11px]">
+            <td class="py-2.5 px-2 text-gray-500">${new Date(t.date).toLocaleString('id-ID', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'})}</td>
+            <td class="py-2.5 px-2">
+                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${t.type === 'IN' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}">
+                    ${t.type === 'IN' ? 'IN' : 'OUT'}
+                </span>
+            </td>
+            <td class="py-2.5 px-2 font-bold text-right ${t.type === 'IN' ? 'text-green-700' : 'text-red-700'}">
+                ${t.type === 'IN' ? '+' : '-'}${invFmt(t.qty)}
+            </td>
+            <td class="py-2.5 px-2">
+                <span class="font-medium text-gray-700 text-xs">${t.reference || '-'}</span>
+                ${t.notes ? `<span class="text-gray-400 block text-[9px] italic">${t.notes}</span>` : ''}
+            </td>
+        </tr>
+    `).join('');
+
+    const body = `
+        <div class="p-1">
+            <div class="mb-4 bg-gray-50 p-3 rounded border border-gray-100 flex justify-between items-center">
+                <div>
+                    <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Item</h4>
+                    <p class="text-sm font-bold text-gray-800">${item.itemName}</p>
+                </div>
+                <div class="text-right">
+                    <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Lokasi</h4>
+                    <p class="text-[11px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">${location}</p>
+                </div>
+            </div>
+            <div class="max-h-[400px] overflow-y-auto border border-gray-200 rounded">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-100 sticky top-0 shadow-sm">
+                        <tr class="text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-200">
+                            <th class="py-2 px-2">Waktu</th>
+                            <th class="py-2 px-2">Tipe</th>
+                            <th class="py-2 px-2 text-right">Qty</th>
+                            <th class="py-2 px-2">Keterangan</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows || `<tr><td colspan="4" class="py-10 text-center text-gray-400 italic text-xs">Belum ada riwayat mutasi</td></tr>`}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+
+    showModal(`Kartu Stok WIP: ${location}`, body, `<button onclick="closeModal()" class="px-6 py-2 bg-gray-800 text-white rounded text-xs font-bold uppercase hover:bg-black transition-colors">Tutup</button>`);
+}
+
+// ─── 7. JUDGMENT / NG BARANG ──────────────────────────────────
+window.renderInventoryJudgment = () => {
+    const canEdit = getModulePermission('logistik').edit;
+    document.getElementById('pageTitle').innerText = 'Judgment / Barang NG';
+    const mc = document.getElementById('main-content');
+    
+    // Initialize & Persist Filters
+    window._judgmentFilters = window._judgmentFilters || { start: '', end: '', status: '', itemName: '' };
+    const f = window._judgmentFilters;
+
+    let judgments = db.read('inventoryJudgments') || [];
+
+    // Apply Filters
+    if (f.start) {
+        judgments = judgments.filter(j => j.date >= f.start);
+    }
+    if (f.end) {
+        judgments = judgments.filter(j => j.date <= f.end);
+    }
+    if (f.status) {
+        judgments = judgments.filter(j => j.status === f.status);
+    }
+    if (f.itemName) {
+        const q = f.itemName.toLowerCase();
+        judgments = judgments.filter(j => {
+            const item = db.findById('inventoryItems', j.itemId);
+            return item && (item.itemName.toLowerCase().includes(q) || item.itemCode.toLowerCase().includes(q));
+        });
+    }
+
+    judgments.sort((a,b) => new Date(b.date) - new Date(a.date));
+
+    // Options for Statuses
+    const statusTypes = ['NG (NOT GOOD)', 'REJECTED', 'EXPIRED', 'WASTE', 'DAMAGE'];
+    const statusOpts = statusTypes.map(s => `<option value="${s}" ${f.status === s ? 'selected' : ''}>${s}</option>`).join('');
+
+    const rows = judgments.length ? judgments.map(j => {
+        const item = db.findById('inventoryItems', j.itemId);
+        return `<tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+            <td class="py-3 px-4 text-xs font-mono font-medium text-gray-500">${j.date || '-'}</td>
+            <td class="py-3 px-4 text-xs font-bold text-blue-600">${item ? item.itemCode : '-'}</td>
+            <td class="py-3 px-4 text-sm font-medium text-gray-800">${item ? item.itemName : '-'}</td>
+            <td class="py-3 px-4 text-xs font-bold text-gray-400 uppercase tracking-widest">${j.location || 'WHS'}</td>
+            <td class="py-3 px-4 text-sm text-right font-black text-red-600">-${invFmt(j.qty)} <span class="text-[10px] font-normal text-gray-400 ml-1 uppercase">${item ? item.unit : '-'}</span></td>
+            <td class="py-3 px-4 text-xs">
+                <span class="px-2 py-0.5 bg-red-50 text-red-700 rounded text-[10px] font-bold uppercase tracking-wider ring-1 ring-red-100">${j.status || 'NG'}</span>
+            </td>
+            <td class="py-3 px-3 text-xs text-gray-500 font-medium">${j.notes || '-'}</td>
+            <td class="py-3 px-4 text-xs text-right whitespace-nowrap">
+                <button onclick="deleteInventoryJudgment('${j.id}')" class="text-gray-400 hover:text-red-600 transition-colors pointer-cursor p-1" title="Hapus"><i class="fas fa-trash-alt"></i></button>
+            </td>
+        </tr>`;
+    }).join('') : `<tr><td colspan="8" class="py-12 text-center text-gray-400 italic">Belum ada data judgment sesuai kriteria filter.</td></tr>`;
+
+    mc.innerHTML = `
+    <div class="space-y-4">
+        <!-- Standard Filter Bar -->
+        <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-wrap gap-4 items-end">
+            <div class="flex-1 min-w-[140px]">
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Dari Tanggal</label>
+                <input type="date" id="jud_filter_start" value="${f.start}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+            <div class="flex-1 min-w-[140px]">
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Sampai Tanggal</label>
+                <input type="date" id="jud_filter_end" value="${f.end}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+            <div class="w-48">
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Status NG</label>
+                <select id="jud_filter_status" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none">
+                    <option value="">-- Semua Status --</option>${statusOpts}
+                </select>
+            </div>
+            <div class="flex-1 min-w-[200px]">
+                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Pencarian Barang</label>
+                <input type="text" id="jud_filter_name" value="${f.itemName}" placeholder="Cari Nama/Kode Item..." 
+                    class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+            </div>
+            <div class="flex gap-2">
+                <button onclick="updateJudgmentFilters()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all"><i class="fas fa-search"></i> Cari</button>
+                <button onclick="resetJudgmentFilters()" class="bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-bold transition-all">Reset</button>
+            </div>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex justify-between items-center transition-all">
+            <div>
+                <h2 class="text-xl font-black text-gray-800 uppercase tracking-tight flex items-center gap-2">
+                    <i class="fas fa-exclamation-triangle text-red-500"></i> Log Barang NG / Judgment
+                </h2>
+                <p class="text-[11px] text-gray-400 font-bold uppercase tracking-wider mt-0.5">Daftar mutasi afkir & barang tidak layak pakai</p>
+            </div>
+            ${canEdit ? `
+            <button onclick="openJudgmentModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all active:scale-95">
+                <i class="fas fa-plus"></i> Rekam Barang NG
+            </button>` : ''}
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-gray-50 text-gray-400 text-[10px] font-black uppercase tracking-widest">
+                        <tr>
+                            <th class="py-3 px-4 border-b border-gray-200">Tanggal</th>
+                            <th class="py-3 px-4 border-b border-gray-200">ID Item</th>
+                            <th class="py-3 px-4 border-b border-gray-200">Nama Produk AFKIR</th>
+                            <th class="py-3 px-4 border-b border-gray-200">Gudang</th>
+                            <th class="py-3 px-4 border-b border-gray-200 text-right">Kuantitas</th>
+                            <th class="py-3 px-4 border-b border-gray-200">Status</th>
+                            <th class="py-3 px-4 border-b border-gray-200">Keterangan</th>
+                            <th class="py-3 px-4 border-b border-gray-200 text-right">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody class="text-sm font-sans divide-y divide-gray-100">${rows}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>`;
+};
+
+window.updateJudgmentFilters = () => {
+    window._judgmentFilters = {
+        start: document.getElementById('jud_filter_start').value,
+        end: document.getElementById('jud_filter_end').value,
+        status: document.getElementById('jud_filter_status').value,
+        itemName: document.getElementById('jud_filter_name').value.trim()
+    };
+    renderInventoryJudgment();
+};
+
+window.resetJudgmentFilters = () => {
+    window._judgmentFilters = { start: '', end: '', status: '', itemName: '' };
+    renderInventoryJudgment();
+};
+
+window.openJudgmentModal = () => {
+    const items = db.read('inventoryItems').filter(i => i.status !== 'INACTIVE');
+    const today = new Date().toISOString().split('T')[0];
+
+    const modalHTML = `
+    <div id="judgment-modal" class="fixed inset-0 bg-slate-800/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 italic-none">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden animate-slide-up border border-gray-100">
+            <div class="bg-white border-b border-gray-100 p-6 flex justify-between items-center">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-red-50 text-red-600 rounded-lg flex items-center justify-center border border-red-100">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-bold text-gray-800 uppercase tracking-tight">Record NG / Judgment</h3>
+                        <p class="text-[11px] text-gray-400 font-medium uppercase tracking-wider">Mutasi Barang Rusak/Afkir</p>
+                    </div>
+                </div>
+                <button onclick="closeModal('judgment-modal')" class="text-gray-400 hover:text-gray-600 transition-colors">
+                    <i class="fas fa-times text-lg"></i>
+                </button>
+            </div>
+            
+            <form id="form-judgment" class="p-6 space-y-5">
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="space-y-1">
+                        <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider ml-1">Tanggal</label>
+                        <input type="date" name="date" value="${today}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider ml-1">Pilih Gudang/Tahap</label>
+                        <select name="location" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white">
+                            <option value="WHS">Gudang Utama (WHS)</option>
+                            <option value="MIXING">Mixing</option>
+                            <option value="OVEN_BASAH">Oven Basah</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="space-y-1">
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider ml-1">Pilih Produk Ter-NG</label>
+                    <select name="itemId" required class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white">
+                        <option value="">-- Cari Nama atau Kode Item --</option>
+                        ${items.map(i => `<option value="${i.id}">[${i.itemCode}] ${i.itemName}</option>`).join('')}
+                    </select>
+                </div>
+
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="space-y-1">
+                        <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider ml-1">Jumlah (Qty)</label>
+                        <input type="number" name="qty" required step="any" placeholder="0.00" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white">
+                    </div>
+                    <div class="space-y-1">
+                        <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider ml-1">Kategori NG</label>
+                        <select name="status" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white">
+                            <option value="NG (NOT GOOD)">NG (NOT GOOD)</option>
+                            <option value="REJECTED">REJECTED (AFKIR)</option>
+                            <option value="EXPIRED">EXPIRED</option>
+                            <option value="WASTE">WASTE (HASIL SISA)</option>
+                            <option value="DAMAGE">DAMAGE (RUSAK FISIK)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="space-y-1">
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider ml-1">Keterangan / Alasan</label>
+                    <textarea name="notes" rows="3" placeholder="Contoh: Tekstur tidak sesuai standar..." class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"></textarea>
+                </div>
+
+                <div class="pt-4 flex gap-3">
+                    <button type="button" onclick="closeModal('judgment-modal')" class="flex-1 px-4 py-2.5 rounded-lg text-gray-600 font-bold uppercase tracking-wider text-xs border border-gray-300 hover:bg-gray-50 transition-colors">Batal</button>
+                    <button type="submit" class="flex-[1.5] bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg font-bold uppercase tracking-wider text-xs shadow-sm transition-colors">
+                        <i class="fas fa-save mr-2"></i> Simpan Data NG
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>`;
+
+    document.getElementById('modal-container').innerHTML = modalHTML;
+
+    document.getElementById('form-judgment').onsubmit = (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const data = Object.fromEntries(fd.entries());
+        data.qty = parseFloat(data.qty);
+
+        // 1. Validate qty sufficiency
+        const currentStock = db.getInventoryStock(data.itemId, data.location);
+        if (currentStock < data.qty) {
+            Swal.fire({
+                title: 'Stok Tidak Cukup',
+                text: `Kuantitas di ${data.location} hanya tersedia ${invFmt(currentStock)}. Harap periksa kembali stok fisik.`,
+                icon: 'warning',
+                confirmButtonColor: '#ef4444'
+            });
+            return;
+        }
+
+        // 2. Add to database table
+        const res = db.insert('inventoryJudgments', {
+            ...data,
+            createdBy: window._session?.fullName || 'User'
+        });
+
+        // 3. Impact Stock: OUT transaction
+        db.addInventoryTransaction(
+            data.itemId, 
+            'OUT', 
+            data.qty, 
+            'SHRINKAGE', 
+            res.id, 
+            `JUDGMENT [${data.status}]: ${data.notes}`, 
+            window._session?.fullName || 'System',
+            data.location
+        );
+
+        showToast('Judgment NG berhasil disimpan dan stok terpotong.', 'success');
+        closeModal('judgment-modal');
+        renderInventoryJudgment();
+    };
+};
+
+window.deleteInventoryJudgment = (id) => {
+    Swal.fire({
+        title: 'Hapus Judgment?',
+        text: 'Data akan dihapus dan stok akan ditarik balik (Adjust IN).',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'Ya, Hapus!',
+        cancelButtonText: 'Batal'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            // Find the Tx to reverse
+            const txs = db.read('stockTransactions');
+            const idx = txs.findIndex(t => t.reference === 'SHRINKAGE' && t.referenceId === id);
+            if (idx > -1) {
+                txs.splice(idx, 1);
+                db.save('stockTransactions', txs);
+            }
+            db.delete('inventoryJudgments', id);
+            showToast('Data judgment dihapus.', 'success');
+            renderInventoryJudgment();
+        }
+    });
 };
 
 
