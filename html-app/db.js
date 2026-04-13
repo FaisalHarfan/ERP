@@ -14,8 +14,12 @@ const db = {
             'inventoryItems', 'stockTransactions', 'notifications',
             'machines', 'bomHeaders', 'bomMaterials', 'manufacturingOrders', 'dailyProductionLogs', 'productionLineBatches',
             'accounts', 'expenses', 'journalEntries', 'bankAccounts', 'departments', 'creditNotes', 'debitNotes', // Finance Tables
-            'salesReturns', 'productExchanges', 'deliveryOrders', 'inventoryJudgments', // Sales Return, Exchange & Delivery Tables
+            'salesReturns', 'productExchanges', 'deliveryOrders', 'inventoryJudgments', 'inventoryConversions', 'packBreakdowns', // Sales Return, Exchange, Delivery, Conversion & Pack Breakdown Tables
             'users', 'roles', 'systemLogs'];
+    },
+
+    uuid: () => {
+        return Date.now().toString() + Math.random().toString(36).substr(2, 5);
     },
 
     // Initialize empty arrays for all tables if not exist
@@ -36,113 +40,6 @@ const db = {
                 localStorage.setItem(DB_PREFIX + table, JSON.stringify([]));
             }
         });
-
-        // Data Cleanup / Migration: Rename Stock Mixing (KARUNG) to Stock Mixing
-        const items = db.read('inventoryItems');
-        let itemChanged = false;
-        items.forEach(it => {
-            if (it.itemName === 'Stock Mixing (KARUNG)' || it.itemName === 'Stock Mixing') {
-                it.itemName = 'Stock Mixing';
-                it.category = 'MIXING_STOCK';
-                itemChanged = true;
-            }
-            if (it.category === 'MIXING_STOCK' && it.itemName !== 'Stock Mixing') {
-                it.category = 'FINISHED_GOODS';
-                itemChanged = true;
-            }
-        });
-        if (itemChanged) db.save('inventoryItems', items);
-
-        // Migration: Populate productId for existing MOs by matching name
-        const mos = db.read('productionOrders');
-        let moChanged = false;
-        mos.forEach(mo => {
-            if (!mo.productId && mo.productName) {
-                const p = items.find(i => i.itemName === mo.productName && i.category === 'FINISHED_GOODS');
-                if (p) {
-                    mo.productId = p.id;
-                    moChanged = true;
-                }
-            }
-        });
-        // Migration: Consolidate all Mixing stock into a single 'Stock Mixing' item
-        let mixingMaster = items.find(i => i.itemName === 'Stock Mixing');
-        if (!mixingMaster) {
-            mixingMaster = {
-                id: db.uuid(),
-                itemCode: 'FG-0015', // User's code from screenshot
-                itemName: 'Stock Mixing',
-                category: 'MIXING_STOCK',
-                unit: 'SAK',
-                status: 'ACTIVE',
-                purchasePrice: 0,
-                minStock: 0
-            };
-            items.push(mixingMaster);
-            itemChanged = true;
-        }
-
-        if (mixingMaster) {
-            const txs = db.read('stockTransactions');
-            let txChanged = false;
-            items.forEach(it => {
-                if (it.itemName && it.itemName.includes('(Mixing)') && it.id !== mixingMaster.id) {
-                    // Move all transactions from it.id to mixingMaster.id
-                    txs.forEach(t => {
-                        if (t.itemId === it.id) {
-                            t.itemId = mixingMaster.id;
-                            t.itemName = mixingMaster.itemName;
-                            t.itemCode = mixingMaster.itemCode;
-                            txChanged = true;
-                        }
-                    });
-                    // Mark it for deletion
-                    it._toDelete = true;
-                }
-            });
-            if (txChanged) db.save('stockTransactions', txs);
-            
-            const finalItems = items.filter(i => !i._toDelete);
-            if (finalItems.length !== items.length) {
-                db.save('inventoryItems', finalItems);
-                // Also update the local 'items' variable for any subsequent logic in init
-                items.length = 0;
-                items.push(...finalItems);
-                itemChanged = true;
-            }
-        }
-
-        if (moChanged) db.save('productionOrders', mos);
-
-        // Migration: Move all (Oven Kering) stock/tx to genuine Finish Goods
-        let cleanUpNeeded = false;
-        items.forEach(it => {
-            if (it.itemName && it.itemName.includes('(Oven Kering)')) {
-                const baseName = it.itemName.replace(' (Oven Kering)', '').trim();
-                const parent = items.find(i => i.itemName === baseName && i.category === 'FINISHED_GOODS');
-                if (parent) {
-                    const txs = db.read('stockTransactions');
-                    let txMoved = false;
-                    txs.forEach(t => {
-                        if (t.itemId === it.id) {
-                            t.itemId = parent.id;
-                            t.itemName = parent.itemName;
-                            t.itemCode = parent.itemCode;
-                            txMoved = true;
-                        }
-                    });
-                    if (txMoved) db.save('stockTransactions', txs);
-                }
-                it._toDelete = true;
-                cleanUpNeeded = true;
-            }
-        });
-        if (cleanUpNeeded) {
-            const purged = items.filter(i => !i._toDelete);
-            db.save('inventoryItems', purged);
-            items.length = 0;
-            items.push(...purged);
-        }
     },
 
     read: (table) => {
@@ -248,7 +145,8 @@ const db = {
 
     // Auto-generate Item Code by category prefix 
     generateItemCode: (category) => {
-        const prefix = category === 'RAW_MATERIAL' ? 'RM' : category === 'WIP' ? 'WIP' : 'FG';
+        const stageCats = ['MIXING_STOCK', 'OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK', 'WIP'];
+        const prefix = category === 'RAW_MATERIAL' ? 'RM' : (category === 'FINISHED_GOODS' ? 'FG' : (stageCats.includes(category) ? 'WIP' : 'FG'));
         const existing = db.read('inventoryItems').filter(i => i.itemCode && i.itemCode.startsWith(prefix));
         const next = (existing.length + 1).toString().padStart(4, '0');
         return `${prefix}-${next}`;
@@ -272,19 +170,23 @@ const db = {
         });
         return txs.reduce((total, t) => {
             const qty = parseFloat(t.qty) || 0;
-            if (t.type === 'IN') return total + qty;
-            if (t.type === 'OUT' || t.type === 'SHRINKAGE') return total - qty;
-            return total; // Ignore NG_IN or other historical-only types
+            const type = (t.type || '').toUpperCase();
+            if (['IN', 'ADJUST_IN', 'PRODUCTION_IN', 'RETURN_IN'].includes(type)) return total + qty;
+            if (['OUT', 'SHRINKAGE', 'ADJUST_OUT', 'PRODUCTION_OUT', 'SALES_OUT', 'WASTE'].includes(type)) return total - qty;
+            
+            // Fallback for generic types
+            if (type === 'IN') return total + qty;
+            if (type === 'OUT' || type === 'SHRINKAGE') return total - qty;
+            return total;
         }, 0);
     },
 
-    // Add inventory stock transaction
     addInventoryTransaction: (itemId, type, qty, reference, referenceId, notes, createdBy = 'Admin', location = 'WHS') => {
         const item = db.findById('inventoryItems', itemId);
         if (!item) return null;
         const txNo = db.generateTxNo(type);
 
-        return db.insert('stockTransactions', {
+        const tx = db.insert('stockTransactions', {
             txNo,
             date: new Date().toISOString(),
             itemId,
@@ -298,6 +200,8 @@ const db = {
             createdBy,
             location        // 'WHS', 'MIXING', 'OVEN_BASAH', 'OVEN_KERING'
         });
+
+        return tx;
     },
 
     // Validate stock is sufficient for OUT transaction
@@ -327,13 +231,6 @@ const db = {
         return `BOM-${next}`;
     },
 
-    generateMONumber: () => {
-        const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-        const existing = db.read('manufacturingOrders').filter(m => m.moNumber && m.moNumber.includes(dateStr));
-        const seq = (existing.length + 1).toString().padStart(3, '0');
-        return `MO-${dateStr}-${seq}`;
-    },
-
     // Sum qty produced from all daily logs for a given MO
     getMOQtyProduced: (moId) => {
         const logs = db.read('dailyProductionLogs').filter(l => l.moId === moId);
@@ -350,43 +247,63 @@ const db = {
     // ─── PRODUCTION LINE (STREAMLINED) HELPERS ────────────────
     ensureWIPItem: (productId, stageLabel) => {
         const items = db.read('inventoryItems');
-        // If Mixing, always use the unified 'Stock Mixing' item
-        if (stageLabel.toLowerCase().includes('mixing')) {
-            const joint = items.find(i => i.itemName === 'Stock Mixing');
+        const isMixing = stageLabel.toLowerCase().includes('mixing');
+        
+        // If Mixing, always use the unified 'Campuran' item (tracks sacks)
+        if (isMixing) {
+            let joint = items.find(i => i.itemName === 'Campuran' || i.itemName === 'Stock Mixing');
             if (joint) return joint.id;
+            
+            // Create if missing
+            const newItem = db.insert('inventoryItems', {
+                itemCode: 'MIX-STK-GEN',
+                itemName: 'Campuran',
+                category: 'MIXING_STOCK',
+                unit: 'SAK',
+                minStock: 0,
+                status: 'ACTIVE',
+                createdAt: new Date().toISOString()
+            });
+            return newItem.id;
         }
 
         const product = db.findById('inventoryItems', productId);
         if (!product) return null;
-        
+
         // If stageLabel is Finish Good, we return the Product ID directly
-        if (stageLabel && stageLabel.toLowerCase().includes('finish good')) {
+        const labelLower = stageLabel.toLowerCase();
+        if (labelLower.includes('finish good')) {
             return product.id;
         }
 
-        const wipCode = `${product.itemCode}-WIP-${stageLabel.toUpperCase().replace(/\s+/g, '')}`;
-        const existing = db.read('inventoryItems').find(i => i.itemCode === wipCode);
-        if (existing) return existing.id;
+        // Determine target category
+        let category = 'WIP';
+        if (labelLower.includes('oven basah')) category = 'OVEN_BASAH_STOCK';
+        if (labelLower.includes('oven kering')) category = 'OVEN_KERING_STOCK';
+        if (labelLower.includes('mixing')) category = 'MIXING_STOCK';
 
-        const newItem = db.insert('inventoryItems', {
-            itemCode: wipCode,
-            itemName: `${product.itemName} (${stageLabel})`,
-            productId: product.id,
-            category: 'WIP',
-            unit: product.unit || 'Kg',
-            minStock: 0,
-            status: 'ACTIVE',
-            createdAt: new Date().toISOString()
-        });
-        return newItem.id;
+        // Target Name: Sanitize by removing any existing stage suffix first
+        const baseName = product.itemName.replace(/\s*\([^)]+\)/g, '').trim();
+        const targetName = `${baseName} (${stageLabel})`;
+
+        // 1. SEARCH BY NAME & CATEGORY (Matches manual items created by user)
+        const existingByName = items.find(i => 
+            i.category === category && 
+            (i.itemName.toLowerCase() === targetName.toLowerCase() || i.itemName.toLowerCase() === `${baseName.toLowerCase()} (${labelLower})`)
+        );
+        if (existingByName) return existingByName.id;
+
+        // 2. SEARCH BY AUTO-GEN CODE (Old logic fallback)
+        const wipCode = `${product.itemCode}-WIP-${stageLabel.toUpperCase().replace(/\s+/g, '')}`;
+        const existingByCode = items.find(i => i.itemCode === wipCode);
+        if (existingByCode) return existingByCode.id;
+
+        // 3. Return null if nothing found (Prevent auto-creation as per user request)
+        return null;
     },
 
     seedWIPItems: () => {
-        const products = db.read('inventoryItems').filter(i => i.category === 'FINISHED_GOODS' && i.status === 'ACTIVE');
-        const stages = ['Mixing', 'Oven Basah', 'Oven Kering'];
-        products.forEach(p => {
-            stages.forEach(s => db.ensureWIPItem(p.id, s));
-        });
+        // Disabled as per user request to prevent auto-creation of items
     },
 
     processStageTransition: (batchId, nextStage, data) => {
@@ -508,9 +425,9 @@ const db = {
                 { id: 'acc_cash', code: '1101', name: 'Kas Utama', type: 'ASSET', description: 'Kas tunai perusahaan', status: 'ACTIVE' },
                 { id: 'acc_bank', code: '1102', name: 'Bank BCA', type: 'ASSET', description: 'Rekening Bank BCA', status: 'ACTIVE' },
                 { id: 'acc_ar', code: '1201', name: 'Piutang Usaha', type: 'ASSET', description: 'Tagihan ke pelanggan', status: 'ACTIVE' },
-                { id: 'acc_inv_rm', code: '1301', name: 'Persediaan Bahan Baku', type: 'ASSET', description: 'Stok Raw Material', status: 'ACTIVE' },
-                { id: 'acc_inv_wip', code: '1303', name: 'Persediaan Barang Dalam Proses', type: 'ASSET', description: 'Stok WIP', status: 'ACTIVE' },
-                { id: 'acc_inv_fg', code: '1302', name: 'Persediaan Barang Jadi', type: 'ASSET', description: 'Stok Finished Goods', status: 'ACTIVE' },
+                { id: 'acc_inv_rm', code: '1301', name: 'Persediaan Bahan Baku', type: 'ASSET', description: 'Stok Bahan Baku', status: 'ACTIVE' },
+                { id: 'acc_inv_wip', code: '1303', name: 'Persediaan Barang Dalam Proses', type: 'ASSET', description: 'Stok WIP (Cancel)', status: 'ACTIVE' },
+                { id: 'acc_inv_fg', code: '1302', name: 'Persediaan Barang Jadi', type: 'ASSET', description: 'Stok Gudang Jadi', status: 'ACTIVE' },
 
                 // Liabilities (2000)
                 { id: 'acc_ap', code: '2101', name: 'Hutang Usaha', type: 'LIABILITY', description: 'Hutang ke supplier', status: 'ACTIVE' },
@@ -574,6 +491,19 @@ const db = {
 
 // Initialize DB on load
 db.init();
+// Migration: Ensure machines have types (Strict overwrite for Oven)
+const mchs = db.read('machines');
+let mchChanged = false;
+mchs.forEach(m => {
+    const isOven = m.name.toLowerCase().includes('oven');
+    const correctType = isOven ? 'OVEN' : 'MIXING';
+    if (m.type !== correctType) {
+        m.type = correctType;
+        mchChanged = true;
+    }
+});
+if (mchChanged) db.save('machines', mchs);
+
 db.seedDefaultFinanceData();
 db.seedDefaultUsersAndRoles();
 

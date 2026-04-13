@@ -29,6 +29,28 @@ window.renderSalesDeliveryOrders = function () {
     const doList = db.read('deliveryOrders').sort((a, b) => new Date(b.date) - new Date(a.date));
     const perm = getModulePermission('penjualan');
 
+    if (!window._salesDoActiveTab) window._salesDoActiveTab = 'pending';
+
+    const filters = window.currentFilters.salesDeliveryOrders || { start: '', end: '', customer: '' };
+    
+    let filteredList = filterByDateRange(doList, 'salesDeliveryOrders');
+    if (filters.customer) {
+        filteredList = filteredList.filter(d => {
+            const customerName = (d.recipientName || '').toLowerCase();
+            return customerName.includes(filters.customer.toLowerCase());
+        });
+    }
+
+    let filteredDOs = [];
+    if (window._salesDoActiveTab === 'pending') {
+        filteredDOs = filteredList.filter(d => d.status !== 'SHIPPED');
+    } else {
+        filteredDOs = filteredList.filter(d => d.status === 'SHIPPED');
+    }
+
+    const customers = db.read('customers');
+    const customerOptions = customers.map(c => `<option value="${c.name}" ${filters.customer === c.name ? 'selected' : ''}>${c.name}</option>`).join('');
+
     const statusBadge = (s) => {
         if (s === 'DRAFT' || s === 'PENDING') return '<span class="px-2 py-1 bg-gray-100 text-gray-500 rounded text-[10px] font-bold uppercase">Waiting WH</span>';
         if (s === 'HOLD') return '<span class="px-2 py-1 bg-red-100 text-red-600 rounded text-[10px] font-bold uppercase">Stock Hold</span>';
@@ -38,6 +60,49 @@ window.renderSalesDeliveryOrders = function () {
 
     mc.innerHTML = `
         <div class="space-y-4">
+            <!-- Filter Bar Standar Premium (Accordion) -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-5 overflow-hidden">
+                <div onclick="toggleDOFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
+                    <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
+                        <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
+                        ${(!window._uiState.doFilterOpen && (filters.start || filters.end || filters.customer)) ? 
+                            `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
+                    </h3>
+                    <div class="flex items-center gap-3">
+                        <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.doFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
+                        <i class="fas fa-chevron-${window._uiState.doFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
+                    </div>
+                </div>
+
+                <div class="${window._uiState.doFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Dari Tanggal SJ</label>
+                            <input type="date" id="sdo_filter_start" value="${filters.start}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white">
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Sampai Tanggal SJ</label>
+                            <input type="date" id="sdo_filter_end" value="${filters.end}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white">
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Pilih Customer</label>
+                            <select id="sdo_filter_customer" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white cursor-pointer font-sans appearance-none">
+                                <option value="">-- Semua Customer --</option>
+                                ${customerOptions}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 mt-4 pt-4 border-t border-slate-50">
+                        <button onclick="applySalesDOFilter()" class="bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 flex items-center gap-2">
+                            <i class="fas fa-search"></i> CARI DOKUMEN
+                        </button>
+                        <button onclick="resetSalesDOFilter()" class="bg-slate-50 hover:bg-slate-100 text-slate-400 px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">
+                            <i class="fas fa-undo mr-2"></i> RESET
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Header -->
             <div class="flex flex-wrap justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100 gap-3">
                 <div>
@@ -58,6 +123,18 @@ window.renderSalesDeliveryOrders = function () {
                 ` : ''}
             </div>
 
+            <!-- Tabs -->
+            <div class="flex items-center gap-4 mb-2 border-b border-gray-200">
+                <button onclick="window._salesDoActiveTab='pending'; window.renderSalesDeliveryOrders()" 
+                    class="px-4 py-3 text-sm font-bold border-b-2 transition-all ${window._salesDoActiveTab === 'pending' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'}">
+                    Antrean Pengiriman
+                </button>
+                <button onclick="window._salesDoActiveTab='history'; window.renderSalesDeliveryOrders()" 
+                    class="px-4 py-3 text-sm font-bold border-b-2 transition-all ${window._salesDoActiveTab === 'history' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'}">
+                    Riwayat Pengiriman
+                </button>
+            </div>
+
             <!-- Table -->
             <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <table class="w-full text-left border-collapse">
@@ -72,8 +149,8 @@ window.renderSalesDeliveryOrders = function () {
                         </tr>
                     </thead>
                     <tbody class="text-sm divide-y divide-gray-100">
-                        ${doList.length === 0 ? '<tr><td colspan="6" class="px-6 py-12 text-center text-gray-400 italic">Belum ada data surat jalan.</td></tr>' :
-            doList.map(d => `
+                        ${filteredDOs.length === 0 ? '<tr><td colspan="6" class="px-6 py-12 text-center text-gray-400 italic">Belum ada data surat jalan di tab ini.</td></tr>' :
+            filteredDOs.map(d => `
                 <tr class="hover:bg-gray-50/50 transition-colors">
                     <td class="px-4 py-3 font-bold text-blue-700">${d.doNumber}</td>
                     <td class="px-4 py-3 text-gray-800 font-medium">${d.recipientName || '-'}</td>
@@ -94,6 +171,20 @@ window.renderSalesDeliveryOrders = function () {
     `;
 };
 
+window.applySalesDOFilter = function() {
+    const start = document.getElementById('sdo_filter_start').value;
+    const end = document.getElementById('sdo_filter_end').value;
+    const customer = document.getElementById('sdo_filter_customer').value;
+    
+    window.currentFilters.salesDeliveryOrders = { start, end, customer };
+    renderSalesDeliveryOrders();
+};
+
+window.resetSalesDOFilter = function() {
+    window.currentFilters.salesDeliveryOrders = { start: '', end: '', customer: '' };
+    renderSalesDeliveryOrders();
+};
+
 // ==========================================
 // BLANK DELIVERY ORDER
 // ==========================================
@@ -108,7 +199,7 @@ window.openBlankDeliveryModal = function () {
         <div class="space-y-4">
             <div class="bg-gray-50 border border-gray-200 rounded-lg p-3 text-xs text-gray-600 flex items-center gap-2">
                 <i class="fas fa-info-circle text-gray-400"></i>
-                Surat jalan kosong — isi item secara manual untuk pengiriman yang belum ada orderan.
+                Surat jalan kosong â€” isi item secara manual untuk pengiriman yang belum ada orderan.
             </div>
             <div class="grid grid-cols-2 gap-4">
                 <div>
@@ -309,7 +400,7 @@ window.openDeliveryFromSOModal = function (soId = null) {
 
     const soOptions = salesOrders.map(so => {
         const cust = db.findById('customers', so.customerId);
-        return `<option value="${so.id}" ${soId === so.id ? 'selected' : ''}>SO-${so.soNumber} — ${cust?.name || 'Unknown'}</option>`;
+        return `<option value="${so.id}" ${soId === so.id ? 'selected' : ''}>SO-${so.soNumber} - ${cust?.name || 'Unknown'}</option>`;
     }).join('');
 
     const body = `
@@ -417,7 +508,7 @@ window.loadSOForDO = function () {
                     ${items.map((i, idx) => `
                         <tr>
                             <td class="px-2 py-2 text-gray-800 text-xs font-medium">${i.name}</td>
-                            <td class="px-2 py-2 text-center font-bold text-xs" id="dosi_qty_${idx}">${i.qty}</td>
+                            <td class="px-2 py-2 text-center font-bold text-xs" id="dosi_qty_${idx}">${formatNumber(i.qty)}</td>
                             <td class="px-2 py-2">
                                 <select onchange="window.updateSOColly('${idx}')" id="dosi_kemasan_${idx}" class="w-full border border-gray-300 rounded px-1 py-1 text-[10px] dosi-kemasan">
                                     <option value="">-- Pilih --</option>
@@ -808,7 +899,7 @@ window.renderWarehouseDeliveryOrders = function () {
                 Riwayat Pengiriman
             </button>
         </div>        <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-5 mb-5">
-            <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-2"><i class="fas fa-filter text-blue-500"></i> FILTER PENCARIAN</h3>
+            <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-3"><i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN</h3>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end mb-4">
                 <div>
                     <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Dari Tanggal SJ</label>
@@ -874,21 +965,21 @@ window.openConfirmShipmentModal = function(id) {
         const isOk = !i.inventoryItemId || stock >= i.qty;
         
         if (!isOk) {
-            issues.push(`<strong>${i.name}</strong>: Butuh ${invFmt(i.qty)}, Sisa ${invFmt(stock)}`);
+            issues.push(i.name);
         }
 
         return `
-            <tr class="border-b border-gray-50">
-                <td class="py-2 px-1">
-                    <span class="block font-bold text-gray-800 text-xs">${i.name}</span>
-                    <span class="text-[10px] text-gray-400 capitalize">${i.kemasan || '-'}</span>
+            <tr class="border-b border-gray-50 text-[11px]">
+                <td class="py-3 px-2">
+                    <span class="block font-bold text-gray-800">${i.name}</span>
+                    <span class="text-[9px] text-gray-400 capitalize">${i.kemasan || '-'}</span>
                 </td>
-                <td class="py-2 px-1 text-right font-black text-blue-700">${invFmt(i.qty)}</td>
-                <td class="py-2 px-1 text-right font-bold ${isOk ? 'text-green-600' : 'text-red-500'}">
+                <td class="py-3 px-2 text-right font-black text-blue-700">${invFmt(i.qty)}</td>
+                <td class="py-3 px-2 text-right font-bold ${isOk ? 'text-green-600' : 'text-red-500'}">
                     ${invFmt(stock)}
                 </td>
-                <td class="py-2 px-1 text-center">
-                    ${isOk ? '<i class="fas fa-check-circle text-green-500"></i>' : '<i class="fas fa-times-circle text-red-500"></i>'}
+                <td class="py-3 px-2 text-center text-[10px]">
+                    ${isOk ? '<span class="text-green-500 font-bold uppercase">Ready</span>' : '<span class="text-red-500 font-bold uppercase">Minus</span>'}
                 </td>
             </tr>
         `;
@@ -897,42 +988,39 @@ window.openConfirmShipmentModal = function(id) {
     const hasIssue = issues.length > 0;
 
     const body = `
-        <div class="space-y-4">
+        <div class="space-y-6">
             ${hasIssue ? `
-                <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-xl">
-                    <div class="flex items-center gap-3 mb-2">
-                        <i class="fas fa-ban text-red-600 text-xl"></i>
-                        <h4 class="text-sm font-black text-red-700 uppercase tracking-widest">Pengiriman Diblokir</h4>
-                    </div>
-                    <p class="text-xs text-red-600 mb-2 font-medium">Stok tidak mencukupi untuk item berikut. Harap lakukan pembelian atau produksi terlebih dahulu.</p>
-                    <ul class="text-[11px] text-red-700 list-disc list-inside space-y-1 bg-white/50 p-2 rounded-lg border border-red-100">
-                        ${issues.map(m => `<li>${m}</li>`).join('')}
-                    </ul>
+                <div class="p-3 border-2 border-orange-100 bg-orange-50/30 rounded-xl text-center">
+                    <h4 class="text-[10px] font-black text-orange-600 uppercase tracking-widest flex items-center justify-center gap-2 mb-1">
+                        <i class="fas fa-exclamation-triangle"></i> KONFIRMASI STOK MINUS
+                    </h4>
+                    <p class="text-[11px] text-orange-700 leading-tight">Beberapa barang tidak mencukupi, namun Anda diperbolehkan memproses pengiriman ini. Stok akan tercatat minus di mutasi.</p>
                 </div>
             ` : `
-                <div class="bg-green-50 border-l-4 border-green-500 p-4 rounded-r-xl">
-                    <div class="flex items-center gap-3">
-                        <i class="fas fa-check-circle text-green-600 text-xl"></i>
-                        <div>
-                            <h4 class="text-sm font-black text-green-700 uppercase tracking-widest">Stok Ready</h4>
-                            <p class="text-[11px] text-green-600 font-medium tracking-tight">Semua item tersedia di inventory. Anda dapat melanjutkan pengiriman.</p>
-                        </div>
-                    </div>
+                <div class="p-3 border-2 border-green-100 bg-green-50/30 rounded-xl text-center">
+                    <h4 class="text-[10px] font-black text-green-600 uppercase tracking-widest flex items-center justify-center gap-2 mb-1">
+                        <i class="fas fa-check-circle"></i> SIAP KIRIM
+                    </h4>
+                    <p class="text-[11px] text-green-700 leading-tight">Seluruh item tersedia dalam gudang. Silakan konfirmasi pengiriman.</p>
                 </div>
             `}
 
-            <div class="bg-gray-50 rounded-xl p-4 border border-gray-100">
-                <div class="grid grid-cols-2 gap-4 text-xs">
-                    <div><span class="text-gray-400 block font-bold uppercase text-[9px] mb-0.5">Customer</span> <strong class="text-gray-800 font-black">${d.recipientName}</strong></div>
-                    <div><span class="text-gray-400 block font-bold uppercase text-[9px] mb-0.5">No. SJ</span> <strong class="text-blue-700 font-black">${d.doNumber}</strong></div>
+            <div class="grid grid-cols-2 gap-x-8 gap-y-4 text-[11px] pb-4 border-b border-gray-100">
+                <div>
+                    <span class="block text-gray-400 uppercase font-bold text-[9px] mb-1">Pelanggan</span>
+                    <strong class="text-gray-800">${d.recipientName}</strong>
+                </div>
+                <div>
+                    <span class="block text-gray-400 uppercase font-bold text-[9px] mb-1">Nomor SJ</span>
+                    <strong class="text-blue-700">${d.doNumber}</strong>
                 </div>
             </div>
 
-            <div class="max-h-[250px] overflow-y-auto rounded-xl border border-gray-100">
-                <table class="w-full text-left">
-                    <thead class="bg-gray-50 sticky top-0 shadow-sm">
-                        <tr class="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-100">
-                            <th class="py-2 px-2">Item</th>
+            <div class="overflow-hidden">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-gray-100/50">
+                        <tr class="text-[9px] font-black text-gray-500 uppercase tracking-widest border-b border-gray-100">
+                            <th class="py-2 px-2">Item Barang</th>
                             <th class="py-2 px-2 text-right">Qty</th>
                             <th class="py-2 px-2 text-right">Stok</th>
                             <th class="py-2 px-2 text-center">Status</th>
@@ -942,85 +1030,73 @@ window.openConfirmShipmentModal = function(id) {
                 </table>
             </div>
 
-            <div class="grid grid-cols-2 gap-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-gray-100">
                 <div>
-                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">No. Resi / Tracking (Opsional)</label>
-                    <input type="text" id="dos_track_no" placeholder="Contoh: RESI-12345" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 font-bold">
+                    <label class="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5">No. Polisi / Driver</label>
+                    <input type="text" id="dos_track_no" placeholder="Contoh: B 1234 XY" value="${d.vehicleNo || ''}" class="w-full border-2 border-gray-100 rounded-lg px-3 py-2 text-xs focus:border-blue-500 outline-none font-bold">
                 </div>
                  <div>
-                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Keterangan Tambahan</label>
-                    <input type="text" id="dos_final_notes" value="${d.notes || ''}" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500">
+                    <label class="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Catatan Gudang</label>
+                    <input type="text" id="dos_final_notes" value="${d.notes || ''}" class="w-full border-2 border-gray-100 rounded-lg px-3 py-2 text-xs focus:border-blue-500 outline-none">
                 </div>
             </div>
         </div>
     `;
 
     const footer = `
-        <button onclick="confirmShipment('${id}')" 
-            ${hasIssue ? 'disabled' : ''} 
-            class="w-full sm:w-auto inline-flex justify-center rounded-lg ${hasIssue ? 'bg-gray-300 cursor-not-allowed opacity-50' : 'bg-green-600 hover:bg-green-700 shadow-lg shadow-green-100'} px-8 py-2.5 text-white text-xs font-black uppercase tracking-widest transition-all">
-            ${hasIssue ? 'Stok Tidak Cukup' : 'Setujui & Kirim Barang'}
-        </button>
-        <button onclick="closeModal()" class="mt-3 sm:mt-0 w-full sm:w-auto inline-flex justify-center rounded-lg border border-gray-300 px-8 py-2.5 bg-white text-gray-500 text-xs font-black uppercase tracking-widest hover:bg-gray-50 transition-all">Batal</button>
+        <div class="flex items-center gap-4">
+            <button onclick="confirmShipment('${id}')" 
+                class="inline-flex justify-center rounded-lg ${hasIssue ? 'bg-orange-600 hover:bg-orange-700 shadow-orange-100' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-100'} px-10 py-2.5 text-white text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
+                ${hasIssue ? 'Proses (Stok Minus)' : 'Konfirmasi Pengiriman'}
+            </button>
+            <button onclick="closeModal()" class="text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-gray-600">Batal</button>
+        </div>
     `;
 
-    showModal('Konfirmasi Pengiriman Gudang', body, footer, 'max-w-xl');
+    showModal('Verifikasi Keluar Barang', body, footer, 'max-w-lg');
 };
 
 window.confirmShipment = function(id) {
     const d = db.findById('deliveryOrders', id);
     if (!d) return;
 
-    // Final inventory check before finalizing
-    let errors = [];
-    (d.items || []).forEach(item => {
-        if (item.inventoryItemId) {
-            const stock = db.getInventoryStock(item.inventoryItemId);
-            if (stock < item.qty) {
-                errors.push(`${item.name}: Sisa ${invFmt(stock)}`);
-            }
-        }
-    });
-
-    if (errors.length > 0) {
-        showToast("Gagal Kirim! Stok berubah/tidak cukup: " + errors.join("; "), 'error');
-        openConfirmShipmentModal(id); // Refresh modal to show updated status
-        return;
-    }
-
     const trackingNo = document.getElementById('dos_track_no')?.value || '';
     const finalNotes = document.getElementById('dos_final_notes')?.value || '';
 
-    // 1. Update status
     db.update('deliveryOrders', id, {
         status: 'SHIPPED',
         shippedAt: new Date().toISOString(),
-        trackingNo: trackingNo,
+        vehicleNo: trackingNo,
         notes: finalNotes
     });
 
-    // 2. Potong Stok & Add Transactions
     (d.items || []).forEach(item => {
         if (item.inventoryItemId) {
+            const currentStock = db.getInventoryStock(item.inventoryItemId);
+            let remark = `Delivery Order ${d.doNumber}: ${item.name}`;
+            
+            if (currentStock < item.qty) {
+               remark += ` (Approved Minus: Stok Kurang saat pengiriman)`;
+            }
+
             db.addInventoryTransaction(
                 item.inventoryItemId,
                 'OUT',
                 item.qty,
                 'SALES_OUT',
                 id,
-                `Delivery Order ${d.doNumber}: ${item.name}`,
-                'Admin',
-                'WHS' // Deduct from main warehouse
+                remark,
+                'Admin Warehouse',
+                'WHS'
             );
         }
     });
 
-    // 3. Update Sales Order status if all items shipped (simplified)
     if (d.salesOrderId) {
         db.update('salesOrders', d.salesOrderId, { status: 'DELIVERED' });
     }
 
-    showToast(`Pengiriman SJ ${d.doNumber} berhasil dikonfirmasi. Stok telah diperbarui.`, 'success');
+    showToast(`Pengiriman SJ ${d.doNumber} berhasil dikonfirmasi.`, 'success');
     closeModal();
     renderWarehouseDeliveryOrders();
 };
@@ -1030,7 +1106,7 @@ window.viewShipmentDetails = function(id) {
     if (!d) return;
 
     const itemRows = (d.items || []).map(i => `
-        <tr class="border-b border-gray-100 text-sm text-gray-700">
+        <tr class="border-b border-gray-100 text-[11px] text-gray-700">
             <td class="py-3 px-2 font-medium">${i.name || '-'}</td>
             <td class="py-3 px-2 text-right font-bold text-blue-600">${invFmt(i.qty)} ${i.unit || ''}</td>
             <td class="py-3 px-2 text-center text-gray-500">${i.kemasan || '-'}</td>
@@ -1040,24 +1116,24 @@ window.viewShipmentDetails = function(id) {
 
     const body = `
         <div class="space-y-4">
-            <div class="grid grid-cols-2 gap-x-6 gap-y-3 text-sm bg-gray-50 p-4 rounded-xl border border-gray-100">
-                <div><span class="text-gray-400 block text-[10px] uppercase font-bold">No. Surat Jalan</span> <strong class="text-blue-700">${d.doNumber}</strong></div>
-                <div><span class="text-gray-400 block text-[10px] uppercase font-bold">Penerima</span> <strong>${d.recipientName}</strong></div>
-                <div><span class="text-gray-400 block text-[10px] uppercase font-bold">Tanggal Kirim</span> <strong class="text-green-600">${doDate(d.shippedAt)}</strong></div>
-                <div><span class="text-gray-400 block text-[10px] uppercase font-bold">Ref Order</span> <strong class="text-gray-700">${d.soNumber || d.invoiceNumber || '-'}</strong></div>
+            <div class="grid grid-cols-2 gap-x-6 gap-y-3 text-[11px] bg-gray-50 p-4 rounded-xl border border-gray-100">
+                <div><span class="text-gray-400 block text-[9px] uppercase font-bold">No. Surat Jalan</span> <strong class="text-blue-700">${d.doNumber}</strong></div>
+                <div><span class="text-gray-400 block text-[9px] uppercase font-bold">Penerima</span> <strong>${d.recipientName}</strong></div>
+                <div><span class="text-gray-400 block text-[9px] uppercase font-bold">Tanggal Kirim</span> <strong class="text-green-600">${doDate(d.shippedAt)}</strong></div>
+                <div><span class="text-gray-400 block text-[9px] uppercase font-bold">Ref Order</span> <strong class="text-gray-700">${d.soNumber || d.invoiceNumber || '-'}</strong></div>
                 <div class="col-span-2 border-t border-gray-200 mt-1 pt-2">
-                    <span class="text-gray-400 block text-[10px] uppercase font-bold">Alamat</span>
-                    <p class="text-gray-700 italic text-[11px]">${d.address || '-'}</p>
+                    <span class="text-gray-400 block text-[9px] uppercase font-bold">Alamat</span>
+                    <p class="text-gray-700 italic">${d.address || '-'}</p>
                 </div>
                 <div class="col-span-2 grid grid-cols-2 gap-4 mt-1">
-                    <div><span class="text-gray-400 block text-[10px] uppercase font-bold">Driver</span> <strong>${d.driverName || '-'}</strong></div>
-                    <div><span class="text-gray-400 block text-[10px] uppercase font-bold">Kendaraan / Resi</span> <strong>${d.vehicleNo || d.trackingNo || '-'}</strong></div>
+                    <div><span class="text-gray-400 block text-[9px] uppercase font-bold">Driver / Kendaraan</span> <strong>${d.vehicleNo || d.driverName || '-'}</strong></div>
+                    <div><span class="text-gray-400 block text-[9px] uppercase font-bold">Resi Tracking</span> <strong>${d.trackingNo || '-'}</strong></div>
                 </div>
             </div>
             
             <table class="w-full text-left">
                 <thead>
-                    <tr class="border-b-2 border-gray-100 text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                    <tr class="border-b-2 border-gray-100 text-[9px] font-black text-gray-400 uppercase tracking-widest">
                         <th class="py-2 px-2">Nama Barang</th>
                         <th class="py-2 px-2 text-right">Qty Kirim</th>
                         <th class="py-2 px-2 text-center">Kemasan</th>
@@ -1066,9 +1142,11 @@ window.viewShipmentDetails = function(id) {
                 </thead>
                 <tbody>${itemRows}</tbody>
             </table>
-            ${d.notes ? `<div class="p-3 bg-yellow-50 border border-yellow-100 rounded text-xs text-gray-600"><strong>Catatan:</strong> ${d.notes}</div>` : ''}
+            ${d.notes ? `<div class="p-3 bg-yellow-50 border border-yellow-100 rounded text-[10px] text-gray-600"><strong>Catatan Gudang:</strong> ${d.notes}</div>` : ''}
         </div>
     `;
 
-    showModal(`Detail Pengiriman — ${d.doNumber}`, body, `<button onclick="closeModal()" class="px-6 py-2 bg-gray-800 text-white rounded text-xs font-black uppercase tracking-widest hover:bg-black transition-all">Tutup</button>`, 'max-w-xl');
+    showModal(`Detail Pengiriman â€” ${d.doNumber}`, body, `<button onclick="closeModal()" class="px-6 py-2 bg-gray-800 text-white rounded text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all">Tutup</button>`, 'max-w-xl');
 };
+
+
