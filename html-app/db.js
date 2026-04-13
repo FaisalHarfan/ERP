@@ -101,7 +101,7 @@ const db = {
                 }
             });
             if (txChanged) db.save('stockTransactions', txs);
-            
+
             const finalItems = items.filter(i => !i._toDelete);
             if (finalItems.length !== items.length) {
                 db.save('inventoryItems', finalItems);
@@ -358,7 +358,7 @@ const db = {
 
         const product = db.findById('inventoryItems', productId);
         if (!product) return null;
-        
+
         // If stageLabel is Finish Good, we return the Product ID directly
         if (stageLabel && stageLabel.toLowerCase().includes('finish good')) {
             return product.id;
@@ -589,4 +589,20 @@ db.seedDefaultUsersAndRoles();
         }
     });
     if (changed) db.save('users', users);
+})();
+
+// Migrate accounts: add 'Piutang Usaha Lebih Bayar' if missing
+(function migrateAccountsOverpay() {
+    const accounts = db.read('accounts');
+    if (accounts.length > 0 && !accounts.find(a => a.id === 'acc_ar_overpay')) {
+        accounts.push({
+            id: 'acc_ar_overpay',
+            code: '2103', // Liability
+            name: 'Piutang Usaha Lebih Bayar',
+            type: 'LIABILITY',
+            description: 'Kelebihan pembayaran dari customer (titipan)',
+            status: 'ACTIVE'
+        });
+        db.save('accounts', accounts);
+    }
 })();

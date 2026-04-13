@@ -703,21 +703,26 @@ window.openFinanceARPaymentModal = () => {
         return;
     }
 
-    const invOptions = unpaidInvoices.map(inv => {
-        const customer = customers.find(c => c.id === inv.customerId) || { name: 'Unknown' };
-        const invPayments = payments.filter(p => p.invoiceId === inv.id);
-        const totalPaid = invPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
-        const balance = inv.totalAmount - totalPaid;
-        return `<option value="${inv.id}" data-balance="${balance}">${inv.invoiceNumber} - ${customer.name} (Sisa: ${formatCurrency(balance)})</option>`;
+    // Build unique customer list from unpaid invoices only
+    const customerIdsWithUnpaid = [...new Set(unpaidInvoices.map(inv => inv.customerId))];
+    const custOptions = customerIdsWithUnpaid.map(cId => {
+        const c = customers.find(x => x.id === cId) || { name: 'Unknown' };
+        return `<option value="${cId}">${c.name}</option>`;
     }).join('');
 
     const body = `
         <div class="space-y-4">
             <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Pilih Customer</label>
+                <select id="far_customer_id" class="w-full border border-gray-300 rounded px-3 py-2 bg-white" onchange="updateARInvoicesByCustomer()">
+                    <option value="" disabled selected>Pilih Customer...</option>
+                    ${custOptions}
+                </select>
+            </div>
+            <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Pilih Faktur Piutang (AR)</label>
-                <select id="far_invoice_id" class="w-full border border-gray-300 rounded px-3 py-2 bg-white" onchange="updateFinanceARPaymentDefaultAmount()">
-                    <option value="" disabled selected>Pilih Invoice...</option>
-                    ${invOptions}
+                <select id="far_invoice_id" class="w-full border border-gray-300 rounded px-3 py-2 bg-white" onchange="updateFinanceARPaymentDefaultAmount()" disabled>
+                    <option value="" disabled selected>-- Pilih Customer terlebih dahulu --</option>
                 </select>
             </div>
             <div class="grid grid-cols-2 gap-4">
@@ -741,9 +746,17 @@ window.openFinanceARPaymentModal = () => {
                         <option value="Giro/Cek">Giro / Cek</option>
                     </select>
                 </div>
+                <!-- Empty div for alignment if wanted, or we put something else here -->
+                <div class="hidden sm:block"></div>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Jumlah Diterima (Rp)</label>
-                    <input type="number" id="far_amount" placeholder="0" class="w-full border border-gray-300 rounded px-3 py-2 text-lg font-bold">
+                    <label class="block text-sm font-medium text-gray-700 mb-1" title="Sesuai sisa piutang faktur">Alokasi Piutang (Rp)</label>
+                    <input type="number" id="far_amount" placeholder="0" class="w-full border border-gray-300 rounded px-3 py-2 text-lg font-bold text-blue-600">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1" title="Input jika ada kelebihan nominal transfer">Uang Lebih Titipan (Rp)</label>
+                    <input type="number" id="far_overpay" placeholder="0" value="0" class="w-full border border-gray-300 rounded px-3 py-2 text-lg font-bold text-green-600">
                 </div>
             </div>
             <div>
@@ -761,6 +774,40 @@ window.openFinanceARPaymentModal = () => {
     showModal('Input Pelunasan Piutang (AR)', body, footer);
 };
 
+window.updateARInvoicesByCustomer = () => {
+    const customerId = document.getElementById('far_customer_id').value;
+    const invoiceSelect = document.getElementById('far_invoice_id');
+    const amountInput = document.getElementById('far_amount');
+
+    if (!customerId) {
+        invoiceSelect.innerHTML = '<option value="" disabled selected>-- Pilih Customer terlebih dahulu --</option>';
+        invoiceSelect.disabled = true;
+        if (amountInput) amountInput.value = '0';
+        return;
+    }
+
+    const invoices = db.read('salesInvoices').filter(inv => inv.status === 'UNPAID' && inv.customerId === customerId);
+    const payments = db.read('payments');
+
+    if (invoices.length === 0) {
+        invoiceSelect.innerHTML = '<option value="" disabled selected>Tidak ada faktur UNPAID untuk customer ini</option>';
+        invoiceSelect.disabled = true;
+        if (amountInput) amountInput.value = '0';
+        return;
+    }
+
+    const options = invoices.map(inv => {
+        const invPayments = payments.filter(p => p.invoiceId === inv.id);
+        const totalPaid = invPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
+        const balance = inv.totalAmount - totalPaid;
+        return `<option value="${inv.id}" data-balance="${balance}">${inv.invoiceNumber} (Sisa: ${formatCurrency(balance)})</option>`;
+    }).join('');
+
+    invoiceSelect.innerHTML = '<option value="" disabled selected>Pilih Invoice...</option>' + options;
+    invoiceSelect.disabled = false;
+    if (amountInput) amountInput.value = '0';
+};
+
 window.updateFinanceARPaymentDefaultAmount = () => {
     const select = document.getElementById('far_invoice_id');
     if (select && select.selectedIndex > 0) {
@@ -775,12 +822,14 @@ window.saveFinanceARPayment = () => {
     const accountId = document.getElementById('far_account_id').value;
     const method = document.getElementById('far_method').value;
     const inputAmount = parseFloat(document.getElementById('far_amount').value);
+    const overpayAmount = parseFloat(document.getElementById('far_overpay').value) || 0;
     const proofRef = document.getElementById('far_proof_file')?.files?.length ? document.getElementById('far_proof_file').files[0].name : '';
     const notes = document.getElementById('far_notes').value.trim();
 
     if (!invoiceId) { showToast('Pilih invoice terlebih dahulu', 'error'); return; }
     if (!accountId) { showToast('Pilih akun Kas/Bank', 'error'); return; }
     if (!inputAmount || inputAmount <= 0) { showToast('Jumlah pelunasan tidak valid', 'error'); return; }
+    if (overpayAmount < 0) { showToast('Uang lebih tidak boleh negatif', 'error'); return; }
 
     const inv = db.findById('salesInvoices', invoiceId);
     if (!inv) return;
@@ -805,6 +854,7 @@ window.saveFinanceARPayment = () => {
         invoiceId: inv.id,
         date: new Date(dateInput).toISOString(),
         amount: inputAmount,
+        overpayAmount: overpayAmount, // Track kelebihan bayar
         method,
         proofReference: proofRef,
         notes,
@@ -818,14 +868,20 @@ window.saveFinanceARPayment = () => {
     }
 
     if (typeof db.addJournalEntry === 'function') {
+        const journalItems = [
+            { accountId: accountId, debit: inputAmount + overpayAmount, credit: 0 },
+            { accountId: 'acc_ar', debit: 0, credit: inputAmount }
+        ];
+
+        if (overpayAmount > 0) {
+            journalItems.push({ accountId: 'acc_ar_overpay', debit: 0, credit: overpayAmount });
+        }
+
         db.addJournalEntry({
             date: new Date(dateInput).toISOString(),
             journalNo: paymentNumber,
-            description: `Pelunasan Piutang (AR) ${inv.invoiceNumber} via ${method}`,
-            items: [
-                { accountId: accountId, debit: inputAmount, credit: 0 },
-                { accountId: 'acc_ar', debit: 0, credit: inputAmount }
-            ]
+            description: `Pelunasan Piutang (AR) ${inv.invoiceNumber} via ${method}` + (overpayAmount > 0 ? ` (+Uang Lebih ${formatCurrency(overpayAmount)})` : ''),
+            items: journalItems
         });
     }
 
@@ -938,7 +994,10 @@ window.renderFinanceAP = function () {
                                     <div class="text-[10px] text-gray-400 font-medium">${formatDate(i.date).slice(0, 10)}</div>
                                 </td>
                                 <td class="px-6 py-4 text-gray-700 font-medium">
-                                    ${suppliers.find(s => s.id === i.supplierId)?.name || 'Supplier'}
+                                    ${(() => {
+                                        const found = suppliers.find(s => s.id === i.supplierId || s.name === i.supplierId);
+                                        return found ? found.name : (i.supplierId || 'Unknown Supplier');
+                                    })()}
                                 </td>
                                 <td class="px-6 py-4 text-gray-600">${i.dueDate || '-'}</td>
                                 <td class="px-6 py-4 text-right font-bold ${i.status === 'UNPAID' ? 'text-orange-600' : 'text-slate-800'}">${formatCurrency(i.totalAmount)}</td>
@@ -968,21 +1027,27 @@ window.openFinanceAPPaymentModal = () => {
         return;
     }
 
-    const invOptions = invoices.map(inv => {
-        const supplier = suppliers.find(s => s.id === inv.supplierId) || { name: 'Supplier' };
-        const invPayments = payments.filter(p => p.invoiceId === inv.id);
-        const totalPaid = invPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
-        const balance = inv.totalAmount - totalPaid;
-        return `<option value="${inv.id}" data-balance="${balance}">${inv.invoiceNumber} - ${supplier.name} (Sisa: ${formatCurrency(balance)})</option>`;
+    // Build unique supplier list from unpaid invoices only
+    const supplierIdsWithUnpaid = [...new Set(invoices.map(inv => inv.supplierId))];
+    const suppOptions = supplierIdsWithUnpaid.map(sId => {
+        const s = suppliers.find(x => x.id === sId || x.name === sId);
+        const displayName = s ? s.name : (sId || 'Unknown Supplier');
+        return `<option value="${sId}">${displayName}</option>`;
     }).join('');
 
     const body = `
         <div class="space-y-4">
             <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Pilih Supplier</label>
+                <select id="fap_supplier_id" class="w-full border border-gray-300 rounded px-3 py-2 bg-white" onchange="updateAPInvoicesBySupplier()">
+                    <option value="" disabled selected>Pilih Supplier...</option>
+                    ${suppOptions}
+                </select>
+            </div>
+            <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Pilih Tagihan Supplier (AP)</label>
-                <select id="fap_invoice_id" class="w-full border border-gray-300 rounded px-3 py-2 bg-white" onchange="updateFinanceAPPaymentDefaultAmount()">
-                    <option value="" disabled selected>Pilih Tagihan...</option>
-                    ${invOptions}
+                <select id="fap_invoice_id" class="w-full border border-gray-300 rounded px-3 py-2 bg-white" onchange="updateFinanceAPPaymentDefaultAmount()" disabled>
+                    <option value="" disabled selected>-- Pilih Supplier terlebih dahulu --</option>
                 </select>
             </div>
             <div class="grid grid-cols-2 gap-4">
@@ -1049,6 +1114,43 @@ window.openFinanceAPPaymentModal = () => {
     `;
 
     showModal('Input Pelunasan Hutang (AP)', body, footer);
+};
+
+window.updateAPInvoicesBySupplier = () => {
+    const supplierId = document.getElementById('fap_supplier_id').value;
+    const invoiceSelect = document.getElementById('fap_invoice_id');
+    const amountInput = document.getElementById('fap_amount');
+
+    if (!supplierId) {
+        invoiceSelect.innerHTML = '<option value="" disabled selected>-- Pilih Supplier terlebih dahulu --</option>';
+        invoiceSelect.disabled = true;
+        if (amountInput) amountInput.value = '0';
+        updateFinanceAPPaymentDefaultAmount(); // Update bank info to hidden
+        return;
+    }
+
+    const invoices = db.read('purchaseInvoices').filter(inv => inv.status === 'UNPAID' && inv.supplierId === supplierId);
+    const payments = db.read('supplierPayments');
+
+    if (invoices.length === 0) {
+        invoiceSelect.innerHTML = '<option value="" disabled selected>Tidak ada tagihan UNPAID untuk supplier ini</option>';
+        invoiceSelect.disabled = true;
+        if (amountInput) amountInput.value = '0';
+        updateFinanceAPPaymentDefaultAmount();
+        return;
+    }
+
+    const options = invoices.map(inv => {
+        const invPayments = payments.filter(p => p.invoiceId === inv.id);
+        const totalPaid = invPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
+        const balance = inv.totalAmount - totalPaid;
+        return `<option value="${inv.id}" data-balance="${balance}">${inv.invoiceNumber} (Sisa: ${formatCurrency(balance)})</option>`;
+    }).join('');
+
+    invoiceSelect.innerHTML = '<option value="" disabled selected>Pilih Tagihan...</option>' + options;
+    invoiceSelect.disabled = false;
+    if (amountInput) amountInput.value = '0';
+    updateFinanceAPPaymentDefaultAmount(); // Clear bank info as invoice is deselected
 };
 
 window.updateFinanceAPPaymentDefaultAmount = () => {
