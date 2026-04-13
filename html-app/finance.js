@@ -143,36 +143,49 @@ window.renderFinanceAccounts = function () {
 
     mc.innerHTML = `
         <div class="flex flex-col gap-6">
-            <!-- Compact Filter Section -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-5 mb-5">
-                <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-2"><i class="fas fa-filter text-blue-500"></i> Filter Pencarian</h3>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end mb-4">
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Pilih Akun</label>
-                        <select id="coaFilterAccountId" class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
-                            <option value="">-- Semua Akun --</option>
-                            ${allAccounts.map(a => `<option value="${a.id}" ${filterAccountId === a.id ? 'selected' : ''}>${a.code} - ${a.name}</option>`).join('')}
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tipe Akun</label>
-                        <select id="coaFilterType" class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
-                            <option value="">-- Semua Tipe --</option>
-                            <option value="ASSET" ${filterType === 'ASSET' ? 'selected' : ''}>Aset (Harta)</option>
-                            <option value="LIABILITY" ${filterType === 'LIABILITY' ? 'selected' : ''}>Kewajiban (Hutang)</option>
-                            <option value="EQUITY" ${filterType === 'EQUITY' ? 'selected' : ''}>Ekuitas (Modal)</option>
-                            <option value="INCOME" ${filterType === 'INCOME' ? 'selected' : ''}>Pendapatan</option>
-                            <option value="EXPENSE" ${filterType === 'EXPENSE' ? 'selected' : ''}>Beban / Biaya</option>
-                        </select>
+            <!-- Collapsible Filter Section -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-0 overflow-hidden">
+                <div onclick="toggleCOAFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
+                    <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
+                        <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
+                        ${(!window._uiState.coaFilterOpen && (filterAccountId || filterType)) ? 
+                            `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
+                    </h3>
+                    <div class="flex items-center gap-3">
+                        <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.coaFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
+                        <i class="fas fa-chevron-${window._uiState.coaFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
                     </div>
                 </div>
-                <div class="flex gap-2">
-                    <button onclick="updateCOAFilters()" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all active:scale-95 shadow-sm shadow-blue-100">
-                        <i class="fas fa-search mr-2"></i> TAMPILKAN
-                    </button>
-                    <button onclick="document.getElementById('coaFilterAccountId').value=''; document.getElementById('coaFilterType').value=''; updateCOAFilters()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-lg transition-all active:scale-95 shadow-sm" title="Reset Filter">
-                        <i class="fas fa-undo"></i>
-                    </button>
+
+                <div class="${window._uiState.coaFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Pilih Akun</label>
+                            <select id="coaFilterAccountId" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white cursor-pointer font-sans">
+                                <option value="">-- Semua Akun --</option>
+                                ${allAccounts.map(a => `<option value="${a.id}" ${filterAccountId === a.id ? 'selected' : ''}>${a.code} - ${a.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Tipe Akun</label>
+                            <select id="coaFilterType" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white cursor-pointer font-sans">
+                                <option value="">-- Semua Tipe --</option>
+                                <option value="ASSET" ${filterType === 'ASSET' ? 'selected' : ''}>Aset (Harta)</option>
+                                <option value="LIABILITY" ${filterType === 'LIABILITY' ? 'selected' : ''}>Kewajiban (Hutang)</option>
+                                <option value="EQUITY" ${filterType === 'EQUITY' ? 'selected' : ''}>Ekuitas (Modal)</option>
+                                <option value="INCOME" ${filterType === 'INCOME' ? 'selected' : ''}>Pendapatan</option>
+                                <option value="EXPENSE" ${filterType === 'EXPENSE' ? 'selected' : ''}>Beban / Biaya</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 pt-4 mt-4 border-t border-slate-50">
+                        <button onclick="updateCOAFilters()" class="bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
+                            <i class="fas fa-search mr-2"></i> TAMPILKAN DATA
+                        </button>
+                        <button onclick="document.getElementById('coaFilterAccountId').value=''; document.getElementById('coaFilterType').value=''; updateCOAFilters()" class="bg-slate-50 hover:bg-slate-100 text-slate-400 px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">
+                            <i class="fas fa-undo mr-2"></i> RESET
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -485,7 +498,7 @@ window.renderFinanceJournal = function () {
                      <p class="text-xs text-gray-500 italic">Audit trail semua transaksi akuntansi</p>
                 </div>
                 <!-- Manual Journal Button (Placeholder) -->
-                <button class="px-4 py-2 bg-gray-800 text-white rounded-lg text-sm font-bold opacity-50 cursor-not-allowed">
+                <button onclick="openJournalEntryModal()" class="px-4 py-2 bg-gray-800 text-white rounded-lg text-sm font-bold hover:bg-black transition-all">
                     <i class="fas fa-plus mr-2"></i>Entri Jurnal
                 </button>
             </div>
@@ -493,7 +506,7 @@ window.renderFinanceJournal = function () {
                 <table class="w-full text-left border-collapse table-fixed">
                     <thead class="bg-gray-50 text-slate-500 text-[11px] uppercase tracking-wider font-semibold">
                         <tr>
-                            <th class="px-6 py-3 border-b border-gray-100 w-32">Keterangan</th>
+                            <th class="px-6 py-3 border-b border-gray-100 w-32">Ref & Tgl</th>
                             <th class="px-6 py-3 border-b border-gray-100 w-64">Akun & Departemen</th>
                             <th class="px-6 py-3 border-b border-gray-100 text-right w-32">Debit</th>
                             <th class="px-6 py-3 border-b border-gray-100 text-right w-32">Kredit</th>
@@ -507,7 +520,7 @@ window.renderFinanceJournal = function () {
                                         <div class="px-2 py-1 bg-blue-100 text-blue-700 rounded font-bold text-[9px]">${j.journalNo}</div>
                                         <div>
                                             <span class="font-bold text-gray-800">${j.description}</span>
-                                            <span class="ml-2 text-[10px] text-gray-400">${formatDate(j.date).slice(0, 10)}</span>
+                                            <span class="ml-2 text-[10px] text-gray-400">${formatDate(j.date).slice(0, 10)} ${j.partnerName ? `· <span class="text-indigo-600 font-bold">${j.partnerName}</span>` : ''}</span>
                                         </div>
                                     </div>
                                 </td>
@@ -524,14 +537,331 @@ window.renderFinanceJournal = function () {
                                         </div>
                                     </td>
                                     <td class="px-6 py-2 text-right ${item.debit > 0 ? 'font-bold text-gray-800' : 'text-gray-300'}">
-                                        ${item.debit > 0 ? formatCurrency(item.debit) : '-'}
+                                        ${item.debit > 0 ? formatCurrency(item.debit).replace('Rp ', '').trim() : '-'}
                                     </td>
                                     <td class="px-6 py-2 text-right ${item.credit > 0 ? 'font-bold text-gray-800' : 'text-gray-300'}">
-                                        ${item.credit > 0 ? formatCurrency(item.credit) : '-'}
+                                        ${item.credit > 0 ? formatCurrency(item.credit).replace('Rp ', '').trim() : '-'}
                                     </td>
                                 </tr>
                             `).join('')}
                         `).join('') || '<tr><td colspan="4" class="px-6 py-12 text-center text-gray-400">Jurnal akuntansi masih kosong.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+};
+
+// --- Manual Journal Modal ---
+window.openJournalEntryModal = function() {
+    const accs = db.read('accounts').filter(a => a.status === 'ACTIVE');
+    const depts = db.read('departments');
+    const customers = db.read('customers');
+    const suppliers = db.read('suppliers');
+    
+    // Combine partners for selection
+    const partners = [
+        ...customers.map(c => ({ id: c.id, name: c.name, type: 'CUSTOMER' })),
+        ...suppliers.map(s => ({ id: s.id, name: s.name, type: 'SUPPLIER' }))
+    ].sort((a,b) => a.name.localeCompare(b.name));
+
+    const body = `
+        <div class="space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-[10px] font-bold text-gray-400 uppercase mb-1">Tanggal Entry</label>
+                    <input type="date" id="mj_date" class="w-full border-2 border-gray-100 rounded-lg p-2.5 text-sm" value="${new Date().toISOString().split('T')[0]}">
+                </div>
+                <div class="md:col-span-2">
+                    <label class="block text-[10px] font-bold text-gray-400 uppercase mb-1">Keterangan / Memo</label>
+                    <input type="text" id="mj_desc" class="w-full border-2 border-gray-100 rounded-lg p-2.5 text-sm" placeholder="Misal: Penyesuaian Saldo Awal atau Biaya Lainnya">
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                     <label class="block text-[10px] font-bold text-gray-400 uppercase mb-1 text-indigo-600">Link Mitra (Customer/Supplier) - Opsional</label>
+                     <select id="mj_partner" class="w-full border-2 border-gray-100 rounded-lg p-2.5 text-sm">
+                        <option value="">- Pilih Mitra (Tidak ada) -</option>
+                        ${partners.map(p => `<option value="${p.id}">${p.name} (${p.type})</option>`).join('')}
+                     </select>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-gray-400 uppercase mb-1">Departemen</label>
+                     <select id="mj_dept" class="w-full border-2 border-gray-100 rounded-lg p-2.5 text-sm">
+                        <option value="">- Umum -</option>
+                        ${depts.map(d => `<option value="${d.id}">${d.name}</option>`).join('')}
+                     </select>
+                </div>
+            </div>
+
+            <div class="border-t pt-4">
+                <table class="w-full text-left">
+                    <thead>
+                        <tr class="text-[10px] font-bold text-gray-400 uppercase border-b pb-2">
+                            <th class="pb-2">Akun Keuangan</th>
+                            <th class="pb-2 text-right w-32">Debit</th>
+                            <th class="pb-2 text-right w-32">Kredit</th>
+                            <th class="pb-2 w-10"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="mj_rows">
+                        <!-- Rows will be added here -->
+                    </tbody>
+                    <tfoot>
+                        <tr class="border-t">
+                            <td class="py-4">
+                                <button onclick="addJournalRow()" class="text-xs font-bold text-blue-600 hover:underline"><i class="fas fa-plus mr-1"></i> Tambah Baris</button>
+                            </td>
+                            <td class="py-4 text-right font-bold text-sm" id="mj_total_debit">0</td>
+                            <td class="py-4 text-right font-bold text-sm" id="mj_total_credit">0</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+                <div id="mj_balance_warning" class="hidden mt-2 p-2 bg-red-50 text-red-600 text-[10px] font-bold text-center rounded-lg">
+                    TOTAL DEBIT DAN KREDIT HARUS SEIMBANG (BALANCE)
+                </div>
+            </div>
+        </div>
+    `;
+
+    const footer = `
+        <button onclick="saveManualJournal()" class="px-6 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-blue-700 transition-colors">Posting Jurnal</button>
+        <button onclick="closeModal()" class="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold mr-2">Batal</button>
+    `;
+
+    showModal('Entri Jurnal Umum (Manual)', body, footer, 'full');
+    
+    // Add two initial rows
+    addJournalRow();
+    addJournalRow();
+};
+
+window.addJournalRow = function() {
+    const accs = db.read('accounts').filter(a => a.status === 'ACTIVE');
+    const tbody = document.getElementById('mj_rows');
+    const row = document.createElement('tr');
+    row.className = 'border-b border-gray-50 mj-item-row';
+    row.innerHTML = `
+        <td class="py-2">
+            <select class="w-full border-none focus:ring-0 p-1 text-sm font-bold text-gray-700 mj-acc-select">
+                <option value="" disabled selected>Pilih Akun...</option>
+                ${accs.map(a => `<option value="${a.id}">${a.code} - ${a.name}</option>`).join('')}
+            </select>
+        </td>
+        <td class="py-2">
+            <input type="number" class="w-full border-none focus:ring-0 text-right p-1 text-sm font-bold mj-debit" value="0" oninput="updateJournalTotals()">
+        </td>
+        <td class="py-2">
+            <input type="number" class="w-full border-none focus:ring-0 text-right p-1 text-sm font-bold mj-credit" value="0" oninput="updateJournalTotals()">
+        </td>
+        <td class="py-2 text-center text-gray-300 hover:text-red-500 cursor-pointer" onclick="this.parentElement.remove(); updateJournalTotals()">
+            <i class="fas fa-times-circle"></i>
+        </td>
+    `;
+    tbody.appendChild(row);
+};
+
+window.updateJournalTotals = function() {
+    let totalDebit = 0;
+    let totalCredit = 0;
+    
+    document.querySelectorAll('.mj-debit').forEach(el => totalDebit += parseFloat(el.value || 0));
+    document.querySelectorAll('.mj-credit').forEach(el => totalCredit += parseFloat(el.value || 0));
+    
+    document.getElementById('mj_total_debit').innerText = formatCurrency(totalDebit).replace('Rp ', '').trim();
+    document.getElementById('mj_total_credit').innerText = formatCurrency(totalCredit).replace('Rp ', '').trim();
+    
+    const warning = document.getElementById('mj_balance_warning');
+    if (Math.abs(totalDebit - totalCredit) > 0.01) {
+        warning.classList.remove('hidden');
+    } else {
+        warning.classList.add('hidden');
+    }
+};
+
+window.saveManualJournal = function() {
+    const date = document.getElementById('mj_date').value;
+    const desc = document.getElementById('mj_desc').value;
+    const deptId = document.getElementById('mj_dept').value;
+    const partnerId = document.getElementById('mj_partner').value;
+    
+    // Find partner name if exists
+    let partnerName = '';
+    if (partnerId) {
+        const cust = db.findById('customers', partnerId);
+        const supp = db.findById('suppliers', partnerId);
+        partnerName = cust ? cust.name : (supp ? supp.name : '');
+    }
+
+    const items = [];
+    document.querySelectorAll('.mj-item-row').forEach(row => {
+        const accId = row.querySelector('.mj-acc-select').value;
+        const debit = parseFloat(row.querySelector('.mj-debit').value || 0);
+        const credit = parseFloat(row.querySelector('.mj-credit').value || 0);
+        
+        if (accId && (debit > 0 || credit > 0)) {
+            items.push({ accountId: accId, debit, credit });
+        }
+    });
+
+    if (!desc) return alert('Keterangan jurnal harus diisi');
+    if (items.length < 2) return alert('Minimal harus ada 2 akun (Debit & Kredit)');
+    
+    const totalDebit = items.reduce((s, i) => s + i.debit, 0);
+    const totalCredit = items.reduce((s, i) => s + i.credit, 0);
+    
+    if (Math.abs(totalDebit - totalCredit) > 0.1) {
+        return alert('Total Debit dan Kredit tidak seimbang!');
+    }
+
+    db.addJournalEntry({
+        date,
+        description: desc,
+        items,
+        referenceType: 'MANUAL',
+        departmentId: deptId,
+        // Custom fields injected into the record
+        partnerId,
+        partnerName
+    });
+
+    closeModal();
+    showToast('Jurnal berhasil diposting');
+    renderFinanceJournal();
+};
+
+// --- Buku Besar Mitra (Partner Ledger) ---
+window.renderFinancePartnerLedger = function () {
+    document.getElementById('pageTitle').innerText = 'Buku Besar Mitra (Partner Ledger)';
+    const mc = document.getElementById('main-content');
+    
+    // Use year 2026 as per screenshot or current
+    const currentYear = new Date().getFullYear();
+    const targetYear = 2026; // Match screenshot requirement
+    
+    const customers = db.read('customers');
+    const suppliers = db.read('suppliers');
+    const partners = [...customers, ...suppliers];
+    const journalEntries = db.read('journalEntries');
+
+    // Aggregate ledger by partner
+    const ledgerData = partners.map(p => {
+        // Filter journals linked to this partner
+        // 1. Explicitly linked via partnerId (newly created journals)
+        // 2. Referenced via reference records (SALES_INVOICE, PURCHASE_INVOICE)
+        const entries = journalEntries.filter(j => {
+            const isTargetYear = new Date(j.date).getFullYear() === targetYear;
+            if (!isTargetYear) return false;
+
+            if (j.partnerId === p.id) return true;
+            
+            // Heuristic for older/automated journals
+            if (j.referenceType === 'SALES_INVOICE') {
+                const inv = db.findById('salesInvoices', j.referenceId);
+                if (inv && inv.customerId === p.id) return true;
+            }
+            if (j.referenceType === 'PURCHASE_INVOICE') {
+                const inv = db.findById('purchaseInvoices', j.referenceId);
+                if (inv && inv.supplierId === p.id) return true;
+            }
+            if (j.referenceType === 'PAYMENT') {
+                const pay = db.findById('payments', j.referenceId);
+                if (pay) {
+                    const inv = db.findById('salesInvoices', pay.invoiceId);
+                    if (inv && inv.customerId === p.id) return true;
+                }
+            }
+            if (j.referenceType === 'EXPENSE') {
+                 // Expense might not be linked to customer/supplier partner table unless defined
+            }
+            
+            return false;
+        });
+
+        // Debit/Credit related to AR/AP accounts usually define the balance for partner
+        // But the user screenshot shows total debit/credit per partner across all their entries
+        let totalDebit = 0;
+        let totalCredit = 0;
+
+        entries.forEach(j => {
+            totalDebit += parseFloat(j.totalDebit) || 0;
+            totalCredit += parseFloat(j.totalCredit) || 0;
+        });
+
+        return {
+            id: p.id,
+            name: p.name,
+            totalDebit,
+            totalCredit,
+            balance: totalDebit - totalCredit
+        };
+    }).filter(l => l.totalDebit !== 0 || l.totalCredit !== 0);
+
+    const grandTotals = ledgerData.reduce((t, l) => {
+        t.debit += l.totalDebit;
+        t.credit += l.totalCredit;
+        t.balance += l.balance;
+        return t;
+    }, { debit: 0, credit: 0, balance: 0 });
+
+    mc.innerHTML = `
+        <div class="flex justify-end mb-4">
+             <button onclick="printFinanceReport()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-blue-700 transition-all">
+                <i class="fas fa-print mr-2"></i> Print Laporan
+            </button>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden printable-area p-8 font-sans max-w-6xl mx-auto">
+            <div class="flex justify-between items-start mb-12">
+                <div class="text-xs text-gray-500 leading-relaxed text-slate-400">
+                    <h2 class="text-sm font-bold text-gray-800 mb-1">PT Tana Subur Nusantara</h2>
+                    <p>Jl. Akses Tol Karawang Tim., Anggadita, Kec. Klari</p>
+                    <p>Karawang JB 41371</p>
+                    <p>Indonesia</p>
+                    <p class="font-bold mt-2">NPWP:</p>
+                </div>
+                <div class="text-right">
+                    <h1 class="text-2xl font-bold text-gray-800">Buku Besar Mitra</h1>
+                </div>
+            </div>
+
+            <div class="mb-2">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-gray-100/50">
+                        <tr>
+                            <th class="px-4 py-2 text-center text-[10px] font-bold text-gray-700 border-b border-gray-200" colspan="8">
+                                ${targetYear}
+                            </th>
+                        </tr>
+                        <tr class="text-[10px] uppercase tracking-wider font-bold text-gray-800">
+                            <th class="px-4 py-3 border-b border-gray-200">Jurnal</th>
+                            <th class="px-4 py-3 border-b border-gray-200">Akun</th>
+                            <th class="px-4 py-3 border-b border-gray-200">Tanggal Faktur</th>
+                            <th class="px-4 py-3 border-b border-gray-200">Batas Waktu</th>
+                            <th class="px-4 py-3 border-b border-gray-200">Sesuai</th>
+                            <th class="px-4 py-3 border-b border-gray-200 text-right">Debit</th>
+                            <th class="px-4 py-3 border-b border-gray-200 text-right">Kredit</th>
+                            <th class="px-4 py-3 border-b border-gray-200 text-right">Saldo</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${ledgerData.map(l => `
+                            <tr class="border-b border-gray-50 text-[11px]">
+                                <td class="px-4 py-4 font-bold text-gray-700" colspan="5">${l.name}</td>
+                                <td class="px-4 py-4 text-right font-mono text-gray-700 font-bold">${formatCurrency(l.totalDebit).replace('Rp ', '').trim()}</td>
+                                <td class="px-4 py-4 text-right font-mono text-gray-300">${l.totalCredit > 0 ? formatCurrency(l.totalCredit).replace('Rp ', '').trim() : '0'}</td>
+                                <td class="px-4 py-4 text-right font-mono text-gray-800 font-bold">${formatCurrency(l.balance).replace('Rp ', '').trim()}</td>
+                            </tr>
+                        `).join('') || '<tr><td colspan="8" class="px-4 py-12 text-center text-gray-400 italic">Tidak ada transaksi mitra untuk tahun ini.</td></tr>'}
+                        
+                        <tr class="border-t-2 border-gray-200 font-bold text-xs text-gray-800">
+                            <td class="px-4 py-4" colspan="5">Total</td>
+                            <td class="px-4 py-4 text-right font-mono">${formatCurrency(grandTotals.debit).replace('Rp ', '').trim()}</td>
+                            <td class="px-4 py-4 text-right font-mono">${formatCurrency(grandTotals.credit).replace('Rp ', '').trim()}</td>
+                            <td class="px-4 py-4 text-right font-mono">${formatCurrency(grandTotals.balance).replace('Rp ', '').trim()}</td>
+                        </tr>
                     </tbody>
                 </table>
             </div>
@@ -665,7 +995,7 @@ window.renderFinanceAR = function () {
                                     <td class="px-6 py-4"><span class="px-2 py-0.5 bg-gray-100 rounded text-[10px] font-bold">${p.method}</span></td>
                                     <td class="px-6 py-4">
                                         ${p.proofReference ? `
-                                            <a href="#" class="text-blue-600 font-bold hover:underline flex items-center gap-1" onclick="alert('Membuka file: ${p.proofReference}'); return false;">
+                                            <a href="#" class="text-blue-600 font-bold hover:underline flex items-center gap-1" onclick="window.open('${p.proofReference}'); return false;">
                                                 <i class="fas fa-image text-xs"></i> Lihat Bukti
                                             </a>
                                             <span class="text-[9px] text-gray-400 block mt-0.5">${p.proofReference}</span>
@@ -763,6 +1093,10 @@ window.openFinanceARPaymentModal = () => {
                 <label class="block text-sm font-medium text-gray-700 mb-1">Catatan</label>
                 <textarea id="far_notes" placeholder="Catatan tambahan..." rows="2" class="w-full border border-gray-300 rounded px-3 py-2 text-sm"></textarea>
             </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Upload Bukti Pembayaran <span class="text-xs text-gray-400 font-normal">(Opsional)</span></label>
+                <input type="file" id="far_proof_file" accept="image/*,application/pdf" class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 border border-slate-300 rounded bg-white">
+            </div>
         </div>
     `;
 
@@ -771,7 +1105,7 @@ window.openFinanceARPaymentModal = () => {
         <button type="button" onclick="closeModal()" class="mt-3 w-full sm:w-auto justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-700 font-medium hover:bg-gray-50 text-sm transition-colors">Batal</button>
     `;
 
-    showModal('Input Pelunasan Piutang (AR)', body, footer);
+    showModal('Input Pelunasan Piutang (AR)', body, footer, 'full');
 };
 
 window.updateARInvoicesByCustomer = () => {
@@ -816,14 +1150,14 @@ window.updateFinanceARPaymentDefaultAmount = () => {
     }
 };
 
-window.saveFinanceARPayment = () => {
+window.saveFinanceARPayment = async () => {
     const invoiceId = document.getElementById('far_invoice_id').value;
     const dateInput = document.getElementById('far_date').value;
     const accountId = document.getElementById('far_account_id').value;
     const method = document.getElementById('far_method').value;
     const inputAmount = parseFloat(document.getElementById('far_amount').value);
     const overpayAmount = parseFloat(document.getElementById('far_overpay').value) || 0;
-    const proofRef = document.getElementById('far_proof_file')?.files?.length ? document.getElementById('far_proof_file').files[0].name : '';
+    const fileInput = document.getElementById('far_proof_file');
     const notes = document.getElementById('far_notes').value.trim();
 
     if (!invoiceId) { showToast('Pilih invoice terlebih dahulu', 'error'); return; }
@@ -833,6 +1167,17 @@ window.saveFinanceARPayment = () => {
 
     const inv = db.findById('salesInvoices', invoiceId);
     if (!inv) return;
+
+    let attachmentData = null;
+    if (fileInput && fileInput.files.length > 0) {
+        const file = fileInput.files[0];
+        if (file.size > 2 * 1024 * 1024) { showToast('Ukuran file maksimal 2MB', 'error'); return; }
+        attachmentData = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.readAsDataURL(file);
+        });
+    }
 
     const paymentsDb = db.read('payments');
     const invPayments = paymentsDb.filter(p => p.invoiceId === inv.id);
@@ -856,7 +1201,7 @@ window.saveFinanceARPayment = () => {
         amount: inputAmount,
         overpayAmount: overpayAmount, // Track kelebihan bayar
         method,
-        proofReference: proofRef,
+        proofReference: attachmentData,
         notes,
         status: 'COMPLETED',
         createdAt: new Date().toISOString()
@@ -971,7 +1316,7 @@ window.renderFinanceAP = function () {
                     <h3 class="font-bold text-gray-700">Daftar Tagihan Supplier (Account Payable)</h3>
                     <p class="text-xs text-gray-500">Menampilkan ${invoices.length} data tagihan</p>
                 </div>
-                <button onclick="openFinanceAPPaymentModal()" class="px-4 py-2 bg-orange-600 text-white rounded-lg text-sm font-bold shadow-sm hover:bg-orange-700 transition-colors">
+                <button onclick="openFinanceAPPaymentModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold shadow-sm hover:bg-blue-700 transition-colors">
                     <i class="fas fa-plus mr-1"></i> Input Pelunasan Hutang
                 </button>
             </div>
@@ -984,6 +1329,7 @@ window.renderFinanceAP = function () {
                             <th class="px-6 py-3 border-b border-gray-100">Tgl Jatuh Tempo</th>
                             <th class="px-6 py-3 border-b border-gray-100 text-right">Total</th>
                             <th class="px-6 py-3 border-b border-gray-100 text-center">Status</th>
+                            <th class="px-6 py-3 border-b border-gray-100 text-right">Aksi</th>
                         </tr>
                     </thead>
                     <tbody class="text-sm divide-y divide-gray-100">
@@ -1000,14 +1346,22 @@ window.renderFinanceAP = function () {
                                     })()}
                                 </td>
                                 <td class="px-6 py-4 text-gray-600">${i.dueDate || '-'}</td>
-                                <td class="px-6 py-4 text-right font-bold ${i.status === 'UNPAID' ? 'text-orange-600' : 'text-slate-800'}">${formatCurrency(i.totalAmount)}</td>
+                                <td class="px-6 py-4 text-right font-bold ${i.status === 'UNPAID' ? 'text-blue-600' : 'text-slate-800'}">${formatCurrency(i.totalAmount)}</td>
                                 <td class="px-6 py-4 text-center">
                                     ${i.status === 'PAID' 
                                         ? '<span class="px-3 py-1 bg-green-50/80 text-green-700 rounded-md text-[10px] font-black tracking-widest border border-green-200">PAID</span>' 
                                         : '<span class="px-3 py-1 bg-red-50/80 text-red-700 rounded-md text-[10px] font-black tracking-widest border border-red-200">UNPAID</span>'}
                                 </td>
+                                <td class="px-6 py-4 text-right">
+                                    <div class="flex items-center justify-end gap-1">
+                                        ${i.attachment ? `<i class="fas fa-paperclip text-slate-300 text-xs" title="Memiliki Lampiran"></i>` : ''}
+                                        <button onclick="viewPurchaseInvoice('${i.id}')" class="text-slate-400 hover:text-blue-600 transition-colors p-2 rounded-lg hover:bg-slate-50" title="Detail Tagihan">
+                                            <i class="fas fa-eye text-lg"></i>
+                                        </button>
+                                    </div>
+                                </td>
                             </tr>
-                        `).join('') || '<tr><td colspan="5" class="px-6 py-12 text-center text-gray-400 font-medium italic">Tidak ada tagihan yang sesuai dengan filter.</td></tr>'}
+                        `).join('') || '<tr><td colspan="6" class="px-6 py-12 text-center text-gray-400 font-medium italic">Tidak ada tagihan yang sesuai dengan filter.</td></tr>'}
                     </tbody>
                 </table>
             </div>
@@ -1109,11 +1463,11 @@ window.openFinanceAPPaymentModal = () => {
     `;
 
     const footer = `
-        <button type="button" onclick="saveFinanceAPPayment()" class="w-full sm:w-auto justify-center rounded-md bg-orange-600 px-4 py-2 text-white font-medium hover:bg-orange-700 text-sm shadow-sm transition-colors">Proses Pembayaran</button>
+        <button type="button" onclick="saveFinanceAPPayment()" class="w-full sm:w-auto justify-center rounded-md bg-blue-600 px-4 py-2 text-white font-medium hover:bg-blue-700 text-sm shadow-sm transition-colors">Proses Pembayaran</button>
         <button type="button" onclick="closeModal()" class="mt-3 w-full sm:w-auto justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-700 font-medium hover:bg-gray-50 text-sm transition-colors">Batal</button>
     `;
 
-    showModal('Input Pelunasan Hutang (AP)', body, footer);
+    showModal('Input Pelunasan Hutang (AP)', body, footer, 'full');
 };
 
 window.updateAPInvoicesBySupplier = () => {
@@ -1826,7 +2180,7 @@ window.renderFinanceDebitNotes = function () {
                         <h3 class="text-lg font-bold text-gray-800">Riwayat Debit Note</h3>
                         <p class="text-xs text-gray-500 font-medium">Dokumen untuk pengurangan hutang (Retur Pembelian).</p>
                     </div>
-                    <button onclick="openDebitNoteModal()" class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-all flex items-center gap-2">
+                    <button onclick="openDebitNoteModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-all flex items-center gap-2">
                         <i class="fas fa-plus"></i> Buat Debit Note
                     </button>
                 </div>
@@ -1852,7 +2206,7 @@ window.renderFinanceDebitNotes = function () {
                                 <td class="px-6 py-4 text-gray-500 italic">${n.notes || '-'}</td>
                                 <td class="px-6 py-4 text-right font-bold text-green-600">(${formatCurrency(n.amount)})</td>
                                 <td class="px-6 py-4 text-right">
-                                    <button onclick="viewDebitNote('${n.id}')" class="text-gray-400 hover:text-orange-600 transition-colors" title="Lihat Detail"><i class="fas fa-eye"></i></button>
+                                    <button onclick="viewDebitNote('${n.id}')" class="text-gray-400 hover:text-blue-600 transition-colors" title="Lihat Detail"> <i class="fas fa-eye"></i></button>
                                 </td>
                             </tr>
                         `).join('') || '<tr><td colspan="6" class="px-6 py-12 text-center text-gray-400 italic">Belum ada data Debit Note.</td></tr>'}
@@ -1920,7 +2274,7 @@ window.openDebitNoteModal = function () {
         </div>
     `;
     const footer = `
-        <button onclick="saveDebitNote()" class="bg-orange-600 text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-orange-700 transition-all shadow-md">Simpan Debit Note</button>
+        <button onclick="saveDebitNote()" class="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-blue-700 transition-all shadow-md">Simpan Debit Note</button>
         <button onclick="closeModal()" class="px-6 py-2 text-sm font-bold text-gray-500 hover:bg-gray-100 rounded-lg transition-all">Batal</button>
     `;
     showModal('Buat Debit Note Baru', body, footer);
@@ -2088,9 +2442,9 @@ window.viewDebitNote = function (id) {
         <div class="max-w-4xl mx-auto bg-white p-6 border border-gray-100 shadow-sm rounded-2xl">
             <div id="print-internal-header" class="flex justify-between items-start mb-6 pb-4 border-b-2 border-gray-50">
                 <div>
-                    <div class="bg-orange-600 text-white px-3 py-1 rounded text-[10px] font-black uppercase tracking-widest mb-2 inline-block">Debit Note</div>
+                    <div class="bg-blue-600 text-white px-3 py-1 rounded text-[10px] font-black uppercase tracking-widest mb-2 inline-block">Debit Note</div>
                     <h2 class="text-4xl font-black text-slate-800 tracking-tight">${dn.noteNumber}</h2>
-                    <p class="text-xs text-slate-400 mt-1 font-medium italic">Tanggal: <span class="text-orange-600 font-bold">${formatDate(dn.date).slice(0, 10)}</span></p>
+                    <p class="text-xs text-slate-400 mt-1 font-medium italic">Tanggal: <span class="text-blue-600 font-bold">${formatDate(dn.date).slice(0, 10)}</span></p>
                 </div>
                 <div class="text-right flex flex-col items-end">
                     ${CONFIG.logo ? `<img src="${CONFIG.logo}" class="h-10 w-auto object-contain mb-3">` : ''}
@@ -2149,7 +2503,7 @@ window.viewDebitNote = function (id) {
                         ` : ''}
                         <div class="flex justify-between items-center">
                             <span class="text-xs font-black text-orange-900 uppercase tracking-widest">Total Pengurangan Hutang</span>
-                            <span class="text-xl font-black text-orange-600">${formatCurrency(dn.amount)}</span>
+                            <span class="text-xl font-black text-blue-600">${formatCurrency(dn.amount)}</span>
                         </div>
                     </div>
                 </div>
@@ -2177,7 +2531,7 @@ window.viewDebitNote = function (id) {
     const footer = `
         <div class="flex w-full justify-between gap-4">
             <div class="flex gap-2">
-                <button onclick='printHTML(\`${printableHTML.replace(/`/g, "\\`").replace(/\n/g, "")}\`, "Debit Note ${dn.noteNumber}")' class="inline-flex items-center px-4 py-2 bg-orange-600 text-white rounded-lg text-sm font-bold hover:bg-orange-700 shadow-lg shadow-orange-100 transition-all active:scale-95">
+                <button onclick='printHTML(\`${printableHTML.replace(/`/g, "\\`").replace(/\n/g, "")}\`, "Debit Note ${dn.noteNumber}")' class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all active:scale-95">
                     <i class="fas fa-file-pdf mr-2 text-xs"></i> SAVE AS PDF
                 </button>
                 <button onclick="openSendDebitNoteModal('${dn.id}')" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 shadow-lg shadow-blue-100 transition-all active:scale-95">
@@ -2391,8 +2745,8 @@ window.renderFinanceProfitLoss = function () {
     const mc = document.getElementById('main-content');
     const dates = getReportDates();
     const accounts = db.read('accounts');
-    const from = new Date(dates.startDate); from.setHours(0,0,0,0);
-    const to = new Date(dates.endDate); to.setHours(23,59,59,999);
+    const from = new Date(dates.startDate); from.setHours(0, 0, 0, 0);
+    const to = new Date(dates.endDate); to.setHours(23, 59, 59, 999);
 
     const getPeriodBalance = (accId) => {
         const entries = db.read('journalEntries').filter(e => {
@@ -2407,7 +2761,10 @@ window.renderFinanceProfitLoss = function () {
                 }
             });
         });
-        return Math.abs(bal);
+        // For P&L, credit balance on income is positive, debit balance on expense is positive.
+        const acc = accounts.find(a => a.id === accId);
+        if (acc.type === 'INCOME') return -bal; // Income usually has credit balance
+        return bal; // Expenses usually have debit balance
     };
 
     const incomeAccs = accounts.filter(a => a.type === 'INCOME');
@@ -2415,63 +2772,113 @@ window.renderFinanceProfitLoss = function () {
 
     const totalIncome = incomeAccs.reduce((sum, a) => sum + getPeriodBalance(a.id), 0);
     const totalExpense = expenseAccs.reduce((sum, a) => sum + getPeriodBalance(a.id), 0);
-    const netProfit = totalIncome - totalExpense;
+    const profitBeforeTax = totalIncome - totalExpense;
+    const taxRate = (CONFIG.taxRate || 11) / 100;
+    const taxAmount = profitBeforeTax > 0 ? profitBeforeTax * taxRate : 0;
+    const netProfit = profitBeforeTax - taxAmount;
+
+    // Helper to format with Rp or not
+    const format = (val, showRp = true) => {
+        if (val === 0) return '0,00';
+        let f = formatCurrency(Math.abs(val)).replace('Rp ', '').trim();
+        return (showRp ? 'Rp ' : '') + f;
+    };
 
     const filterHtml = renderReportFilterUI('renderFinanceProfitLoss');
 
     mc.innerHTML = `
         ${filterHtml}
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden printable-area max-w-4xl mx-auto">
-            <div id="print-internal-header" class="p-8 border-b border-gray-100 bg-gray-50 text-center">
-                <h3 class="text-xl font-bold text-gray-800 uppercase tracking-tight">LAPORAN LABA RUGI</h3>
-                <p class="text-xs text-gray-500 font-medium uppercase tracking-widest mt-1">Periode: ${dates.startDate} s/d ${dates.endDate}</p>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden printable-area max-w-4xl mx-auto p-12 font-serif text-gray-800">
+            <!-- Header Section -->
+            <div class="text-center mb-10">
+                <h2 class="text-lg font-bold uppercase border-b-2 border-black inline-block px-4 pb-1">${CONFIG.companyName}</h2>
+                <h1 class="text-xl font-bold mt-2">Laporan Laba Rugi</h1>
+                <p class="text-sm italic">Periode: ${dates.startDate.split('-').reverse().join('/')} s/d ${dates.endDate.split('-').reverse().join('/')}</p>
             </div>
-            
-            <div class="p-8 space-y-8">
-                <div>
-                    <h4 class="text-xs font-bold text-blue-600 uppercase tracking-wider mb-4 border-b pb-2">I. PENDAPATAN (REVENUE)</h4>
-                    <div class="space-y-3 px-2">
-                        ${incomeAccs.map(a => `
-                            <div class="flex justify-between text-sm">
-                                <span class="text-gray-600">${a.code} - ${a.name}</span>
-                                <span class="font-semibold text-gray-800">${formatCurrency(getPeriodBalance(a.id))}</span>
-                            </div>
-                        `).join('')}
-                        <div class="flex justify-between pt-3 border-t-2 border-gray-100 mt-2">
-                            <span class="font-bold text-gray-800 uppercase text-xs tracking-wider">TOTAL PENDAPATAN</span>
-                            <span class="font-bold text-blue-600">${formatCurrency(totalIncome)}</span>
-                        </div>
-                    </div>
-                </div>
 
-                <div>
-                    <h4 class="text-xs font-bold text-orange-600 uppercase tracking-wider mb-4 border-b pb-2">II. PENGELUARAN (EXPENSES)</h4>
-                    <div class="space-y-3 px-2">
-                        ${expenseAccs.map(a => `
-                            <div class="flex justify-between text-sm">
-                                <span class="text-gray-600">${a.code} - ${a.name}</span>
-                                <span class="font-semibold text-gray-800">${formatCurrency(getPeriodBalance(a.id))}</span>
-                            </div>
+            <!-- Report Table -->
+            <div class="w-full">
+                <table class="w-full border-collapse">
+                    <tbody>
+                        <!-- PENDAPATAN SECTION -->
+                        <tr class="font-bold border-t border-black">
+                            <td class="py-2" colspan="3">Pendapatan</td>
+                        </tr>
+                        ${incomeAccs.map((a, idx) => `
+                            <tr>
+                                <td class="py-1 pl-4">${a.name}</td>
+                                <td class="py-1 text-right w-48 ${idx === incomeAccs.length - 1 ? 'border-b border-black' : ''}">
+                                    ${idx === 0 ? format(getPeriodBalance(a.id)) : format(getPeriodBalance(a.id), false)}
+                                </td>
+                                <td class="py-1 w-48"></td>
+                            </tr>
                         `).join('')}
-                        <div class="flex justify-between pt-3 border-t-2 border-gray-100 mt-2">
-                            <span class="font-bold text-gray-800 uppercase text-xs tracking-wider">TOTAL PENGELUARAN</span>
-                            <span class="font-bold text-orange-600">(${formatCurrency(totalExpense)})</span>
-                        </div>
-                    </div>
-                </div>
+                        <tr class="font-bold">
+                            <td class="py-2 pl-8">Total Pendapatan</td>
+                            <td></td>
+                            <td class="py-2 text-right">${format(totalIncome)}</td>
+                        </tr>
 
-                <div class="${netProfit >= 0 ? 'bg-green-50 border-green-100' : 'bg-red-50 border-red-100'} border p-6 rounded-xl flex justify-between items-center">
-                    <span class="text-xs font-bold tracking-wider ${netProfit >= 0 ? 'text-green-800' : 'text-red-800'} uppercase">LABA / RUGI BERSIH (NET PROFIT / LOSS)</span>
-                    <span class="text-2xl font-bold ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}">${formatCurrency(netProfit)}</span>
+                        <!-- BEBAN SECTION -->
+                        <tr class="font-bold">
+                            <td class="py-2" colspan="3">Beban</td>
+                        </tr>
+                        ${expenseAccs.map((a, idx) => `
+                            <tr>
+                                <td class="py-1 pl-4">${a.name}</td>
+                                <td class="py-1 text-right w-48 ${idx === expenseAccs.length - 1 ? 'border-b border-black' : ''}">
+                                    ${idx === 0 ? format(getPeriodBalance(a.id)) : format(getPeriodBalance(a.id), false)}
+                                </td>
+                                <td class="py-1 w-48"></td>
+                            </tr>
+                        `).join('')}
+                        <tr class="font-bold">
+                            <td class="py-2 pl-8">Total Beban</td>
+                            <td></td>
+                            <td class="py-2 text-right border-b border-black">${format(totalExpense)}</td>
+                        </tr>
+
+                        <!-- SUMMARY SECTION -->
+                        <tr class="font-bold">
+                            <td class="py-3">Laba Sebelum Pajak</td>
+                            <td></td>
+                            <td class="py-3 text-right">${format(profitBeforeTax)}</td>
+                        </tr>
+                        <tr>
+                            <td class="py-1">Pajak (${CONFIG.taxRate || 11}%)</td>
+                            <td></td>
+                            <td class="py-1 text-right border-b border-black">${format(taxAmount)}</td>
+                        </tr>
+                        <tr class="font-bold text-lg">
+                            <td class="py-4">Laba Bersih</td>
+                            <td></td>
+                            <td class="py-4 text-right border-b-4 border-double border-black">${format(netProfit)}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Signature Section (Optional but adds to the look) -->
+            <div class="mt-16 flex justify-end">
+                <div class="text-center w-64">
+                    <p class="text-sm mb-20">${CONFIG.companyAddress.split(',')[0]}, ${new Date().toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric'})}</p>
+                    <p class="font-bold border-b border-black inline-block px-10">Manager Keuangan</p>
                 </div>
             </div>
         </div>
+
+        <style>
+            @media print {
+                .printable-area { border: none !important; box-shadow: none !important; p: 0 !important; }
+                body { background: white !important; }
+            }
+        </style>
     `;
 };
 
 // 3. NERACA SALDO
 window.renderFinanceTrialBalance = function () {
-    document.getElementById('pageTitle').innerText = 'Neraca Saldo';
+    document.getElementById('pageTitle').innerText = 'Neraca Saldo (Trial Balance)';
     const mc = document.getElementById('main-content');
     const dates = getReportDates();
     const from = new Date(dates.startDate); from.setHours(0,0,0,0);
@@ -2517,55 +2924,70 @@ window.renderFinanceTrialBalance = function () {
         totalCredit += finalCredit;
 
         return `
-            <tr class="hover:bg-gray-50 border-b border-gray-100 transition-colors">
-                <td class="px-6 py-3 text-xs font-medium text-gray-500 font-mono">${acc.code}</td>
-                <td class="px-6 py-3 text-sm font-semibold text-gray-700">${acc.name}</td>
-                <td class="px-6 py-3 text-sm text-right font-medium text-gray-800">${finalDebit > 0 ? formatCurrency(finalDebit) : '-'}</td>
-                <td class="px-6 py-3 text-sm text-right font-medium text-gray-800">${finalCredit > 0 ? formatCurrency(finalCredit) : '-'}</td>
+            <tr class="border-b border-gray-50 text-[11px]">
+                <td class="px-4 py-3 font-mono text-gray-500">${acc.code}</td>
+                <td class="px-4 py-3 font-semibold text-gray-700">${acc.name}</td>
+                <td class="px-4 py-3 text-right font-mono text-gray-800">${finalDebit > 0 ? formatCurrency(finalDebit).replace('Rp ', '').trim() : '0'}</td>
+                <td class="px-4 py-3 text-right font-mono text-gray-800">${finalCredit > 0 ? formatCurrency(finalCredit).replace('Rp ', '').trim() : '0'}</td>
             </tr>
         `;
     }).join('');
 
     const isBalanced = Math.abs(totalDebit - totalCredit) < 1;
-
     const filterHtml = renderReportFilterUI('renderFinanceTrialBalance');
 
     mc.innerHTML = `
         ${filterHtml}
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden printable-area max-w-5xl mx-auto">
-             <div id="print-internal-header" class="p-8 border-b border-gray-100 bg-gray-50 text-center">
-                <h3 class="text-xl font-bold text-gray-800 uppercase tracking-tight">NERACA SALDO (TRIAL BALANCE)</h3>
-                <p class="text-xs text-gray-500 font-medium uppercase tracking-widest mt-1">Periode: ${dates.startDate} s/d ${dates.endDate}</p>
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden printable-area p-8 font-sans max-w-4xl mx-auto">
+            <div class="flex justify-between items-start mb-12">
+                <div class="text-xs text-gray-400 leading-relaxed uppercase font-bold tracking-tighter">
+                    <h2 class="text-sm font-bold text-gray-800 mb-1">${CONFIG.companyName}</h2>
+                    <p>${CONFIG.companyAddress.split(',').slice(0, 2).join(',')}</p>
+                    <p>Indonesia</p>
+                </div>
+                <div class="text-right">
+                    <h1 class="text-2xl font-bold text-gray-800">Neraca Saldo</h1>
+                    <p class="text-[10px] text-gray-400 uppercase tracking-widest font-bold mt-1">Trial Balance Document</p>
+                </div>
             </div>
-            
-            <div class="overflow-x-auto">
+
+            <div class="mb-2">
                 <table class="w-full text-left border-collapse">
-                    <thead class="bg-gray-100 text-gray-600 text-xs uppercase tracking-wider font-semibold">
+                    <thead class="bg-gray-100/50">
                         <tr>
-                            <th class="px-6 py-4 border-b border-gray-200">Kode Akun</th>
-                            <th class="px-6 py-4 border-b border-gray-200">Nama Akun</th>
-                            <th class="px-6 py-4 border-b border-gray-200 text-right">Debit (Rp)</th>
-                            <th class="px-6 py-4 border-b border-gray-200 text-right">Kredit (Rp)</th>
+                            <th class="px-4 py-2 text-center text-[10px] font-bold text-gray-700 border-b border-gray-200" colspan="4">
+                                Periode: ${dates.startDate.split('-').reverse().join('/')} s/d ${dates.endDate.split('-').reverse().join('/')}
+                            </th>
+                        </tr>
+                        <tr class="text-[10px] uppercase tracking-wider font-bold text-gray-800">
+                            <th class="px-4 py-3 border-b border-gray-200">Kode Akun</th>
+                            <th class="px-4 py-3 border-b border-gray-200">Nama Akun</th>
+                            <th class="px-4 py-3 border-b border-gray-200 text-right">Debit (Rp)</th>
+                            <th class="px-4 py-3 border-b border-gray-200 text-right">Kredit (Rp)</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-gray-100 font-sans">
-                        ${tbRows || '<tr><td colspan="4" class="px-6 py-12 text-center text-gray-400 italic">Tidak ada transaksi pada periode ini.</td></tr>'}
-                    </tbody>
-                    <tfoot class="bg-gray-800 text-white font-bold text-sm">
-                        <tr>
-                            <td colspan="2" class="px-6 py-5 text-right uppercase tracking-wider">TOTAL SALDO</td>
-                            <td class="px-6 py-5 text-right">${formatCurrency(totalDebit)}</td>
-                            <td class="px-6 py-5 text-right">${formatCurrency(totalCredit)}</td>
+                    <tbody>
+                        ${tbRows || '<tr><td colspan="4" class="px-4 py-12 text-center text-gray-400 italic">Tidak ada transaksi pada periode ini.</td></tr>'}
+                        
+                        <tr class="border-t-2 border-gray-200 font-bold text-xs text-gray-800 bg-gray-50/30">
+                            <td class="px-4 py-4" colspan="2">TOTAL SALDO AKHIR</td>
+                            <td class="px-4 py-4 text-right font-mono">${formatCurrency(totalDebit).replace('Rp ', '').trim()}</td>
+                            <td class="px-4 py-4 text-right font-mono">${formatCurrency(totalCredit).replace('Rp ', '').trim()}</td>
                         </tr>
-                    </tfoot>
+                    </tbody>
                 </table>
             </div>
             
             ${!isBalanced ? `
-            <div class="bg-red-50 p-4 text-center border-t border-red-200">
-                <p class="text-red-600 font-bold tracking-wider text-sm uppercase"><i class="fas fa-exclamation-triangle mr-2"></i> PERINGATAN: NERACA TIDAK SEIMBANG! (Selisih: ${formatCurrency(Math.abs(totalDebit - totalCredit))})</p>
+            <div class="mt-4 p-3 bg-red-50 text-red-600 text-[10px] font-bold text-center border border-red-100 rounded-lg">
+                <i class="fas fa-exclamation-triangle mr-2"></i> PERINGATAN: NERACA TIDAK SEIMBANG! SELISIH: ${formatCurrency(Math.abs(totalDebit - totalCredit))}
             </div>
             ` : ''}
+
+            <div class="mt-20 flex justify-between items-end text-[10px] text-gray-400 italic">
+                <p>Dokumen ini dihasilkan secara otomatis oleh sistem akuntansi Unity ERP.</p>
+                <p>Halaman 1 dari 1</p>
+            </div>
         </div>
     `;
 };
@@ -2576,3 +2998,282 @@ window.printFinanceReport = function() {
     const title = document.getElementById('pageTitle').innerText + '_' + Date.now();
     printHTML(area.outerHTML, title);
 };
+
+window.renderFinanceARAging = function () {
+    document.getElementById('pageTitle').innerText = 'Laporan Umur Piutang (AR Aging)';
+    const mc = document.getElementById('main-content');
+    
+    const invoices = db.read('salesInvoices');
+    const payments = db.read('payments');
+    const customers = db.read('customers');
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Grouping invoices by customer
+    const agingData = {};
+
+    invoices.forEach(inv => {
+        const invPayments = payments.filter(p => p.invoiceId === inv.id);
+        const totalPaid = invPayments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+        const balance = (parseFloat(inv.totalAmount) || 0) - totalPaid;
+
+        if (balance <= 0) return; // Only process unpaid or partially paid
+
+        const invDate = new Date(inv.date);
+        invDate.setHours(0, 0, 0, 0);
+        const diffTime = Math.abs(today - invDate);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        const customerId = inv.customerId;
+        if (!agingData[customerId]) {
+            agingData[customerId] = {
+                name: inv.customerName || customers.find(c => c.id === customerId)?.name || 'Unknown',
+                buckets: { current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d91_120: 0, older: 0 },
+                total: 0
+            };
+        }
+
+        if (diffDays === 0) agingData[customerId].buckets.current += balance;
+        else if (diffDays <= 30) agingData[customerId].buckets.d1_30 += balance;
+        else if (diffDays <= 60) agingData[customerId].buckets.d31_60 += balance;
+        else if (diffDays <= 90) agingData[customerId].buckets.d61_90 += balance;
+        else if (diffDays <= 120) agingData[customerId].buckets.d91_120 += balance;
+        else agingData[customerId].buckets.older += balance;
+
+        agingData[customerId].total += balance;
+    });
+
+    const agingRows = Object.values(agingData).map(data => `
+        <tr class="border-b border-gray-50 text-xs">
+            <td class="px-4 py-3 font-semibold text-gray-700">${data.name}</td>
+            <td class="px-4 py-3 text-right text-gray-400 font-mono">${data.buckets.current > 0 ? formatCurrency(data.buckets.current).replace('Rp ', '').trim() : '0'}</td>
+            <td class="px-4 py-3 text-right text-gray-400 font-mono">${data.buckets.d1_30 > 0 ? formatCurrency(data.buckets.d1_30).replace('Rp ', '').trim() : '0'}</td>
+            <td class="px-4 py-3 text-right text-gray-400 font-mono">${data.buckets.d31_60 > 0 ? formatCurrency(data.buckets.d31_60).replace('Rp ', '').trim() : '0'}</td>
+            <td class="px-4 py-3 text-right text-gray-800 font-bold font-mono">${data.buckets.d61_90 > 0 ? formatCurrency(data.buckets.d61_90).replace('Rp ', '').trim() : '0'}</td>
+            <td class="px-4 py-3 text-right text-gray-400 font-mono">${data.buckets.d91_120 > 0 ? formatCurrency(data.buckets.d91_120).replace('Rp ', '').trim() : '0'}</td>
+            <td class="px-4 py-3 text-right text-gray-400 font-mono">${data.buckets.older > 0 ? formatCurrency(data.buckets.older).replace('Rp ', '').trim() : '0'}</td>
+            <td class="px-4 py-3 text-right font-bold text-gray-800 font-mono">${formatCurrency(data.total).replace('Rp ', '').trim()}</td>
+        </tr>
+    `).join('');
+
+    const totals = Object.values(agingData).reduce((t, data) => {
+        t.current += data.buckets.current;
+        t.d1_30 += data.buckets.d1_30;
+        t.d31_60 += data.buckets.d31_60;
+        t.d61_90 += data.buckets.d61_90;
+        t.d91_120 += data.buckets.d91_120;
+        t.older += data.buckets.older;
+        t.grandTotal += data.total;
+        return t;
+    }, { current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d91_120: 0, older: 0, grandTotal: 0 });
+
+    mc.innerHTML = `
+        <div class="flex justify-end mb-4">
+             <button onclick="printFinanceReport()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-blue-700 transition-all">
+                <i class="fas fa-print mr-2"></i> Print Laporan
+            </button>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden printable-area p-8 font-sans max-w-6xl mx-auto">
+            <div class="flex justify-between items-start mb-12">
+                <div class="text-xs text-gray-500 leading-relaxed">
+                    <h2 class="text-sm font-bold text-gray-800 mb-1">PT Tana Subur Nusantara</h2>
+                    <p>Jl. Akses Tol Karawang Tim., Anggadita, Kec. Klari</p>
+                    <p>Karawang JB 41371</p>
+                    <p>Indonesia</p>
+                    <p class="font-bold mt-2">NPWP:</p>
+                </div>
+                <div class="text-right">
+                    <h1 class="text-2xl font-bold text-gray-800">Umur Piutang</h1>
+                </div>
+            </div>
+
+            <div class="mb-2">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-gray-100/50">
+                        <tr>
+                            <th class="px-4 py-2 text-center text-[10px] font-bold text-gray-700 border-b border-gray-200" colspan="8">
+                                Sebagai ${new Date().toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                            </th>
+                        </tr>
+                        <tr class="text-[10px] uppercase tracking-wider font-bold text-gray-800">
+                            <th class="px-4 py-3 border-b border-gray-200">Tanggal Faktur</th>
+                            <th class="px-4 py-3 border-b border-gray-200 text-right">Pada tanggal</th>
+                            <th class="px-4 py-3 border-b border-gray-200 text-right">1-30</th>
+                            <th class="px-4 py-3 border-b border-gray-200 text-right">31-60</th>
+                            <th class="px-4 py-3 border-b border-gray-200 text-right">61-90</th>
+                            <th class="px-4 py-3 border-b border-gray-200 text-right">91-120</th>
+                            <th class="px-4 py-3 border-b border-gray-200 text-right">Lebih Tua</th>
+                            <th class="px-4 py-3 border-b border-gray-200 text-right">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="bg-gray-50/50">
+                            <td colspan="8" class="px-4 py-2 text-[11px] font-bold text-gray-800">Umur Piutang</td>
+                        </tr>
+                        ${agingRows || '<tr><td colspan="8" class="px-4 py-8 text-center text-gray-400 italic">Tidak ada piutang aktif.</td></tr>'}
+                        
+                        <tr class="border-t-2 border-gray-200 font-bold text-xs text-gray-800">
+                            <td class="px-4 py-4">Total Umur Piutang</td>
+                            <td class="px-4 py-4 text-right font-mono">${totals.current > 0 ? formatCurrency(totals.current).replace('Rp ', '').trim() : '0'}</td>
+                            <td class="px-4 py-4 text-right font-mono">${totals.d1_30 > 0 ? formatCurrency(totals.d1_30).replace('Rp ', '').trim() : '0'}</td>
+                            <td class="px-4 py-4 text-right font-mono">${totals.d31_60 > 0 ? formatCurrency(totals.d31_60).replace('Rp ', '').trim() : '0'}</td>
+                            <td class="px-4 py-4 text-right font-mono uppercase">${totals.d61_90 > 0 ? formatCurrency(totals.d61_90).replace('Rp ', '').trim() : '0'}</td>
+                            <td class="px-4 py-4 text-right font-mono">${totals.d91_120 > 0 ? formatCurrency(totals.d91_120).replace('Rp ', '').trim() : '0'}</td>
+                            <td class="px-4 py-4 text-right font-mono">${totals.older > 0 ? formatCurrency(totals.older).replace('Rp ', '').trim() : '0'}</td>
+                            <td class="px-4 py-4 text-right font-mono">${formatCurrency(totals.grandTotal).replace('Rp ', '').trim()}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="mt-20 flex justify-between items-end text-[10px] text-gray-400">
+                <div>
+                     <p>Laporan ini dihasilkan secara otomatis oleh sistem.</p>
+                </div>
+            </div>
+        </div>
+    `;
+};
+
+// 5. LAPORAN UMUR UTANG (AP AGING)
+window.renderFinanceAPAging = function () {
+    document.getElementById('pageTitle').innerText = 'Laporan Umur Utang (AP Aging)';
+    const mc = document.getElementById('main-content');
+    
+    const invoices = db.read('purchaseInvoices');
+    const payments = db.read('supplierPayments');
+    const suppliers = db.read('suppliers');
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Grouping invoices by supplier
+    const agingData = {};
+
+    invoices.forEach(inv => {
+        const invPayments = payments.filter(p => p.invoiceId === inv.id);
+        const totalPaid = invPayments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+        const balance = (parseFloat(inv.totalAmount) || 0) - totalPaid;
+
+        if (balance <= 0) return; // Only process unpaid or partially paid
+
+        const invDate = new Date(inv.date);
+        invDate.setHours(0, 0, 0, 0);
+        const diffTime = Math.abs(today - invDate);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        const supplierId = inv.supplierId;
+        if (!agingData[supplierId]) {
+            const sup = suppliers.find(s => s.id === supplierId) || { name: 'Unknown' };
+            agingData[supplierId] = {
+                name: sup.name,
+                buckets: { current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d91_120: 0, older: 0 },
+                total: 0
+            };
+        }
+
+        if (diffDays === 0) agingData[supplierId].buckets.current += balance;
+        else if (diffDays <= 30) agingData[supplierId].buckets.d1_30 += balance;
+        else if (diffDays <= 60) agingData[supplierId].buckets.d31_60 += balance;
+        else if (diffDays <= 90) agingData[supplierId].buckets.d61_90 += balance;
+        else if (diffDays <= 120) agingData[supplierId].buckets.d91_120 += balance;
+        else agingData[supplierId].buckets.older += balance;
+
+        agingData[supplierId].total += balance;
+    });
+
+    const agingRows = Object.values(agingData).map(data => `
+        <tr class="border-b border-gray-50 text-xs">
+            <td class="px-4 py-3 font-semibold text-gray-700">${data.name}</td>
+            <td class="px-4 py-3 text-right text-gray-400 font-mono">${data.buckets.current > 0 ? formatCurrency(data.buckets.current).replace('Rp ', '').trim() : '0'}</td>
+            <td class="px-4 py-3 text-right text-gray-400 font-mono">${data.buckets.d1_30 > 0 ? formatCurrency(data.buckets.d1_30).replace('Rp ', '').trim() : '0'}</td>
+            <td class="px-4 py-3 text-right text-gray-400 font-mono">${data.buckets.d31_60 > 0 ? formatCurrency(data.buckets.d31_60).replace('Rp ', '').trim() : '0'}</td>
+            <td class="px-4 py-3 text-right text-gray-800 font-bold font-mono">${data.buckets.d61_90 > 0 ? formatCurrency(data.buckets.d61_90).replace('Rp ', '').trim() : '0'}</td>
+            <td class="px-4 py-3 text-right text-gray-400 font-mono">${data.buckets.d91_120 > 0 ? formatCurrency(data.buckets.d91_120).replace('Rp ', '').trim() : '0'}</td>
+            <td class="px-4 py-3 text-right text-gray-400 font-mono">${data.buckets.older > 0 ? formatCurrency(data.buckets.older).replace('Rp ', '').trim() : '0'}</td>
+            <td class="px-4 py-3 text-right font-bold text-gray-800 font-mono">${formatCurrency(data.total).replace('Rp ', '').trim()}</td>
+        </tr>
+    `).join('');
+
+    const totals = Object.values(agingData).reduce((t, data) => {
+        t.current += data.buckets.current;
+        t.d1_30 += data.buckets.d1_30;
+        t.d31_60 += data.buckets.d31_60;
+        t.d61_90 += data.buckets.d61_90;
+        t.d91_120 += data.buckets.d91_120;
+        t.older += data.buckets.older;
+        t.grandTotal += data.total;
+        return t;
+    }, { current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d91_120: 0, older: 0, grandTotal: 0 });
+
+    mc.innerHTML = `
+        <div class="flex justify-end mb-4">
+             <button onclick="printFinanceReport()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-blue-700 transition-all">
+                <i class="fas fa-print mr-2"></i> Print Laporan
+            </button>
+        </div>
+
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden printable-area p-8 font-sans max-w-6xl mx-auto">
+            <div class="flex justify-between items-start mb-12">
+                <div class="text-xs text-gray-500 leading-relaxed">
+                    <h2 class="text-sm font-bold text-gray-800 mb-1">${CONFIG.companyName}</h2>
+                    <p>${CONFIG.companyAddress}</p>
+                    <p>Indonesia</p>
+                    <p class="font-bold mt-2">NPWP:</p>
+                </div>
+                <div class="text-right">
+                    <h1 class="text-2xl font-bold text-gray-800 uppercase">Umur Utang Dagang</h1>
+                </div>
+            </div>
+
+            <div class="mb-2">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-gray-100/50">
+                        <tr>
+                            <th class="px-4 py-2 text-center text-[10px] font-bold text-gray-700 border-b border-gray-200" colspan="8">
+                                Sebagai ${new Date().toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                            </th>
+                        </tr>
+                        <tr class="text-[10px] uppercase tracking-wider font-bold text-gray-800">
+                            <th class="px-4 py-3 border-b border-gray-200">Tanggal Faktur</th>
+                            <th class="px-4 py-3 border-b border-gray-200 text-right">Pada tanggal</th>
+                            <th class="px-4 py-3 border-b border-gray-200 text-right">1-30</th>
+                            <th class="px-4 py-3 border-b border-gray-200 text-right">31-60</th>
+                            <th class="px-4 py-3 border-b border-gray-200 text-right">61-90</th>
+                            <th class="px-4 py-3 border-b border-gray-200 text-right">91-120</th>
+                            <th class="px-4 py-3 border-b border-gray-200 text-right">Lebih Tua</th>
+                            <th class="px-4 py-3 border-b border-gray-200 text-right">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="bg-gray-50/50">
+                            <td colspan="8" class="px-4 py-2 text-[11px] font-bold text-gray-800">Umur Utang Dagang</td>
+                        </tr>
+                        ${agingRows || '<tr><td colspan="8" class="px-4 py-8 text-center text-gray-400 italic">Tidak ada utang dagang aktif.</td></tr>'}
+                        
+                        <tr class="border-t-2 border-gray-200 font-bold text-xs text-gray-800">
+                            <td class="px-4 py-4">Total Umur Utang Dagang</td>
+                            <td class="px-4 py-4 text-right font-mono">${totals.current > 0 ? formatCurrency(totals.current).replace('Rp ', '').trim() : '0'}</td>
+                            <td class="px-4 py-4 text-right font-mono">${totals.d1_30 > 0 ? formatCurrency(totals.d1_30).replace('Rp ', '').trim() : '0'}</td>
+                            <td class="px-4 py-4 text-right font-mono">${totals.d31_60 > 0 ? formatCurrency(totals.d31_60).replace('Rp ', '').trim() : '0'}</td>
+                            <td class="px-4 py-4 text-right font-mono uppercase">${totals.d61_90 > 0 ? formatCurrency(totals.d61_90).replace('Rp ', '').trim() : '0'}</td>
+                            <td class="px-4 py-4 text-right font-mono">${totals.d91_120 > 0 ? formatCurrency(totals.d91_120).replace('Rp ', '').trim() : '0'}</td>
+                            <td class="px-4 py-4 text-right font-mono">${totals.older > 0 ? formatCurrency(totals.older).replace('Rp ', '').trim() : '0'}</td>
+                            <td class="px-4 py-4 text-right font-mono">${formatCurrency(totals.grandTotal).replace('Rp ', '').trim()}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="mt-20 flex justify-between items-end text-[10px] text-gray-400">
+                <div>
+                     <p>Laporan ini dihasilkan secara otomatis oleh sistem.</p>
+                </div>
+            </div>
+        </div>
+    `;
+};
+
+
+
+

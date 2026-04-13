@@ -79,39 +79,60 @@ window.renderSalesReturns = function () {
 
     mc.innerHTML = `
         <div class="space-y-4">
-            <!-- Standard Filter Bar (Premium Spacing) -->
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-wrap items-end gap-x-6 gap-y-4">
-                <div class="flex-1 min-w-[160px]">
-                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Dari Tanggal</label>
-                    <input type="date" id="sr_filter_start" value="${f.start}" class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-500 outline-none transition-shadow bg-gray-50/30">
+            <!-- Collapsible Filter Section -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-5 overflow-hidden">
+                <div onclick="toggleSRETFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
+                    <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
+                        <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
+                        ${(!window._uiState.sretFilterOpen && (f.start || f.end || f.customerId || f.status || f.condition)) ? 
+                            `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
+                    </h3>
+                    <div class="flex items-center gap-3">
+                        <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.sretFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
+                        <i class="fas fa-chevron-${window._uiState.sretFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
+                    </div>
                 </div>
-                <div class="flex-1 min-w-[160px]">
-                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Sampai Tanggal</label>
-                    <input type="date" id="sr_filter_end" value="${f.end}" class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-red-500 outline-none transition-shadow bg-gray-50/30">
-                </div>
-                <div class="flex-[1.5] min-w-[240px]">
-                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Nama Pelanggan</label>
-                    <select id="sr_filter_customer" class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm bg-gray-50/30 focus:ring-2 focus:ring-red-500 outline-none appearance-none cursor-pointer">
-                        <option value="">-- Semua Pelanggan --</option>${custOpts}
-                    </select>
-                </div>
-                <div class="w-44">
-                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Status Progres</label>
-                    <select id="sr_filter_status" class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm bg-gray-50/30 focus:ring-2 focus:ring-red-500 outline-none cursor-pointer">
-                        <option value="">-- Semua --</option>${statusOpts}
-                    </select>
-                </div>
-                <div class="w-36">
-                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Kondisi</label>
-                    <select id="sr_filter_condition" class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm bg-gray-50/30 focus:ring-2 focus:ring-red-500 outline-none cursor-pointer">
-                        <option value="">-- Semua --</option>
-                        <option value="Good" ${f.condition === 'Good' ? 'selected' : ''}>Bagus</option>
-                        <option value="Damaged" ${f.condition === 'Damaged' ? 'selected' : ''}>Rusak</option>
-                    </select>
-                </div>
-                <div class="flex gap-2 min-w-max">
-                    <button onclick="updateSRFilters()" class="bg-red-600 hover:bg-red-700 text-white px-8 py-2.5 rounded-lg text-sm font-black flex items-center gap-2 shadow-sm transition-all hover:scale-[1.02] active:scale-95"><i class="fas fa-search"></i> CARI</button>
-                    <button onclick="resetSRFilters()" class="bg-gray-100 hover:bg-gray-200 text-gray-500 px-4 py-2.5 rounded-lg text-sm font-bold transition-all">Reset</button>
+
+                <div class="${window._uiState.sretFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Dari Tanggal</label>
+                            <input type="date" id="sr_filter_start" value="${f.start}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white">
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Sampai Tanggal</label>
+                            <input type="date" id="sr_filter_end" value="${f.end}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white">
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nama Pelanggan</label>
+                            <select id="sr_filter_customer" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white cursor-pointer font-sans">
+                                <option value="">-- Semua Pelanggan --</option>${custOpts}
+                            </select>
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Status Progres</label>
+                            <select id="sr_filter_status" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white cursor-pointer font-sans">
+                                <option value="">-- Semua --</option>${statusOpts}
+                            </select>
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Kondisi</label>
+                            <select id="sr_filter_condition" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white cursor-pointer font-sans">
+                                <option value="">-- Semua --</option>
+                                <option value="Good" ${f.condition === 'Good' ? 'selected' : ''}>Bagus</option>
+                                <option value="Damaged" ${f.condition === 'Damaged' ? 'selected' : ''}>Rusak</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 pt-4 border-t border-slate-50 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <button onclick="resetSRFilters()" class="text-[9px] font-black text-slate-400 hover:text-slate-600 uppercase tracking-widest flex items-center gap-2 transition-all">
+                            <i class="fas fa-undo-alt text-[10px]"></i> Reset Filter
+                        </button>
+                        <button onclick="updateSRFilters()" class="w-full sm:w-auto bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2">
+                            <i class="fas fa-search"></i> TAMPILKAN DATA
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -120,7 +141,7 @@ window.renderSalesReturns = function () {
                 <div>
                     <h3 class="text-lg font-black text-gray-800 uppercase tracking-tight">Riwayat Retur Penjualan</h3>
                 </div>
-                ${perm.edit ? `<button onclick="openSalesReturnModal()" class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm flex items-center gap-2"><i class="fas fa-plus"></i> Buat Retur Baru</button>` : ''}
+                ${perm.edit ? `<button onclick="openSalesReturnModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm flex items-center gap-2"><i class="fas fa-plus"></i> Buat Retur Baru</button>` : ''}
             </div>
 
             <!-- Table -->
@@ -157,7 +178,7 @@ window.renderSalesReturns = function () {
         }
         return `
                                 <tr class="hover:bg-gray-50/50 transition-colors">
-                                    <td class="px-4 py-3 font-bold text-red-600">${r.returnNumber}</td>
+                                    <td class="px-4 py-3 font-bold text-blue-600">${r.returnNumber}</td>
                                     <td class="px-4 py-3 text-gray-600">${srDate(r.date)}</td>
                                     <td class="px-4 py-3 text-gray-800"><strong>${customer?.name || 'N/A'}</strong></td>
                                     <td class="px-4 py-3 text-gray-700">${r.productName}</td>
@@ -202,26 +223,26 @@ window.openSalesReturnModal = function (soId = null) {
 
     const soOptions = salesOrders.map(so => {
         const cust = db.findById('customers', so.customerId);
-        return `<option value="${so.id}" ${soId === so.id ? 'selected' : ''}>${so.soNumber} — ${cust?.name || ''}</option>`;
+        return `<option value="${so.id}" ${soId === so.id ? 'selected' : ''}>${so.soNumber} - ${cust?.name || ''}</option>`;
     }).join('');
 
     const body = `
         <div class="space-y-4">
-            <div class="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-700 flex items-center gap-2">
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700 flex items-center gap-2">
                 <i class="fas fa-info-circle"></i>
                 Pilih Sales Order untuk mengisi data produk secara otomatis.
             </div>
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Sales Order</label>
-                    <select id="sr_so" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-red-400" onchange="loadSOItemsForReturn()">
+                    <select id="sr_so" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-400" onchange="loadSOItemsForReturn()">
                         <option value="">-- Pilih Sales Order --</option>
                         ${soOptions}
                     </select>
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Produk yang Dikembalikan</label>
-                    <select id="sr_product" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-red-400">
+                    <select id="sr_product" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-400">
                         <option value="">-- Pilih SO Dulu --</option>
                     </select>
                 </div>
@@ -229,18 +250,18 @@ window.openSalesReturnModal = function (soId = null) {
             <div class="grid grid-cols-3 gap-4">
                 <div>
                     <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Qty Dikembalikan</label>
-                    <input type="number" id="sr_qty" min="1" value="1" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-400">
+                    <input type="number" id="sr_qty" min="1" value="1" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400">
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Kondisi Barang</label>
-                    <select id="sr_condition" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-red-400">
+                    <select id="sr_condition" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-400">
                         <option value="Good">Bagus / Good</option>
                         <option value="Damaged">Rusak / Damaged</option>
                     </select>
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Metode Refund</label>
-                    <select id="sr_refund_method" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-red-400">
+                    <select id="sr_refund_method" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-400">
                         <option value="Cash">Tunai (Cash)</option>
                         <option value="Bank">Transfer Bank</option>
                         <option value="StoreCredit">Store Credit (Nota)</option>
@@ -249,20 +270,20 @@ window.openSalesReturnModal = function (soId = null) {
             </div>
             <div>
                 <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Alasan Retur</label>
-                <textarea id="sr_reason" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-400" placeholder="Jelaskan alasan retur..."></textarea>
+                <textarea id="sr_reason" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400" placeholder="Jelaskan alasan retur..."></textarea>
             </div>
             <div>
                 <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Catatan Tambahan</label>
-                <input type="text" id="sr_notes" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-red-400" placeholder="Opsional...">
+                <input type="text" id="sr_notes" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400" placeholder="Opsional...">
             </div>
         </div>
     `;
 
     const footer = `
-        <button onclick="saveSalesReturn()" class="bg-red-600 text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-red-700 shadow-md">Simpan Retur</button>
+        <button onclick="saveSalesReturn()" class="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-blue-700 shadow-md">Simpan Retur</button>
         <button onclick="closeModal()" class="px-6 py-2 text-sm font-bold text-gray-500 hover:bg-gray-100 rounded-lg">Batal</button>
     `;
-    showModal('Buat Sales Return Baru', body, footer, 'max-w-2xl');
+    showModal('Buat Sales Return Baru', body, footer, 'full');
     if (soId) { setTimeout(() => loadSOItemsForReturn(), 100); }
 };
 
@@ -278,7 +299,7 @@ window.loadSOItemsForReturn = function () {
         const displayName = item.prodText || invItem?.itemName || 'Produk';
         const price = item.price || item.unitPrice || 0;
         const invId = item.inventoryItemId || '';
-        return `<option value="${invId}" data-name="${displayName}" data-price="${price}">${displayName} — ${srFmt(price)}</option>`;
+        return `<option value="${invId}" data-name="${displayName}" data-price="${price}">${displayName} - ${srFmt(price)}</option>`;
     }).join('');
 };
 
@@ -406,7 +427,7 @@ window.processReturnRefund = function (id) {
         });
         showToast(`Credit Note ${noteNumber} berhasil dibuat untuk Store Credit.`);
     } else {
-        // Cash or Bank refund — create journal entry
+        // Cash or Bank refund â€” create journal entry
         const cashAccountId = method === 'Bank' ? 'acc_bank' : 'acc_cash';
         if (typeof db.addJournalEntry === 'function') {
             db.addJournalEntry({
@@ -469,31 +490,52 @@ window.renderProductExchanges = function () {
 
     mc.innerHTML = `
         <div class="space-y-4">
-            <!-- Standard Filter Bar (Premium Spacing) -->
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex flex-wrap items-end gap-x-8 gap-y-4">
-                <div class="flex-1 min-w-[180px]">
-                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Dari Tanggal</label>
-                    <input type="date" id="ex_filter_start" value="${f.start}" class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-orange-500 outline-none transition-shadow bg-gray-50/30">
+            <!-- Collapsible Filter Section -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-5 overflow-hidden">
+                <div onclick="toggleSEXCHFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
+                    <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
+                        <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
+                        ${(!window._uiState.sexchFilterOpen && (f.start || f.end || f.customerId || f.status)) ? 
+                            `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
+                    </h3>
+                    <div class="flex items-center gap-3">
+                        <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.sexchFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
+                        <i class="fas fa-chevron-${window._uiState.sexchFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
+                    </div>
                 </div>
-                <div class="flex-1 min-w-[180px]">
-                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Sampai Tanggal</label>
-                    <input type="date" id="ex_filter_end" value="${f.end}" class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-orange-500 outline-none transition-shadow bg-gray-50/30">
-                </div>
-                <div class="flex-[2] min-w-[280px]">
-                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Nama Customer</label>
-                    <select id="ex_filter_customer" class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm bg-gray-50/30 focus:ring-2 focus:ring-orange-500 outline-none appearance-none cursor-pointer">
-                        <option value="">-- Semua Pelanggan --</option>${custOpts}
-                    </select>
-                </div>
-                <div class="w-56">
-                    <label class="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Status Penukaran</label>
-                    <select id="ex_filter_status" class="w-full border border-gray-200 rounded-lg px-4 py-2.5 text-sm bg-gray-50/30 focus:ring-2 focus:ring-orange-500 outline-none cursor-pointer">
-                        <option value="">-- Semua Status --</option>${statusOpts}
-                    </select>
-                </div>
-                <div class="flex gap-2 min-w-max">
-                    <button onclick="updateEXFilters()" class="bg-orange-600 hover:bg-orange-700 text-white px-8 py-2.5 rounded-lg text-sm font-black flex items-center gap-2 shadow-sm transition-all hover:scale-[1.02] active:scale-95"><i class="fas fa-search"></i> CARI</button>
-                    <button onclick="resetEXFilters()" class="bg-gray-100 hover:bg-gray-200 text-gray-500 px-4 py-2.5 rounded-lg text-sm font-bold transition-all">Reset</button>
+
+                <div class="${window._uiState.sexchFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Dari Tanggal</label>
+                            <input type="date" id="ex_filter_start" value="${f.start}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white">
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Sampai Tanggal</label>
+                            <input type="date" id="ex_filter_end" value="${f.end}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white">
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nama Pelanggan</label>
+                            <select id="ex_filter_customer" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white cursor-pointer font-sans">
+                                <option value="">-- Semua Pelanggan --</option>${custOpts}
+                            </select>
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Status Penukaran</label>
+                            <select id="ex_filter_status" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white cursor-pointer font-sans">
+                                <option value="">-- Semua Status --</option>${statusOpts}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 pt-4 border-t border-slate-50 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <button onclick="resetEXFilters()" class="text-[9px] font-black text-slate-400 hover:text-slate-600 uppercase tracking-widest flex items-center gap-2 transition-all">
+                            <i class="fas fa-undo-alt text-[10px]"></i> Reset Filter
+                        </button>
+                        <button onclick="updateEXFilters()" class="w-full sm:w-auto bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2">
+                            <i class="fas fa-search"></i> TAMPILKAN DATA
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -502,7 +544,7 @@ window.renderProductExchanges = function () {
                 <div>
                     <h3 class="text-lg font-black text-gray-800 uppercase tracking-tight">Riwayat Tukar Guling Produk</h3>
                 </div>
-                ${perm.edit ? `<button onclick="openExchangeModal()" class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm flex items-center gap-2"><i class="fas fa-exchange-alt"></i> Buat Tukar Guling</button>` : ''}
+                ${perm.edit ? `<button onclick="openExchangeModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm flex items-center gap-2"><i class="fas fa-exchange-alt"></i> Buat Tukar Guling</button>` : ''}
             </div>
 
             <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -512,7 +554,7 @@ window.renderProductExchanges = function () {
                             <th class="px-4 py-3 border-b border-gray-100">No. Exchange</th>
                             <th class="px-4 py-3 border-b border-gray-100">Tanggal</th>
                             <th class="px-4 py-3 border-b border-gray-100">Pelanggan</th>
-                            <th class="px-4 py-3 border-b border-gray-100">Produk Lama → Baru</th>
+                            <th class="px-4 py-3 border-b border-gray-100">Produk Lama â†’ Baru</th>
                             <th class="px-4 py-3 border-b border-gray-100 text-right">Selisih Harga</th>
                             <th class="px-4 py-3 border-b border-gray-100">Status</th>
                             <th class="px-4 py-3 border-b border-gray-100 text-right">Aksi</th>
@@ -542,7 +584,7 @@ window.renderProductExchanges = function () {
 
         return `
                                 <tr class="hover:bg-gray-50/50 transition-colors">
-                                    <td class="px-4 py-3 font-bold text-orange-600">${ex.exchangeNumber}</td>
+                                    <td class="px-4 py-3 font-bold text-blue-600">${ex.exchangeNumber}</td>
                                     <td class="px-4 py-3 text-gray-600">${srDate(ex.date)}</td>
                                     <td class="px-4 py-3 text-gray-800"><strong>${customer?.name || 'N/A'}</strong></td>
                                     <td class="px-4 py-3 text-gray-700 text-sm">
@@ -584,7 +626,7 @@ window.openExchangeModal = function (soId = null) {
 
     const soOptions = salesOrders.map(so => {
         const cust = db.findById('customers', so.customerId);
-        return `<option value="${so.id}" ${soId === so.id ? 'selected' : ''}>${so.soNumber} — ${cust?.name || ''}</option>`;
+        return `<option value="${so.id}" ${soId === so.id ? 'selected' : ''}>${so.soNumber} - ${cust?.name || ''}</option>`;
     }).join('');
 
     const invOptions = inventoryItems.map(i =>
@@ -593,21 +635,21 @@ window.openExchangeModal = function (soId = null) {
 
     const body = `
         <div class="space-y-4">
-            <div class="bg-orange-50 border border-orange-200 rounded-lg p-3 text-xs text-orange-700 flex items-center gap-2">
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700 flex items-center gap-2">
                 <i class="fas fa-exchange-alt"></i>
                 Pilih Sales Order lalu tentukan produk lama (yang dikembalikan) dan produk baru (pengganti).
             </div>
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Sales Order Asal</label>
-                    <select id="ex_so" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-orange-400" onchange="loadSOItemsForExchange()">
+                    <select id="ex_so" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-400" onchange="loadSOItemsForExchange()">
                         <option value="">-- Pilih Sales Order --</option>
                         ${soOptions}
                     </select>
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Produk yang Dikembalikan</label>
-                    <select id="ex_returned_product" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-orange-400">
+                    <select id="ex_returned_product" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-400">
                         <option value="">-- Pilih SO Dulu --</option>
                     </select>
                 </div>
@@ -615,45 +657,45 @@ window.openExchangeModal = function (soId = null) {
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Kondisi Barang Retur</label>
-                    <select id="ex_condition" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-orange-400">
+                    <select id="ex_condition" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-400">
                         <option value="Good">Bagus / Good (Masuk Stok)</option>
                         <option value="Damaged">Rusak / Damaged (NG / Judgment)</option>
                     </select>
                 </div>
                 <div>
                      <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Alasan Penukaran</label>
-                     <input type="text" id="ex_reason" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-400" placeholder="Alasan...">
+                     <input type="text" id="ex_reason" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400" placeholder="Alasan...">
                 </div>
             </div>
             <div class="grid grid-cols-3 gap-4">
                 <div>
                     <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Qty Dikembalikan</label>
-                    <input type="number" id="ex_returned_qty" min="1" value="1" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-400" onchange="calcExchangeDiff()">
+                    <input type="number" id="ex_returned_qty" min="1" value="1" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400" onchange="calcExchangeDiff()">
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Produk Pengganti</label>
-                    <select id="ex_replacement_product" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-orange-400" onchange="calcExchangeDiff()">
+                    <select id="ex_replacement_product" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-400" onchange="calcExchangeDiff()">
                         <option value="">-- Pilih Produk --</option>
                         ${invOptions}
                     </select>
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Qty Pengganti</label>
-                    <input type="number" id="ex_replacement_qty" min="1" value="1" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-400" onchange="calcExchangeDiff()">
+                    <input type="number" id="ex_replacement_qty" min="1" value="1" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400" onchange="calcExchangeDiff()">
                 </div>
             </div>
             <div id="ex_diff_display" class="hidden p-3 rounded-lg text-sm font-bold text-center"></div>
             <div>
                 <label class="block text-xs font-bold text-gray-600 uppercase mb-1">Alasan Penukaran</label>
-                <textarea id="ex_reason" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-400" placeholder="Jelaskan alasan penukaran..."></textarea>
+                <textarea id="ex_reason" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-400" placeholder="Jelaskan alasan penukaran..."></textarea>
             </div>
         </div>
     `;
     const footer = `
-        <button onclick="saveExchange()" class="bg-orange-600 text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-orange-700 shadow-md">Simpan Exchange</button>
+        <button onclick="saveExchange()" class="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-blue-700 shadow-md">Simpan Exchange</button>
         <button onclick="closeModal()" class="px-6 py-2 text-sm font-bold text-gray-500 hover:bg-gray-100 rounded-lg">Batal</button>
     `;
-    showModal('Buat Product Exchange (Tukar Guling)', body, footer, 'max-w-2xl');
+    showModal('Buat Product Exchange (Tukar Guling)', body, footer, 'full');
     if (soId) { setTimeout(() => loadSOItemsForExchange(), 100); }
 };
 
@@ -688,7 +730,7 @@ window.calcExchangeDiff = function () {
 
     diffDisplay.classList.remove('hidden');
     if (diff > 0) {
-        diffDisplay.className = 'p-3 rounded-lg text-sm font-bold text-center bg-orange-50 border border-orange-200 text-orange-700';
+        diffDisplay.className = 'p-3 rounded-lg text-sm font-bold text-center bg-blue-50 border border-blue-200 text-blue-700';
         diffDisplay.innerHTML = `<i class="fas fa-arrow-up mr-1"></i> Pelanggan perlu membayar selisih: <span class="text-lg">${srFmt(diff)}</span>`;
     } else if (diff < 0) {
         diffDisplay.className = 'p-3 rounded-lg text-sm font-bold text-center bg-blue-50 border border-blue-200 text-blue-700';
@@ -838,7 +880,7 @@ window.shipExchangeReplacement = function (id) {
     if (diff !== 0 && typeof db.addJournalEntry === 'function') {
         const absDiff = Math.abs(diff);
         if (diff > 0) {
-            // Customer pays more — revenue
+            // Customer pays more â€” revenue
             db.addJournalEntry({
                 description: `Selisih Tukar Guling ${ex.exchangeNumber} (Customer Bayar)`,
                 referenceId: ex.id, referenceType: 'PRODUCT_EXCHANGE',
@@ -848,7 +890,7 @@ window.shipExchangeReplacement = function (id) {
                 ]
             });
         } else {
-            // Company refunds — cost
+            // Company refunds â€” cost
             db.addJournalEntry({
                 description: `Selisih Tukar Guling ${ex.exchangeNumber} (Perusahaan Kembalikan)`,
                 referenceId: ex.id, referenceType: 'PRODUCT_EXCHANGE',
@@ -905,12 +947,12 @@ window.renderSalesReturnReports = function () {
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
                     <p class="text-xs text-gray-500 uppercase font-bold">Total Retur</p>
-                    <p class="text-3xl font-bold text-red-600 mt-1">${totalReturns}</p>
+                    <p class="text-3xl font-bold text-blue-600 mt-1">${totalReturns}</p>
                     <p class="text-xs text-gray-400 mt-1">${completedReturns} selesai</p>
                 </div>
                 <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
                     <p class="text-xs text-gray-500 uppercase font-bold">Total Tukar Guling</p>
-                    <p class="text-3xl font-bold text-orange-600 mt-1">${totalExchanges}</p>
+                    <p class="text-3xl font-bold text-blue-600 mt-1">${totalExchanges}</p>
                 </div>
                 <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
                     <p class="text-xs text-gray-500 uppercase font-bold">Total Nilai Refund</p>
@@ -932,9 +974,9 @@ window.renderSalesReturnReports = function () {
                         ${topProducts.length === 0 ? '<p class="text-gray-400 text-sm text-center py-4">Belum ada data.</p>' :
             topProducts.map(([name, qty], i) => `
                                 <div class="flex items-center gap-3">
-                                    <span class="w-6 h-6 flex items-center justify-center rounded-full bg-red-100 text-red-600 text-xs font-bold">${i + 1}</span>
+                                    <span class="w-6 h-6 flex items-center justify-center rounded-full bg-blue-100 text-blue-600 text-xs font-bold">${i + 1}</span>
                                     <span class="flex-1 text-sm text-gray-700">${name}</span>
-                                    <span class="font-bold text-red-600">${qty}x</span>
+                                    <span class="font-bold text-blue-600">${qty}x</span>
                                 </div>
                             `).join('')}
                     </div>
@@ -949,9 +991,9 @@ window.renderSalesReturnReports = function () {
                         ${topCustomers.length === 0 ? '<p class="text-gray-400 text-sm text-center py-4">Belum ada data.</p>' :
             topCustomers.map(([name, count], i) => `
                                 <div class="flex items-center gap-3">
-                                    <span class="w-6 h-6 flex items-center justify-center rounded-full bg-orange-100 text-orange-600 text-xs font-bold">${i + 1}</span>
+                                    <span class="w-6 h-6 flex items-center justify-center rounded-full bg-blue-100 text-blue-600 text-xs font-bold">${i + 1}</span>
                                     <span class="flex-1 text-sm text-gray-700">${name}</span>
-                                    <span class="font-bold text-orange-600">${count}x</span>
+                                    <span class="font-bold text-blue-600">${count}x</span>
                                 </div>
                             `).join('')}
                     </div>
@@ -978,12 +1020,12 @@ window.renderSalesReturnReports = function () {
                             ${returns.length === 0 ? '<tr><td colspan="7" class="px-6 py-12 text-center text-gray-400 italic">Belum ada data retur.</td></tr>' :
             returns.map(r => `
                                     <tr class="hover:bg-gray-50/50">
-                                        <td class="px-4 py-3 font-bold text-red-600">${r.returnNumber}</td>
+                                        <td class="px-4 py-3 font-bold text-blue-600">${r.returnNumber}</td>
                                         <td class="px-4 py-3 text-gray-600">${srDate(r.date)}</td>
                                         <td class="px-4 py-3 text-gray-800">${db.findById('customers', r.customerId)?.name || 'N/A'}</td>
                                         <td class="px-4 py-3">${r.productName} <span class="text-xs text-gray-400">x${r.qtyReturned}</span></td>
                                         <td class="px-4 py-3 text-gray-600">${r.refundMethod}</td>
-                                        <td class="px-4 py-3 text-right font-bold text-red-600">${srFmt(r.totalRefund || 0)}</td>
+                                        <td class="px-4 py-3 text-right font-bold text-blue-600">${srFmt(r.totalRefund || 0)}</td>
                                         <td class="px-4 py-3">${srStatusBadge(r.status)}</td>
                                     </tr>
                                 `).join('')}
@@ -994,3 +1036,5 @@ window.renderSalesReturnReports = function () {
         </div>
     `;
 };
+
+

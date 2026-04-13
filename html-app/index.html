@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UnityERP - Food Manufacturing System</title>
+    <title>Tana Subur Nusantara - Food Manufacturing System</title>
 
     <!-- Google Fonts: Inter -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -46,8 +46,8 @@
             <div class="flex items-center gap-2 sidebar-label">
                 <img src="assets/logo.png" alt="UnityERP Logo"
                     class="w-8 h-8 rounded-lg shadow-sm object-contain logo-main">
-                <span class="text-slate-900 text-lg font-bold tracking-tight">Unity<span
-                        class="text-blue-600">ERP</span></span>
+                <span class="text-slate-900 text-lg font-bold tracking-tight">Tana Subur <span
+                        class="text-blue-600">Nusantara</span></span>
             </div>
             <div class="sidebar-icon-only hidden logo-collapsed-container">
                 <img src="assets/logo.png" alt="U" class="w-10 h-10 rounded-lg shadow-sm object-contain logo-collapsed">
@@ -152,13 +152,6 @@
                         <i
                             class="fas fa-truck-loading text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         <span class="sidebar-label">Receiving (GR)</span>
-                    </a>
-                    <a href="#" data-view="purchase-receiving-history"
-                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
-                        <div class="active-indicator"></div>
-                        <i
-                            class="fas fa-history text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
-                        <span class="sidebar-label">Riwayat GR</span>
                     </a>
                     <a href="#" data-view="purchase-invoices"
                         class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
@@ -299,6 +292,13 @@
                             class="fas fa-tasks text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         <span class="sidebar-label">Manufacturing Order ( MO )</span>
                     </a>
+                    <a href="#" data-view="production-stock-master"
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-boxes text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Stok Produksi</span>
+                    </a>
                     <a href="#" data-view="production-wip-stock"
                         class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
@@ -351,19 +351,19 @@
                             class="fas fa-hand-holding-usd text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         <span class="sidebar-label">Receivables (AR)</span>
                     </a>
-                    <a href="#" data-view="finance-credit-notes"
-                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
-                        <div class="active-indicator"></div>
-                        <i
-                            class="fas fa-file-invoice-dollar text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
-                        <span class="sidebar-label">Credit Notes</span>
-                    </a>
                     <a href="#" data-view="finance-ap"
                         class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
                         <i
                             class="fas fa-receipt text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         <span class="sidebar-label">Payables (AP)</span>
+                    </a>
+                    <a href="#" data-view="finance-credit-notes"
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-file-invoice-dollar text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Credit Notes</span>
                     </a>
                     <a href="#" data-view="finance-debit-notes"
                         class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
@@ -372,12 +372,46 @@
                             class="fas fa-file-prescription text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         <span class="sidebar-label">Debit Notes</span>
                     </a>
+                    <a href="#" data-view="finance-journal"
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-book text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Journal Voucher</span>
+                    </a>
                     <a href="#" data-view="finance-settings"
                         class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
                         <i
                             class="fas fa-sliders-h text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         <span class="sidebar-label">Finance Config</span>
+                    </a>
+
+                    <!-- FINANCE REPORTS SUBSECTION -->
+                     <div class="pt-4 pb-2 px-3">
+                         <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-1">Laporan Finance</p>
+                     </div>
+                     
+                    <a href="#" data-view="finance-ar-aging"
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-calendar-alt text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Umur Piutang (Aging)</span>
+                    </a>
+                    <a href="#" data-view="finance-ap-aging"
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-history text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Umur Utang (Aging)</span>
+                    </a>
+                    <a href="#" data-view="finance-partner-ledger"
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-id-card text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Buku Besar Mitra</span>
                     </a>
                     <a href="#" data-view="finance-hpp"
                         class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
@@ -399,13 +433,6 @@
                         <i
                             class="fas fa-balance-scale text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         <span class="sidebar-label">Neraca Saldo</span>
-                    </a>
-                    <a href="#" data-view="finance-journal"
-                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
-                        <div class="active-indicator"></div>
-                        <i
-                            class="fas fa-book text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
-                        <span class="sidebar-label">Journal Voucher</span>
                     </a>
                 </div>
             </div>
@@ -470,10 +497,9 @@
                 <i class="fas fa-sign-out-alt"></i>
                 <span>Keluar</span>
             </button>
-            <button id="resetDataBtn"
-                class="mt-2 w-full text-xs text-slate-400 hover:text-red-500 py-1 border border-gray-100 rounded hover:bg-red-50 transition-colors">
-                <i class="fas fa-trash-alt mr-1"></i> Reset Data
-            </button>
+            <div class="mt-4 pt-4 border-t border-gray-100 text-center">
+                <p class="text-[11px] font-semibold text-slate-400 tracking-wide">Powered By <span class="font-bold text-slate-600">Unity<span class="text-blue-600">ERP</span></span></p>
+            </div>
         </div>
     </aside>
 

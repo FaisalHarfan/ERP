@@ -1,18 +1,20 @@
 // inventory.js - Inventory Module for Unity ERP
 
-// ─── HELPERS ──────────────────────────────────────────────────
+// â”€â”€â”€ HELPERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const CATEGORY_LABELS = {
-    RAW_MATERIAL: 'Raw Material',
-    WIP: 'WIP',
-    MIXING_STOCK: 'Stock Mixing',
-    OVEN_BASAH_STOCK: 'Oven Basah',
-    FINISHED_GOODS: 'Finishgoods'
+    RAW_MATERIAL: 'Bahan Baku',
+    MIXING_STOCK: 'Campuran',
+    OVEN_BASAH_STOCK: 'Oven basah',
+    OVEN_KERING_STOCK: 'Oven Kering',
+    BULK_STOCK: 'Stok Curah (KG)',
+    FINISHED_GOODS: 'Gudang Jadi'
 };
 const CATEGORY_COLORS = {
     RAW_MATERIAL: 'bg-yellow-100 text-yellow-800',
-    WIP: 'bg-blue-100 text-blue-800',
     MIXING_STOCK: 'bg-blue-50 text-blue-700',
     OVEN_BASAH_STOCK: 'bg-orange-100 text-orange-800',
+    OVEN_KERING_STOCK: 'bg-yellow-100 text-yellow-800',
+    BULK_STOCK: 'bg-indigo-100 text-indigo-800',
     FINISHED_GOODS: 'bg-green-100 text-green-800'
 };
 const REF_LABELS = { PO: 'Purchase Receipt', SO: 'Sales Delivery', PRODUCTION_IN: 'Hasil Produksi', PRODUCTION_OUT: 'Konsumsi Produksi', SHRINKAGE: 'Penyusutan/NG', MANUAL: 'Manual' };
@@ -20,7 +22,18 @@ const REF_LABELS = { PO: 'Purchase Receipt', SO: 'Sales Delivery', PRODUCTION_IN
 function invFmt(n) { return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(n || 0); }
 function invDate(d) { return d ? new Date(d).toLocaleDateString('id-ID') : '-'; }
 
-// ─── 0. DASHBOARD LOGISTIK ───────────────────────────────────
+// Helper to refresh correctly based on current view
+window.refreshStockMasterView = () => {
+    const title = document.getElementById('pageTitle')?.innerText?.trim();
+    if (title === 'Stok Produksi') {
+        if (typeof window.renderProductionStockMaster === 'function') window.renderProductionStockMaster();
+        else renderInventoryMaster();
+    } else {
+        renderInventoryMaster();
+    }
+};
+
+// â”€â”€â”€ 0. DASHBOARD LOGISTIK â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 window.renderInventoryDashboard = () => {
     document.getElementById('pageTitle').innerText = 'Dashboard Logistik';
     const mc = document.getElementById('main-content');
@@ -154,7 +167,7 @@ window.renderInventoryDashboard = () => {
                            <button onclick="navigateTo('inventory-master')" class="text-xs font-bold text-rose-700 hover:underline">Lihat</button>
                         </div>
                     ` : ''}
-                    ${!overdueReceipts.length && !overdueDeliveries.length && !overdueSJs.length && !overdueMOs.length && lowStockCount === 0 ? `<p class="text-center py-6 text-gray-400 text-sm italic">🎉 Semua berjalan sesuai jadwal!</p>` : ''}
+                    ${!overdueReceipts.length && !overdueDeliveries.length && !overdueSJs.length && !overdueMOs.length && lowStockCount === 0 ? `<p class="text-center py-6 text-gray-400 text-sm italic">ðŸŽ‰ Semua berjalan sesuai jadwal!</p>` : ''}
                 </div>
              </div>
 
@@ -164,11 +177,17 @@ window.renderInventoryDashboard = () => {
                 </h3>
                 <div class="flex items-center justify-between pb-4 border-b">
                     <span class="text-sm text-gray-600">Item Low Stock</span>
-                    <span class="px-2 py-1 bg-red-50 text-red-700 rounded-lg font-black text-sm border border-red-100">${db.read('inventoryItems').filter(it => db.getInventoryStock(it.id) < it.minStock).length}</span>
+                    <span class="px-2 py-1 bg-red-50 text-red-700 rounded-lg font-black text-sm border border-red-100">
+                        ${db.read('inventoryItems')
+                            .filter(it => !['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'].includes(it.category))
+                            .filter(it => db.getInventoryStock(it.id) < it.minStock).length}
+                    </span>
                 </div>
-                <div class="flex items-center justify-between py-4 border-b">
-                    <span class="text-sm text-gray-600">Total Finished Goods</span>
-                    <span class="px-2 py-1 bg-green-50 text-green-700 rounded-lg font-black text-sm border border-green-100">${db.read('inventoryItems').filter(it => it.category === 'FINISHED_GOODS').length}</span>
+                <div class="py-4 border-b">
+                    <p class="text-xs text-green-600 font-semibold uppercase">Gudang Jadi</p>
+                    <div class="flex items-end justify-between mt-1">
+                        <p class="text-3xl font-bold text-green-700">${db.read('inventoryItems').filter(it => it.category === 'FINISHED_GOODS').length}</p>
+                    </div>
                 </div>
                 <div class="flex items-center justify-between pt-4">
                     <span class="text-sm text-gray-600">Pergerakan Hari Ini</span>
@@ -179,7 +198,7 @@ window.renderInventoryDashboard = () => {
     `;
 };
 
-// ─── 1. MASTER ITEM ───────────────────────────────────────────
+// â”€â”€â”€ 1. MASTER ITEM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderInventoryMaster() {
     const canEdit = getModulePermission('logistik').edit;
     document.getElementById('pageTitle').innerText = 'Master Item';
@@ -189,7 +208,7 @@ function renderInventoryMaster() {
     window._inventoryFilters = window._inventoryFilters || { category: '', name: '' };
     const f = window._inventoryFilters;
 
-    let items = db.read('inventoryItems') || [];
+    let items = (db.read('inventoryItems') || []).filter(it => it.status === 'ACTIVE');
     
     // Apply Filters
     if (f.category) {
@@ -235,38 +254,54 @@ function renderInventoryMaster() {
         </tr>`;
     }).join('') : `<tr><td colspan="8" class="py-8 text-center text-gray-400">Belum ada item yang sesuai filter.</td></tr>`;
 
-    const catOpts = Object.entries(CATEGORY_LABELS).map(([v, l]) => `<option value="${v}" ${f.category === v ? 'selected' : ''}>${l}</option>`).join('');
+    const catOpts = Object.entries(CATEGORY_LABELS)
+        .map(([v, l]) => `<option value="${v}" ${f.category === v ? 'selected' : ''}>${l}</option>`)
+        .join('');
 
     mc.innerHTML = `
     <div class="space-y-4">
         ${lowStockCount ? `<div class="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700"><i class="fas fa-exclamation-triangle"></i><span><strong>${lowStockCount} item</strong> di bawah minimum stok (Total Aktif)!</span></div>` : ''}
         
         <!-- Standard Filter Bar -->
-        <div class="bg-white p-5 rounded-lg shadow-sm border border-gray-100 mb-5">
-            <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-3"><i class="fas fa-filter text-blue-500"></i> FILTER PENCARIAN</h3>
-            <div class="flex flex-wrap gap-4 items-end">
-            <div class="flex-1 min-w-[240px]">
-                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Pencarian Barang</label>
-                <div class="relative">
-                    <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                    <input type="text" id="filter_item_name" value="${f.name}" placeholder="Cari Nama atau Kode Item..." 
-                        class="w-full border border-gray-200 rounded-lg pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all">
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-5 overflow-hidden">
+            <div onclick="toggleInvMasterFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
+                <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
+                    <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
+                    ${(!window._uiState.invMasterFilterOpen && (f.category || f.name)) ? 
+                        `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
+                </h3>
+                <div class="flex items-center gap-3">
+                    <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.invMasterFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
+                    <i class="fas fa-chevron-${window._uiState.invMasterFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
                 </div>
             </div>
-            <div class="w-56">
-                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Kategori</label>
-                <select id="filter_item_category" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white transition-all">
-                    <option value="">-- Semua Kategori --</option>
-                    ${catOpts}
-                </select>
-            </div>
-            <div class="flex gap-2">
-                <button onclick="updateInventoryFilters()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all">
-                    <i class="fas fa-filter"></i> Tampilkan
-                </button>
-                <button onclick="resetInventoryFilters()" class="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                    Reset
-                </button>
+
+            <div class="${window._uiState.invMasterFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                    <div class="md:col-span-2">
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Pencarian Barang</label>
+                        <div class="relative">
+                            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                            <input type="text" id="filter_item_name" value="${f.name}" placeholder="Cari Nama atau Kode Item..." 
+                                class="w-full border-2 border-slate-100 rounded-lg pl-10 pr-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Kategori</label>
+                        <select id="filter_item_category" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none bg-slate-50/50 focus:bg-white cursor-pointer font-sans transition-all">
+                            <option value="">-- Semua Kategori --</option>
+                            ${catOpts}
+                        </select>
+                    </div>
+                </div>
+                <div class="flex gap-2 pt-4 mt-4 border-t border-slate-50">
+                    <button onclick="updateInventoryFilters()" class="bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
+                        <i class="fas fa-search mr-2"></i> TAMPILKAN DATA
+                    </button>
+                    <button onclick="resetInventoryFilters()" class="bg-slate-50 hover:bg-slate-100 text-slate-400 px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">
+                        <i class="fas fa-undo mr-2"></i> RESET
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -290,14 +325,14 @@ function renderInventoryMaster() {
             <div class="overflow-x-auto">
                 <table class="w-full text-left border-collapse">
                     <thead><tr class="bg-gray-50 border-b border-gray-200">
-                        <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Kode</th>
-                        <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Nama Item</th>
-                        <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Kategori</th>
-                        <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Unit</th>
-                        <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Stok Saat Ini</th>
-                        <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right text-slate-300">Min. Stok</th>
-                        <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-                        <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Aksi</th>
+                        <th class="py-3 px-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Kode</th>
+                        <th class="py-3 px-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Nama Item</th>
+                        <th class="py-3 px-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Kategori</th>
+                        <th class="py-3 px-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Unit</th>
+                        <th class="py-3 px-4 text-[11px] font-black text-slate-400 uppercase tracking-widest text-right">Stok Saat Ini</th>
+                        <th class="py-3 px-4 text-[11px] font-black text-slate-400 uppercase tracking-widest text-right text-slate-300">Min. Stok</th>
+                        <th class="py-3 px-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                        <th class="py-3 px-4 text-[11px] font-black text-slate-400 uppercase tracking-widest text-right">Aksi</th>
                     </tr></thead>
                     <tbody>${rows}</tbody>
                 </table>
@@ -323,8 +358,23 @@ window.openInventoryItemModal = (id = null) => {
     const item = id ? db.findById('inventoryItems', id) : null;
     const units = ['KG', 'GR', 'L', 'PCS', 'BOX', 'SAK', 'KARTON', 'LITER'];
     const unitOpts = units.map(u => `<option ${item?.unit === u ? 'selected' : ''}>${u}</option>`).join('');
-    const cats = [['RAW_MATERIAL', 'Raw Material'], ['WIP', 'WIP'], ['MIXING_STOCK', 'Stock Mixing'], ['OVEN_BASAH_STOCK', 'Oven Basah'], ['FINISHED_GOODS', 'Finished Goods']];
-    const catOpts = cats.map(([v, l]) => `<option value="${v}" ${item?.category === v ? 'selected' : ''}>${l}</option>`).join('');
+    
+    // Dynamic Categories based on context
+    const allCats = [
+        ['RAW_MATERIAL', 'Bahan Baku'], 
+        ['MIXING_STOCK', 'Campuran'], 
+        ['OVEN_BASAH_STOCK', 'Oven Basah'], 
+        ['OVEN_KERING_STOCK', 'Oven Kering'], 
+        ['FINISHED_GOODS', 'Gudang Jadi']
+    ];
+    
+    const pageTitle = document.getElementById('pageTitle')?.innerText;
+    let filteredCats = allCats;
+    if (pageTitle === 'Stok Produksi') {
+        filteredCats = allCats.filter(([v]) => ['MIXING_STOCK', 'OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'].includes(v));
+    }
+
+    const catOpts = filteredCats.map(([v, l]) => `<option value="${v}" ${item?.category === v ? 'selected' : ''}>${l}</option>`).join('');
     const previewCode = item ? item.itemCode : '(auto-generate)';
 
     const body = `<div class="space-y-4">
@@ -359,15 +409,31 @@ window.openInventoryItemModal = (id = null) => {
     const footer = `
         <button onclick="saveInventoryItem('${id || ''}')" class="w-full sm:w-auto inline-flex justify-center rounded-md bg-blue-600 px-4 py-2 text-white text-sm font-medium hover:bg-blue-700 sm:ml-3">Simpan</button>
         <button onclick="closeModal()" class="mt-3 sm:mt-0 w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 px-4 py-2 bg-white text-gray-700 text-sm font-medium sm:ml-3">Batal</button>`;
-    showModal(id ? 'Edit Item' : 'Tambah Item Baru', body, footer);
+    showModal(id ? 'Edit Item' : 'Tambah Item Baru', body, footer, 'xl');
 };
 
 window.invUpdateCodePreview = () => {
     const cat = document.getElementById('inv_category')?.value;
     if (!cat) return;
     const preview = document.getElementById('inv_code_preview');
-    if (preview && preview.value === '(auto-generate)') {
+    if (preview && preview.value.includes('(auto-generate)') || preview.value.includes('(preview)')) {
         preview.value = db.generateItemCode(cat) + ' (preview)';
+    }
+
+    // Auto-suffix name for Oven categories
+    const nameInput = document.getElementById('inv_name');
+    if (nameInput) {
+        let name = nameInput.value.trim();
+        // Remove existing suffixes first to avoid duplicates
+        name = name.replace(/\s*\(Oven Basah\)/gi, '').replace(/\s*\(Oven Kering\)/gi, '');
+        
+        if (cat === 'OVEN_BASAH_STOCK') {
+            nameInput.value = name + (name ? ' ' : '') + '(Oven Basah)';
+        } else if (cat === 'OVEN_KERING_STOCK') {
+            nameInput.value = name + (name ? ' ' : '') + '(Oven Kering)';
+        } else {
+            nameInput.value = name;
+        }
     }
 };
 
@@ -381,7 +447,30 @@ window.saveInventoryItem = (id) => {
     if (!name || !category || !unit) { showToast('Nama, Kategori, dan Satuan wajib diisi', 'error'); return; }
 
     if (id) {
-        db.update('inventoryItems', id, { itemName: name, category, unit, minStock, purchasePrice, status });
+        const item = db.findById('inventoryItems', id);
+        let updatedFields = { itemName: name, category, unit, minStock, purchasePrice, status };
+        
+        // If category changed, check if prefix needs update
+        if (item && item.category !== category) {
+            const currentPrefix = item.itemCode ? item.itemCode.split('-')[0] : '';
+            const newPrefix = category === 'RAW_MATERIAL' ? 'RM' : (category === 'FINISH_GOODS' ? 'FG' : 'WIP');
+            if (currentPrefix !== newPrefix) {
+                updatedFields.itemCode = db.generateItemCode(category);
+                
+                // Update historical transactions as well
+                const txs = db.read('stockTransactions') || [];
+                let txModified = false;
+                txs.forEach(t => {
+                    if (t.itemId === id) {
+                        t.itemCode = updatedFields.itemCode;
+                        txModified = true;
+                    }
+                });
+                if (txModified) db.save('stockTransactions', txs);
+            }
+        }
+        
+        db.update('inventoryItems', id, updatedFields);
         showToast('Item berhasil diperbarui');
     } else {
         const itemCode = db.generateItemCode(category);
@@ -396,7 +485,7 @@ window.saveInventoryItem = (id) => {
         showToast('Item baru berhasil ditambahkan');
     }
     closeModal();
-    renderInventoryMaster();
+    refreshStockMasterView();
 };
 
 window.toggleInventoryItemStatus = (id) => {
@@ -405,14 +494,14 @@ window.toggleInventoryItemStatus = (id) => {
     const newStatus = item.status === 'INACTIVE' ? 'ACTIVE' : 'INACTIVE';
     db.update('inventoryItems', id, { status: newStatus });
     showToast(`Item di-${newStatus === 'ACTIVE' ? 'aktifkan' : 'non-aktifkan'}`);
-    renderInventoryMaster();
+    refreshStockMasterView();
 };
 
 window.deleteInventoryItem = (id) => {
     const item = db.findById('inventoryItems', id);
     if (!item) return;
 
-    if (!confirm(`⚠ HAPUS PERMANEN: ${item.itemName} (${item.itemCode})?\n\nSemua transaksi (Masuk/Keluar), history di Stock Card, item di SO/PO/RFQ, serta BOM yang menggunakan item ini di SELURUH departemen akan ikut TERHAPUS.\n\nLanjutkan?`)) return;
+    if (!confirm(`âš  HAPUS PERMANEN: ${item.itemName} (${item.itemCode})?\n\nSemua transaksi (Masuk/Keluar), history di Stock Card, item di SO/PO/RFQ, serta BOM yang menggunakan item ini di SELURUH departemen akan ikut TERHAPUS.\n\nLanjutkan?`)) return;
 
     // 1. Array of all collections that might contain this item
     const collections = [
@@ -480,7 +569,7 @@ window.deleteInventoryItem = (id) => {
         }
 
         if (modified) {
-            localStorage.setItem(`db_${col}`, JSON.stringify(data));
+            db.save(col, data);
         }
     });
 
@@ -488,10 +577,10 @@ window.deleteInventoryItem = (id) => {
     db.delete('inventoryItems', id);
 
     showToast(`Barang ${item.itemName} dan seluruh data terkait telah dihapus dari sistem.`, 'success');
-    renderInventoryMaster();
+    refreshStockMasterView();
 };
 
-// ─── STOCK ADJUSTMENT ──────────────────────────────────────────
+// â”€â”€â”€ STOCK ADJUSTMENT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 window.openStockAdjustmentModal = (itemId) => {
     if (!isCurrentUserAdmin()) { showToast('Akses ditolak: Hanya Admin yang bisa melakukan penyesuaian stok.', 'error'); return; }
     const item = db.findById('inventoryItems', itemId);
@@ -550,12 +639,12 @@ window.openStockAdjustmentModal = (itemId) => {
 };
 
 window.saveStockAdjustment = (itemId) => {
-    const physicalStock = parseFloat(document.getElementById('adj_physical_stock').value);
+    const actualStock = parseFloat(document.getElementById('adj_physical_stock').value);
     const notes = document.getElementById('adj_notes').value.trim();
-    if (isNaN(physicalStock) || physicalStock < 0) { showToast('Jumlah stok tidak valid', 'error'); return; }
+    if (isNaN(actualStock) || actualStock < 0) { showToast('Jumlah stok tidak valid', 'error'); return; }
 
     const currentStock = db.getInventoryStock(itemId);
-    const diff = physicalStock - currentStock;
+    const diff = actualStock - currentStock;
 
     if (diff === 0) {
         showToast('Tidak ada perbedaan stok, tidak perlu penyesuaian.');
@@ -568,21 +657,293 @@ window.saveStockAdjustment = (itemId) => {
     
     db.addInventoryTransaction(itemId, type, absDiff, 'MANUAL', null, notes || 'Stock Adjustment (Manual Update)');
     
-    showToast(`Stok berhasil disesuaikan (${diff > 0 ? '+' : '-'}${invFmt(absDiff)}). Sekarang: ${invFmt(physicalStock)}`);
+    showToast(`Stok berhasil disesuaikan (${type}: ${absDiff})`);
     closeModal();
     renderInventoryMaster();
 };
 
-// ─── SHARED: Item select options ──────────────────────────────
+// ——— 10. KONVERSI KEMASAN (REPACKING) —————————————————————————————
+window.renderInventoryConversion = () => {
+    document.getElementById('pageTitle').innerText = 'Konversi Kemasan';
+    const mc = document.getElementById('main-content');
+    const logs = db.read('inventoryConversions') || [];
+
+    mc.innerHTML = `
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="p-6 border-b border-gray-100 flex justify-between items-center">
+            <div>
+                <h3 class="font-semibold text-gray-700 text-base">Riwayat Stok Kemasan</h3>
+                <p class="text-xs text-gray-400 mt-0.5">Pencatatan penyusunan stok per ukuran kemasan</p>
+            </div>
+            <button onclick="openInventoryConversionModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors">
+                Catat Stok Sak
+            </button>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left">
+                <thead class="bg-gray-50 text-gray-400 text-xs uppercase tracking-wider">
+                    <tr>
+                        <th class="px-6 py-3 border-b border-gray-100">Tanggal</th>
+                        <th class="px-6 py-3 border-b border-gray-100">Sumber</th>
+                        <th class="px-6 py-3 border-b border-gray-100">Kemasan</th>
+                        <th class="px-6 py-3 border-b border-gray-100 text-right">Jumlah</th>
+                        <th class="px-6 py-3 border-b border-gray-100">Keterangan</th>
+                        <th class="px-6 py-3 border-b border-gray-100">Operator</th>
+                    </tr>
+                </thead>
+                <tbody class="text-sm divide-y divide-gray-50">
+                    ${logs.slice().reverse().flatMap(l => {
+                        const fromItem = db.findById('inventoryItems', l.fromItemId);
+                        // Support both new format (entries[]) and old format (single toItemId)
+                        const entries = l.entries || (l.toItemId ? [{
+                            itemId: l.toItemId,
+                            itemName: db.findById('inventoryItems', l.toItemId)?.itemName || '-',
+                            qty: l.resultQty,
+                            unit: db.findById('inventoryItems', l.toItemId)?.unit || 'Pack'
+                        }] : []);
+                        return entries.map((e, i) => `
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-3 text-xs text-gray-400">${i === 0 ? invDate(l.date) : ''}</td>
+                            <td class="px-6 py-3 text-gray-600">${i === 0 ? (fromItem?.itemName || '-') : ''}</td>
+                            <td class="px-6 py-3 font-medium text-gray-700">${e.itemName}</td>
+                            <td class="px-6 py-3 text-right">
+                                <span class="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs font-bold border border-blue-100">
+                                    ${invFmt(e.qty)} ${e.unit || 'Pack'}
+                                </span>
+                            </td>
+                            <td class="px-6 py-3 text-xs text-gray-400">${i === 0 ? (l.notes || '-') : ''}</td>
+                            <td class="px-6 py-3 text-xs text-gray-400">${i === 0 ? (l.createdBy || 'Admin') : ''}</td>
+                        </tr>`);
+                    }).join('') || '<tr><td colspan="6" class="py-12 text-center text-gray-400 text-sm">Belum ada riwayat</td></tr>'}
+                </tbody>
+            </table>
+        </div>
+    </div>`;
+};
+
+window.openInventoryConversionModal = (preSelectedId = null) => {
+    const items = db.read('inventoryItems').filter(i => i.status === 'ACTIVE' && i.category === 'FINISHED_GOODS');
+    const currentDate = new Date().toISOString().split('T')[0];
+
+    const body = `
+    <div class="space-y-8">
+        <!-- Section: Informasi Utama -->
+        <div class="grid grid-cols-2 gap-8 bg-gray-50/50 p-6 rounded-2xl border border-gray-100">
+            <div>
+                <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2.5">Tanggal Konversi</label>
+                <div class="relative">
+                    <i class="fas fa-calendar absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                    <input type="date" id="conv_date" value="${currentDate}" class="w-full border-2 border-gray-200 rounded-xl pl-11 pr-4 py-3.5 text-sm font-bold text-gray-700 focus:border-blue-500 outline-none transition-all">
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2.5">PIC Konversi</label>
+                <div class="relative">
+                    <i class="fas fa-user absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                    <input type="text" id="conv_pic" class="w-full border-2 border-gray-200 rounded-xl pl-11 pr-4 py-3.5 text-sm font-bold text-gray-700 focus:border-blue-500 outline-none transition-all" placeholder="Nama Penanggung Jawab">
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-12">
+            <!-- Kolom Kiri: Sumber -->
+            <div class="space-y-6">
+                <p class="text-xs font-black text-blue-600 uppercase tracking-[0.2em] border-b-2 border-blue-50 pb-2">Data Produk</p>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-2">Produk yang mau di konversi</label>
+                    <select id="conv_from_item" onchange="updateConversionSourceInfo()" class="w-full border-2 border-gray-200 rounded-xl px-4 py-4 text-base font-black text-gray-800 bg-white focus:border-blue-500 outline-none shadow-sm">
+                        <option value="">-- Pilih Produk --</option>
+                        ${items.map(i => `<option value="${i.id}" ${i.id === preSelectedId ? 'selected' : ''}>${i.itemCode} - ${i.itemName}</option>`).join('')}
+                    </select>
+                </div>
+                <div id="conv_src_info" class="hidden">
+                    <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 flex justify-between items-center">
+                        <span class="text-xs font-bold text-blue-400 uppercase tracking-widest">Stok Sistem</span>
+                        <strong id="conv_src_stock" class="text-xl font-black text-blue-700">0 Kg</strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Kolom Kanan: Detail Konversi -->
+            <div class="space-y-6">
+                <p class="text-xs font-black text-orange-600 uppercase tracking-[0.2em] border-b-2 border-orange-50 pb-2">Detail Konversi</p>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-2">Qty yang mau di konversi (Kg)</label>
+                    <input type="number" id="conv_total_kg_input" oninput="calculateConversionResult()" class="w-full border-2 border-gray-200 rounded-xl px-6 py-4 text-3xl font-black text-gray-800 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all placeholder-gray-200" placeholder="0">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-2">Pilih Berat per Pack</label>
+                    <select id="conv_ratio" onchange="calculateConversionResult()" class="w-full border-2 border-gray-200 rounded-xl px-4 py-4 text-base font-bold text-gray-800 bg-white focus:border-blue-500 outline-none shadow-sm">
+                        <option value="5">5 Kg</option>
+                        <option value="0.8">800 gram (0.8 Kg)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ringkasan & Keterangan -->
+        <div class="flex flex-col gap-6 pt-6 border-t border-gray-100">
+            <div class="bg-gray-50 rounded-2xl p-6 flex justify-between items-center border border-gray-200">
+                <div class="space-y-1">
+                    <p class="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">Total Berat Dikeluarkan</p>
+                    <p class="text-4xl font-black text-gray-800"><span id="conv_total_kg_display">0</span> <span class="text-xs font-normal text-gray-400">Kg</span></p>
+                </div>
+                <div class="flex flex-col items-center">
+                    <div class="w-10 h-10 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-300 shadow-sm">
+                        <i class="fas fa-chevron-right"></i>
+                    </div>
+                </div>
+                <div class="text-right space-y-1">
+                    <p class="text-[10px] font-black text-blue-500 uppercase tracking-[0.2em]">Hasil Konversi (Qty)</p>
+                    <p class="text-4xl font-black text-blue-700" id="conv_result_qty">0</p>
+                </div>
+            </div>
+            
+            <input type="hidden" id="conv_total_kg" value="0">
+            <input type="hidden" id="conv_result_qty_manual" value="0">
+
+            <div>
+                <label class="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Keterangan Tambahan</label>
+                <textarea id="conv_notes" rows="2" class="w-full border-2 border-gray-100 rounded-xl px-4 py-4 text-sm font-medium text-gray-700 focus:border-blue-500 outline-none placeholder-gray-300" placeholder="Tambahkan catatan..."></textarea>
+            </div>
+        </div>
+    </div>`;
+
+    const footer = `
+        <div class="flex gap-4 w-full">
+            <button onclick="closeModal()" class="px-8 py-4 rounded-xl text-sm font-black uppercase tracking-widest text-gray-400 bg-gray-100 hover:bg-gray-200 transition-all">Batal</button>
+            <button onclick="saveInventoryConversion()" class="flex-1 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-black uppercase tracking-widest shadow-lg shadow-blue-500/30 transition-all active:scale-[0.98]">
+                <i class="fas fa-check-circle mr-2"></i>Simpan Konversi
+            </button>
+        </div>
+    `;
+
+    showModal('Konversi Kemasan Produk', body, footer, 'xl');
+
+    if (preSelectedId) {
+        setTimeout(() => {
+            document.getElementById('conv_from_item').value = preSelectedId;
+            updateConversionSourceInfo();
+        }, 100);
+    }
+};
+
+window.calculateConversionResult = () => {
+    const inputKg = document.getElementById('conv_total_kg_input');
+    const ratioEl = document.getElementById('conv_ratio');
+    if (!inputKg || !ratioEl) return;
+
+    const totalKg = parseFloat(inputKg.value) || 0;
+    const ratio = parseFloat(ratioEl.value) || 1;
+    const result = totalKg / ratio;
+    
+    // Update hidden fields for saving
+    const hiddenKg = document.getElementById('conv_total_kg');
+    const hiddenQty = document.getElementById('conv_result_qty_manual');
+    if (hiddenKg) hiddenKg.value = totalKg;
+    if (hiddenQty) hiddenQty.value = result;
+
+    // Update UI displays
+    const dispKg = document.getElementById('conv_total_kg_display');
+    const dispQty = document.getElementById('conv_result_qty');
+    if (dispKg) dispKg.textContent = totalKg.toLocaleString('id-ID');
+    if (dispQty) dispQty.textContent = result.toLocaleString('id-ID');
+};
+
+window.updateConversionSourceInfo = () => {
+    const id = document.getElementById('conv_from_item').value;
+    const info = document.getElementById('conv_src_info');
+    const stockEl = document.getElementById('conv_src_stock');
+    
+    if (id) {
+        const totalStock = db.getInventoryStock(id);
+        const pb = (db.read('packBreakdowns') || []).find(b => b.itemId === id) || {};
+        const q5 = pb.qty5 || 0;
+        const q800 = pb.qty800 || 0;
+        const weightOthers = q5 * 5 + q800 * 0.8;
+        
+        // Show only the 25kg packaging stock (convertible stock)
+        const q25Stock = totalStock - weightOthers;
+        
+        stockEl.textContent = invFmt(q25Stock) + ' Kg';
+        info.classList.remove('hidden');
+    } else {
+        info.classList.add('hidden');
+    }
+};
+
+window.saveInventoryConversion = () => {
+    try {
+        const fromId = document.getElementById('conv_from_item').value;
+        const totalKg = parseFloat(document.getElementById('conv_total_kg').value) || 0;
+        const resultQty = parseFloat(document.getElementById('conv_result_qty_manual').value) || 0;
+        const ratio = parseFloat(document.getElementById('conv_ratio').value) || 0;
+        const notes = document.getElementById('conv_notes').value;
+        const date = document.getElementById('conv_date').value;
+        const pic = document.getElementById('conv_pic').value;
+
+        // Validasi
+        if (!fromId) { showToast('Pilih produk terlebih dahulu', 'error'); return; }
+        if (totalKg <= 0) { showToast('Masukkan jumlah Kg yang valid', 'error'); return; }
+        if (!date) { showToast('Pilih tanggal konversi', 'error'); return; }
+        if (!pic) { showToast('Masukkan nama PIC', 'error'); return; }
+
+        if (!db.validateInventoryStock(fromId, totalKg)) {
+            showToast('Stok tidak mencukupi untuk konversi ini', 'error');
+            return;
+        }
+
+        // Simpan Log Konversi
+        db.insert('inventoryConversions', {
+            date, 
+            fromItemId: fromId, 
+            totalKg, 
+            ratio, 
+            resultQty, 
+            notes, 
+            pic,
+            createdBy: window._session?.fullName || 'Admin',
+            createdAt: new Date().toISOString()
+        });
+
+        // Update Pack Breakdown (Update saldo 5kg / 800gr)
+        const allPB = db.read('packBreakdowns') || [];
+        let pb = allPB.find(b => b.itemId === fromId);
+        if (!pb) {
+            pb = { id: db.uuid(), itemId: fromId, qty25: 0, qty5: 0, qty800: 0 };
+            allPB.push(pb);
+        }
+        
+        // Tambah ke bucket yang sesuai
+        if (Math.abs(ratio - 5) < 0.1) {
+            pb.qty5 = (parseFloat(pb.qty5) || 0) + resultQty;
+        } else if (Math.abs(ratio - 0.8) < 0.1) {
+            pb.qty800 = (parseFloat(pb.qty800) || 0) + resultQty;
+        }
+
+        db.save('packBreakdowns', allPB);
+
+        showToast('Konversi kemasan berhasil disimpan', 'success');
+        closeModal();
+        
+        // Refresh laporan jika sedang terbuka
+        if (window.runMonthlyStockReport) window.runMonthlyStockReport();
+    } catch (err) {
+        console.error('Error saving conversion:', err);
+        showToast('Terjadi kesalahan saat menyimpan: ' + err.message, 'error');
+    }
+};
+
+// â”€â”€â”€ SHARED: Item select options â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function getActiveItemOpts(filterCategory = null) {
     const items = db.read('inventoryItems').filter(i => i.status !== 'INACTIVE' && (!filterCategory || i.category === filterCategory));
     if (!items.length) return '<option value="">-- Belum ada item aktif --</option>';
     return `<option value="">-- Pilih Item --</option>` + items.map(i =>
-        `<option value="${i.id}" data-unit="${i.unit}" data-code="${i.itemCode}">${i.itemCode} — ${i.itemName}</option>`
+        `<option value="${i.id}" data-unit="${i.unit}" data-code="${i.itemCode}">${i.itemCode} - ${i.itemName}</option>`
     ).join('');
 }
 
-// ─── 2. STOCK IN ──────────────────────────────────────────────
+// â”€â”€â”€ 2. STOCK IN â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderInventoryStockIn() {
     const canEdit = getModulePermission('logistik').edit;
     document.getElementById('pageTitle').innerText = 'Stock In';
@@ -614,10 +975,11 @@ function renderInventoryStockIn() {
             <div><label class="block text-xs font-medium text-gray-500 mb-1">Kategori</label>
                 <select id="si_fcat" class="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
                     <option value="">-- Semua Kategori --</option>
-                    <option value="RAW_MATERIAL">Raw Material</option>
-                    <option value="MIXING_STOCK">Stock Mixing</option>
+                    <option value="RAW_MATERIAL">Bahan Baku</option>
+                    <option value="MIXING_STOCK">Campuran</option>
                     <option value="OVEN_BASAH_STOCK">Oven Basah</option>
-                    <option value="FINISHED_GOODS">Finished Goods</option>
+                    <option value="OVEN_KERING_STOCK">Oven Kering</option>
+                    <option value="FINISHED_GOODS">Gudang Jadi</option>
                 </select></div>
             <div><label class="block text-xs font-medium text-gray-500 mb-1">Dari</label>
                 <input type="date" id="si_ffrom" value="${firstDay}" class="border border-gray-300 rounded-lg px-3 py-2 text-sm"></div>
@@ -731,7 +1093,7 @@ window.saveStockIn = () => {
     renderInventoryStockIn();
 };
 
-// ─── 3. STOCK OUT ─────────────────────────────────────────────
+// â”€â”€â”€ 3. STOCK OUT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderInventoryStockOut() {
     const canEdit = getModulePermission('logistik').edit;
     document.getElementById('pageTitle').innerText = 'Stock Out Manual';
@@ -763,10 +1125,11 @@ function renderInventoryStockOut() {
             <div><label class="block text-xs font-medium text-gray-500 mb-1">Kategori</label>
                 <select id="sout_fcat" class="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
                     <option value="">-- Semua Kategori --</option>
-                    <option value="RAW_MATERIAL">Raw Material</option>
-                    <option value="MIXING_STOCK">Stock Mixing</option>
+                    <option value="RAW_MATERIAL">Bahan Baku</option>
+                    <option value="MIXING_STOCK">Campuran</option>
                     <option value="OVEN_BASAH_STOCK">Oven Basah</option>
-                    <option value="FINISHED_GOODS">Finished Goods</option>
+                    <option value="OVEN_KERING_STOCK">Oven Kering</option>
+                    <option value="FINISHED_GOODS">Gudang Jadi</option>
                 </select></div>
             <div><label class="block text-xs font-medium text-gray-500 mb-1">Dari</label>
                 <input type="date" id="sout_ffrom" value="${firstDay}" class="border border-gray-300 rounded-lg px-3 py-2 text-sm"></div>
@@ -887,7 +1250,7 @@ window.saveStockOut = () => {
     renderInventoryStockOut();
 };
 
-// ─── 4. PRODUCTION COMMAND CENTER (UNIFIED) ───────────────────
+// â”€â”€â”€ 4. PRODUCTION COMMAND CENTER (UNIFIED) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderProductionBoard() {
     const canEdit = getModulePermission('logistik').edit;
     document.getElementById('pageTitle').innerText = 'Production Command Center';
@@ -904,7 +1267,7 @@ function renderProductionBoard() {
 
     const STAGES = [
         { 
-            id: 'MIXING', label: 'LANE 1: MIXING', category: 'MIXING_STOCK', icon: 'fas fa-blender', 
+            id: 'MIXING', label: 'LANE 1: CAMPURAN', category: 'MIXING_STOCK', icon: 'fas fa-blender', 
             tw: { badge: 'bg-blue-100 text-blue-700', iconBg: 'bg-gradient-to-br from-blue-100 to-blue-50 text-blue-600 border-blue-200/50', btn: 'bg-gradient-to-r from-blue-600 to-indigo-600 shadow-blue-500/30', dot: 'bg-blue-500', dotPulse: 'bg-blue-400', gradientL: 'from-blue-50/80', tagBg: 'bg-blue-50 text-blue-600' },
             monitorLocation: 'MIXING' 
         },
@@ -914,7 +1277,7 @@ function renderProductionBoard() {
             monitorLocation: 'OVEN_BASAH' 
         },
         { 
-            id: 'OVEN_KERING', label: 'LANE 3: OVEN KERING', category: 'FINISHED_GOODS', icon: 'fas fa-sun', 
+            id: 'OVEN_KERING', label: 'LANE 3: OVEN KERING', category: 'OVEN_KERING_STOCK', icon: 'fas fa-sun', 
             tw: { badge: 'bg-emerald-100 text-emerald-700', iconBg: 'bg-gradient-to-br from-emerald-100 to-emerald-50 text-emerald-600 border-emerald-200/50', btn: 'bg-gradient-to-r from-emerald-500 to-green-600 shadow-emerald-500/30', dot: 'bg-emerald-500', dotPulse: 'bg-emerald-400', gradientL: 'from-emerald-50/80', tagBg: 'bg-emerald-50 text-emerald-600' },
             monitorLocation: 'WHS' 
         }
@@ -1103,7 +1466,7 @@ window.openTransferToMixingModal = () => {
         </div>
     `;
     const footer = `
-        <button onclick="saveTransferToMixing()" class="bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold">Kirim ke Mixing</button>
+        <button onclick="saveTransferToMixing()" class="bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold">Kirim ke Campuran</button>
         <button onclick="closeModal()" class="text-gray-500 px-4 py-2 text-sm">Batal</button>
     `;
     showModal('Kirim Bahan ke Mixing', body, footer);
@@ -1134,7 +1497,7 @@ window.openMixingProcessModal = () => {
     const validOpts = rmItemsInMixing.map(i => {
         const stock = db.getInventoryStock(i.id, 'MIXING');
         if (stock <= 0) return null;
-        return `<option value="${i.id}" data-stock="${stock}">${i.itemName} (Stok: ${stock})</option>`;
+        return `<option value="${i.id}" data-stock="${stock}">${i.itemName} (Stok: ${formatNumber(stock)})</option>`;
     }).filter(Boolean).join('');
 
     const wipOpts = getActiveItemOpts('WIP');
@@ -1142,7 +1505,7 @@ window.openMixingProcessModal = () => {
     const body = `
         <div class="space-y-4">
             <div class="p-3 bg-blue-50 border border-blue-100 rounded text-xs text-blue-700">
-                Langkah ini mengonsumsi Bahan Baku di <strong>Mixing</strong> dan menghasilkan Adonan di <strong>Oven Basah</strong>.
+                Langkah ini mengonsumsi Bahan Baku di <strong>Campuran</strong> dan menghasilkan Adonan di <strong>Oven basah</strong>.
             </div>
             <div id="mixing_rm_rows" class="space-y-2">
                 <div class="flex gap-2">
@@ -1169,7 +1532,7 @@ window.openMixingProcessModal = () => {
         </div>
     `;
     const footer = `
-        <button onclick="saveMixingProcess()" class="bg-orange-500 text-white px-4 py-2 rounded text-sm font-bold">Proses Mixing</button>
+        <button onclick="saveMixingProcess()" class="bg-orange-500 text-white px-4 py-2 rounded text-sm font-bold">Proses Campuran</button>
         <button onclick="closeModal()" class="text-gray-500 px-4 py-2 text-sm">Batal</button>
     `;
     showModal('Proses Mixing & Tambah Air', body, footer);
@@ -1228,7 +1591,7 @@ window.openOvenProcessModal = () => {
     const validOpts = wipInWet.map(i => {
         const stock = db.getInventoryStock(i.id, 'OVEN_BASAH');
         if (stock <= 0) return null;
-        return `<option value="${i.id}" data-stock="${stock}">${i.itemName} (Stok: ${stock})</option>`;
+        return `<option value="${i.id}" data-stock="${stock}">${i.itemName} (Stok: ${formatNumber(stock)})</option>`;
     }).filter(Boolean).join('');
 
     const body = `
@@ -1287,7 +1650,7 @@ window.openFinalizeProdModal = () => {
     const wipOpts = wipInDry.map(i => {
         const stock = db.getInventoryStock(i.id, 'OVEN_KERING');
         if (stock <= 0) return null;
-        return `<option value="${i.id}" data-stock="${stock}">${i.itemName} (Stok: ${stock})</option>`;
+        return `<option value="${i.id}" data-stock="${stock}">${i.itemName} (Stok: ${formatNumber(stock)})</option>`;
     }).filter(Boolean).join('');
 
     const fgOpts = getActiveItemOpts('FINISHED_GOODS');
@@ -1343,10 +1706,9 @@ window.saveFinalizeProd = () => {
     renderInventoryProduction();
 };
 
-// ─── 6. STOCK REPORT ─────────────────────────────────────────
+// â”€â”€â”€ 6. STOCK REPORT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderInventoryReport() {
     document.getElementById('pageTitle').innerText = 'Laporan Stok';
-    const mc = document.getElementById('main-content');
     const items = db.read('inventoryItems');
 
     const withStock = items.map(it => ({ ...it, currentStock: db.getInventoryStock(it.id) }));
@@ -1378,8 +1740,8 @@ function renderInventoryReport() {
                     <td class="py-3 px-4 text-sm text-right text-gray-500">${invFmt(it.minStock)}</td>
                     <td class="py-3 px-4 text-sm">
                         ${isLow
-                    ? '<span class="px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-700">⚠ Low Stock</span>'
-                    : '<span class="px-2 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-700">✓ Normal</span>'}
+                    ? '<span class="px-2 py-0.5 rounded text-xs font-semibold bg-red-100 text-red-700">âš  Low Stock</span>'
+                    : '<span class="px-2 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-700">âœ“ Normal</span>'}
                     </td>
                     <td class="py-3 px-4 text-sm text-right whitespace-nowrap">
                         ${it.category === 'FINISHED_GOODS' ? `<button onclick="openRepackModal('${it.id}')" class="text-blue-600 hover:text-blue-800 font-bold text-xs bg-blue-50 px-2 py-1 rounded border border-blue-100 mr-2"><i class="fas fa-box-open mr-1"></i>Repack</button>` : ''}
@@ -1406,7 +1768,7 @@ function renderInventoryReport() {
                 <p class="text-3xl font-bold text-yellow-700 mt-1">${totalRM}</p>
             </div>
             <div class="bg-green-50 rounded-lg border border-green-100 shadow-sm p-4">
-                <p class="text-xs text-green-600 font-semibold uppercase">Finished Goods</p>
+                <p class="text-xs text-green-600 font-semibold uppercase">Gudang Jadi</p>
                 <p class="text-3xl font-bold text-green-700 mt-1">${totalFG}</p>
             </div>
         </div>
@@ -1414,7 +1776,7 @@ function renderInventoryReport() {
         <div class="bg-white rounded-lg shadow-sm border border-gray-100">
             <div class="border-b border-gray-200">
                 <nav class="-mb-px flex space-x-4 px-6" id="inv_report_tabs">
-                    ${[['all', 'Semua Item'], ['RAW_MATERIAL', 'Raw Material'], ['WIP', 'WIP'], ['FINISHED_GOODS', 'Finished Goods']].map(([cat, label], i) =>
+                    ${[['all', 'Semua Item'], ['RAW_MATERIAL', 'Bahan Baku'], ['FINISHED_GOODS', 'Gudang Jadi']].map(([cat, label], i) =>
         `<button onclick="switchInvReportTab('${cat}')" id="inv_tab_${cat}" class="whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${i === 0 ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}">${label}</button>`
     ).join('')}
                 </nav>
@@ -1426,9 +1788,9 @@ function renderInventoryReport() {
     window._invReportBuildTable = buildTable;
 }
 
-// ─── INTEGRASI: PO → Inventory & SO → Inventory ──────────────
+// â”€â”€â”€ INTEGRASI: PO â†’ Inventory & SO â†’ Inventory â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-// Cari inventoryItem by nama (case-insensitive, partial match) — fallback jika tidak ada ID
+// Cari inventoryItem by nama (case-insensitive, partial match) â€” fallback jika tidak ada ID
 function findInvItemByName(name) {
     if (!name) return null;
     const clean = name.toLowerCase().trim();
@@ -1439,7 +1801,7 @@ function findInvItemByName(name) {
     return found || null;
 }
 
-// Dipanggil dari confirmReceiveGoods (PO diterima) → stock IN
+// Dipanggil dari confirmReceiveGoods (PO diterima) â†’ stock IN
 window.syncInventoryFromPOReceipt = (poId, poNumber, receivedItems) => {
     let synced = 0;
     receivedItems.forEach(item => {
@@ -1454,11 +1816,11 @@ window.syncInventoryFromPOReceipt = (poId, poNumber, receivedItems) => {
             synced++;
         }
     });
-    if (synced > 0) showToast(`✅ ${synced} item dari PO ${poNumber} otomatis masuk ke stok Inventory!`, 'success');
+    if (synced > 0) showToast(`âœ… ${synced} item dari PO ${poNumber} otomatis masuk ke stok Inventory!`, 'success');
     else showToast('PO diterima. Pastikan item PO terhubung ke Master Inventory.', 'success');
 };
 
-// Dipanggil dari deliverSO (SO dikirim) → stock OUT
+// Dipanggil dari deliverSO (SO dikirim) â†’ stock OUT
 window.syncInventoryFromSODelivery = (soId, soNumber, items) => {
     let synced = 0;
     const errors = [];
@@ -1470,7 +1832,7 @@ window.syncInventoryFromSODelivery = (soId, soNumber, items) => {
             : findInvItemByName(item.prodText);
         if (invItem) {
             if (!db.validateInventoryStock(invItem.id, item.qty)) {
-                errors.push(`⚠ Stok inventory "${invItem.itemName}" tidak cukup`);
+                errors.push(`⚠️ Stok inventory "${invItem.itemName}" tidak cukup`);
                 return;
             }
             db.addInventoryTransaction(invItem.id, 'OUT', item.qty, 'SO', soId,
@@ -1479,7 +1841,7 @@ window.syncInventoryFromSODelivery = (soId, soNumber, items) => {
         }
     });
     if (errors.length) errors.forEach(e => showToast(e, 'error'));
-    if (synced > 0) showToast(`✅ ${synced} item otomatis dikurangi dari stok Inventory!`, 'success');
+    if (synced > 0) showToast(`âœ… ${synced} item otomatis dikurangi dari stok Inventory!`, 'success');
 };
 
 window.switchInvReportTab = (cat) => {
@@ -1492,13 +1854,13 @@ window.switchInvReportTab = (cat) => {
     document.getElementById('inv_report_table').innerHTML = window._invReportBuildTable(cat === 'all' ? null : cat);
 };
 
-// ─── 6. PENGIRIMAN BARANG (SURAT JALAN / DELIVERY) ────────────
+// â”€â”€â”€ 6. PENGIRIMAN BARANG (SURAT JALAN / DELIVERY) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // renderWarehouseDeliveryOrders removed - using the version in delivery_order.js
 
 // Legacy logistics section removed. Using delivery_order.js instead.
 
 
-// ─── PENERIMAAN BARANG DARI PO ───────────────────────────────
+// â”€â”€â”€ PENERIMAAN BARANG DARI PO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderInventoryPOReceipt() {
     const canEdit = getModulePermission('logistik').edit;
     document.getElementById('pageTitle').innerText = 'Penerimaan Barang dari PO';
@@ -1584,13 +1946,13 @@ function renderInventoryPOReceipt() {
             <div class="overflow-x-auto">
                 <table class="w-full text-left">
                     <thead><tr class="bg-gray-50 border-b border-gray-200">
-                        <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider">No. PO</th>
-                        <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Tgl PO</th>
-                        <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Supplier</th>
-                        <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Tgl Terima</th>
-                        <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Progress</th>
-                        <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-center">Status</th>
-                        <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-right">Aksi</th>
+                        <th class="py-3 px-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider">No. PO</th>
+                        <th class="py-3 px-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider">Tgl PO</th>
+                        <th class="py-3 px-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider">Supplier</th>
+                        <th class="py-3 px-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider">Tgl Terima</th>
+                        <th class="py-3 px-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider">Progress</th>
+                        <th class="py-3 px-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-center">Status</th>
+                        <th class="py-3 px-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-right">Aksi</th>
                     </tr></thead>
                     <tbody>${rows}</tbody>
                 </table>
@@ -1616,19 +1978,21 @@ function renderInventoryPOReceipt() {
             </button>
         </div>
 
-        <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-5 mb-5">
-            <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-3"><i class="fas fa-filter text-blue-500"></i> FILTER PENCARIAN</h3>
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end mb-4">
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-4 mb-4">
+            <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest mb-3 flex items-center gap-3">
+                <i class="fas fa-filter text-blue-500"></i> FILTER PENCARIAN
+            </h3>
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-end mb-3">
                 <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Supplier</label>
-                    <select id="por_supplier" class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
+                    <label class="block text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Supplier</label>
+                    <select id="por_supplier" class="w-full border-2 border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
                         <option value="">Semua Supplier</option>
                         ${suppliers.map(s => `<option value="${s.id}" ${window.currentFilters.inventoryPOReceipt.supplier === s.id ? 'selected' : ''}>${s.name}</option>`).join('')}
                     </select>
                 </div>
                 <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Status</label>
-                    <select id="por_status" class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
+                    <label class="block text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Status</label>
+                    <select id="por_status" class="w-full border-2 border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
                         <option value="" ${!window.currentFilters.inventoryPOReceipt.status ? 'selected' : ''}>Semua Status</option>
                         <option value="PENDING" ${window.currentFilters.inventoryPOReceipt.status === 'PENDING' ? 'selected' : ''}>Menunggu / Antrean</option>
                         <option value="UNRECEIVED" ${window.currentFilters.inventoryPOReceipt.status === 'UNRECEIVED' ? 'selected' : ''}>Unreceived (Nol Penerimaan)</option>
@@ -1636,21 +2000,21 @@ function renderInventoryPOReceipt() {
                     </select>
                 </div>
                 <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Dari Tanggal PO</label>
+                    <label class="block text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Dari Tanggal PO</label>
                     <input type="date" id="por_start_date" value="${window.currentFilters.inventoryPOReceipt.start}" 
-                        class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
+                        class="w-full border-2 border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
                 </div>
                 <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Sampai Tanggal PO</label>
+                    <label class="block text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Sampai Tanggal PO</label>
                     <input type="date" id="por_end_date" value="${window.currentFilters.inventoryPOReceipt.end}" 
-                        class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
+                        class="w-full border-2 border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
                 </div>
             </div>
             <div class="flex gap-2">
-                <button onclick="applyPORFilter()" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all shadow-sm">
+                <button onclick="applyPORFilter()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-sm">
                     <i class="fas fa-search mr-2"></i> TAMPILKAN
                 </button>
-                <button onclick="resetPORFilter()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-lg transition-all shadow-sm" title="Reset">
+                <button onclick="resetPORFilter()" class="bg-slate-100 hover:bg-slate-200 text-slate-500 px-4 py-1.5 rounded-lg text-[10px] uppercase font-black tracking-widest transition-all shadow-sm">
                     <i class="fas fa-undo"></i>
                 </button>
             </div>
@@ -1714,7 +2078,7 @@ window.openPOReceiptModal = (id) => {
         </button>
         <button onclick="closeModal()" class="mt-3 sm:mt-0 w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 px-4 py-2 bg-white text-gray-700 text-sm font-medium sm:ml-3">Batal</button>`;
 
-    showModal(`Terima Barang — ${po.poNumber}`, body, footer);
+    showModal(`Terima Barang - ${po.poNumber}`, body, footer, 'full');
 };
 
 window.confirmPOReceipt = (id) => {
@@ -1750,7 +2114,7 @@ window.confirmPOReceipt = (id) => {
     });
 
     const sisa = sumTarget - sumReceived;
-    showToast(done ? '✅ Semua barang diterima! PO selesai.' : `📦 Diterima sebagian. Sisa ${invFmt(sisa)} unit.`, done ? 'success' : 'info');
+    showToast(done ? 'Semua barang diterima! PO selesai.' : `Diterima sebagian. Sisa ${invFmt(sisa)} unit.`, done ? 'success' : 'info');
     closeModal();
     renderInventoryPOReceipt();
 };
@@ -1791,51 +2155,78 @@ window.viewPOReceiptDetails = (id) => {
         </div>
     `;
 
-    showModal(`Detail Penerimaan — ${po.poNumber}`, body, `<button onclick="closeModal()" class="btn-secondary">Tutup</button>`);
+    showModal(`Detail Penerimaan - ${po.poNumber}`, body, `<button onclick="closeModal()" class="btn-secondary">Tutup</button>`);
 };
 
 
-// ─── 7. SHRINKAGE REPORT ─────────────────────────────────────
+// â”€â”€â”€ 7. SHRINKAGE REPORT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 window.renderInventoryShrinkageReport = () => {
     const canEdit = getModulePermission('produksi').edit;
     document.getElementById('pageTitle').innerText = 'Laporan Penyusutan';
     const mc = document.getElementById('main-content');
 
+    const filters = window.currentFilters.inventoryShrinkage;
     const now = new Date();
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
     const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
 
+    const fromVal = filters.start || firstDay;
+    const toVal = filters.end || lastDay;
+
     mc.innerHTML = `
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-5">
-        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
-            <h2 class="text-lg font-semibold text-gray-800">Laporan Penyusutan / NG</h2>
+    <div class="animate-in fade-in slide-in-from-top-4 duration-500">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
+            <div>
+                <h2 class="text-lg font-bold text-slate-800 tracking-tight">Laporan Penyusutan / NG</h2>
+                <p class="text-xs text-slate-400 font-medium">Monitoring penyusutan bahan baku dan produk rusak</p>
+            </div>
             <div class="flex gap-2">
                 ${canEdit ? `
-                <button onclick="openManualShrinkageModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
-                    <i class="fas fa-plus"></i> Catat Penyusutan Manual
+                <button onclick="openManualShrinkageModal()" class="bg-blue-600 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-200 transition-all active:scale-95 flex items-center gap-2">
+                    <i class="fas fa-plus"></i> CATAT PENYUSUTAN MANUAL
                 </button>
                 ` : `
-                <span class="text-xs font-medium text-orange-500 bg-orange-50 border border-orange-100 px-3 py-2 rounded-lg flex items-center gap-2">
+                <span class="text-[10px] font-black text-orange-500 bg-orange-50 border border-orange-100 px-4 py-2 rounded-xl uppercase tracking-widest flex items-center gap-2">
                     <i class="fas fa-info-circle"></i> Mode Lihat Saja
                 </span>
                 `}
             </div>
         </div>
-        <div class="flex flex-wrap gap-3 items-end">
-            <div>
-                <label class="block text-xs font-medium text-gray-500 mb-1">Dari Tanggal</label>
-                <input type="date" id="sr_from" value="${firstDay}" class="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none">
+
+        <!-- Standardized Accordion Filter -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-5 overflow-hidden">
+            <div onclick="toggleShrinkFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
+                <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
+                    <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
+                    ${(!window._uiState.shrinkFilterOpen && (fromVal || toVal)) ? `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
+                </h3>
+                <div class="flex items-center gap-3">
+                    <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.shrinkFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
+                    <i class="fas fa-chevron-${window._uiState.shrinkFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
+                </div>
             </div>
-            <div>
-                <label class="block text-xs font-medium text-gray-500 mb-1">Sampai Tanggal</label>
-                <input type="date" id="sr_to" value="${lastDay}" class="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none">
+
+            <div class="${window._uiState.shrinkFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 items-end mb-4">
+                    <div class="space-y-1.5">
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Dari Tanggal</label>
+                        <input type="date" id="sr_from" value="${fromVal}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 focus:bg-white focus:border-blue-500 outline-none transition-all">
+                    </div>
+                    <div class="space-y-1.5">
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Sampai Tanggal</label>
+                        <input type="date" id="sr_to" value="${toVal}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 focus:bg-white focus:border-blue-500 outline-none transition-all">
+                    </div>
+                    <div>
+                        <button onclick="runShrinkageReport()" class="w-full bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2">
+                            <i class="fas fa-search text-xs"></i> TAMPILKAN LAPORAN
+                        </button>
+                    </div>
+                </div>
             </div>
-            <button onclick="runShrinkageReport()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2">
-                <i class="fas fa-search"></i> Tampilkan
-            </button>
         </div>
-    </div>
-    <div id="shrinkage_report_output"></div>`;
+
+        <div id="shrinkage_report_output"></div>
+    </div>`;
 
     setTimeout(() => runShrinkageReport(), 50);
 };
@@ -1843,65 +2234,87 @@ window.renderInventoryShrinkageReport = () => {
 window.runShrinkageReport = () => {
     const fromVal = document.getElementById('sr_from')?.value;
     const toVal = document.getElementById('sr_to')?.value;
+    
+    // Save to global filters
+    if (fromVal) window.currentFilters.inventoryShrinkage.start = fromVal;
+    if (toVal) window.currentFilters.inventoryShrinkage.end = toVal;
     const output = document.getElementById('shrinkage_report_output');
     if (!fromVal || !toVal || !output) return;
 
-    const from = new Date(fromVal); from.setHours(0, 0, 0, 0);
-    const to = new Date(toVal); to.setHours(23, 59, 59, 999);
+    const from = new Date(fromVal + 'T00:00:00');
+    const to = new Date(toVal + 'T23:59:59');
 
     const items = db.read('inventoryItems');
 
-    // ── 1. Penyusutan dari MO (productionOrders) — tidak double-count mutasi stok ──
+    // â”€â”€ 1. Penyusutan dari MO (productionOrders) â€” tidak double-count mutasi stok â”€â”€
     const moShrinkages = (db.read('productionOrders') || []).filter(mo => {
         if (mo.status !== 'DONE') return false;
-        if (mo.stage !== 'OVEN_KERING') return false; // Hanya Oven Kering yang ada susut
+        // Include any stage that has shrinkage recorded
         const kg = parseFloat(mo.shrinkageKg) || 0;
         if (kg <= 0) return false;
         const d = new Date(mo.completedAt || mo.updatedAt || mo.createdAt);
         return d >= from && d <= to;
     }).map(mo => {
         const inputItem = mo.inputItemId ? items.find(i => i.id === mo.inputItemId) : null;
+        const inputQty = parseFloat(mo.weightBeforeOven) || parseFloat(mo.inputQty) || 0;
+        const pct = parseFloat(mo.shrinkagePct) || 0;
         return {
             date: mo.completedAt || mo.updatedAt || mo.createdAt,
             itemCode: inputItem?.itemCode || '-',
             itemName: inputItem?.itemName || `WIP ${mo.stage} (${mo.productName || '-'})`,
             itemId: mo.inputItemId || null,
             qty: parseFloat(mo.shrinkageKg) || 0,
+            inputQty: inputQty,
+            pct: pct,
             unit: inputItem?.unit || 'Kg',
-            notes: `Susut ${mo.stage === 'OVEN_KERING' ? 'Oven Kering' : mo.stage} MO ${mo.moNumber}: ${(parseFloat(mo.shrinkageKg)||0).toFixed(2)} Kg (${mo.shrinkagePct || 0}%)`,
+            notes: `Susut ${mo.stage === 'OVEN_KERING' ? 'Oven Kering' : mo.stage} MO ${mo.moNumber}`,
             source: 'MO'
         };
     });
 
-    // ── 2. Penyusutan manual (dari stockTransactions dengan reference SHRINKAGE) ──
+    // â”€â”€ 2. Penyusutan manual (dari stockTransactions dengan reference SHRINKAGE) â”€â”€
     const manualTxs = (db.read('stockTransactions') || []).filter(t => {
         const d = new Date(t.date);
-        return d >= from && d <= to && t.reference === 'SHRINKAGE';
-    }).map(t => ({
-        date: t.date,
-        itemCode: t.itemCode || '-',
-        itemName: t.itemName,
-        itemId: t.itemId,
-        qty: parseFloat(t.qty) || 0,
-        unit: items.find(i => i.id === t.itemId)?.unit || t.unit || 'Kg',
-        notes: t.notes || 'Penyusutan Manual',
-        source: 'MANUAL'
-    }));
+        return d >= from && d <= to && (t.reference === 'SHRINKAGE' || t.type === 'SHRINKAGE');
+    }).map(t => {
+        // Try to parse pct from notes if manual (e.g. "Susut 4.2%...")
+        let pct = 0;
+        const match = t.notes?.match(/Susut ([\d.]+)%/i);
+        if (match) pct = parseFloat(match[1]);
+        
+        return {
+            date: t.date,
+            itemCode: t.itemCode || '-',
+            itemName: t.itemName,
+            itemId: t.itemId,
+            qty: parseFloat(t.qty) || 0,
+            inputQty: 0, // Unknown for manual
+            pct: pct,
+            unit: items.find(i => i.id === t.itemId)?.unit || t.unit || 'Kg',
+            notes: t.notes || 'Penyusutan Manual',
+            source: 'MANUAL'
+        };
+    });
 
-    // ── Gabungkan & sort terbaru dulu ──
+    // â”€â”€ Gabungkan & sort terbaru dulu â”€â”€
     const allEntries = [...moShrinkages, ...manualTxs]
         .sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    // ── Summary per item ──
+    // â”€â”€ Summary per item â”€â”€
     const summary = {};
     allEntries.forEach(e => {
         const key = e.itemId || e.itemName;
-        if (!summary[key]) summary[key] = { itemName: e.itemName, itemCode: e.itemCode, totalQty: 0, count: 0, unit: e.unit };
+        if (!summary[key]) summary[key] = { itemName: e.itemName, itemCode: e.itemCode, totalQty: 0, totalInput: 0, count: 0, unit: e.unit, totalPct: 0, pctCount: 0 };
         summary[key].totalQty += e.qty;
+        summary[key].totalInput += e.inputQty;
         summary[key].count += 1;
+        if (e.pct > 0) {
+            summary[key].totalPct += e.pct;
+            summary[key].pctCount += 1;
+        }
     });
 
-    // ── Detail rows ──
+    // â”€â”€ Detail rows â”€â”€
     const detailRows = allEntries.map(e => {
         const sourceBadge = e.source === 'MO'
             ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-black bg-orange-100 text-orange-700 uppercase">MO</span>`
@@ -1911,24 +2324,26 @@ window.runShrinkageReport = () => {
                 <td class="py-2.5 px-4 text-xs text-gray-500">${invDate(e.date)}</td>
                 <td class="py-2.5 px-4 text-xs font-mono font-bold text-blue-600">${e.itemCode}</td>
                 <td class="py-2.5 px-4 text-sm font-medium text-gray-800">${e.itemName}</td>
-                <td class="py-2.5 px-4 text-xs text-gray-500 italic max-w-[240px] truncate" title="${e.notes}">
+                <td class="py-2.5 px-4 text-xs text-gray-500 italic truncate" title="${e.notes}">
                     ${sourceBadge} ${e.notes}
                 </td>
                 <td class="py-2.5 px-4 text-sm text-right font-black text-red-600">-${invFmt(e.qty)}</td>
+                <td class="py-2.5 px-4 text-xs font-bold text-gray-400 uppercase text-center">${e.pct > 0 ? e.pct.toFixed(1) + '%' : '-'}</td>
                 <td class="py-2.5 px-4 text-xs font-bold text-gray-400 uppercase">${e.unit}</td>
             </tr>
         `;
     }).join('') || '<tr><td colspan="6" class="py-10 text-center text-gray-400 text-sm italic">Tidak ada data penyusutan dalam periode ini.</td></tr>';
 
-    // ── Summary rows ──
+    // â”€â”€ Summary rows â”€â”€
     const summaryRows = Object.values(summary).sort((a, b) => b.totalQty - a.totalQty).map(s => {
         const it = items.find(i => i.id === s.itemId || i.itemCode === s.itemCode);
+        const avgPct = s.pctCount > 0 ? (s.totalPct / s.pctCount) : 0;
         return `
             <tr class="border-b border-gray-100 hover:bg-gray-50">
                 <td class="py-3 px-4 text-sm font-mono text-blue-600">${s.itemCode}</td>
                 <td class="py-3 px-4 text-sm font-medium text-gray-800">${s.itemName}</td>
-                <td class="py-3 px-4 text-sm"><span class="px-2 py-0.5 rounded text-xs font-semibold ${CATEGORY_COLORS[it?.category] || 'bg-gray-100'}">${it ? CATEGORY_LABELS[it.category] : 'WIP'}</span></td>
                 <td class="py-3 px-4 text-sm text-right font-black text-red-600">-${invFmt(s.totalQty)} ${s.unit}</td>
+                <td class="py-3 px-4 text-sm text-center font-bold text-orange-600">${avgPct > 0 ? avgPct.toFixed(1) + '%' : '-'}</td>
                 <td class="py-3 px-4 text-sm text-center text-gray-500">${s.count} kali</td>
             </tr>
         `;
@@ -1947,8 +2362,8 @@ window.runShrinkageReport = () => {
                 <p class="text-2xl font-black text-orange-600">${allEntries.length} <span class="text-sm font-bold">Entri</span></p>
             </div>
             <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 col-span-2 md:col-span-1">
-                <p class="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Item Terdampak</p>
-                <p class="text-2xl font-black text-blue-600">${Object.keys(summary).length} <span class="text-sm font-bold">Item</span></p>
+                <p class="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Rata-rata Susut</p>
+                <p class="text-2xl font-black text-blue-600">${allEntries.filter(e => e.pct > 0).length > 0 ? (allEntries.filter(e => e.pct > 0).reduce((sum, e) => sum + e.pct, 0) / allEntries.filter(e => e.pct > 0).length).toFixed(1) : 0} <span class="text-sm font-bold">%</span></p>
             </div>
         </div>
 
@@ -1968,6 +2383,8 @@ window.runShrinkageReport = () => {
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Nama Item</th>
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Keterangan / Sumber</th>
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Susut (Kg)</th>
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-center">%</th>
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Unit</th>
                         </tr>
                     </thead>
                     <tbody>${detailRows}</tbody>
@@ -1986,8 +2403,8 @@ window.runShrinkageReport = () => {
                         <tr class="bg-gray-50/50 border-b border-gray-200">
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Kode</th>
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Nama Item</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Kategori</th>
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Total Susut</th>
+                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-center">Rerata %</th>
                             <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-center">Frekuensi</th>
                         </tr>
                     </thead>
@@ -2043,10 +2460,15 @@ window.saveManualShrinkage = () => {
     renderInventoryShrinkageReport();
 };
 
-// ─── 8. MONTHLY STOCK REPORT ─────────────────────────────────
+// â”€â”€â”€ 8. MONTHLY STOCK REPORT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 window.currentMonthlyReportCategory = 'RAW_MATERIAL';
 
 window.renderMonthlyStockReport = () => {
+    // Reset to default if current category was one of the removed ones
+    if (['WIP_OVEN_BASAH', 'WIP_OVEN_KERING'].includes(window.currentMonthlyReportCategory)) {
+        window.currentMonthlyReportCategory = 'RAW_MATERIAL';
+    }
+
     document.getElementById('pageTitle').innerText = 'Laporan Stok Bulanan';
     const mc = document.getElementById('main-content');
 
@@ -2064,6 +2486,9 @@ window.renderMonthlyStockReport = () => {
             <button onclick="runMonthlyStockReport()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-sm h-[38px]">
                 <i class="fas fa-search"></i> Tampilkan Laporan
             </button>
+            <button onclick="openInventoryConversionModal()" id="btn_msr_conversion" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-sm h-[38px] hidden">
+                <i class="fas fa-random"></i> Konversi Kemasan
+            </button>
         </div>
     </div>
     
@@ -2071,11 +2496,9 @@ window.renderMonthlyStockReport = () => {
         <div class="border-b border-gray-100">
             <nav class="flex overflow-x-auto no-scrollbar" id="msr_tabs_nav">
                 ${[
-                    ['RAW_MATERIAL', 'RawMatrial'],
-                    ['MIXING_STOCK', 'Mixing'],
-                    ['WIP_OVEN_BASAH', 'Oven Basah'],
-                    ['WIP_OVEN_KERING', 'Oven Kering'],
-                    ['FINISHED_GOODS', 'Finishgoods']
+                    ['RAW_MATERIAL', 'Bahan Baku'],
+                    ['MIXING_STOCK', 'Campuran'],
+                    ['FINISHED_GOODS', 'Gudang Jadi']
                 ].map(([cat, label]) =>
                     `<button onclick="switchMonthlyReportTab('${cat}')" id="msr_tab_${cat}" 
                              class="whitespace-nowrap py-4 px-6 font-bold text-xs uppercase tracking-wider border-b-2 transition-all 
@@ -2104,7 +2527,7 @@ window.switchMonthlyReportTab = (cat) => {
 };
 
 window.runMonthlyStockReport = () => {
-    db.seedWIPItems(); // Pastikan smua baris proses muncul
+    // db.seedWIPItems(); // REMOVED: Auto-seeding recreates deleted items, causing them to reappear after refresh.
     const monthVal = document.getElementById('msr_month')?.value;
     const output = document.getElementById('monthly_stock_report_output');
     if (!monthVal || !output) return;
@@ -2113,11 +2536,19 @@ window.runMonthlyStockReport = () => {
     const startDate = new Date(year, month - 1, 1);
     const endDate = new Date(year, month, 0, 23, 59, 59);
 
-    const items = db.read('inventoryItems');
+    const items = db.read('inventoryItems').filter(it => it.status !== 'INACTIVE');
     const allTxs = db.read('stockTransactions');
 
     // Custom filtering for production stages
     const cat = window.currentMonthlyReportCategory || 'RAW_MATERIAL';
+    
+    // Toggle header conversion button visibility
+    const btnConv = document.getElementById('btn_msr_conversion');
+    if (btnConv) {
+        if (cat === 'FINISHED_GOODS') btnConv.classList.remove('hidden');
+        else btnConv.classList.add('hidden');
+    }
+
     let filteredItems = [];
 
     if (cat === 'RAW_MATERIAL') {
@@ -2134,6 +2565,7 @@ window.runMonthlyStockReport = () => {
         );
     } else if (cat === 'WIP_OVEN_KERING') {
         filteredItems = items.filter(it => 
+            it.category === 'OVEN_KERING_STOCK' ||
             (it.category === 'WIP' && it.itemName.toLowerCase().includes('oven kering'))
         );
     } else if (cat.startsWith('WIP_')) {
@@ -2146,12 +2578,27 @@ window.runMonthlyStockReport = () => {
     const reportData = filteredItems.map(it => {
         // Stok Awal (semua tx sebelum startDate)
         const openingTxs = allTxs.filter(t => t.itemId === it.id && new Date(t.date) < startDate);
-        const openingStock = openingTxs.reduce((sum, t) => sum + (t.type === 'IN' ? t.qty : -t.qty), 0);
+        const getQty = (txs, direction) => {
+            return txs.reduce((sum, t) => {
+                const q = parseFloat(t.qty) || 0;
+                const type = (t.type || '').toUpperCase();
+                const isIn = ['IN', 'ADJUST_IN', 'PRODUCTION_IN', 'RETURN_IN'].includes(type);
+                const isOut = ['OUT', 'SHRINKAGE', 'ADJUST_OUT', 'PRODUCTION_OUT', 'SALES_OUT', 'WASTE'].includes(type);
+                
+                if (direction === 'IN' && isIn) return sum + q;
+                if (direction === 'OUT' && isOut) return sum + q;
+                if (direction === 'NET') {
+                    if (isIn) return sum + q;
+                    if (isOut) return sum - q;
+                }
+                return sum;
+            }, 0);
+        };
 
-        // Mutasi dalam Bulan terpilih
+        const openingStock = getQty(openingTxs, 'NET');
         const monthTxs = allTxs.filter(t => t.itemId === it.id && new Date(t.date) >= startDate && new Date(t.date) <= endDate);
-        const totalIn = monthTxs.filter(t => t.type === 'IN').reduce((sum, t) => sum + t.qty, 0);
-        const totalOut = monthTxs.filter(t => t.type === 'OUT').reduce((sum, t) => sum + t.qty, 0);
+        const totalIn = getQty(monthTxs, 'IN');
+        const totalOut = getQty(monthTxs, 'OUT');
         const closingStock = openingStock + totalIn - totalOut;
 
         return {
@@ -2173,8 +2620,8 @@ window.runMonthlyStockReport = () => {
             <td class="py-3 px-4 text-sm text-right font-bold text-red-600">-${invFmt(s.totalOut)}</td>
             <td class="py-3 px-4 text-sm text-right font-black text-blue-700 bg-blue-50/10">${invFmt(s.closingStock)}</td>
             <td class="py-3 px-4 text-right">
-                <button onclick="viewProductStockCard('${s.id}', '${monthVal}')" class="text-blue-600 hover:text-blue-800 text-xs font-bold bg-blue-50 px-2 py-1 rounded border border-blue-100 transition-colors">
-                    <i class="fas fa-eye mr-1"></i>Kartu
+                <button onclick="viewProductStockCard('${s.id}', '${monthVal}')" class="text-blue-600 hover:text-blue-800 text-[10px] font-black uppercase tracking-wider bg-blue-50 px-2 py-1 rounded border border-blue-100 transition-colors flex items-center gap-1">
+                    <i class="fas fa-eye"></i> Kartu
                 </button>
             </td>
         </tr>
@@ -2218,7 +2665,7 @@ window.openRepackModal = (id) => {
         </div>
         <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">Item Asal (Source)</label>
-            <input type="text" value="${item.itemName} (Stok: ${db.getInventoryStock(item.id)} ${item.unit})" class="w-full border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 text-gray-600 text-sm" readonly>
+            <input type="text" value="${item.itemName} (Stok: ${formatNumber(db.getInventoryStock(item.id))} ${item.unit})" class="w-full border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 text-gray-600 text-sm" readonly>
         </div>
         <div class="grid grid-cols-2 gap-4">
             <div>
@@ -2243,7 +2690,7 @@ window.openRepackModal = (id) => {
         <button onclick="saveRepacking('${id}')" class="w-full sm:w-auto inline-flex justify-center rounded-lg bg-blue-600 px-5 py-2 text-white text-sm font-bold hover:bg-blue-700 sm:ml-3">Proses Repacking</button>
         <button onclick="closeModal()" class="mt-3 sm:mt-0 w-full sm:w-auto inline-flex justify-center rounded-lg border border-gray-300 px-5 py-2 bg-white text-gray-700 text-sm font-medium sm:ml-3">Batal</button>`;
 
-    showModal('Repackaging Finished Goods', body, footer);
+    showModal('Repackaging Finished Goods', body, footer, 'full');
 };
 
 window.saveRepacking = (sourceId) => {
@@ -2274,25 +2721,54 @@ window.saveRepacking = (sourceId) => {
 };
 
 // --- Integrated Stock Card ---
-window.viewProductStockCard = (productId, monthStr) => {
+window.viewProductStockCard = (productId, startDateStr = null, endDateStr = null) => {
     const item = db.findById('inventoryItems', productId);
     if (!item) return;
 
-    const [year, month] = monthStr.split('-').map(Number);
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0, 23, 59, 59);
+    // Handle initial call (legacy format with monthStr)
+    let startDate, endDate;
+    if (startDateStr && startDateStr.includes('-') && startDateStr.length === 7) { 
+        // monthStr format (YYYY-MM)
+        const [year, month] = startDateStr.split('-').map(Number);
+        startDate = new Date(year, month - 1, 1);
+        endDate = new Date(year, month, 0, 23, 59, 59);
+        startDateStr = startDate.toISOString().split('T')[0];
+        endDateStr = endDate.toISOString().split('T')[0];
+    } else {
+        startDate = startDateStr ? new Date(startDateStr) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+        endDate = endDateStr ? new Date(endDateStr) : new Date();
+        startDateStr = startDate.toISOString().split('T')[0];
+        endDateStr = endDate.toISOString().split('T')[0];
+    }
 
     const allTxs = db.read('stockTransactions');
     const openingTxs = allTxs.filter(t => t.itemId === productId && new Date(t.date) < startDate);
     const openingStock = openingTxs.reduce((sum, t) => sum + (t.type === 'IN' ? t.qty : -t.qty), 0);
 
-    const monthTxs = allTxs.filter(t => t.itemId === productId && new Date(t.date) >= startDate && new Date(t.date) <= endDate)
+    const monthTxs = allTxs.filter(t => t.itemId === productId && new Date(t.date) >= startDate && new Date(t.date) <= new Date(endDate.getTime() + 86400000))
         .sort((a, b) => new Date(a.date) - new Date(b.date));
 
     let balance = openingStock;
+    let totalNormalIn = 0;
+    let totalManualIn = 0;
+    let totalNormalOut = 0;
+    let totalShrinkOut = 0;
     const itemRows = monthTxs.map(t => {
         const qtyIn = t.type === 'IN' ? t.qty : 0;
         const qtyOut = t.type === 'OUT' ? t.qty : 0;
+        
+        const refUpper = (t.reference || '').toUpperCase();
+        const isShrink = ['SHRINKAGE', 'ADJUST_OUT', 'WASTE', 'JUDGMENT'].includes(refUpper) || (t.notes || '').toLowerCase().includes('susut');
+        const isManualIn = ['MANUAL', 'ADJUST_IN'].includes(refUpper);
+
+        if (qtyIn > 0) {
+            if (isManualIn) totalManualIn += qtyIn;
+            else totalNormalIn += qtyIn;
+        }
+        if (qtyOut > 0) {
+            if (isShrink) totalShrinkOut += qtyOut;
+            else totalNormalOut += qtyOut;
+        }
         balance += qtyIn - qtyOut;
         return `
             <tr class="border-b border-gray-100 text-xs">
@@ -2308,11 +2784,28 @@ window.viewProductStockCard = (productId, monthStr) => {
 
     const body = `
     <div class="space-y-4">
-        <div class="bg-gray-50 p-4 rounded-xl border border-gray-100 grid grid-cols-2 gap-4 text-sm">
-            <div><span class="text-gray-400 block text-[10px] uppercase font-bold">Produk</span> <strong class="text-blue-700">${item.itemName}</strong></div>
-            <div><span class="text-gray-400 block text-[10px] uppercase font-bold">Periode</span> <strong>${monthStr}</strong></div>
-            <div><span class="text-gray-400 block text-[10px] uppercase font-bold">Kode Barang</span> <strong>${item.itemCode || '-'}</strong></div>
-            <div><span class="text-gray-400 block text-[10px] uppercase font-bold">Stok Awal</span> <strong class="text-orange-600">${invFmt(openingStock)} ${item.unit}</strong></div>
+        <div class="bg-gray-50 p-4 rounded-xl border border-gray-100 flex flex-wrap gap-6 text-sm">
+            <div class="flex-1 min-w-[200px]"><span class="text-gray-400 block text-[10px] uppercase font-bold">Produk</span> <strong class="text-blue-700">${item.itemName}</strong></div>
+            <div class="flex-1 min-w-[200px]"><span class="text-gray-400 block text-[10px] uppercase font-bold">Kode Barang</span> <strong>${item.itemCode || '-'}</strong></div>
+            
+            <div class="w-full pt-4 mt-2 border-t border-gray-200 flex items-end gap-4 bg-white p-4 rounded-lg shadow-sm">
+                <div class="flex-1 max-w-[200px]">
+                    <label class="text-[11px] uppercase font-black text-slate-500 block mb-1.5 ml-1">Dari Tanggal</label>
+                    <input type="date" id="stock_card_start" value="${startDateStr}" class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
+                </div>
+                <div class="flex-1 max-w-[200px]">
+                    <label class="text-[11px] uppercase font-black text-slate-500 block mb-1.5 ml-1">Sampai Tanggal</label>
+                    <input type="date" id="stock_card_end" value="${endDateStr}" class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
+                </div>
+                <button onclick="viewProductStockCard('${productId}', document.getElementById('stock_card_start').value, document.getElementById('stock_card_end').value)" class="bg-blue-600 text-white px-6 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest hover:bg-blue-700 active:scale-95 transition-all shadow-md">
+                    <i class="fas fa-filter mr-2"></i>Terapkan Filter
+                </button>
+            </div>
+
+            <div class="w-full pt-1 flex justify-between items-center text-xs">
+                <span class="text-gray-400 uppercase font-bold text-[10px]">Ringkasan</span>
+                <span class="text-orange-600 font-bold">Stok Awal: ${invFmt(openingStock)} ${item.unit}</span>
+            </div>
         </div>
 
         <div class="overflow-x-auto">
@@ -2335,28 +2828,135 @@ window.viewProductStockCard = (productId, monthStr) => {
                         <td></td>
                     </tr>
                     ${itemRows || '<tr><td colspan="7" class="py-10 text-center text-gray-300 italic">Tidak ada mutasi di periode ini</td></tr>'}
+                    <tr class="border-t-2 border-gray-100 bg-gray-50/50 font-black text-xs">
+                        <td colspan="3" class="py-2 px-2 text-gray-500 uppercase tracking-wider">TOTAL MASUK NORMAL (+)</td>
+                        <td class="py-2 px-2 text-right text-green-700">+${invFmt(totalNormalIn)}</td>
+                        <td colspan="3"></td>
+                    </tr>
+                    <tr class="bg-gray-50/50 font-black text-xs">
+                        <td colspan="3" class="py-2 px-2 text-gray-400 uppercase tracking-wider">TOTAL MASUK (MANUAL/ADJ) (+)</td>
+                        <td class="py-2 px-2 text-right text-blue-600">+${invFmt(totalManualIn)}</td>
+                        <td colspan="3"></td>
+                    </tr>
+                    <tr class="bg-gray-50/50 font-black text-xs">
+                        <td colspan="3" class="py-2 px-2 text-gray-400 uppercase tracking-wider">TOTAL KELUAR NORMAL (-)</td>
+                        <td></td>
+                        <td class="py-2 px-2 text-right text-slate-800">-${invFmt(totalNormalOut)}</td>
+                        <td colspan="2"></td>
+                    </tr>
+                    <tr class="bg-red-50/30 font-black text-xs">
+                        <td colspan="3" class="py-2 px-2 text-red-400 uppercase tracking-wider">TOTAL SUSUT / NG / JUDGMENT (-)</td>
+                        <td></td>
+                        <td class="py-2 px-2 text-right text-red-600">-${invFmt(totalShrinkOut)}</td>
+                        <td colspan="2"></td>
+                    </tr>
+                    <tr class="bg-blue-50/50 font-black text-xs border-t-2 border-blue-100">
+                        <td colspan="5" class="py-3 px-2 text-blue-800 uppercase tracking-widest text-right">SALDO AKHIR PERIODE</td>
+                        <td class="py-3 px-2 text-right text-blue-900 text-sm font-black">${invFmt(balance)}</td>
+                        <td></td>
+                    </tr>
                 </tbody>
             </table>
         </div>
+
+        ${item.category === 'FINISHED_GOODS' ? (() => {
+            const pb = (db.read('packBreakdowns') || []).find(b => b.itemId === productId) || {};
+            const q5   = pb.qty5    || 0;
+            const q800 = pb.qty800 || 0;
+            // q25 is now the remainder of the total weight
+            const weightOthers = q5 * 5 + q800 * 0.8;
+            const q25 = (balance - weightOthers) / 25;
+            const totalKgPack = balance; // Always balanced now
+            const balanced = true;
+            return '<div class="mt-4 border border-gray-100 rounded-xl overflow-hidden">' +
+                '<div class="px-4 py-2.5 bg-gray-50 border-b border-gray-100 flex justify-between items-center">' +
+                '<p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Breakdown Kemasan</p>' +
+                '<span class="text-[10px] font-bold ' + (balanced ? 'text-green-600' : 'text-orange-500') + '">' +
+                'âœ“ Balance</span>' +
+                '</div>' +
+                '<div class="p-4">' +
+                '<table class="w-full text-sm mb-4">' +
+                '<thead><tr class="text-[10px] text-gray-400 uppercase font-bold border-b border-gray-100">' +
+                '<th class="pb-2 text-left">Ukuran</th>' +
+                '<th class="pb-2 text-right pr-3">Jumlah (Sak/Pack)</th>' +
+                '<th class="pb-2 text-right">Total Kg</th></tr></thead>' +
+                '<tbody>' +
+                '<tr class="border-b border-gray-50 bg-gray-50/30">' +
+                '<td class="py-2.5 font-medium text-gray-700 italic">Sak 25 Kg (Sisa)</td>' +
+                '<td class="py-2.5 pr-3 text-right"><input type="number" id="pb_25" value="' + q25.toFixed(2) + '" readonly class="w-28 border-0 bg-transparent px-2 py-1 text-right text-sm text-blue-600 font-bold outline-none"></td>' +
+                '<td class="py-2.5 text-right font-semibold text-blue-600" id="pb_25_kg">' + invFmt(q25 * 25) + ' Kg</td>' +
+                '</tr>' +
+                '<tr class="border-b border-gray-50">' +
+                '<td class="py-2.5 font-medium text-gray-700">Sak 5 Kg</td>' +
+                '<td class="py-2.5 pr-3 text-right"><input type="number" id="pb_5" value="' + q5 + '" readonly class="w-20 border-0 bg-transparent px-2 py-1 text-right text-sm text-gray-700 font-bold outline-none cursor-default"></td>' +
+                '<td class="py-2.5 text-right font-semibold text-gray-600" id="pb_5_kg">' + invFmt(q5 * 5) + ' Kg</td>' +
+                '</tr>' +
+                '<tr class="border-b border-gray-50">' +
+                '<td class="py-2.5 font-medium text-gray-700">Pack 800 gram</td>' +
+                '<td class="py-2.5 pr-3 text-right"><input type="number" id="pb_800" value="' + q800 + '" readonly class="w-20 border-0 bg-transparent px-2 py-1 text-right text-sm text-gray-700 font-bold outline-none cursor-default"></td>' +
+                '<td class="py-2.5 text-right font-semibold text-gray-600" id="pb_800_kg">' + invFmt(q800 * 0.8) + ' Kg</td>' +
+                '</tr>' +
+                '</tbody>' +
+                '<tfoot><tr class="border-t-2 border-gray-100 font-bold text-sm">' +
+                '<td class="pt-2.5 text-gray-400 text-xs uppercase tracking-widest">Total Kemasan</td>' +
+                '<td class="pt-2.5 text-right" colspan="2" id="pb_total_kg"><span class="text-blue-700 font-black text-base">' + invFmt(totalKgPack) + ' Kg</span></td>' +
+                '</tr></tfoot>' +
+                '</table>' +
+                '</div></div>';
+        })() : ''}
     </div>`;
 
     const footer = `
-        <button onclick="printProductStockCard('${productId}', '${monthStr}')" class="bg-gray-800 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-black transition-all flex items-center gap-2">
+        <button onclick="printProductStockCard('${productId}', '${startDateStr}', '${endDateStr}')" class="bg-gray-800 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-black transition-all flex items-center gap-2">
             <i class="fas fa-print"></i> Cetak Kartu Stok
         </button>
         <button onclick="closeModal()" class="px-4 py-2 text-xs font-bold text-gray-500 hover:bg-gray-100 rounded-lg">Tutup</button>
     `;
 
-    showModal(`Kartu Stok — ${item.itemName}`, body, footer, 'max-w-3xl');
+    showModal(`Kartu Stok - ${item.itemName}`, body, footer, 'full');
 };
 
-window.printProductStockCard = (productId, monthStr) => {
+window.recalcPackBreakdown = (saldoAkhir) => {
+    const q5   = parseFloat(document.getElementById('pb_5')?.value)   || 0;
+    const q800 = parseFloat(document.getElementById('pb_800')?.value) || 0;
+    
+    // Auto calculate q25 as remainder
+    const weightOthers = q5 * 5 + q800 * 0.8;
+    const q25 = (saldoAkhir - weightOthers) / 25;
+
+    const el25_inp = document.getElementById('pb_25');
+    const el25_kg  = document.getElementById('pb_25_kg');
+    const el5_kg   = document.getElementById('pb_5_kg');
+    const el800_kg = document.getElementById('pb_800_kg');
+    const elTot    = document.getElementById('pb_total_kg');
+
+    if (el25_inp) el25_inp.value = q25.toFixed(2);
+    if (el25_kg)  el25_kg.textContent = invFmt(q25 * 25) + ' Kg';
+    if (el5_kg)   el5_kg.textContent = invFmt(q5 * 5) + ' Kg';
+    if (el800_kg) el800_kg.textContent = invFmt(q800 * 0.8) + ' Kg';
+    if (elTot)    elTot.innerHTML = '<span class="text-green-700">' + invFmt(saldoAkhir) + ' Kg</span>';
+};
+
+window.savePackBreakdown = (productId) => {
+    const q5   = parseFloat(document.getElementById('pb_5')?.value)   || 0;
+    const q800 = parseFloat(document.getElementById('pb_800')?.value) || 0;
+    // We only need to store the "assigned" packs. 25Kg is derived.
+    const existing = db.read('packBreakdowns').find(b => b.itemId === productId);
+    if (existing) {
+        db.update('packBreakdowns', existing.id, { qty5: q5, qty800: q800 });
+    } else {
+        db.insert('packBreakdowns', { itemId: productId, qty25: 0, qty5: q5, qty800: q800 });
+    }
+    showToast('Breakdown kemasan disimpan');
+};
+
+
+window.printProductStockCard = (productId, startDateStr, endDateStr) => {
     const item = db.findById('inventoryItems', productId);
     if (!item) return;
 
-    const [year, month] = monthStr.split('-').map(Number);
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0, 23, 59, 59);
+    const startDate = new Date(startDateStr + 'T00:00:00');
+    const endDate = new Date(endDateStr + 'T23:59:59');
 
     const allTxs = db.read('stockTransactions');
     const openingTxs = allTxs.filter(t => t.itemId === productId && new Date(t.date) < startDate);
@@ -2366,19 +2966,37 @@ window.printProductStockCard = (productId, monthStr) => {
         .sort((a, b) => new Date(a.date) - new Date(b.date));
 
     let balance = openingStock;
+    let totalNormalIn = 0;
+    let totalManualIn = 0;
+    let totalNormalOut = 0;
+    let totalShrinkOut = 0;
+
     const rows = monthTxs.map(t => {
         const qtyIn = t.type === 'IN' ? t.qty : 0;
         const qtyOut = t.type === 'OUT' ? t.qty : 0;
+        
+        const refUpper = (t.reference || '').toUpperCase();
+        const isShrink = ['SHRINKAGE', 'ADJUST_OUT', 'WASTE', 'JUDGMENT'].includes(refUpper) || (t.notes || '').toLowerCase().includes('susut');
+        const isManualIn = ['MANUAL', 'ADJUST_IN'].includes(refUpper);
+
+        if (qtyIn > 0) {
+            if (isManualIn) totalManualIn += qtyIn;
+            else totalNormalIn += qtyIn;
+        }
+        if (qtyOut > 0) {
+            if (isShrink) totalShrinkOut += qtyOut;
+            else totalNormalOut += qtyOut;
+        }
         balance += qtyIn - qtyOut;
+
         return `
             <tr>
-                <td style="border:1px solid #ddd;padding:8px;text-align:center;">${invDate(t.date)}</td>
-                <td style="border:1px solid #ddd;padding:8px;">${t.txNo}</td>
-                <td style="border:1px solid #ddd;padding:8px;">${t.itemName}</td>
-                <td style="border:1px solid #ddd;padding:8px;text-align:right;">${qtyIn > 0 ? invFmt(qtyIn) : '-'}</td>
-                <td style="border:1px solid #ddd;padding:8px;text-align:right;">${qtyOut > 0 ? invFmt(qtyOut) : '-'}</td>
-                <td style="border:1px solid #ddd;padding:8px;text-align:right;font-weight:bold;">${invFmt(balance)}</td>
-                <td style="border:1px solid #ddd;padding:8px;text-align:center;">${t.reference}</td>
+                <td class="t-center">${invDate(t.date)}</td>
+                <td>${t.txNo}</td>
+                <td class="t-right">${qtyIn > 0 ? invFmt(qtyIn) : '-'}</td>
+                <td class="t-right">${qtyOut > 0 ? invFmt(qtyOut) : '-'}</td>
+                <td class="t-right f-bold">${invFmt(balance)}</td>
+                <td>${t.reference} - ${t.notes || ''}</td>
             </tr>`;
     }).join('');
 
@@ -2387,20 +3005,35 @@ window.printProductStockCard = (productId, monthStr) => {
     <head>
         <title>Kartu Stok - ${item.itemName}</title>
         <style>
-            body { font-family: sans-serif; font-size: 12px; margin: 40px; }
-            .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #333; padding-bottom: 10px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th { background: #f2f2f2; border: 1px solid #ddd; padding: 10px; text-align: left; }
-            td { border: 1px solid #ddd; padding: 8px; }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 11px; margin: 30px; color: #334155; }
+            .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 15px; }
             .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
-            .meta-box { background: #f9f9f9; padding: 10px; border: 1px solid #eee; border-radius: 5px; }
+            .meta-box { background: #f8fafc; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+            th { background: #f1f5f9; border: 1px solid #e2e8f0; padding: 8px; text-transform: uppercase; font-size: 9px; letter-spacing: 0.05em; }
+            td { border: 1px solid #e2e8f0; padding: 8px; }
+            .t-right { text-align: right; }
+            .t-center { text-align: center; }
+            .f-bold { font-weight: bold; }
+            .total-row { background: #f8fafc; font-weight: bold; font-size: 10px; }
+            .bg-in { background: #f0fdf4 !important; color: #166534; }
+            .bg-in-manual { background: #eff6ff !important; color: #1e40af; }
+            .bg-out-normal { background: #f8fafc !important; color: #334155; }
+            .bg-out-shrink { background: #fef2f2 !important; color: #991b1b; }
+            .bg-final { background: #eff6ff !important; color: #1e40af; font-size: 12px; }
+            @media print {
+                .bg-in { background-color: #f0fdf4 !important; }
+                .bg-in-manual { background-color: #eff6ff !important; }
+                .bg-out-shrink { background-color: #fef2f2 !important; }
+            }
         </style>
     </head>
     <body onload="window.print()">
         <div class="header">
-            <h1 style="margin:0;font-size:20px;">KARTU STOK PERSEDIAAN</h1>
-            <p style="margin:5px 0;color:#666;">${CONFIG.companyName}</p>
+            <h1 style="margin:0;font-size:18px;color:#1e293b;">KARTU STOK PERSEDIAAN</h1>
+            <p style="margin:5px 0;font-weight:bold;color:#64748b;">${CONFIG.companyName}</p>
         </div>
+        
         <div class="meta">
             <div class="meta-box">
                 <strong>Nama Barang:</strong> ${item.itemName}<br>
@@ -2408,30 +3041,55 @@ window.printProductStockCard = (productId, monthStr) => {
                 <strong>Kategori:</strong> ${item.category}
             </div>
             <div class="meta-box">
-                <strong>Periode:</strong> ${monthStr}<br>
-                <strong>Satuan:</strong> ${item.unit}<br>
-                <strong>Saldo Awal:</strong> ${invFmt(openingStock)}
+                <strong>Periode:</strong> ${startDateStr} s/d ${endDateStr}<br>
+                <strong>Satuan:</strong> ${item.unit}
             </div>
         </div>
+
         <table>
             <thead>
                 <tr>
-                    <th>Tanggal</th>
-                    <th>No. Bukti</th>
-                    <th>Keterangan</th>
-                    <th style="text-align:right;">Masuk</th>
-                    <th style="text-align:right;">Keluar</th>
-                    <th style="text-align:right;">Saldo</th>
-                    <th>Keterangan</th>
+                    <th width="12%">Tanggal</th>
+                    <th width="15%">No. Bukti</th>
+                    <th width="12%" class="t-right">Masuk</th>
+                    <th width="12%" class="t-right">Keluar</th>
+                    <th width="12%" class="t-right">Saldo</th>
+                    <th>Ref / Keterangan</th>
                 </tr>
             </thead>
             <tbody>
-                <tr>
-                    <td colspan="5" style="background:#fefce8;font-weight:bold;font-style:italic;">SALDO AWAL PERIODE</td>
-                    <td style="background:#fefce8;text-align:right;font-weight:bold;">${invFmt(openingStock)}</td>
-                    <td style="background:#fefce8;"></td>
+                <tr style="background:#fffbeb; font-style: italic;">
+                    <td colspan="4" class="f-bold">SALDO AWAL PERIODE</td>
+                    <td class="t-right f-bold">${invFmt(openingStock)}</td>
+                    <td></td>
                 </tr>
-                 ${rows || '<tr><td colspan="7" style="text-align:center;padding:40px;color:#999;">Tidak ada transaksi</td></tr>'}
+                ${rows || '<tr><td colspan="6" class="t-center" style="padding:40px;color:#94a3b8;">Tidak ada transaksi</td></tr>'}
+                
+                <tr class="total-row bg-in">
+                    <td colspan="2">TOTAL MASUK NORMAL (+)</td>
+                    <td class="t-right">+${invFmt(totalNormalIn)}</td>
+                    <td colspan="3"></td>
+                </tr>
+                <tr class="total-row bg-in-manual">
+                    <td colspan="2">TOTAL MASUK (MANUAL/ADJ) (+)</td>
+                    <td class="t-right">+${invFmt(totalManualIn)}</td>
+                    <td colspan="3"></td>
+                </tr>
+                <tr class="total-row bg-out-normal">
+                    <td colspan="3">TOTAL KELUAR NORMAL (-)</td>
+                    <td class="t-right">-${invFmt(totalNormalOut)}</td>
+                    <td colspan="2"></td>
+                </tr>
+                <tr class="total-row bg-out-shrink">
+                    <td colspan="3">TOTAL SUSUT / NG / JUDGMENT (-)</td>
+                    <td class="t-right">-${invFmt(totalShrinkOut)}</td>
+                    <td colspan="2"></td>
+                </tr>
+                <tr class="total-row bg-final" style="border-top: 2px solid #3b82f6;">
+                    <td colspan="4" class="t-right">SALDO AKHIR PERIODE</td>
+                    <td class="t-right f-bold">${invFmt(balance)}</td>
+                    <td></td>
+                </tr>
             </tbody>
         </table>
         <div style="margin-top:50px;text-align:right;">
@@ -2447,7 +3105,7 @@ window.printProductStockCard = (productId, monthStr) => {
 
 // inventoryViews removed - using the centralized router in app.js
 
-// ─── 5. STOK WIP & HISTORY (PRODUCTION SPECIFIC) ──────────────
+// â”€â”€â”€ 5. STOK WIP & HISTORY (PRODUCTION SPECIFIC) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 window.renderProductionWIPStock = function() {
     document.getElementById('pageTitle').innerText = 'Stok WIP & History Tracking';
     const mc = document.getElementById('main-content');
@@ -2481,8 +3139,9 @@ window.renderProductionWIPStock = function() {
             <div class="border-b border-gray-100 bg-gray-50/30">
                 <nav class="flex overflow-x-auto no-scrollbar">
                     ${[
-                        ['MIXING', 'Mixing'],
-                        ['OVEN_BASAH', 'Oven Basah']
+                        ['MIXING', 'Campuran'],
+                        ['OVEN_BASAH', 'Oven Basah'],
+                        ['OVEN_KERING', 'Oven Kering']
                     ].map(([loc, label]) =>
                         `<button onclick="switchWIPMutationTab('${loc}')" id="wip_tab_${loc}" 
                                  class="whitespace-nowrap py-4 px-6 font-bold text-xs uppercase tracking-wider border-b-2 transition-all 
@@ -2526,19 +3185,49 @@ window.runWIPMutationReport = () => {
         const endDate = new Date(year, month, 0, 23, 59, 59);
         const loc = window.currentWIPMutationCategory || 'MIXING';
 
-        const items = db.read('inventoryItems') || [];
+        const items = (db.read('inventoryItems') || []).filter(it => it.status !== 'INACTIVE');
         const allTxs = db.read('stockTransactions') || [];
 
-        const reportData = items.map(it => {
-            const locTxs = allTxs.filter(t => t.itemId === it.id && t.location === loc);
-            const openingStock = locTxs.filter(t => new Date(t.date) < startDate).reduce((sum, t) => sum + (t.type === 'IN' ? t.qty : -t.qty), 0);
-            const monthTxs = locTxs.filter(t => new Date(t.date) >= startDate && new Date(t.date) <= endDate);
-            const totalIn = monthTxs.filter(t => t.type === 'IN').reduce((sum, t) => sum + t.qty, 0);
-            const totalOut = monthTxs.filter(t => t.type === 'OUT').reduce((sum, t) => sum + t.qty, 0);
+        const reportData = items.filter(it => {
+            // Filter items by category based on current tab (loc)
+            if (loc === 'MIXING') return it.category === 'MIXING_STOCK';
+            if (loc === 'OVEN_BASAH') return it.category === 'OVEN_BASAH_STOCK';
+            if (loc === 'OVEN_KERING') return it.category === 'OVEN_KERING_STOCK';
+            return true;
+        }).map(it => {
+            // For production stage items (Campuran, Oven), we show GLOBAL stock movement to match Inventory reports
+            const stageCats = ['MIXING_STOCK', 'OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'];
+            const useGlobal = stageCats.includes(it.category);
+            
+            const itemTxs = allTxs.filter(t => t.itemId === it.id && (useGlobal || t.location === loc));
+            
+            const getStageQty = (txs, direction) => {
+                return txs.reduce((sum, t) => {
+                    const q = parseFloat(t.qty) || 0;
+                    const type = (t.type || '').toUpperCase();
+                    const isIn = ['IN', 'ADJUST_IN', 'PRODUCTION_IN', 'RETURN_IN'].includes(type);
+                    const isOut = ['OUT', 'SHRINKAGE', 'ADJUST_OUT', 'PRODUCTION_OUT', 'SALES_OUT', 'WASTE'].includes(type);
+                    
+                    if (direction === 'IN' && isIn) return sum + q;
+                    if (direction === 'OUT' && isOut) return sum + q;
+                    if (direction === 'NET') {
+                        if (isIn) return sum + q;
+                        if (isOut) return sum - q;
+                    }
+                    return sum;
+                }, 0);
+            };
+
+            const openingTxs = itemTxs.filter(t => new Date(t.date) < startDate);
+            const openingStock = getStageQty(openingTxs, 'NET');
+            
+            const monthTxs = itemTxs.filter(t => new Date(t.date) >= startDate && new Date(t.date) <= endDate);
+            const totalIn = getStageQty(monthTxs, 'IN');
+            const totalOut = getStageQty(monthTxs, 'OUT');
             const closingStock = openingStock + totalIn - totalOut;
 
             return { ...it, openingStock, totalIn, totalOut, closingStock, loc };
-        }).filter(it => it.openingStock !== 0 || it.totalIn !== 0 || it.totalOut !== 0);
+        });
 
         const rows = reportData.length ? reportData.map(s => `
             <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
@@ -2585,42 +3274,92 @@ window.runWIPMutationReport = () => {
     }
 };
 
-function openWIPHistoryModal(itemId, location) {
+window.openWIPHistoryModal = (itemId, location, startDateStr = null, endDateStr = null) => {
     const item = db.findById('inventoryItems', itemId);
     if (!item) return;
 
-    const allTxs = db.read('stockTransactions') || [];
-    const txs = allTxs.filter(t => t.itemId === itemId && t.location === location)
-                      .sort((a, b) => new Date(b.date) - new Date(a.date));
+    // Handle initial call (legacy format with monthStr)
+    const startDate = startDateStr ? new Date(startDateStr) : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const endDate = endDateStr ? new Date(endDateStr) : new Date();
+    startDateStr = startDate.toISOString().split('T')[0];
+    endDateStr = endDate.toISOString().split('T')[0];
 
-    const rows = txs.map(t => `
-        <tr class="border-b border-gray-50 text-[11px]">
-            <td class="py-2.5 px-2 text-gray-500">${new Date(t.date).toLocaleString('id-ID', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'})}</td>
-            <td class="py-2.5 px-2">
-                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${t.type === 'IN' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}">
-                    ${t.type === 'IN' ? 'IN' : 'OUT'}
-                </span>
-            </td>
-            <td class="py-2.5 px-2 font-bold text-right ${t.type === 'IN' ? 'text-green-700' : 'text-red-700'}">
-                ${t.type === 'IN' ? '+' : '-'}${invFmt(t.qty)}
-            </td>
-            <td class="py-2.5 px-2">
-                <span class="font-medium text-gray-700 text-xs">${t.reference || '-'}</span>
-                ${t.notes ? `<span class="text-gray-400 block text-[9px] italic">${t.notes}</span>` : ''}
-            </td>
-        </tr>
-    `).join('');
+    const allTxs = db.read('stockTransactions') || [];
+    const txs = allTxs.filter(t => t.itemId === itemId && t.location === location && new Date(t.date) >= startDate && new Date(t.date) <= new Date(endDate.getTime() + 86400000))
+                      .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    let balance = 0; // WIP card might need opening stock logic too if we want same precision as inventory
+    const openingTxs = allTxs.filter(t => t.itemId === itemId && t.location === location && new Date(t.date) < startDate);
+    const openingStock = openingTxs.reduce((sum, t) => {
+        const type = (t.type || '').toUpperCase();
+        const isIn = ['IN', 'ADJUST_IN', 'PRODUCTION_IN', 'RETURN_IN'].includes(type);
+        const isOut = ['OUT', 'SHRINKAGE', 'ADJUST_OUT', 'PRODUCTION_OUT', 'SALES_OUT', 'WASTE'].includes(type);
+        if (isIn) return sum + t.qty;
+        if (isOut) return sum - t.qty;
+        return sum;
+    }, 0);
+
+    let currentBalance = openingStock;
+    let totalNormalIn = 0;
+    let totalManualIn = 0;
+    let totalNormalOut = 0;
+    let totalShrinkOut = 0;
+
+    const rows = txs.map(t => {
+        const type = (t.type || '').toUpperCase();
+        const isIn = ['IN', 'ADJUST_IN', 'PRODUCTION_IN', 'RETURN_IN'].includes(type);
+        const isOut = ['OUT', 'SHRINKAGE', 'ADJUST_OUT', 'PRODUCTION_OUT', 'SALES_OUT', 'WASTE'].includes(type);
+        const q = t.qty || 0;
+        
+        const refUpper = (t.reference || '').toUpperCase();
+        const isShrink = ['SHRINKAGE', 'ADJUST_OUT', 'WASTE', 'JUDGMENT'].includes(refUpper) || (t.notes || '').toLowerCase().includes('susut');
+        const isManualIn = ['MANUAL', 'ADJUST_IN'].includes(refUpper);
+
+        if (isIn) { 
+            if (isManualIn) totalManualIn += q;
+            else totalNormalIn += q;
+            currentBalance += q; 
+        }
+        if (isOut) { 
+            if (isShrink) totalShrinkOut += q;
+            else totalNormalOut += q;
+            currentBalance -= q; 
+        }
+
+        return `
+            <tr class="border-b border-gray-50 text-[11px]">
+                <td class="py-2.5 px-2 text-gray-500">${new Date(t.date).toLocaleString('id-ID', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'})}</td>
+                <td class="py-2.5 px-2 font-mono text-gray-400 text-[10px]">${t.type}</td>
+                <td class="py-2.5 px-2 text-right text-green-600 font-bold">${isIn ? '+' + invFmt(q) : '-'}</td>
+                <td class="py-2.5 px-2 text-right text-red-600 font-bold">${isOut ? '-' + invFmt(q) : '-'}</td>
+                <td class="py-2.5 px-2 text-right font-black text-slate-800">${invFmt(currentBalance)}</td>
+                <td class="py-2.5 px-2">
+                    <span class="font-medium text-gray-700 text-xs">${t.reference || '-'}</span>
+                    ${t.notes ? `<span class="text-gray-400 block text-[9px] italic">${t.notes}</span>` : ''}
+                </td>
+            </tr>`;
+    }).join('');
 
     const body = `
         <div class="p-1">
-            <div class="mb-4 bg-gray-50 p-3 rounded border border-gray-100 flex justify-between items-center">
-                <div>
+            <div class="mb-4 bg-gray-50 p-3 rounded border border-gray-100 flex flex-wrap justify-between items-end gap-3">
+                <div class="flex-1">
                     <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Item</h4>
                     <p class="text-sm font-bold text-gray-800">${item.itemName}</p>
+                    <p class="text-[9px] text-blue-600 font-bold uppercase mt-1">Lokasi: ${location}</p>
                 </div>
-                <div class="text-right">
-                    <h4 class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Lokasi</h4>
-                    <p class="text-[11px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">${location}</p>
+                <div class="flex gap-4 items-end bg-white p-3 rounded-lg border border-slate-100 shadow-sm">
+                    <div>
+                        <label class="text-[10px] uppercase font-black text-slate-500 block mb-1 ml-1">Dari</label>
+                        <input type="date" id="wip_hist_start" value="${startDateStr}" class="border-2 border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-700 focus:border-blue-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="text-[10px] uppercase font-black text-slate-500 block mb-1 ml-1">Ke</label>
+                        <input type="date" id="wip_hist_end" value="${endDateStr}" class="border-2 border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-700 focus:border-blue-500 outline-none">
+                    </div>
+                    <div>
+                        <button onclick="openWIPHistoryModal('${itemId}', '${location}', document.getElementById('wip_hist_start').value, document.getElementById('wip_hist_end').value)" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all active:scale-95 shadow-md">Terapkan Filter</button>
+                    </div>
                 </div>
             </div>
             <div class="max-h-[400px] overflow-y-auto border border-gray-200 rounded">
@@ -2628,23 +3367,235 @@ function openWIPHistoryModal(itemId, location) {
                     <thead class="bg-gray-100 sticky top-0 shadow-sm">
                         <tr class="text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-200">
                             <th class="py-2 px-2">Waktu</th>
-                            <th class="py-2 px-2">Tipe</th>
-                            <th class="py-2 px-2 text-right">Qty</th>
+                            <th class="py-2 px-2 text-center">Tipe</th>
+                            <th class="py-2 px-2 text-right">Masuk</th>
+                            <th class="py-2 px-2 text-right">Keluar</th>
+                            <th class="py-2 px-2 text-right">Saldo</th>
                             <th class="py-2 px-2">Keterangan</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${rows || `<tr><td colspan="4" class="py-10 text-center text-gray-400 italic text-xs">Belum ada riwayat mutasi</td></tr>`}
+                        <tr class="bg-orange-50/50 text-[10px] font-bold italic text-gray-500">
+                            <td colspan="4" class="py-1 px-2 uppercase">SALDO AWAL</td>
+                            <td class="py-1 px-2 text-right">${invFmt(openingStock)}</td>
+                            <td></td>
+                        </tr>
+                        ${rows || `<tr><td colspan="6" class="py-10 text-center text-gray-400 italic text-xs">Belum ada riwayat mutasi</td></tr>`}
                     </tbody>
+                    <tfoot class="bg-slate-50 border-t-2 border-slate-200">
+                        <tr class="text-[11px] font-black uppercase text-slate-500">
+                            <td colspan="2" class="py-2 px-2">TOTAL MASUK NORMAL (+)</td>
+                            <td class="py-2 px-2 text-right text-green-600">+${invFmt(totalNormalIn)}</td>
+                            <td colspan="3"></td>
+                        </tr>
+                        <tr class="text-[11px] font-black uppercase text-blue-600 bg-blue-50/20">
+                            <td colspan="2" class="py-2 px-2">TOTAL MASUK (MANUAL/ADJ) (+)</td>
+                            <td class="py-2 px-2 text-right text-blue-700">+${invFmt(totalManualIn)}</td>
+                            <td colspan="3"></td>
+                        </tr>
+                        <tr class="text-[11px] font-black uppercase text-slate-500">
+                            <td colspan="2" class="py-2 px-2">TOTAL KELUAR NORMAL (-)</td>
+                            <td></td>
+                            <td class="py-2 px-2 text-right text-slate-700">-${invFmt(totalNormalOut)}</td>
+                            <td colspan="2"></td>
+                        </tr>
+                        <tr class="text-[11px] font-black uppercase text-red-600 bg-red-50/30">
+                            <td colspan="2" class="py-2 px-2">TOTAL SUSUT / NG / MANUAL (-)</td>
+                            <td></td>
+                            <td class="py-2 px-2 text-right text-red-600">-${invFmt(totalShrinkOut)}</td>
+                            <td colspan="2"></td>
+                        </tr>
+                        <tr class="text-[11px] font-black uppercase text-blue-800 bg-blue-50/50 border-t border-blue-100">
+                            <td colspan="4" class="py-3 px-2 text-right tracking-widest">SALDO AKHIR PERIODE</td>
+                            <td class="py-3 px-2 text-right text-blue-900">${invFmt(currentBalance)}</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </div>
     `;
 
-    showModal(`Kartu Stok WIP: ${location}`, body, `<button onclick="closeModal()" class="px-6 py-2 bg-gray-800 text-white rounded text-xs font-bold uppercase hover:bg-black transition-colors">Tutup</button>`);
+    const footer = `
+        <div class="flex gap-2">
+            <button onclick="printWIPStockCard('${itemId}', '${location}', '${startDateStr}', '${endDateStr}')" class="px-4 py-2 bg-slate-800 text-white rounded text-xs font-bold uppercase hover:bg-black transition-colors flex items-center gap-2">
+                <i class="fas fa-print"></i> Cetak Kartu Stok
+            </button>
+            <button onclick="closeModal()" class="px-6 py-2 bg-gray-200 text-gray-700 rounded text-xs font-bold uppercase hover:bg-gray-300 transition-colors">Tutup</button>
+        </div>
+    `;
+
+    showModal(`Kartu Stok WIP: ${location}`, body, footer, 'full');
 }
 
-// ─── 7. JUDGMENT / NG BARANG ──────────────────────────────────
+window.printWIPStockCard = (itemId, location, startDateStr, endDateStr) => {
+    const item = db.findById('inventoryItems', itemId);
+    if (!item) return;
+
+    const startDate = new Date(startDateStr + 'T00:00:00');
+    const endDate = new Date(endDateStr + 'T23:59:59');
+
+    const allTxs = db.read('stockTransactions') || [];
+    const openingTxs = allTxs.filter(t => t.itemId === itemId && t.location === location && new Date(t.date) < startDate);
+    const openingStock = openingTxs.reduce((sum, t) => {
+        const type = (t.type || '').toUpperCase();
+        const isIn = ['IN', 'ADJUST_IN', 'PRODUCTION_IN', 'RETURN_IN'].includes(type);
+        const isOut = ['OUT', 'SHRINKAGE', 'ADJUST_OUT', 'PRODUCTION_OUT', 'SALES_OUT', 'WASTE'].includes(type);
+        if (isIn) return sum + t.qty;
+        if (isOut) return sum - t.qty;
+        return sum;
+    }, 0);
+
+    const txs = allTxs.filter(t => t.itemId === itemId && t.location === location && new Date(t.date) >= startDate && new Date(t.date) <= endDate)
+                      .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    let currentBalance = openingStock;
+    let totalNormalIn = 0;
+    let totalManualIn = 0;
+    let totalNormalOut = 0;
+    let totalShrinkOut = 0;
+
+    const rows = txs.map(t => {
+        const type = (t.type || '').toUpperCase();
+        const isIn = ['IN', 'ADJUST_IN', 'PRODUCTION_IN', 'RETURN_IN'].includes(type);
+        const isOut = ['OUT', 'SHRINKAGE', 'ADJUST_OUT', 'PRODUCTION_OUT', 'SALES_OUT', 'WASTE'].includes(type);
+        const q = t.qty || 0;
+        
+        const refUpper = (t.reference || '').toUpperCase();
+        const isShrink = ['SHRINKAGE', 'ADJUST_OUT', 'WASTE', 'JUDGMENT'].includes(refUpper) || (t.notes || '').toLowerCase().includes('susut');
+        const isManualIn = ['MANUAL', 'ADJUST_IN'].includes(refUpper);
+
+        if (isIn) { 
+            if (isManualIn) totalManualIn += q;
+            else totalNormalIn += q;
+            currentBalance += q; 
+        }
+        if (isOut) { 
+            if (isShrink) totalShrinkOut += q;
+            else totalNormalOut += q;
+            currentBalance -= q; 
+        }
+
+        return `
+            <tr>
+                <td class="t-center">${invDate(t.date)}</td>
+                <td class="t-center">${t.type}</td>
+                <td class="t-right">${isIn ? '+' + invFmt(q) : '-'}</td>
+                <td class="t-right">${isOut ? '-' + invFmt(q) : '-'}</td>
+                <td class="t-right f-bold">${invFmt(currentBalance)}</td>
+                <td>${t.reference || '-'} ${t.notes ? '(' + t.notes + ')' : ''}</td>
+            </tr>`;
+    }).join('');
+
+    const printHtml = `
+    <html>
+    <head>
+        <title>Kartu Stok WIP - ${location} - ${item.itemName}</title>
+        <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 11px; margin: 30px; color: #334155; }
+            .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 15px; }
+            .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+            .meta-box { background: #f8fafc; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+            th { background: #f1f5f9; border: 1px solid #e2e8f0; padding: 8px; text-transform: uppercase; font-size: 9px; letter-spacing: 0.05em; }
+            td { border: 1px solid #e2e8f0; padding: 8px; }
+            .t-right { text-align: right; }
+            .t-center { text-align: center; }
+            .f-bold { font-weight: bold; }
+            .total-row { background: #f8fafc; font-weight: bold; font-size: 10px; }
+            .bg-in { background: #f0fdf4 !important; color: #166534; }
+            .bg-in-manual { background: #eff6ff !important; color: #1e40af; }
+            .bg-out-normal { background: #f8fafc !important; color: #334155; }
+            .bg-out-shrink { background: #fef2f2 !important; color: #991b1b; }
+            .bg-final { background: #eff6ff !important; color: #1e40af; font-size: 12px; }
+            @media print {
+                .bg-in { background-color: #f0fdf4 !important; }
+                .bg-in-manual { background-color: #eff6ff !important; }
+                .bg-out-shrink { background-color: #fef2f2 !important; }
+            }
+        </style>
+    </head>
+    <body onload="window.print()">
+        <div class="header">
+            <h1 style="margin:0;font-size:18px;color:#1e293b;">KARTU STOK WIP: ${location}</h1>
+            <p style="margin:5px 0;font-weight:bold;color:#64748b;">${CONFIG.companyName}</p>
+        </div>
+        
+        <div class="meta">
+            <div class="meta-box">
+                <strong>Item:</strong> ${item.itemName}<br>
+                <strong>Kode:</strong> ${item.itemCode || '-'}<br>
+                <strong>Lokasi:</strong> ${location}
+            </div>
+            <div class="meta-box">
+                <strong>Periode:</strong> ${startDateStr} s/d ${endDateStr}<br>
+                <strong>Satuan:</strong> ${item.unit}
+            </div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th width="15%">Waktu</th>
+                    <th width="8%">Tipe</th>
+                    <th width="12%" class="t-right">Masuk</th>
+                    <th width="12%" class="t-right">Keluar</th>
+                    <th width="12%" class="t-right">Saldo</th>
+                    <th>Dokumen / Keterangan</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr style="background:#fffbeb; font-style: italic;">
+                    <td colspan="4" class="f-bold">SALDO AWAL PERIODE</td>
+                    <td class="t-right f-bold">${invFmt(openingStock)}</td>
+                    <td></td>
+                </tr>
+                ${rows || '<tr><td colspan="6" class="t-center" style="padding:40px;color:#94a3b8;">Tidak ada transaksi</td></tr>'}
+                
+                <tr class="total-row bg-in">
+                    <td colspan="2">TOTAL MASUK NORMAL (+)</td>
+                    <td class="t-right">+${invFmt(totalNormalIn)}</td>
+                    <td colspan="3"></td>
+                </tr>
+                <tr class="total-row bg-in-manual">
+                    <td colspan="2">TOTAL MASUK (MANUAL/ADJ) (+)</td>
+                    <td class="t-right">+${invFmt(totalManualIn)}</td>
+                    <td colspan="3"></td>
+                </tr>
+                <tr class="total-row bg-out-normal">
+                    <td colspan="3">TOTAL KELUAR NORMAL (-)</td>
+                    <td class="t-right">-${invFmt(totalNormalOut)}</td>
+                    <td colspan="2"></td>
+                </tr>
+                <tr class="total-row bg-out-shrink">
+                    <td colspan="3">TOTAL SUSUT / NG / MANUAL (-)</td>
+                    <td class="t-right">-${invFmt(totalShrinkOut)}</td>
+                    <td colspan="2"></td>
+                </tr>
+                <tr class="total-row bg-final" style="border-top: 2px solid #3b82f6;">
+                    <td colspan="4" class="t-right">SALDO AKHIR PERIODE</td>
+                    <td class="t-right f-bold">${invFmt(currentBalance)}</td>
+                    <td></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div style="margin-top:30px; display: flex; justify-content: space-between; font-size: 9px; color: #94a3b8;">
+            <p>Dicetak pada: ${new Date().toLocaleString('id-ID')}</p>
+            <p>Unity ERP System</p>
+        </div>
+    </body>
+    </html>`;
+
+    const win = window.open('', '_blank');
+    if (win) {
+        win.document.write(printHtml);
+        win.document.close();
+    }
+};
+
+
+// â”€â”€â”€ 7. JUDGMENT / NG BARANG â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 window.renderInventoryJudgment = () => {
     const canEdit = getModulePermission('logistik').edit;
     document.getElementById('pageTitle').innerText = 'Judgment / Barang NG';
@@ -2700,32 +3651,53 @@ window.renderInventoryJudgment = () => {
 
     mc.innerHTML = `
     <div class="space-y-4">
-        <!-- Standard Filter Bar -->
-        <div class="bg-white p-5 rounded-xl shadow-sm border border-gray-100 flex flex-wrap gap-4 items-end">
-            <div class="flex-1 min-w-[140px]">
-                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Dari Tanggal</label>
-                <input type="date" id="jud_filter_start" value="${f.start}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-            </div>
-            <div class="flex-1 min-w-[140px]">
-                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Sampai Tanggal</label>
-                <input type="date" id="jud_filter_end" value="${f.end}" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-            </div>
-            <div class="w-48">
-                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Status NG</label>
-                <select id="jud_filter_status" class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none">
-                    <option value="">-- Semua Status --</option>${statusOpts}
-                </select>
-            </div>
-            <div class="flex-1 min-w-[200px]">
-                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Pencarian Barang</label>
-                <input type="text" id="jud_filter_name" value="${f.itemName}" placeholder="Cari Nama/Kode Item..." 
-                    class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-            </div>
-            <div class="flex gap-2">
-                <button onclick="updateJudgmentFilters()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-sm transition-all"><i class="fas fa-search"></i> Cari</button>
-                <button onclick="resetJudgmentFilters()" class="bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-bold transition-all">Reset</button>
+    <!-- Collapsible Filter Section -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 mb-5 overflow-hidden">
+        <div onclick="toggleInvJFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition-colors select-none">
+            <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
+                <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
+                ${(!window._uiState.invJFilterOpen && (f.start || f.end || f.status || f.itemName)) ? 
+                    `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
+            </h3>
+            <div class="flex items-center gap-3">
+                <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.invJFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
+                <i class="fas fa-chevron-${window._uiState.invJFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
             </div>
         </div>
+
+        <div class="${window._uiState.invJFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
+                <div class="space-y-1.5">
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Dari Tanggal</label>
+                    <input type="date" id="jud_filter_start" value="${f.start}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white">
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Sampai Tanggal</label>
+                    <input type="date" id="jud_filter_end" value="${f.end}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white">
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Status NG</label>
+                    <select id="jud_filter_status" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white cursor-pointer font-sans">
+                        <option value="">-- Semua Status --</option>${statusOpts}
+                    </select>
+                </div>
+                <div class="space-y-1.5">
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Pencarian Barang</label>
+                    <input type="text" id="jud_filter_name" value="${f.itemName}" placeholder="Cari Nama/Kode Item..." 
+                        class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white">
+                </div>
+            </div>
+
+            <div class="mt-4 pt-4 border-t border-slate-50 flex flex-col sm:flex-row justify-between items-center gap-4">
+                <button onclick="resetJudgmentFilters()" class="text-[9px] font-black text-slate-400 hover:text-slate-600 uppercase tracking-widest flex items-center gap-2 transition-all">
+                    <i class="fas fa-undo-alt text-[10px]"></i> Reset Filter
+                </button>
+                <button onclick="updateJudgmentFilters()" class="w-full sm:w-auto bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2">
+                    <i class="fas fa-search"></i> TAMPILKAN DATA
+                </button>
+            </div>
+        </div>
+    </div>
 
         <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex justify-between items-center transition-all">
             <div>
@@ -2783,7 +3755,7 @@ window.openJudgmentModal = () => {
 
     const modalHTML = `
     <div id="judgment-modal" class="fixed inset-0 bg-slate-800/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 italic-none">
-        <div class="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden animate-slide-up border border-gray-100">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-6xl overflow-hidden animate-slide-up border border-gray-100">
             <div class="bg-white border-b border-gray-100 p-6 flex justify-between items-center">
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 bg-red-50 text-red-600 rounded-lg flex items-center justify-center border border-red-100">
@@ -2887,8 +3859,8 @@ window.openJudgmentModal = () => {
             'OUT', 
             data.qty, 
             'SHRINKAGE', 
-            res.id, 
-            `JUDGMENT [${data.status}]: ${data.notes}`, 
+            res.id,
+            `JUDGMENT [${data.status}]: ${data.notes}`,
             window._session?.fullName || 'System',
             data.location
         );
