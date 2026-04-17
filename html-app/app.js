@@ -4722,7 +4722,13 @@ function renderSalesQuotations() {
     const mainContent = document.getElementById('main-content');
 
     const filters = window.currentFilters.salesQuotations;
-    let qts = db.read('salesQuotations').sort((a, b) => new Date(b.date) - new Date(a.date));
+    const statusOrder = { 'DRAFT': 0, 'SENT': 1, 'CONFIRMED': 2, 'SO_CREATED': 3, 'CANCELLED': 4 };
+    let qts = db.read('salesQuotations').sort((a, b) => {
+        const sa = statusOrder[a.status] ?? 99;
+        const sb = statusOrder[b.status] ?? 99;
+        if (sa !== sb) return sa - sb;
+        return new Date(b.date) - new Date(a.date);
+    });
     const customers = db.read('customers');
     const custOptions = customers.map(c => `<option value="${c.id}" ${filters.customer === c.id ? 'selected' : ''}>${c.name}</option>`).join('');
 
@@ -5069,6 +5075,16 @@ window.openQTModal = (qtId = null) => {
                                 <select id="qt_tax_rate" onchange="refreshQTItemsTable()" class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/10 outline-none transition-all cursor-pointer">
                                     <option value="0" ${qt && qt.taxRate == 0 ? 'selected' : ''}>0% (Tanpa Pajak)</option>
                                     <option value="11" ${!qt || (qt && qt.taxRate == 11) ? 'selected' : ''}>11% (PPN)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Term Pembayaran <span class="text-red-400">*</span></label>
+                                <select id="qt_payment_term" class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 outline-none transition-all cursor-pointer">
+                                    <option value="" ${!qt || !qt.paymentTerms ? 'selected' : ''}>-- Pilih Term --</option>
+                                    <option value="Cash" ${qt && qt.paymentTerms === 'Cash' ? 'selected' : ''}>Cash</option>
+                                    <option value="Tempo 7 S/d 10 Hari" ${qt && qt.paymentTerms === 'Tempo 7 S/d 10 Hari' ? 'selected' : ''}>Tempo 7 S/d 10 Hari</option>
+                                    <option value="30 Hari" ${qt && qt.paymentTerms === '30 Hari' ? 'selected' : ''}>30 Hari</option>
+                                    <option value="45 Hari" ${qt && qt.paymentTerms === '45 Hari' ? 'selected' : ''}>45 Hari</option>
                                 </select>
                             </div>
                         </div>
@@ -6420,7 +6436,13 @@ function renderSalesOrders() {
     renderBreadcrumb(['Sales', 'Sales Orders']);
     const mainContent = document.getElementById('main-content');
 
-    let sos = db.read('salesOrders').sort((a, b) => new Date(b.date) - new Date(a.date));
+    const soStatusOrder = { 'DRAFT': 0, 'CONFIRMED': 1, 'DELIVERED': 2 };
+    let sos = db.read('salesOrders').sort((a, b) => {
+        const sa = soStatusOrder[a.status] ?? 99;
+        const sb = soStatusOrder[b.status] ?? 99;
+        if (sa !== sb) return sa - sb;
+        return new Date(b.date) - new Date(a.date);
+    });
     const customers = db.read('customers');
     const filters = window.currentFilters.salesOrders || { start: '', end: '', customer: '' };
 
@@ -6745,8 +6767,8 @@ window.openSOModal = (qtToConvert = null) => {
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Pajak (PPN %)</label>
                                 <select id="so_tax_rate" onchange="recalcSOTotal()" class="w-full border-none rounded-xl px-4 py-3 bg-slate-100 font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/10 outline-none transition-all cursor-pointer">
-                                    <option value="0" ${CONFIG.taxRate == 0 ? 'selected' : ''}>0% (Tanpa Pajak)</option>
-                                    <option value="11" ${(CONFIG.taxRate == 11 || !CONFIG.taxRate) ? 'selected' : ''}>11% (PPN)</option>
+                                    <option value="0" ${qtToConvert ? (qtToConvert.taxRate == 0 ? 'selected' : '') : (CONFIG.taxRate == 0 ? 'selected' : '')}>0% (Tanpa Pajak)</option>
+                                    <option value="11" ${qtToConvert ? (qtToConvert.taxRate == 11 ? 'selected' : '') : ((CONFIG.taxRate == 11 || !CONFIG.taxRate) ? 'selected' : '')}>11% (PPN)</option>
                                 </select>
                             </div>
                         </div>
@@ -6852,9 +6874,25 @@ window.openSOModal = (qtToConvert = null) => {
     `;
 
     setTimeout(() => {
+        if (qtToConvert) {
+            // Ambil data dari master Customer
+            const cust = db.findById('customers', defaultCustId);
+            if (cust) {
+                // Set Pajak dari Customer
+                const taxEl = document.getElementById('so_tax_rate');
+                if (taxEl && cust.ppn !== undefined) {
+                    taxEl.value = String(cust.ppn);
+                }
+                // Set Term Pembayaran dari Customer
+                const termEl = document.getElementById('so_payment_terms');
+                if (termEl && cust.paymentTerm) {
+                    termEl.value = cust.paymentTerm;
+                }
+            }
+            refreshSOItemsTable();
+        }
         if(window.recalcSOTotal) recalcSOTotal();
         if(window.updateSODueDate) updateSODueDate();
-        if (qtToConvert) refreshSOItemsTable();
     }, 100);
 };
 
@@ -6913,44 +6951,50 @@ window.onSalesCustomerSelect = (selectId, mode) => {
         if (mode === 'QT' && window.refreshQTItemsTable) refreshQTItemsTable();
     }
 
-    // Set Payment Terms (for SO)
+    // Set Payment Terms (for SO and QT)
     if (mode === 'SO') {
         const termEl = document.getElementById('so_payment_terms');
         if (termEl && cust.paymentTerm) {
             termEl.value = cust.paymentTerm;
             if(window.updateSODueDate) updateSODueDate();
         }
+    } else if (mode === 'QT') {
+        const termEl = document.getElementById('qt_payment_term');
+        if (termEl && cust.paymentTerm) {
+            termEl.value = cust.paymentTerm;
+        }
     }
 
-    // Set Common Products & Special Prices
+    // Set Common Products & Special Prices (otomatis tanpa konfirmasi)
     if (cust.commonProducts && cust.commonProducts.length > 0) {
-        if (confirm(`Customer ini memiliki ${cust.commonProducts.length} produk khusus dengan harga yang disepakati.\nApakah Anda ingin mengisi otomatis produk-produk ini ke dalam tabel item?`)) {
-            const inventory = db.read('inventoryItems');
-            const newItems = [];
-            
-            for (const cp of cust.commonProducts) {
-                const i = inventory.find(x => x.id === cp.itemId);
-                if (i) {
-                    newItems.push({
-                        itemId: i.id,
-                        itemName: i.itemName,
-                        unit: i.unit,
-                        qty: 1, // Default qty to 1
-                        price: cp.price,
-                        subtotal: 1 * cp.price
-                    });
-                }
+        const inventory = db.read('inventoryItems');
+        const newItems = [];
+        
+        for (const cp of cust.commonProducts) {
+            const i = inventory.find(x => x.id === cp.itemId);
+            if (i) {
+                newItems.push({
+                    id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+                    inventoryItemId: i.id,
+                    itemCode: i.itemCode || '',
+                    productId: null,
+                    prodText: i.itemName,
+                    prodUnit: i.unit || 'PCS',
+                    qty: 1,
+                    price: cp.price,
+                    subtotal: 1 * cp.price
+                });
             }
-
-            if (mode === 'QT') {
-                window.tempQTItems = newItems;
-                if(window.refreshQTItemsTable) refreshQTItemsTable();
-            } else if (mode === 'SO') {
-                window.tempSOItems = newItems;
-                if(window.refreshSOItemsTable) refreshSOItemsTable();
-            }
-            showToast('Produk & harga khusus berhasil dimuat.', 'success');
         }
+
+        if (mode === 'QT') {
+            window.tempQTItems = newItems;
+            if(window.refreshQTItemsTable) refreshQTItemsTable();
+        } else if (mode === 'SO') {
+            window.tempSOItems = newItems;
+            if(window.refreshSOItemsTable) refreshSOItemsTable();
+        }
+        showToast('Produk & harga khusus berhasil dimuat.', 'success');
     }
 };
 
@@ -8171,7 +8215,13 @@ function renderSalesInvoices() {
     const tbody = mainContent.querySelector('#si_main_table tbody');
     const filters_data = window.currentFilters.salesInvoices || { start: '', end: '' };
 
-    let invoices = db.read('salesInvoices').sort((a, b) => new Date(b.date) - new Date(a.date));
+    const invStatusOrder = { 'UNPAID': 0, 'PARTIAL': 1, 'PAID': 2 };
+    let invoices = db.read('salesInvoices').sort((a, b) => {
+        const sa = invStatusOrder[a.status] ?? 99;
+        const sb = invStatusOrder[b.status] ?? 99;
+        if (sa !== sb) return sa - sb;
+        return new Date(b.date) - new Date(a.date);
+    });
     const customers = db.read('customers');
     const payments = db.read('payments');
 
@@ -9907,6 +9957,28 @@ document.addEventListener('DOMContentLoaded', () => {
             closeModal();
             return;
         }
+
+        // Intercept back button for Sales Module Form Views
+        const qtForm = document.getElementById('qt-form-view');
+        if (qtForm && !qtForm.classList.contains('hidden')) {
+            if (window.renderSalesQuotations) { renderSalesQuotations(); return; }
+        }
+
+        const soForm = document.getElementById('so-form-view');
+        if (soForm && !soForm.classList.contains('hidden')) {
+            if (window.renderSalesOrders) { renderSalesOrders(); return; }
+        }
+
+        const siForm = document.getElementById('si-form-view');
+        if (siForm && !siForm.classList.contains('hidden')) {
+            if (window.renderSalesInvoices) { renderSalesInvoices(); return; }
+        }
+
+        const sdoForm = document.getElementById('sdo-form-view');
+        if (sdoForm && !sdoForm.classList.contains('hidden')) {
+            if (window.renderSalesDeliveryOrders) { renderSalesDeliveryOrders(); return; }
+        }
+
 
         if (window._navigationHistory.length > 0) {
             const lastView = window._navigationHistory.pop();
