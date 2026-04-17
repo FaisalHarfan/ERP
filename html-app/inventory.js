@@ -228,31 +228,90 @@ function renderInventoryMaster() {
     // Calculate low stock count for current filtered items
     const lowStockCount = items.filter(it => db.getInventoryStock(it.id) < it.minStock).length;
 
-    const rows = items.length ? items.map(it => {
-        const stock = db.getInventoryStock(it.id);
-        const isLow = stock < it.minStock;
-        const isActive = it.status !== 'INACTIVE';
+    // --- GROUPING LOGIC ---
+    const categoryOrder = ['RAW_MATERIAL', 'MIXING_STOCK', 'OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK', 'FINISHED_GOODS'];
+    const grouped = {};
+    items.forEach(it => {
+        if (!grouped[it.category]) grouped[it.category] = [];
+        grouped[it.category].push(it);
+    });
 
-        return `<tr class="border-b border-gray-100 hover:bg-gray-50 ${isLow ? 'bg-red-50/40' : ''}">
-            <td class="py-3 px-4 text-sm font-mono font-medium text-gray-700">${it.itemCode}</td>
-            <td class="py-3 px-4 text-sm font-medium text-gray-800">${it.itemName}${isLow ? ' <span class="ml-1 px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-[10px] font-bold">LOW</span>' : ''}</td>
-            <td class="py-3 px-4 text-sm"><span class="px-2 py-0.5 rounded text-xs font-semibold ${CATEGORY_COLORS[it.category] || 'bg-gray-100 text-gray-700'}">${CATEGORY_LABELS[it.category] || it.category}</span></td>
-            <td class="py-3 px-4 text-xs font-bold text-gray-400 uppercase tracking-widest">${it.unit}</td>
-            <td class="py-3 px-4 text-sm text-right font-black ${isLow ? 'text-red-700' : 'text-blue-800'}">${invFmt(stock)}</td>
-            <td class="py-3 px-4 text-sm text-right text-gray-400 font-medium">${invFmt(it.minStock)}</td>
-            <td class="py-3 px-4 text-sm"><span class="px-2 py-0.5 rounded text-xs font-semibold ${isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}">${isActive ? 'Active' : 'Non-Active'}</span></td>
-            <td class="py-3 px-4 text-sm text-right whitespace-nowrap">
-                ${canEdit ? `
-                ${isCurrentUserAdmin() ? `
-                    <button onclick="openStockAdjustmentModal('${it.id}')" class="text-orange-500 hover:text-orange-700 mr-2" title="Penyesuaian Stok"><i class="fas fa-sync-alt"></i></button>
-                    <button onclick="deleteInventoryItem('${it.id}')" class="text-red-500 hover:text-red-700 mr-2" title="Hapus Permanen"><i class="fas fa-trash-alt"></i></button>
-                ` : ''}
-                <button onclick="openInventoryItemModal('${it.id}')" class="text-blue-500 hover:text-blue-700 mr-2" title="Edit"><i class="fas fa-edit"></i></button>
-                <button onclick="toggleInventoryItemStatus('${it.id}')" class="text-gray-400 hover:text-gray-600" title="${isActive ? 'Non-Aktifkan' : 'Aktifkan'}"><i class="fas fa-${isActive ? 'toggle-on text-green-500' : 'toggle-off'}"></i></button>
-                ` : '<span class="text-gray-400 text-[10px] italic font-medium uppercase tracking-tight">View Only</span>'}
-            </td>
-        </tr>`;
-    }).join('') : `<tr><td colspan="8" class="py-8 text-center text-gray-400">Belum ada item yang sesuai filter.</td></tr>`;
+    let mainHtml = '';
+    
+    if (items.length === 0) {
+        mainHtml = `<tr><td colspan="8" class="py-12 text-center text-gray-400 italic font-medium">Belum ada item yang sesuai filter.</td></tr>`;
+    } else {
+        // Use predefined order for sorting, then append any remaining categories
+        const categoriesToShow = [...categoryOrder];
+        Object.keys(grouped).forEach(cat => {
+            if (!categoriesToShow.includes(cat)) categoriesToShow.push(cat);
+        });
+
+        categoriesToShow.forEach(cat => {
+            const catItems = grouped[cat];
+            if (!catItems || catItems.length === 0) return;
+
+            // Add Category Header
+            mainHtml += `
+                <tr class="bg-gray-50/80 border-y border-gray-100 sticky top-0 z-10">
+                    <td colspan="8" class="py-3 px-6">
+                        <div class="flex items-center gap-3">
+                            <span class="w-2 h-6 rounded-full ${CATEGORY_COLORS[cat]?.split(' ')[0] || 'bg-slate-400'}"></span>
+                            <span class="text-xs font-black text-slate-800 uppercase tracking-[0.2em]">${CATEGORY_LABELS[cat] || cat}</span>
+                            <span class="px-2 py-0.5 bg-white border border-slate-200 rounded-full text-[10px] font-bold text-slate-400">${catItems.length} Item</span>
+                        </div>
+                    </td>
+                </tr>
+            `;
+
+            // Add Item Rows
+            catItems.forEach(it => {
+                const stock = db.getInventoryStock(it.id);
+                const isLow = stock < it.minStock;
+                const isActive = it.status !== 'INACTIVE';
+
+                mainHtml += `
+                    <tr class="border-b border-gray-50 hover:bg-slate-50/50 group transition-all ${isLow ? 'bg-red-50/20' : ''}">
+                        <td class="py-4 px-6 text-xs font-bold text-slate-400 font-mono tracking-tight">${it.itemCode}</td>
+                        <td class="py-4 px-6">
+                            <div class="flex items-center gap-2">
+                                <span class="text-sm font-black text-slate-700 group-hover:text-blue-600 transition-colors">${it.itemName}</span>
+                                ${isLow ? '<span class="px-1.5 py-0.5 bg-red-100 text-red-600 rounded text-[9px] font-black uppercase tracking-tighter animate-pulse">Low Stock</span>' : ''}
+                            </div>
+                        </td>
+                        <td class="py-4 px-6">
+                            <span class="px-2.5 py-1 rounded-lg text-[10px] font-bold ${CATEGORY_COLORS[it.category] || 'bg-slate-100 text-slate-600'} border border-black/5 shadow-sm">
+                                ${CATEGORY_LABELS[it.category] || it.category}
+                            </span>
+                        </td>
+                        <td class="py-4 px-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">${it.unit}</td>
+                        <td class="py-4 px-6 text-sm text-right font-black ${isLow ? 'text-red-600' : 'text-slate-800'}">
+                            ${invFmt(stock)}
+                        </td>
+                        <td class="py-4 px-6 text-sm text-right text-slate-300 font-bold">${invFmt(it.minStock)}</td>
+                        <td class="py-4 px-6">
+                            <div class="flex items-center gap-2">
+                                <span class="w-1.5 h-1.5 rounded-full ${isActive ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-slate-300'}"></span>
+                                <span class="text-[10px] font-bold ${isActive ? 'text-green-600' : 'text-slate-400'} uppercase tracking-widest">${isActive ? 'Active' : 'Non-Active'}</span>
+                            </div>
+                        </td>
+                        <td class="py-4 px-6 text-right whitespace-nowrap">
+                            ${canEdit ? `
+                                <div class="flex items-center justify-end gap-1">
+                                    ${isCurrentUserAdmin() ? `
+                                        <button onclick="openStockAdjustmentModal('${it.id}')" class="p-2 text-orange-500 hover:bg-orange-50 rounded-lg transition-all" title="Penyesuaian Stok"><i class="fas fa-sync-alt"></i></button>
+                                        <button onclick="deleteInventoryItem('${it.id}')" class="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-all" title="Hapus Permanen"><i class="fas fa-trash-alt"></i></button>
+                                    ` : ''}
+                                    <button onclick="openInventoryItemModal('${it.id}')" class="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-all" title="Edit Item"><i class="fas fa-edit"></i></button>
+                                    <button onclick="toggleInventoryItemStatus('${it.id}')" class="p-2 ${isActive ? 'text-green-500' : 'text-slate-300'} hover:bg-slate-100 rounded-lg transition-all" title="${isActive ? 'Non-Aktifkan' : 'Aktifkan'}"><i class="fas fa-${isActive ? 'toggle-on' : 'toggle-off'}"></i></button>
+                                </div>
+                            ` : '<span class="text-[10px] font-bold text-slate-300 uppercase italic">ReadOnly</span>'}
+                        </td>
+                    </tr>
+                `;
+            });
+        });
+    }
 
     const catOpts = Object.entries(CATEGORY_LABELS)
         .map(([v, l]) => `<option value="${v}" ${f.category === v ? 'selected' : ''}>${l}</option>`)
@@ -334,7 +393,7 @@ function renderInventoryMaster() {
                         <th class="py-3 px-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Status</th>
                         <th class="py-3 px-4 text-[11px] font-black text-slate-400 uppercase tracking-widest text-right">Aksi</th>
                     </tr></thead>
-                    <tbody>${rows}</tbody>
+                    <tbody>${mainHtml}</tbody>
                 </table>
             </div>
         </div>
@@ -1788,7 +1847,7 @@ function renderInventoryReport() {
     window._invReportBuildTable = buildTable;
 }
 
-// â”€â”€â”€ INTEGRASI: PO â†’ Inventory & SO â†’ Inventory â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- INTEGRASI: PO -> Inventory & SO -> Inventory ---
 
 // Cari inventoryItem by nama (case-insensitive, partial match) â€” fallback jika tidak ada ID
 function findInvItemByName(name) {
@@ -1801,7 +1860,7 @@ function findInvItemByName(name) {
     return found || null;
 }
 
-// Dipanggil dari confirmReceiveGoods (PO diterima) â†’ stock IN
+// Dipanggil dari confirmReceiveGoods (PO diterima) -> stock IN
 window.syncInventoryFromPOReceipt = (poId, poNumber, receivedItems) => {
     let synced = 0;
     receivedItems.forEach(item => {
@@ -1816,11 +1875,11 @@ window.syncInventoryFromPOReceipt = (poId, poNumber, receivedItems) => {
             synced++;
         }
     });
-    if (synced > 0) showToast(`âœ… ${synced} item dari PO ${poNumber} otomatis masuk ke stok Inventory!`, 'success');
+    if (synced > 0) showToast(`[OK] ${synced} item dari PO ${poNumber} otomatis masuk ke stok Inventory!`, 'success');
     else showToast('PO diterima. Pastikan item PO terhubung ke Master Inventory.', 'success');
 };
 
-// Dipanggil dari deliverSO (SO dikirim) â†’ stock OUT
+// Dipanggil dari deliverSO (SO dikirim) -> stock OUT
 window.syncInventoryFromSODelivery = (soId, soNumber, items) => {
     let synced = 0;
     const errors = [];
@@ -3285,11 +3344,22 @@ window.openWIPHistoryModal = (itemId, location, startDateStr = null, endDateStr 
     endDateStr = endDate.toISOString().split('T')[0];
 
     const allTxs = db.read('stockTransactions') || [];
-    const txs = allTxs.filter(t => t.itemId === itemId && t.location === location && new Date(t.date) >= startDate && new Date(t.date) <= new Date(endDate.getTime() + 86400000))
+    const _getTxLoc = (t) => {
+        let l = t.location;
+        if (l === 'WHS' || !l) {
+            if (item.category === 'MIXING_STOCK') l = 'MIXING';
+            else if (item.category === 'OVEN_BASAH_STOCK') l = 'OVEN_BASAH';
+            else if (item.category === 'OVEN_KERING_STOCK') l = 'OVEN_KERING';
+            else l = 'WHS';
+        }
+        return l;
+    };
+    
+    const txs = allTxs.filter(t => t.itemId === itemId && _getTxLoc(t) === location && new Date(t.date) >= startDate && new Date(t.date) <= new Date(endDate.getTime() + 86400000))
                       .sort((a, b) => new Date(a.date) - new Date(b.date));
 
     let balance = 0; // WIP card might need opening stock logic too if we want same precision as inventory
-    const openingTxs = allTxs.filter(t => t.itemId === itemId && t.location === location && new Date(t.date) < startDate);
+    const openingTxs = allTxs.filter(t => t.itemId === itemId && _getTxLoc(t) === location && new Date(t.date) < startDate);
     const openingStock = openingTxs.reduce((sum, t) => {
         const type = (t.type || '').toUpperCase();
         const isIn = ['IN', 'ADJUST_IN', 'PRODUCTION_IN', 'RETURN_IN'].includes(type);
@@ -3436,7 +3506,18 @@ window.printWIPStockCard = (itemId, location, startDateStr, endDateStr) => {
     const endDate = new Date(endDateStr + 'T23:59:59');
 
     const allTxs = db.read('stockTransactions') || [];
-    const openingTxs = allTxs.filter(t => t.itemId === itemId && t.location === location && new Date(t.date) < startDate);
+    const _getTxLoc = (t) => {
+        let l = t.location;
+        if (l === 'WHS' || !l) {
+            if (item.category === 'MIXING_STOCK') l = 'MIXING';
+            else if (item.category === 'OVEN_BASAH_STOCK') l = 'OVEN_BASAH';
+            else if (item.category === 'OVEN_KERING_STOCK') l = 'OVEN_KERING';
+            else l = 'WHS';
+        }
+        return l;
+    };
+
+    const openingTxs = allTxs.filter(t => t.itemId === itemId && _getTxLoc(t) === location && new Date(t.date) < startDate);
     const openingStock = openingTxs.reduce((sum, t) => {
         const type = (t.type || '').toUpperCase();
         const isIn = ['IN', 'ADJUST_IN', 'PRODUCTION_IN', 'RETURN_IN'].includes(type);
@@ -3446,7 +3527,7 @@ window.printWIPStockCard = (itemId, location, startDateStr, endDateStr) => {
         return sum;
     }, 0);
 
-    const txs = allTxs.filter(t => t.itemId === itemId && t.location === location && new Date(t.date) >= startDate && new Date(t.date) <= endDate)
+    const txs = allTxs.filter(t => t.itemId === itemId && _getTxLoc(t) === location && new Date(t.date) >= startDate && new Date(t.date) <= endDate)
                       .sort((a, b) => new Date(a.date) - new Date(b.date));
 
     let currentBalance = openingStock;

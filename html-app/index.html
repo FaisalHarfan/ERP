@@ -15,6 +15,9 @@
     <!-- Tailwind CSS (via CDN for simplicity) -->
     <script src="https://cdn.tailwindcss.com"></script>
 
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <!-- Tailwind Config for Inter font and new Indigo/Slate theme -->
     <script>
         tailwind.config = {
@@ -39,15 +42,12 @@
 <body class="bg-gray-50 text-gray-800 font-sans antialiased h-screen flex overflow-hidden">
 
     <!-- Sidebar -->
-    <aside
-        class="w-[280px] bg-white border-r border-gray-200 text-slate-700 flex flex-col h-full shrink-0 transition-all duration-300 z-20 overflow-hidden"
-        id="sidebar">
+    <aside id="sidebar"
+        class="w-[280px] bg-white border-r border-gray-200 text-slate-700 flex flex-col h-full shrink-0 transition-all duration-300 z-[100] overflow-hidden">
         <div class="h-16 flex items-center px-6 border-b border-gray-100 shrink-0">
-            <div class="flex items-center gap-2 sidebar-label">
-                <img src="assets/logo.png" alt="UnityERP Logo"
-                    class="w-8 h-8 rounded-lg shadow-sm object-contain logo-main">
-                <span class="text-slate-900 text-lg font-bold tracking-tight">Tana Subur <span
-                        class="text-blue-600">Nusantara</span></span>
+            <div class="flex items-center gap-2 sidebar-label overflow-hidden">
+                <img src="assets/logo.png" alt="UnityERP Logo" class="w-8 h-8 rounded-lg shadow-sm object-contain logo-main shrink-0">
+                <span class="text-slate-900 text-base font-bold tracking-tight whitespace-nowrap truncate">Tana Subur <span class="text-blue-600">Nusantara</span></span>
             </div>
             <div class="sidebar-icon-only hidden logo-collapsed-container">
                 <img src="assets/logo.png" alt="U" class="w-10 h-10 rounded-lg shadow-sm object-contain logo-collapsed">
@@ -203,7 +203,7 @@
                         <div class="active-indicator"></div>
                         <i
                             class="fas fa-boxes text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
-                        <span class="sidebar-label">Master Barang / Stok</span>
+                        <span class="sidebar-label">Master Items</span>
                     </a>
                     <a href="#" data-view="inventory-po-receipt"
                         class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
@@ -245,7 +245,7 @@
                         <div class="active-indicator"></div>
                         <i
                             class="fas fa-exclamation-triangle text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
-                        <span class="sidebar-label">Judgment / Barang NG</span>
+                        <span class="sidebar-label">Judgment</span>
                     </a>
                     <a href="#" data-view="sales-return-reports"
                         class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
@@ -261,7 +261,7 @@
             <div class="nav-group-parent hidden" id="produksi-group-parent">
                 <div class="flex items-center px-3 py-2 text-slate-900 font-bold">
                     <i class="fas fa-industry w-5 text-center mr-3 text-slate-600"></i>
-                    <span class="sidebar-label">Manufacturing</span>
+                    <span class="sidebar-label">Production</span>
                 </div>
                 <div id="produksi-group" class="nav-group space-y-1">
                     <a href="#" data-view="production-dashboard"
@@ -269,7 +269,7 @@
                         <div class="active-indicator"></div>
                         <i
                             class="fas fa-terminal text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
-                        <span class="sidebar-label">Produksi Dashboard</span>
+                        <span class="sidebar-label">Production Dashboard</span>
                     </a>
                     <a href="#" data-view="production-bom"
                         class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
@@ -283,7 +283,7 @@
                         <div class="active-indicator"></div>
                         <i
                             class="fas fa-cogs text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
-                        <span class="sidebar-label">Master Mesin</span>
+                        <span class="sidebar-label">Machine Master</span>
                     </a>
                     <a href="#" data-view="production-mo"
                         class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
@@ -297,21 +297,21 @@
                         <div class="active-indicator"></div>
                         <i
                             class="fas fa-boxes text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
-                        <span class="sidebar-label">Stok Produksi</span>
+                        <span class="sidebar-label">Stock Master</span>
                     </a>
                     <a href="#" data-view="production-wip-stock"
                         class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
                         <i
                             class="fas fa-boxes-stacked text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
-                        <span class="sidebar-label">Stok WIP & History</span>
+                        <span class="sidebar-label">WIP & History Stock</span>
                     </a>
                     <a href="#" data-view="inventory-shrinkage"
                         class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
                         <i
                             class="fas fa-percentage text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
-                        <span class="sidebar-label">Laporan Susut</span>
+                        <span class="sidebar-label">Shrinkage Report</span>
                     </a>
                     <a href="#" data-view="production-reports"
                         class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
@@ -372,12 +372,26 @@
                             class="fas fa-file-prescription text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         <span class="sidebar-label">Debit Notes</span>
                     </a>
+                    <a href="#" data-view="finance-receipts"
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-hand-holding-usd text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Penerimaan Kas & Bank</span>
+                    </a>
+                    <a href="#" data-view="finance-expenses"
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-external-link-alt text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Pengeluaran Kas & Bank</span>
+                    </a>
                     <a href="#" data-view="finance-journal"
                         class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
                         <i
                             class="fas fa-book text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
-                        <span class="sidebar-label">Journal Voucher</span>
+                        <span class="sidebar-label">General Ledger</span>
                     </a>
                     <a href="#" data-view="finance-settings"
                         class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
@@ -444,9 +458,6 @@
                     <span class="sidebar-label">Settings</span>
                 </div>
                 <div id="pengaturan-group" class="nav-group space-y-1">
-
-
-
                     <a href="#" data-view="settings-users"
                         class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
@@ -507,20 +518,21 @@
     <div class="flex-1 flex flex-col h-full overflow-hidden relative" id="main-area">
         <!-- Header / Topbar -->
         <header
-            class="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 sm:px-6 z-10 transition-all duration-300"
+            class="h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 sm:px-6 z-[90] transition-all duration-300 sticky top-0"
             id="top-header">
             <div class="flex items-center">
                 <button id="sidebarToggleBtn"
-                    class="hidden md:flex mr-4 text-gray-500 hover:text-indigo-600 transition-colors w-10 h-10 items-center justify-center rounded-lg hover:bg-indigo-50">
-                    <i class="fas fa-bars text-xl"></i>
+                    class="hidden md:flex mr-2 text-slate-500 hover:text-blue-600 transition-colors w-8 h-8 items-center justify-center rounded-lg hover:bg-slate-100">
+                    <i class="fas fa-bars text-lg"></i>
                 </button>
-                <button id="mobileMenuBtn" class="md:hidden mr-4 text-gray-400 hover:text-gray-700">
-                    <i class="fas fa-bars text-xl"></i>
-                </button>
-                <h1 id="pageTitle" class="text-xl font-semibold text-gray-800 ml-4">Apps</h1>
+                <div id="breadcrumb" class="flex items-center text-base font-medium ml-2 select-none">
+                    <i class="fas fa-home text-slate-400 hover:text-primary cursor-pointer transition-colors" onclick="navigateTo('launcher')"></i>
+                    <span class="mx-2 text-slate-300 font-light">/</span>
+                    <span id="pageTitle" class="text-slate-800 font-bold text-base">Apps</span>
+                </div>
             </div>
             <div class="flex items-center space-x-4">
-                <span class="text-sm text-gray-500 hidden sm:block">Sistem Informasi Manufaktur</span>
+                <span id="header-user-name" class="text-sm text-gray-500 hidden sm:block">Sistem Informasi Manufaktur</span>
                 <div class="relative">
                     <button class="text-gray-400 hover:text-gray-600 focus:outline-none"
                         onclick="toggleNotificationDropdown(event)">
@@ -544,17 +556,18 @@
             </div>
         </header>
 
-        <!-- Dynamic Views Container -->
-        <main class="flex-1 overflow-x-hidden overflow-y-auto bg-slate-50 p-4 sm:p-6" id="main-content">
-            <!-- Content will be injected here via JavaScript -->
-        </main>
-    </div>
+            <!-- Dynamic Views Container -->
+            <main class="flex-1 overflow-x-hidden overflow-y-auto bg-slate-50 p-4 sm:p-6" id="main-content">
+                <!-- Content will be injected here via JavaScript -->
+            </main>
 
-    <!-- Modals Container -->
-    <div id="modal-container"></div>
+            <!-- Inline Modals Container -->
+            <div id="modal-container" class="z-[150]"></div>
 
-    <!-- Toast Notification Container -->
-    <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2"></div>
+            <!-- Toast Notification Container -->
+            <div id="toast-container" class="absolute top-4 right-4 z-[200] flex flex-col gap-2"></div>
+        </div>
+
 
     <!-- Application Scripts -->
     <script>
@@ -594,7 +607,7 @@
     <script src="sales_return.js"></script>
     <script src="delivery_order.js"></script>
     <script src="settings.js"></script>
-    <script src="app.js"></script>
+    <script src="app.js?v=2"></script>
     <script>
         // ── Populate sidebar with session user ─────────────────────
         (function () {
@@ -609,6 +622,8 @@
             const roles = db.read('roles');
             const role = roles.find(r => r.id === s.roleId);
             if (roleEl) roleEl.textContent = role ? role.name : 'User';
+            const headerUserEl = document.getElementById('header-user-name');
+            if (headerUserEl && s.fullName) headerUserEl.textContent = s.fullName;
         })();
     </script>
 </body>

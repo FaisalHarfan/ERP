@@ -221,8 +221,23 @@ tbody tr:hover {
     justify-content: center;
 }
 
-#sidebar.w-20 .nav-group {
-    padding: 0.25rem 0;
+/* Breadcrumb Styling */
+#breadcrumb {
+    font-size: 0.8125rem;
+    letter-spacing: -0.01em;
+}
+
+#breadcrumb i:hover {
+    transform: scale(1.1);
+}
+
+#breadcrumb span {
+    transition: all 0.2s ease;
+}
+
+.breadcrumb-sep {
+    font-family: 'Inter', sans-serif;
+    font-weight: 300;
 }
 
 /* Print utility */
@@ -230,6 +245,8 @@ tbody tr:hover {
 
     #sidebar,
     header,
+    #modal-container,
+    #toast-container,
     .no-print {
         display: none !important;
     }

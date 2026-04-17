@@ -48,16 +48,51 @@ function exportTableToCSV(filename) {
 // Inject an generic export button next to the "Page Title" dynamically
 document.addEventListener('DOMContentLoaded', () => {
     const headerDiv = document.querySelector('header .flex.items-center.space-x-4');
+    if (!headerDiv) return;
 
     const exportBtn = document.createElement('button');
-    exportBtn.className = 'text-gray-500 hover:text-green-600 mr-2 flex items-center text-sm font-medium transition-colors border border-gray-200 rounded px-3 py-1 bg-white';
+    exportBtn.id = 'global-export-btn';
+    exportBtn.className = 'text-gray-500 hover:text-green-600 mr-2 flex items-center text-sm font-medium transition-colors border border-gray-200 rounded px-3 py-1 bg-white shadow-sm hover:shadow-md';
     exportBtn.innerHTML = '<i class="fas fa-file-excel mr-2 text-green-600"></i> Export List';
-    exportBtn.title = 'Export tabel saat ini ke CSV/Excel';
+    exportBtn.title = 'Export data halaman ini';
 
     exportBtn.addEventListener('click', () => {
-        const title = document.getElementById('pageTitle').innerText.replace(/\s+/g, '_').toLowerCase();
-        exportTableToCSV(title);
+        const title = document.getElementById('pageTitle').innerText;
+        
+        // If we are on a dashboard, show dashboard options instead of simple table export
+        if (title.toLowerCase().includes('dashboard')) {
+            if (window.openDashboardOptions) {
+                window.openDashboardOptions(title);
+                return;
+            }
+        }
+        
+        exportTableToCSV(title.replace(/\s+/g, '_').toLowerCase());
     });
+
+    // Update button text/icon based on view
+    const observer = new MutationObserver(() => {
+        const title = document.getElementById('pageTitle').innerText;
+        if (title.toLowerCase().includes('dashboard')) {
+            exportBtn.innerHTML = '<i class="fas fa-download mr-2 text-blue-500"></i> Download Options';
+            exportBtn.className = 'text-gray-600 hover:text-blue-600 mr-2 flex items-center text-sm font-semibold transition-all border border-gray-200 rounded-lg px-3 py-1.5 bg-white shadow-sm';
+        } else {
+            exportBtn.innerHTML = '<i class="fas fa-file-excel mr-2 text-green-600"></i> Export List';
+            exportBtn.className = 'text-gray-500 hover:text-green-600 mr-2 flex items-center text-sm font-medium transition-colors border border-gray-200 rounded px-3 py-1 bg-white shadow-sm hover:shadow-md';
+        }
+        
+        // Hide if launcher
+        if (title.toLowerCase().includes('select department') || title.toLowerCase() === 'apps') {
+            exportBtn.classList.add('hidden');
+        } else {
+            exportBtn.classList.remove('hidden');
+        }
+    });
+
+    const titleEl = document.getElementById('pageTitle');
+    if (titleEl) {
+        observer.observe(titleEl, { childList: true, characterData: true, subtree: true });
+    }
 
     // Insert just before the bell icon
     headerDiv.insertBefore(exportBtn, headerDiv.firstChild);

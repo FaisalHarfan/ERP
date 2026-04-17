@@ -55,7 +55,12 @@ window._uiState = {
     rfqFilterOpen: false,
     coaFilterOpen: false,
     shrinkFilterOpen: false,
+    recFilterOpen: false,
+    expFilterOpen: false
 };
+
+// --- Navigation History ---
+window._navigationHistory = [];
 
 window.toggleSOFilter = () => { window._uiState.soFilterOpen = !window._uiState.soFilterOpen; renderSalesOrders(); };
 window.toggleSIFilter = () => { window._uiState.siFilterOpen = !window._uiState.siFilterOpen; renderSalesInvoices(); };
@@ -81,6 +86,73 @@ window.toggleShrinkFilter = () => { window._uiState.shrinkFilterOpen = !window._
 window.activeGRTab = 'pending'; // 'pending' or 'history'
 
 window.activeDepartment = null; // Track current active department for sidebar filtering
+
+const BREADCRUMB_MAP = {
+    'launcher': [],
+    'dashboard': ['Dashboard Overview'],
+    'sales-dashboard': ['Sales', 'Sales Dashboard'],
+    'sales-quotations': ['Sales', 'Quotations'],
+    'sales-orders': ['Sales', 'Sales Orders'],
+    'sales-invoices': ['Sales', 'Sales Invoices'],
+    'sales-delivery-orders': ['Sales', 'Delivery Orders'],
+    'sales-reports': ['Sales', 'Reports'],
+    'sales-customers': ['Sales', 'Customers'],
+    'sales-returns': ['Sales', 'Sales Returns'],
+    'product-exchanges': ['Sales', 'Product Exchanges'],
+    'purchase-dashboard': ['Purchasing', 'Dashboard'],
+    'purchase-rfqs': ['Purchasing', 'RFQs'],
+    'purchase-orders': ['Purchasing', 'Purchase Orders'],
+    'purchase-invoices': ['Purchasing', 'Purchase Invoices'],
+    'purchase-receiving': ['Purchasing', 'Purchase Receiving'],
+    'purchase-reports': ['Purchasing', 'Reports'],
+    'master-suppliers': ['Purchasing', 'Suppliers'],
+    'inventory-dashboard': ['Stock', 'Dashboard'],
+    'inventory-master': ['Stock', 'Master Items'],
+    'inventory-logs': ['Stock', 'Daily Logs'],
+    'inventory-judgment': ['Stock', 'Judgment'],
+    'inventory-shrinkage': ['Stock', 'Shrinkage'],
+    'inventory-transfer': ['Stock', 'Stock Transfer'],
+    'production-dashboard': ['Production', 'Dashboard'],
+    'production-mo': ['Production', 'Manufacturing Orders'],
+    'production-stock': ['Production', 'Stock Master'],
+    'finance-dashboard': ['Finance', 'Dashboard'],
+    'finance-ar': ['Finance', 'Accounts Receivable'],
+    'finance-ap': ['Finance', 'Accounts Payable'],
+    'finance-journal': ['Finance', 'General Ledger'],
+    'finance-coa': ['Finance', 'Chart of Accounts'],
+    'settings-dashboard': ['Settings', 'Overview'],
+    'settings-users': ['Settings', 'Users'],
+    'settings-roles': ['Settings', 'Roles'],
+    'settings-company': ['Settings', 'Company Profile']
+};
+
+window.renderBreadcrumb = (pathItems = [], badge = null) => {
+    const container = document.getElementById('breadcrumb');
+    if (!container) return;
+
+    let html = `<i class="fas fa-home text-slate-400 hover:text-primary cursor-pointer transition-colors text-base" onclick="navigateTo('launcher')" title="Home"></i>`;
+    
+    if (pathItems.length > 0) {
+        pathItems.forEach((item, idx) => {
+            html += `<span class="mx-1.5 text-slate-300 font-light text-sm">/</span>`;
+            const isLast = idx === pathItems.length - 1;
+            if (isLast) {
+                html += `<span id="pageTitle" class="text-slate-800 font-bold text-base tracking-tight">${item}</span>`;
+            } else {
+                html += `<span class="text-slate-500 hover:text-slate-800 transition-colors cursor-default text-base">${item}</span>`;
+            }
+        });
+    } else {
+        html += `<span class="mx-1.5 text-slate-300 font-light text-sm">/</span>`;
+        html += `<span id="pageTitle" class="text-slate-800 font-bold text-base tracking-tight">Apps</span>`;
+    }
+
+    if (badge) {
+        html += `<span class="ml-3 px-2 py-0.5 bg-orange-50 text-orange-600 text-[10px] font-bold rounded-full border border-orange-100 uppercase tracking-tighter shadow-sm animate-pulse">${badge}</span>`;
+    }
+
+    container.innerHTML = html;
+};
 
 // Helper untuk filter tanggal universal
 function filterByDateRange(data, filterKey) {
@@ -160,10 +232,14 @@ const views = {
     'finance-accounts': window.renderFinanceAccounts,
 
     'finance-ar': window.renderFinanceAR,
+    'finance-ar-history': window.renderFinanceARHistory,
+    'finance-ap': window.renderFinanceAP,
+    'finance-ap-history': window.renderFinanceAPHistory,
     'finance-ar-aging': window.renderFinanceARAging,
     'finance-ap-aging': window.renderFinanceAPAging,
     'finance-partner-ledger': window.renderFinancePartnerLedger,
-    'finance-ap': window.renderFinanceAP,
+    'finance-expenses': window.renderFinanceExpenses,
+    'finance-receipts': window.renderFinanceReceipts,
     'finance-journal': window.renderFinanceJournal,
     'finance-settings': window.renderFinanceSettings,
     'finance-credit-notes': window.renderFinanceCreditNotes,
@@ -194,10 +270,14 @@ const MODULE_VIEW_MAP = {
     'sales-returns': 'logistik', 'sales-exchanges': 'logistik', 'sales-return-reports': 'logistik',
     'finance-dashboard': 'finance', 'finance-accounts': 'finance',
     'finance-ar': 'finance',
+    'finance-ar-history': 'finance',
     'finance-ar-aging': 'finance',
     'finance-ap-aging': 'finance',
     'finance-partner-ledger': 'finance',
     'finance-ap': 'finance',
+    'finance-ap-history': 'finance',
+    'finance-receipts': 'finance',
+    'finance-expenses': 'finance',
     'finance-journal': 'finance', 'finance-settings': 'finance',
     'finance-credit-notes': 'finance', 'finance-debit-notes': 'finance', 'finance-hpp': 'finance', 'finance-rugilaba': 'finance', 'finance-neracasaldo': 'finance',
     'settings-users': 'pengaturan', 'settings-roles': 'pengaturan', 'settings-company': 'pengaturan',
@@ -391,8 +471,26 @@ window.printHTML = (htmlContent, title) => {
     printWindow.document.close();
 };
 
-function navigateTo(viewId) {
+function navigateTo(viewId, isBack = false) {
+    // If a modal is open, close it automatically when navigating to a new page
+    if (window._isModalOpen) {
+        window._isModalOpen = false;
+        document.getElementById('modal-container').innerHTML = '';
+    }
+
     const sidebar = document.getElementById('sidebar');
+    const mainContent = document.getElementById('main-content');
+
+    // Track history
+    if (!isBack) {
+        // Don't push if it's the same as current
+        if (window._currentView && window._currentView !== viewId) {
+            window._navigationHistory.push(window._currentView);
+        }
+    }
+    window._currentView = viewId;
+
+    // Toggle sidebar visibility for launcher vs inner apps
 
     // Toggle sidebar visibility for launcher vs inner apps
     if (viewId === 'launcher') {
@@ -494,10 +592,26 @@ function navigateTo(viewId) {
     const mainContent2 = document.getElementById('main-content');
     mainContent2.innerHTML = ''; // clear
 
+    // Set Breadcrumb
+    const path = BREADCRUMB_MAP[viewId] || [viewId.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())];
+    renderBreadcrumb(path);
+
     if (views[viewId]) {
         views[viewId]();
     } else {
-        mainContent2.innerHTML = `<div class="p-8 text-center text-gray-500">View not found</div>`;
+        mainContent.innerHTML = `<div class="p-8 text-center text-gray-500">View not found</div>`;
+    }
+
+    // Update Back Button Visibility & Icon
+    const backBtn = document.getElementById('sidebarToggleBtn');
+    if (backBtn) {
+        if (viewId === 'launcher') {
+            backBtn.innerHTML = '<i class="fas fa-bars text-xl"></i>';
+            backBtn.title = "Toggle Sidebar";
+        } else {
+            backBtn.innerHTML = '<i class="fas fa-chevron-left text-xl"></i>';
+            backBtn.title = "Go Back";
+        }
     }
 
     // Update sidebar/launcher whenever we navigate to ensure it's in sync
@@ -616,23 +730,37 @@ function showModal(title, bodyHtml, footerHtml, size = 'md') {
         'md': 'max-w-2xl',
         'lg': 'max-w-4xl',
         'xl': 'max-w-6xl',
-        'full': 'max-w-none w-full h-full rounded-none z-[60]'
+        'full': 'max-w-none w-screen h-screen rounded-none m-0 pt-0'
     };
     const sizeClass = sizeClasses[size] || sizeClasses['md'];
 
+    // Track modal state
+    window._isModalOpen = true;
+    
+    // Save current breadcrumb to restore later
+    const pageTitleEl = document.getElementById('pageTitle');
+    window._previousBreadcrumbTitle = pageTitleEl ? pageTitleEl.innerText : '';
+    
+    // Update breadcrumb to show modal title
+    const currentPath = BREADCRUMB_MAP[window._currentView] || [];
+    renderBreadcrumb([...currentPath, title]);
+
     modalContainer.innerHTML = `
-        <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 ${size === 'full' ? '' : 'p-2 sm:p-4'} animate-fade-in" id="modal-backdrop">
-        <div class="bg-white shadow-2xl w-full ${sizeClass} flex flex-col ${size === 'full' ? 'h-full' : 'rounded-2xl max-h-[95vh]'} animate-slide-up overflow-hidden border border-slate-200">
-            <div class="flex justify-between items-center p-4 sm:p-6 border-b border-gray-200 shrink-0">
-                <h3 class="text-2xl font-black text-gray-800 tracking-tight">${title}</h3>
-                <button class="w-10 h-10 flex items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-all" onclick="closeModal()">
-                    <i class="fas fa-times text-xl"></i>
+        <div class="fixed inset-0 top-16 bg-slate-900/40 backdrop-blur-[2px] flex items-center justify-center z-[150] ${size === 'xl' ? '' : 'p-4 sm:p-6'} animate-fade-in" id="modal-backdrop">
+        <div class="bg-white shadow-2xl w-full ${sizeClass} flex flex-col ${size === 'xl' ? 'h-full border-0' : 'rounded-2xl max-h-[calc(100vh-120px)] border border-slate-200'} animate-slide-up overflow-hidden">
+            <div class="flex justify-between items-center p-4 sm:px-6 sm:py-5 border-b border-gray-100 shrink-0">
+                <h3 class="text-xl font-bold text-gray-800 tracking-tight flex items-center gap-3">
+                    <span class="w-2 h-8 bg-blue-600 rounded-full"></span>
+                    ${title}
+                </h3>
+                <button class="w-10 h-10 flex items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all" onclick="closeModal()">
+                    <i class="fas fa-times text-lg"></i>
                 </button>
             </div>
-            <div class="p-4 sm:p-8 overflow-y-auto flex-1">
+            <div class="p-4 sm:p-8 overflow-y-auto flex-1 bg-white">
                 ${bodyHtml}
             </div>
-            <div class="px-4 py-4 sm:px-8 sm:flex sm:flex-row-reverse bg-gray-50 border-t border-gray-200 shrink-0">
+            <div class="px-4 py-4 sm:px-8 sm:flex sm:flex-row-reverse bg-slate-50 border-t border-slate-100 shrink-0 gap-3">
                 ${footerHtml}
             </div>
         </div>
@@ -641,16 +769,23 @@ function showModal(title, bodyHtml, footerHtml, size = 'md') {
 }
 
 function closeModal() {
+    window._isModalOpen = false;
     document.getElementById('modal-container').innerHTML = '';
+    
+    // Restore breadcrumb
+    if (window._currentView) {
+        const path = BREADCRUMB_MAP[window._currentView] || [window._currentView.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())];
+        renderBreadcrumb(path);
+    }
 }
 
 // --- Toasts (Notifications) ---
 function showToast(message, type = 'success') {
     const container = document.getElementById('toast-container');
     const toast = document.createElement('div');
-    const bgColor = type === 'success' ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200';
-    const textColor = type === 'success' ? 'text-green-800' : 'text-red-800';
-    const icon = type === 'success' ? 'fa-check-circle text-green-500' : 'fa-exclamation-circle text-red-500';
+    const bgColor = type === 'success' ? 'bg-green-50 border-green-200' : (type === 'info' ? 'bg-blue-50 border-blue-200' : 'bg-red-50 border-red-200');
+    const textColor = type === 'success' ? 'text-green-800' : (type === 'info' ? 'text-blue-800' : 'text-red-800');
+    const icon = type === 'success' ? 'fa-check-circle text-green-500' : (type === 'info' ? 'fa-info-circle text-blue-500' : 'fa-exclamation-circle text-red-500');
 
     toast.className = `flex items-center w-full max-w-xs p-4 mb-4 text-gray-500 ${bgColor} border rounded-lg shadow animate-slide-left`;
     toast.innerHTML = `
@@ -709,93 +844,505 @@ window.formatDate = (isoString) => {
 
 // --- View Renderers (Placeholders) ---
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ SALES DASHBOARD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ------------------- SALES DASHBOARD --------------------------
+// Global Dashboard Filter State
+window.dashFilters = {
+    period: 'Monthly',
+    fiscalYear: new Date().getFullYear(),
+    groupBy: 'item',
+    includeClosed: false
+};
+
 function renderSalesDashboard() {
     document.getElementById('pageTitle').innerText = 'Dashboard Penjualan';
     const mc = document.getElementById('main-content');
-
-    const quotations = db.read('salesQuotations') || [];
-    const orders = db.read('salesOrders') || [];
+    
+    let orders = db.read('salesOrders') || [];
+    const customers = db.read('customers') || [];
     const invoices = db.read('salesInvoices') || [];
+    
+    const filters = window.dashFilters;
+    const currentYear = filters.fiscalYear;
+    
+    // Apply Global Filter (Fiscal Year, Status & Company)
+    let filteredOrders = orders.filter(o => {
+        const d = new Date(o.date || o.createdAt);
+        const yearMatch = d.getFullYear() === currentYear;
+        const statusMatch = filters.includeClosed ? true : (o.status !== 'CANCELLED' && o.status !== 'COMPLETED' && o.status !== 'VOID');
+        
+        let companyMatch = true;
+        if (filters.company) {
+            const customer = customers.find(c => c.id === o.customerId);
+            companyMatch = customer && customer.name.toLowerCase().includes(filters.company.toLowerCase());
+        }
+        
+        return yearMatch && statusMatch && companyMatch;
+    });
 
-    const draftQT = quotations.filter(q => q.status === 'DRAFT').length;
-    const sentQT = quotations.filter(q => q.status === 'SENT').length;
-    const pendingSO = orders.filter(o => o.status === 'CONFIRMED').length;
-    const unpaidINV = invoices.filter(i => i.status === 'UNPAID').length;
+    // Filter Invoices as well
+    let filteredInvoices = (invoices || []).filter(i => {
+        if (!filters.company) return true;
+        const cust = (customers || []).find(c => c.id === i.customerId);
+        return cust && cust.name.toLowerCase().includes(filters.company.toLowerCase());
+    });
 
-    const card = (title, count, subtitle, actionLabel, viewId, icon, color) => `
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
-            <div class="flex justify-between items-start mb-4">
-                <div>
-                    <h3 class="text-lg font-bold text-gray-800">${title}</h3>
-                    <p class="text-sm text-gray-500 mt-1">${count} ${subtitle}</p>
+    // Calculate Stats based on filtered data
+    const annualSales = filteredOrders.reduce((sum, o) => sum + parseFloat(o.totalAmount || 0), 0);
+    const soToDeliver = filteredOrders.filter(o => o.status === 'CONFIRMED').length;
+    const soToBill = filteredInvoices.filter(i => i.status === 'UNPAID').length;
+    const activeCustomers = filters.company ? (filteredOrders.length > 0 ? 1 : 0) : (customers || []).length;
+
+    // Add Demo Data Trigger for empty state
+    if (orders.length === 0) {
+        mc.innerHTML = `
+            <div class="flex flex-col items-center justify-center h-[60vh] text-center space-y-6 animate-fade-in">
+                <div class="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center text-blue-500 shadow-inner">
+                    <i class="fas fa-chart-line text-4xl"></i>
                 </div>
-                <div class="w-12 h-12 rounded-lg ${color} flex items-center justify-center text-xl shadow-sm">
-                    <i class="${icon}"></i>
+                <div>
+                    <h2 class="text-2xl font-bold text-gray-800">Dashboard Masih Kosong</h2>
+                    <p class="text-gray-500 max-w-md mx-auto mt-2">Belum ada transaksi Sales Order yang tercatat. Anda bisa membuat SO baru atau gunakan tombol di bawah untuk mengisi data sampel demi keperluan demo.</p>
+                </div>
+                <div class="flex gap-4">
+                    <button onclick="navigateTo('sales-orders')" class="px-6 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl font-bold hover:bg-gray-50 transition-all">Buat Sales Order</button>
+                    <button onclick="generateSampleSalesData()" class="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-500/30 transition-all flex items-center gap-2">
+                        <i class="fas fa-magic"></i> Isi Data Demo
+                    </button>
                 </div>
             </div>
-            <button onclick="navigateTo('${viewId}')" class="w-full bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg text-sm transition-colors mt-2">
-                ${actionLabel}
-            </button>
+        `;
+        return;
+    }
+
+    const frappeCard = (title, value) => `
+        <div class="bg-white rounded-xl border border-gray-100 p-5 flex flex-col justify-between shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] h-[104px]">
+            <div class="flex justify-between items-start mb-2">
+                <span class="text-sm font-medium text-gray-500 hover:text-gray-700 cursor-pointer">${title}</span>
+                <span class="text-gray-300 hover:text-gray-500 cursor-pointer text-lg leading-none">...</span>
+            </div>
+            <div class="text-[26px] font-semibold text-gray-800 tracking-tight leading-none">${value}</div>
         </div>`;
 
-    mc.innerHTML = `
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            ${card('Quotation (Draft)', draftQT, 'Draft', 'Buka Quotation', 'sales-quotations', 'fas fa-file-alt', 'bg-gray-50 text-gray-600')}
-            ${card('Quotation (Sent)', sentQT, 'Terkirim', 'Buka Quotation', 'sales-quotations', 'fas fa-paper-plane', 'bg-blue-50 text-blue-600')}
-            ${card('Sales Order', pendingSO, 'Butuh Surat Jalan', 'Proses SO', 'sales-orders', 'fas fa-shopping-cart', 'bg-green-50 text-green-600')}
-            ${card('Piutang', unpaidINV, 'Belum Lunas', 'Lihat Invoice', 'sales-invoices', 'fas fa-money-bill-wave', 'bg-orange-50 text-orange-600')}
-        </div>
-        
-        <div class="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                <h3 class="text-md font-bold text-gray-800 mb-4 flex items-center gap-2">
-                    <i class="fas fa-trophy text-yellow-500"></i> Customer Terbaik (Total SO)
-                </h3>
-                <div class="space-y-4">
-                    ${(() => {
-            const custTotals = {};
-            orders.forEach(o => {
-                custTotals[o.customerId] = (custTotals[o.customerId] || 0) + (parseFloat(o.totalAmount) || 0);
-            });
-            const customers = db.read('customers') || [];
-            return Object.entries(custTotals)
-                .sort((a, b) => b[1] - a[1])
-                .slice(0, 5)
-                .map(([cid, total], idx) => {
-                    const c = customers.find(cust => cust.id === cid) || { name: 'Customer Lama' };
-                    return `
-                                <div class="flex items-center justify-between">
-                                    <div class="flex items-center gap-3">
-                                        <span class="text-xs font-bold text-gray-400">#${idx + 1}</span>
-                                        <span class="text-sm font-medium text-gray-800">${c.name}</span>
-                                    </div>
-                                    <span class="text-sm font-bold text-blue-600">${formatCurrency(total)}</span>
-                                </div>`;
-                }).join('') || '<p class="text-center py-6 text-gray-400 text-sm italic">Belum ada data penjualan.</p>';
-        })()}
+    const chartPanel = (title, id, heightClass = 'h-64', extraBody = '') => `
+        <div class="bg-white rounded-xl border border-gray-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] p-5 flex flex-col">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-[15px] font-semibold text-gray-800">${title}</h3>
+                <div class="flex gap-2">
+                    <button onclick="openDashboardFilter('${title}')" class="w-7 h-7 rounded bg-gray-50 text-gray-400 hover:bg-gray-100 flex items-center justify-center transition-colors"><i class="fas fa-filter text-[10px]"></i></button>
+                    <button onclick="openDashboardOptions('${title}')" class="w-7 h-7 rounded bg-gray-50 text-gray-400 hover:bg-gray-100 flex items-center justify-center transition-colors"><span class="leading-none pb-2 font-bold">...</span></button>
                 </div>
             </div>
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                <h3 class="text-md font-bold text-gray-800 mb-4 flex items-center gap-2">
-                    <i class="fas fa-history text-blue-500"></i> Aktivitas Quotation Terakhir
-                </h3>
-                    ${quotations.slice(-5).reverse().map(q => {
-            const qCust = db.read('customers').find(c => c.id === q.customerId) || { name: 'Unknown' };
-            return `
-                        <div class="flex items-center justify-between mt-2">
-                            <div>
-                                <p class="text-sm font-bold text-gray-800">${q.qtNumber || '-'}</p>
-                                <p class="text-[10px] text-gray-500">${qCust.name} Â· ${formatDate(q.date).slice(0, 11)}</p>
-                            </div>
-                            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${q.status === 'SENT' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}">${q.status}</span>
-                        </div>
-                        `;
-        }).join('') || '<p class="text-center py-6 text-gray-400 text-sm italic">Tidak ada quotation terbaru.</p>'}
-                </div>
+            ${id ? `<div class="relative w-full ${heightClass} flex-1"><canvas id="${id}"></canvas></div>` : ``}
+            ${extraBody}
+        </div>`;
+
+    const noDataPanel = (title) => chartPanel(title, null, '', '<div class="bg-[#f8f9fa] flex items-center justify-center w-full h-48 rounded-lg"><span class="text-sm text-gray-400">No Data</span></div>');
+
+    mc.innerHTML = `
+        <div class="max-w-full mx-auto space-y-4 animate-fade-in pb-12 font-sans pt-2">
+            <!-- KPIS Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                ${frappeCard('Annual Sales', formatCurrency(annualSales))}
+                ${frappeCard('Sales Orders to Deliver', soToDeliver)}
+                ${frappeCard('Sales Orders to Bill', soToBill)}
+                ${frappeCard('Active Customers', activeCustomers)}
+            </div>
+
+            <!-- Chart 1 -->
+            ${chartPanel('Sales Order Trends', 'chartSOTrends', 'h-[320px]')}
+
+            <!-- Chart Row 2 -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                ${chartPanel('Top Customers', 'chartTopCustomers', 'h-[250px]')}
+                ${noDataPanel('Sales Order Analyst')}
             </div>
         </div>
     `;
+
+    // Ensure the DOM is updated before drawing
+    requestAnimationFrame(() => {
+        setTimeout(() => {
+            if(window.initSalesCharts) window.initSalesCharts(filteredOrders, customers);
+        }, 120);
+    });
+}
+
+window.openDashboardFilter = (title) => {
+    const isDetailed = title === 'Sales Order Trends' || title === 'Top Customers';
+    const isAnalysis = title === 'Sales Order Analysis' || title === 'Sales Order Analyst';
+    const filters = window.dashFilters;
+    
+    let body = '';
+    
+    if (isDetailed) {
+        body = `
+            <div class="space-y-4 font-sans text-gray-700">
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">Period</label>
+                    <select id="dash_filter_period" class="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2 text-sm appearance-none cursor-pointer">
+                        <option ${filters.period === 'Daily' ? 'selected' : ''}>Daily</option>
+                        <option ${filters.period === 'Weekly' ? 'selected' : ''}>Weekly</option>
+                        <option ${filters.period === 'Monthly' ? 'selected' : ''}>Monthly</option>
+                        <option ${filters.period === 'Quarterly' ? 'selected' : ''}>Quarterly</option>
+                        <option ${filters.period === 'Yearly' ? 'selected' : ''}>Yearly</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">Based On</label>
+                    <div class="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2 text-sm text-gray-400">Item</div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">Group By</label>
+                    <select id="dash_filter_groupby" class="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2 text-sm text-gray-800 appearance-none cursor-pointer">
+                        <option value="item" ${filters.groupBy === 'item' ? 'selected' : ''}>Item</option>
+                        <option value="customer" ${filters.groupBy === 'customer' ? 'selected' : ''}>Customer</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">Fiscal Year</label>
+                    <input type="number" id="dash_filter_fy" value="${filters.fiscalYear}" class="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2 text-sm text-gray-800">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">Company</label>
+                    <input type="text" id="dash_filter_company" value="${filters.company || ''}" placeholder="Masukkan nama perusahaan..." class="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2 text-sm text-gray-800">
+                </div>
+                <div class="flex items-center gap-2 pt-2">
+                    <input type="checkbox" id="include_closed" ${filters.includeClosed ? 'checked' : ''} class="w-4 h-4 rounded border-gray-300 text-black focus:ring-black">
+                    <label for="include_closed" class="text-sm font-medium text-gray-600">Include Closed Orders</label>
+                </div>
+            </div>
+        `;
+    } else if (isAnalysis) {
+        body = `
+            <div class="space-y-4 font-sans text-gray-700">
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">Company</label>
+                    <div class="relative">
+                        <input type="text" id="dash_filter_company" value="${filters.company || ''}" placeholder="Cari nama perusahaan..." class="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2 text-sm text-gray-800">
+                        <span class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"><i class="fas fa-search text-[10px]"></i></span>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">From Date <span class="text-red-400">*</span></label>
+                        <input type="date" value="2026-03-16" class="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2 text-sm text-gray-800">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-600 mb-1">To Date <span class="text-red-400">*</span></label>
+                        <input type="date" value="2026-04-16" class="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2 text-sm text-gray-800">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">Sales Order</label>
+                    <input type="text" placeholder="Sales Order" class="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2 text-sm text-gray-800 placeholder-gray-300">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">Warehouse</label>
+                    <input type="text" placeholder="Warehouse" class="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2 text-sm text-gray-800 placeholder-gray-300">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">Status</label>
+                    <div class="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2 text-sm text-gray-400">2 values selected</div>
+                </div>
+                <div class="flex items-center gap-2 pt-2">
+                    <input type="checkbox" id="group_by_so" class="w-4 h-4 rounded border-gray-300 text-black focus:ring-black">
+                    <label for="group_by_so" class="text-sm font-medium text-gray-600">Group by Sales Order</label>
+                </div>
+            </div>
+        `;
+    } else {
+        body = `
+            <div class="space-y-4 font-sans text-gray-700">
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">Company</label>
+                    <input type="text" id="dash_filter_company" value="${filters.company || ''}" placeholder="Masukkan nama perusahaan..." class="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2 text-sm text-gray-800">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-600 mb-1">From Date</label>
+                    <input type="date" value="2026-03-16" class="w-full bg-gray-50 border border-gray-100 rounded-lg px-4 py-2 text-sm text-gray-800">
+                </div>
+            </div>
+        `;
+    }
+
+    const footer = `
+        <div class="w-full flex justify-end">
+            <button onclick="applyDashboardFilters()" class="bg-black text-white px-6 py-1.5 rounded-lg text-sm font-bold shadow-sm hover:opacity-90 transition-all active:scale-95">Set</button>
+        </div>
+    `;
+    
+    showModal(`Set Filters for ${title}`, body, footer, 'md');
+};
+
+window.applyDashboardFilters = () => {
+    // Collect values if fields exist in current modal
+    const period = document.getElementById('dash_filter_period')?.value;
+    const fy = document.getElementById('dash_filter_fy')?.value;
+    const gb = document.getElementById('dash_filter_groupby')?.value;
+    const closed = document.getElementById('include_closed')?.checked;
+    const company = document.getElementById('dash_filter_company')?.value;
+    
+    // Update global filter state only if elements were found
+    if (period !== undefined) window.dashFilters.period = period;
+    if (fy !== undefined) window.dashFilters.fiscalYear = parseInt(fy) || window.dashFilters.fiscalYear;
+    if (gb !== undefined) window.dashFilters.groupBy = gb;
+    if (closed !== undefined) window.dashFilters.includeClosed = closed;
+    if (company !== undefined) window.dashFilters.company = company;
+    
+    showToast('Dashboard Filters Updated', 'success');
+    closeModal();
+    renderSalesDashboard();
+};
+
+window.openDashboardOptions = (title) => {
+    const body = `
+        <div class="space-y-3">
+            <button onclick="closeModal(); exportDashboardToExcel();" class="w-full flex items-center gap-4 p-4 hover:bg-slate-50 rounded-xl text-left transition-all border border-transparent hover:border-slate-100 group">
+                <div class="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center text-green-600 group-hover:scale-110 transition-transform">
+                    <i class="fas fa-file-excel text-lg"></i>
+                </div>
+                <div>
+                    <p class="text-sm font-bold text-gray-800">Export to Excel</p>
+                    <p class="text-[11px] text-gray-500">Download data mentah format .xlsx</p>
+                </div>
+            </button>
+            <button onclick="closeModal(); setTimeout(exportDashboardToPDF, 300);" class="w-full flex items-center gap-4 p-4 hover:bg-slate-50 rounded-xl text-left transition-all border border-transparent hover:border-slate-100 group">
+                <div class="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center text-red-600 group-hover:scale-110 transition-transform">
+                    <i class="fas fa-file-pdf text-lg"></i>
+                </div>
+                <div>
+                    <p class="text-sm font-bold text-gray-800">Export to PDF</p>
+                    <p class="text-[11px] text-gray-500">Download ringkasan grafik format .pdf</p>
+                </div>
+            </button>
+            <button onclick="closeModal(); setTimeout(() => window.print(), 300);" class="w-full flex items-center gap-4 p-4 hover:bg-slate-50 rounded-xl text-left transition-all border border-transparent hover:border-slate-100 group">
+                <div class="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center text-gray-600 group-hover:scale-110 transition-transform">
+                    <i class="fas fa-print text-lg"></i>
+                </div>
+                <div>
+                    <p class="text-sm font-bold text-gray-800">Print Report</p>
+                    <p class="text-[11px] text-gray-500">Cetak tampilan dashboard ini</p>
+                </div>
+            </button>
+        </div>
+    `;
+    showModal('Opsi Dashboard', body, '', 'sm');
+};
+
+window.exportDashboardToExcel = () => {
+    showToast('Menyiapkan file Excel...', 'info');
+    const orders = db.read('salesOrders') || [];
+    if (orders.length === 0) {
+        showToast('Tidak ada data untuk diexport', 'error');
+        return;
+    }
+
+    const customers = db.read('customers') || [];
+    
+    // Create CSV content
+    let csv = "Nomor SO,Pelanggan,Tanggal,Total Amount,Status,Item,Jumlah,Harga,Subtotal\n";
+    
+    orders.forEach(o => {
+        const cust = customers.find(c => c.id === o.customerId)?.name || '-';
+        const date = o.date || o.createdAt || '-';
+        const total = o.totalAmount || 0;
+        const status = o.status || '-';
+        
+        if (o.items && o.items.length > 0) {
+            o.items.forEach(item => {
+                csv += `"${o.soNumber}","${cust}","${date}",${total},"${status}","${item.itemName}",${item.qty},${item.price},${item.subtotal}\n`;
+            });
+        } else {
+            csv += `"${o.soNumber}","${cust}","${date}",${total},"${status}","-",0,0,0\n`;
+        }
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `sales_orders_export_${new Date().toISOString().split('T')[0]}.csv`);
+    link.click();
+    showToast('Download file Excel dimulai', 'success');
+};
+
+window.exportDashboardToPDF = () => {
+    showToast('Mencetak dashboard ke PDF...', 'success');
+    window.print();
+};
+
+window.generateSampleSalesData = () => {
+    showToast('Menyiapkan data demo...', 'info');
+    
+    // Ensure we have at least 1 customer and 1 product
+    let custs = db.read('customers');
+    if (custs.length === 0) {
+        db.insert('customers', { name: 'Toko Demo Utama', phone: '0812345678', address: 'Jakarta' });
+        custs = db.read('customers');
+    }
+    
+    let prods = db.read('inventoryItems').filter(x => x.category === 'FINISHED_GOODS');
+    if (prods.length === 0) {
+        db.insert('inventoryItems', { itemCode: 'DEMO-01', itemName: 'Produk Demo A', category: 'FINISHED_GOODS', unit: 'PCS', basePrice: 50000 });
+        prods = db.read('inventoryItems').filter(x => x.category === 'FINISHED_GOODS');
+    }
+
+    const curYear = new Date().getFullYear();
+    for (let m = 0; m < 6; m++) {
+        db.insert('salesOrders', {
+            soNumber: `SO-${curYear}-00${m+1}`,
+            customerId: custs[0].id,
+            date: new Date(curYear, m, 15).toISOString(),
+            totalAmount: 2000000 + (Math.random() * 3000000),
+            status: 'CONFIRMED',
+            items: [{ itemId: prods[0].id, itemName: prods[0].itemName, qty: 20, price: prods[0].basePrice || 50000, subtotal: 1000000 }]
+        });
+    }
+    
+    db.insert('salesInvoices', {
+        invNumber: `INV-${curYear}-Demo`,
+        customerId: custs[0].id,
+        date: new Date().toISOString(),
+        totalAmount: 5000000,
+        status: 'UNPAID'
+    });
+
+    showToast('Data demo berhasil dibuat!', 'success');
+    renderSalesDashboard();
+};
+
+window.initSalesCharts = function(orders, customers) {
+    if (typeof Chart === 'undefined') {
+        console.warn('Chart.js not loaded yet');
+        return;
+    }
+
+    const filters = window.dashFilters;
+    const currentYear = filters.fiscalYear;
+    
+    // Helper to destroy existing charts if any (to prevent multiple instances on canvas re-render)
+    const chartIds = ['chartSOTrends', 'chartTopCustomers'];
+    chartIds.forEach(id => {
+        const existing = Chart.getChart(id);
+        if (existing) existing.destroy();
+    });
+
+    // 1. Sales Order Trends (Responds to Period)
+    const ctxTrends = document.getElementById('chartSOTrends');
+    if (ctxTrends) {
+        let labels = [];
+        let data = [];
+        
+        if (filters.period === 'Quarterly') {
+            labels = ['Q1', 'Q2', 'Q3', 'Q4'];
+            data = [0, 0, 0, 0];
+            (orders || []).forEach(o => {
+                const dStr = o.date || o.createdAt;
+                if(!dStr) return;
+                const m = new Date(dStr).getMonth();
+                const q = Math.floor(m / 3);
+                data[q]++;
+            });
+        } else if (filters.period === 'Weekly') {
+            labels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
+            data = [0, 0, 0, 0];
+            (orders || []).forEach(o => {
+                const dStr = o.date || o.createdAt;
+                if(!dStr) return;
+                const d = new Date(dStr).getDate();
+                const w = Math.min(3, Math.floor((d - 1) / 7));
+                data[w]++;
+            });
+        } else {
+            // Default Monthly
+            labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            data = new Array(12).fill(0);
+            (orders || []).forEach(o => {
+                const dStr = o.date || o.createdAt;
+                if(!dStr) return;
+                const m = new Date(dStr).getMonth();
+                data[m]++;
+            });
+        }
+        
+        new Chart(ctxTrends, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Sales Orders',
+                    data: data,
+                    borderColor: '#f9a8d4',
+                    borderWidth: 2,
+                    tension: 0.1,
+                    pointBackgroundColor: '#f9a8d4',
+                    pointRadius: data.some(v => v > 0) ? 3 : 0,
+                    fill: false
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { 
+                        beginAtZero: true, 
+                        grid: { color: '#f3f4f6', drawBorder: false }, 
+                        ticks: { stepSize: 1, color: '#9ca3af', font: {size: 11} },
+                        border: {display: false}
+                    },
+                    x: { 
+                        grid: { display: false, drawBorder: false }, 
+                        ticks: { color: '#9ca3af', font: {size: 11} },
+                        border: {display: false}
+                    }
+                }
+            }
+        });
+    }
+
+    // 2. Top Customers
+    const ctxTop = document.getElementById('chartTopCustomers');
+    if (ctxTop) {
+        const custTotals = {};
+        (orders || []).forEach(o => {
+            custTotals[o.customerId] = (custTotals[o.customerId] || 0) + parseFloat(o.totalAmount || 0);
+        });
+        const sortedCust = Object.entries(custTotals).sort((a,b) => b[1] - a[1]).slice(0,5);
+        const labels = sortedCust.map(x => {
+            const c = (customers || []).find(c => c.id === x[0]);
+            return c ? c.name.slice(0, 15) : 'Unknown';
+        });
+        const data = sortedCust.map(x => x[1]);
+
+        if (data.length === 0) {
+            const parent = ctxTop.parentElement;
+            parent.innerHTML = '<div class="bg-[#f8f9fa] flex items-center justify-center w-full h-full rounded-lg"><span class="text-sm text-gray-400">No Data</span></div>';
+        } else {
+            new Chart(ctxTop, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: '#818cf8',
+                        borderRadius: 4,
+                        barThickness: 20
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { display: false, grid: {display: false} },
+                        y: { grid: {display: false}, border: {display: false}, ticks: { color: '#6b7280', font: {size: 11} } }
+                    }
+                }
+            });
+        }
+    }
 }
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ PURCHASE DASHBOARD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1101,57 +1648,161 @@ window.openCustomerModal = (id = null, afterView = null) => {
     }
 
     const body = `
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="md:col-span-2">
-                <label class="block text-sm font-medium text-gray-700 mb-1">Customer / Company Name <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-                <input type="text" id="cust_name" value="${customer.name}" class="w-full border border-gray-300 rounded px-3 py-2">
+        <div class="space-y-6">
+            <div class="grid grid-cols-1 gap-6">
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-2">Customer / Company Name <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                    <input type="text" id="cust_name" value="${customer.name}" placeholder="Masukkan Nama Perusahaan atau Customer" 
+                        class="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all">
+                </div>
             </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Contact Person <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-                <input type="text" id="cust_cp" value="${customer.contactPerson || ''}" class="w-full border border-gray-300 rounded px-3 py-2" placeholder="Nama PIC">
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-2">Contact Person <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                    <input type="text" id="cust_cp" value="${customer.contactPerson || ''}" placeholder="Nama PIC"
+                        class="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-2">Phone Number <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                    <input type="text" id="cust_phone" value="${customer.phone}" placeholder="08..."
+                        class="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all">
+                </div>
             </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Phone Number <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-                <input type="text" id="cust_phone" value="${customer.phone}" class="w-full border border-gray-300 rounded px-3 py-2">
+
+            <div class="grid grid-cols-1 gap-6">
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-2">Email Address <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                    <input type="email" id="cust_email" value="${customer.email || ''}" placeholder="example@mail.com"
+                        class="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all font-mono">
+                </div>
             </div>
-            <div class="md:col-span-2">
-                <label class="block text-sm font-medium text-gray-700 mb-1">Email Address <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-                <input type="email" id="cust_email" value="${customer.email || ''}" class="w-full border border-gray-300 rounded px-3 py-2 font-mono text-sm" placeholder="example@mail.com">
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-2">Billing Address <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                    <textarea id="cust_address" placeholder="Alamat Penagihan..."
+                        class="w-full border border-slate-200 rounded-lg px-4 py-2.5 h-28 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all resize-none">${customer.address}</textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-2">Shipping Address <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                    <textarea id="cust_shipping" placeholder="Alamat Pengiriman..."
+                        class="w-full border border-slate-200 rounded-lg px-4 py-2.5 h-28 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all resize-none">${customer.shippingAddress || customer.address}</textarea>
+                </div>
             </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Billing Address <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-                <textarea id="cust_address" class="w-full border border-gray-300 rounded px-3 py-2 h-24">${customer.address}</textarea>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-2">Wilayah / Daerah <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                    <input type="text" id="cust_region" value="${customer.region || ''}" placeholder="Cth: Jawa Barat"
+                        class="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-2">Kota <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                    <input type="text" id="cust_city" value="${customer.city || ''}" placeholder="Cth: Karawang"
+                        class="w-full border border-slate-200 rounded-lg px-4 py-2.5 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all">
+                </div>
             </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Shipping Address <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-                <textarea id="cust_shipping" class="w-full border border-gray-300 rounded px-3 py-2 h-24">${customer.shippingAddress || customer.address}</textarea>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-2">Sistem Pembayaran (Payment Term) <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
+                    <select id="cust_payment_term" class="w-full border border-slate-200 rounded-lg px-4 py-2.5 bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 outline-none cursor-pointer transition-all">
+                        <option value="" ${!customer.paymentTerm ? 'selected' : ''}>-- Pilih Term --</option>
+                        <option value="Cash" ${customer.paymentTerm === 'Cash' ? 'selected' : ''}>Cash</option>
+                        <option value="Tempo 7 S/d 10 Hari" ${customer.paymentTerm === 'Tempo 7 S/d 10 Hari' ? 'selected' : ''}>Tempo 7 S/d 10 Hari</option>
+                        <option value="30 Hari" ${customer.paymentTerm === '30 Hari' ? 'selected' : ''}>30 Hari</option>
+                        <option value="45 Hari" ${customer.paymentTerm === '45 Hari' ? 'selected' : ''}>45 Hari</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 mb-2">Pajak (PPN %)</label>
+                    <select id="cust_ppn" class="w-full border border-slate-200 rounded-lg px-4 py-2.5 bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 outline-none cursor-pointer transition-all">
+                        <option value="0" ${customer.ppn == 0 ? 'selected' : ''}>0% (Tanpa Pajak)</option>
+                        <option value="11" ${(customer.ppn == 11 || customer.ppn === undefined) ? 'selected' : ''}>11% (PPN)</option>
+                    </select>
+                </div>
             </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Wilayah / Daerah <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-                <input type="text" id="cust_region" value="${customer.region || ''}" class="w-full border border-gray-300 rounded px-3 py-2" placeholder="Cth: Jawa Barat">
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Kota <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-                <input type="text" id="cust_city" value="${customer.city || ''}" class="w-full border border-gray-300 rounded px-3 py-2" placeholder="Cth: Karawang">
-            </div>
-            <div class="md:col-span-2">
-                <label class="block text-sm font-medium text-gray-700 mb-1">Sistem Pembayaran (Payment Term) <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-                <select id="cust_payment_term" class="w-full border border-gray-300 rounded px-3 py-2 bg-white focus:ring-2 focus:ring-blue-500">
-                    <option value="" ${!customer.paymentTerm ? 'selected' : ''}>-- Pilih Term --</option>
-                    <option value="10" ${customer.paymentTerm === '10' ? 'selected' : ''}>Tempo 7 s/d 10 Hari</option>
-                    <option value="30" ${customer.paymentTerm === '30' ? 'selected' : ''}>30 Hari</option>
-                    <option value="45" ${customer.paymentTerm === '45' ? 'selected' : ''}>45 Hari</option>
+        </div>
+        
+        <div class="mt-4 border-t border-gray-200 pt-4">
+            <h4 class="text-md font-medium text-gray-800 mb-2">Produk Biasa Dibeli & Harga Disepakati</h4>
+            <div class="flex space-x-2 mb-2">
+                <select id="cust_cp_item" class="flex-1 border border-gray-300 rounded px-2 py-1 text-sm bg-white">
+                    <option value="">-- Pilih Produk (Finished Goods) --</option>
+                    ${(() => {
+                        const items = db.read('inventoryItems').filter(i => i.category === 'FINISHED_GOODS' && i.status !== 'INACTIVE');
+                        return items.length ? items.map(i => `<option value="${i.id}" data-name="${i.itemName}">${i.itemCode} - ${i.itemName}</option>`).join('') : '<option disabled>Belum ada produk</option>';
+                    })()}
                 </select>
+                <input type="number" id="cust_cp_price" placeholder="Harga Disepakati (Rp)" min="0" class="w-48 border border-gray-300 rounded px-2 py-1 text-sm">
+                <button type="button" onclick="addCustomerProduct()" class="bg-gray-800 text-white px-3 py-1 rounded text-sm"><i class="fas fa-plus"></i></button>
             </div>
+            <table class="w-full text-sm text-left border rounded">
+                <thead class="bg-gray-50 border-b">
+                    <tr><th class="py-2 px-2">Produk</th><th class="py-2 px-2 text-right">Harga Spesial (Rp)</th><th class="w-10"></th></tr>
+                </thead>
+                <tbody id="cust_cp_list"></tbody>
+            </table>
         </div>
     `;
 
     const footer = `
         <button type="button" onclick="saveCustomer('${id || ''}')" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-white font-medium focus:outline-none sm:ml-3 sm:w-auto sm:text-sm">Simpan</button>
-        <button type="button" onclick="window._afterCustomerSave ? (window._afterCustomerSave === 'SO' ? openSOModal() : (window._afterCustomerSave === 'QT' ? openQuotationModal() : closeModal())) : closeModal()" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-gray-700 font-medium sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">Batal</button>
+        <button type="button" onclick="window._afterCustomerSave ? (window._afterCustomerSave === 'SO' ? openSOModal() : (window._afterCustomerSave === 'QT' ? openQTModal() : closeModal())) : closeModal()" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-gray-700 font-medium sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">Batal</button>
     `;
 
-    showModal(id ? 'Edit Customer' : 'Tambah Customer Baru', body, footer);
+    window.tempCustomerProducts = customer.commonProducts ? [...customer.commonProducts] : [];
+    showModal(id ? 'Edit Customer' : 'Tambah Customer Baru', body, footer, 'xl');
+    refreshCustomerProductsTable();
+};
+
+window.refreshCustomerProductsTable = () => {
+    const list = document.getElementById('cust_cp_list');
+    if (!list) return;
+    const inventory = db.read('inventoryItems');
+    if (window.tempCustomerProducts.length === 0) {
+        list.innerHTML = '<tr><td colspan="3" class="py-4 text-center text-gray-400 text-xs">Belum ada produk yang disepakati</td></tr>';
+        return;
+    }
+    list.innerHTML = window.tempCustomerProducts.map((p, idx) => {
+        return `
+            <tr class="border-b">
+                <td class="py-2 px-2 text-gray-800">${p.itemName}</td>
+                <td class="py-2 px-2 text-right font-bold text-blue-600">${formatNumber(p.price)}</td>
+                <td class="py-2 px-2 text-right"><button type="button" onclick="removeCustomerProduct(${idx})" class="text-red-500 hover:text-red-700"><i class="fas fa-times"></i></button></td>
+            </tr>
+        `;
+    }).join('');
+};
+
+window.addCustomerProduct = () => {
+    const sel = document.getElementById('cust_cp_item');
+    const priceVal = document.getElementById('cust_cp_price').value;
+    
+    if (!sel.value) { showToast('Pilih produk', 'error'); return; }
+    if (!priceVal) { showToast('Masukkan harga', 'error'); return; }
+
+    const itemId = sel.value;
+    const opt = sel.options[sel.selectedIndex];
+    const itemName = opt.dataset.name;
+    const price = parseFloat(priceVal);
+
+    const exists = window.tempCustomerProducts.findIndex(p => p.itemId === itemId);
+    if (exists >= 0) {
+        window.tempCustomerProducts[exists].price = price;
+    } else {
+        window.tempCustomerProducts.push({ itemId, itemName, price });
+    }
+    
+    document.getElementById('cust_cp_item').value = '';
+    document.getElementById('cust_cp_price').value = '';
+    refreshCustomerProductsTable();
+};
+
+window.removeCustomerProduct = (idx) => {
+    window.tempCustomerProducts.splice(idx, 1);
+    refreshCustomerProductsTable();
 };
 
 window.saveCustomer = (id) => {
@@ -1164,6 +1815,8 @@ window.saveCustomer = (id) => {
     const region = document.getElementById('cust_region').value.trim();
     const city = document.getElementById('cust_city').value.trim();
     const paymentTerm = document.getElementById('cust_payment_term').value;
+    const ppn = parseInt(document.getElementById('cust_ppn').value) || 0;
+    const commonProducts = window.tempCustomerProducts || [];
 
     if (!name) { showToast('Nama Customer harus diisi', 'error'); return; }
     if (!contactPerson) { showToast('PIC / Contact Person harus diisi', 'error'); return; }
@@ -1175,7 +1828,7 @@ window.saveCustomer = (id) => {
     if (!city) { showToast('Kota harus diisi', 'error'); return; }
     if (!paymentTerm) { showToast('Sistem Pembayaran harus dipilih', 'error'); return; }
 
-    const data = { name, phone, email, address, contactPerson, shippingAddress, paymentTerm, region, city };
+    const data = { name, phone, email, address, contactPerson, shippingAddress, paymentTerm, region, city, ppn, commonProducts };
 
     if (id) {
         db.update('customers', id, data);
@@ -1189,7 +1842,7 @@ window.saveCustomer = (id) => {
     if (window._afterCustomerSave === 'SO') {
         openSOModal();
     } else if (window._afterCustomerSave === 'QT') {
-        openQuotationModal();
+        openQTModal();
     } else {
         renderCustomerData();
     }
@@ -1303,7 +1956,7 @@ function generatePurchaseOrderNumber(isTax = false) {
 
     const nextSeq = sameMonthPOs.length + 1;
     const seqStr = String(nextSeq).padStart(3, '0');
-    const type = isTax ? 'TAX' : 'NTX';
+    const type = isTax ? 'A' : 'B';
 
     return `PO-${type}-${seqStr}/${romanMonth}/${year}`;
 }
@@ -1504,9 +2157,9 @@ window.openPOModal = (fromPrId = null, fromRfqId = null) => {
             <div class="col-span-1">
                 <label class="block text-sm font-medium text-gray-700 mb-1">No. Purchase Order <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
                 <div class="flex">
-                    <select id="po_tax_type" onchange="document.getElementById('po_number').value = generatePurchaseOrderNumber(this.value === 'TAX')" class="border border-gray-300 rounded-l px-2 py-2 bg-gray-50 text-xs font-bold">
-                        <option value="NTX">NTX</option>
-                        <option value="TAX">TAX</option>
+                    <select id="po_tax_type" onchange="document.getElementById('po_number').value = generatePurchaseOrderNumber(this.value === 'A')" class="border border-gray-300 rounded-l px-2 py-2 bg-gray-50 text-xs font-bold">
+                        <option value="B">NT</option>
+                        <option value="A">TAX</option>
                     </select>
                     <input id="po_number" value="${generatePurchaseOrderNumber(false)}" class="w-full border border-gray-300 rounded-r px-3 py-2 bg-gray-50 font-mono text-xs" readonly>
                 </div>
@@ -1575,7 +2228,7 @@ window.openPOModal = (fromPrId = null, fromRfqId = null) => {
     const footer = `
         <button onclick="savePO()" class="w-full sm:w-auto inline-flex justify-center rounded-md bg-blue-600 px-4 py-2 text-white text-sm font-medium hover:bg-blue-700 sm:ml-3">Simpan PO Draft</button>
         <button onclick="closeModal()" class="mt-3 sm:mt-0 w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 px-4 py-2 bg-white text-gray-700 text-sm font-medium sm:ml-3">Batal</button>`;
-    showModal('Buat Purchase Order', body, footer, 'full');
+    showModal('Buat Purchase Order', body, footer, 'xl');
     setTimeout(() => updatePODueDate(), 100);
     renderPOItemsList();
 };
@@ -2221,7 +2874,7 @@ window.openPurchaseInvoiceModal = (poId = null) => {
         </div>
     `;
 
-    showModal('Create Supplier Invoice (Request)', body, footer, 'full');
+    showModal('Create Supplier Invoice (Request)', body, footer, 'xl');
 
     // If PO was pre-selected, trigger update
     if (poId) {
@@ -3024,29 +3677,40 @@ function renderMasterProducts() {
     document.getElementById('pageTitle').innerText = 'Master Produk';
     const mainContent = document.getElementById('main-content');
 
-    const products = db.read('products');
-    const units = db.read('units');
+    // Fetch from inventoryItems, filtered for Finished Goods (Consistent with user request)
+    const allItems = db.read('inventoryItems') || [];
+    const products = allItems.filter(i => {
+        const cat = (i.category || '').toUpperCase();
+        return (cat.includes('FINISH') || cat.includes('PRODUK_JADI') || cat.includes('GUDANG_JADI') || cat.includes('FG')) && i.status !== 'INACTIVE';
+    });
 
-    let rows = products.map(p => `
-        <tr class="border-b border-gray-100">
-            <td class="py-3 px-4 text-sm text-gray-800 font-medium">${p.code}</td>
-            <td class="py-3 px-4 text-sm text-gray-800">${p.name}</td>
-            <td class="py-3 px-4 text-sm text-gray-600">
-                <span class="px-2 py-1 bg-slate-100 text-slate-700 rounded text-xs">${p.type}</span>
+    let rows = products.map(p => {
+        const stock = db.getInventoryStock(p.id);
+        return `
+        <tr class="border-b border-gray-100 group hover:bg-slate-50 transition-colors">
+            <td class="py-4 px-4 text-xs text-slate-400 font-mono font-bold">${p.itemCode}</td>
+            <td class="py-4 px-4 text-sm text-slate-800 font-bold">${p.itemName}</td>
+            <td class="py-4 px-4">
+                <span class="px-2 py-1 bg-green-50 text-green-700 rounded-md text-[10px] font-black uppercase tracking-widest border border-green-100">
+                    ${p.category === 'FINISHED_GOODS' ? 'Gudang Jadi' : p.category}
+                </span>
             </td>
-            <td class="py-3 px-4 text-sm text-gray-600">${p.unit}</td>
-            <td class="py-3 px-4 text-sm text-gray-600 text-right">${formatNumber(p.minStock)}</td>
-            <td class="py-3 px-4 text-sm text-right">
+            <td class="py-4 px-4 text-xs font-black text-slate-400 uppercase tracking-widest">${p.unit}</td>
+            <td class="py-4 px-4 text-sm text-slate-800 font-black text-right">${formatNumber(p.minStock)}</td>
+            <td class="py-4 px-4 text-sm text-right">
                 ${canEdit ? `
-                <button onclick="openProductModal('${p.id}')" class="text-blue-500 hover:text-blue-700 mr-2" title="Edit"><i class="fas fa-edit"></i></button>
-                <button onclick="deleteProduct('${p.id}')" class="text-red-500 hover:text-red-700" title="Delete"><i class="fas fa-trash"></i></button>
-                ` : '<span class="text-gray-400 text-[10px] italic">No Access</span>'}
+                <div class="flex justify-end gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onclick="openInventoryItemModal('${p.id}')" class="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-all" title="Edit"><i class="fas fa-edit"></i></button>
+                    <button onclick="deleteInventoryItem('${p.id}')" class="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Delete"><i class="fas fa-trash-alt"></i></button>
+                </div>
+                ` : '<span class="text-slate-300 text-[10px] font-bold uppercase italic">No Access</span>'}
             </td>
         </tr>
-        `).join('');
+        `;
+    }).join('');
 
     if (products.length === 0) {
-        rows = `<tr > <td colspan="6" class="py-4 text-center text-gray-500">Belum ada data produk</td></tr> `;
+        rows = `<tr><td colspan="6" class="py-12 text-center text-slate-400 italic font-medium uppercase tracking-widest text-xs">Belum ada data produk jadi / gudang jadi</td></tr>`;
     }
 
     mainContent.innerHTML = `
@@ -3055,7 +3719,7 @@ function renderMasterProducts() {
                 <h2 class="text-lg font-semibold text-gray-800">Daftar Produk</h2>
                 <div class="flex gap-2">
                     ${canEdit ? `
-                    <button onclick="openProductModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors text-sm font-medium">
+                    <button onclick="openInventoryItemModal()" class="bg-blue-600 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95">
                         <i class="fas fa-plus mr-2"></i>Tambah Produk
                     </button>
                     ` : `
@@ -3387,11 +4051,11 @@ function renderPurchaseOrders() {
                 const actDate = new Date(po.actualDeliveryDate); actDate.setHours(0, 0, 0, 0);
                 const diff = Math.round((actDate - etdDate) / 86400000);
                 etdCell = diff <= 0
-                    ? `<span class="text-green-600 font-medium text-xs">${po.etd}</span><br><span class="text-green-500 text-[10px]">âœ“ On Time</span>`
-                    : `<span class="text-gray-600 text-xs">${po.etd}</span><br><span class="text-red-500 text-[10px]">âš  Delay ${diff}h</span>`;
+                    ? `<span class="text-green-600 font-medium text-xs">${po.etd}</span><br><span class="text-green-500 text-[10px]"><i class="fas fa-check text-[8px] mr-1"></i> On Time</span>`
+                    : `<span class="text-gray-600 text-xs">${po.etd}</span><br><span class="text-red-500 text-[10px]"><i class="fas fa-exclamation-triangle text-[8px] mr-1"></i> Delay ${diff}h</span>`;
             } else if (po.status !== 'RECEIVED' && today2 > etdDate) {
                 const overdue = Math.round((today2 - etdDate) / 86400000);
-                etdCell = `<span class="text-red-600 font-medium text-xs">${po.etd}</span><br><span class="text-orange-500 text-[10px]">âš  Terlambat ${overdue}h</span>`;
+                etdCell = `<span class="text-red-600 font-medium text-xs">${po.etd}</span><br><span class="text-orange-500 text-[10px]"><i class="fas fa-exclamation-triangle text-[8px] mr-1"></i> Terlambat ${overdue}h</span>`;
             } else {
                 etdCell = `<span class="text-gray-700 text-xs">${po.etd}</span>`;
             }
@@ -4039,9 +4703,22 @@ window.navigateToReceivingHistory = () => {
 };
 
 // --- Sales Quotations Module ---
+window.handleSalesAction = (selectEl, id) => {
+    const act = selectEl.value;
+    if (!act) return;
+    selectEl.value = ""; // Reset for next use
+    
+    if (act === 'view') viewQT(id);
+    else if (act === 'edit') openQTModal(id);
+    else if (act === 'confirm') updateQTStatus(id, 'CONFIRMED');
+    else if (act === 'send') openSendQTModal(id);
+    else if (act === 'delete') deleteQT(id);
+    else if (act === 'makeso') convertQTtoSO(id);
+};
+
 function renderSalesQuotations() {
     const canEdit = getModulePermission('penjualan').edit;
-    document.getElementById('pageTitle').innerText = 'Quotations';
+    renderBreadcrumb(['Sales', 'Quotations']);
     const mainContent = document.getElementById('main-content');
 
     const filters = window.currentFilters.salesQuotations;
@@ -4070,56 +4747,64 @@ function renderSalesQuotations() {
         if (qt.status === 'CANCELLED') statusColor = 'bg-red-100 text-red-700';
         if (qt.status === 'SO_CREATED') statusColor = 'bg-purple-100 text-purple-700';
 
-        let actionHtml = `<button onclick="viewQT('${qt.id}')" class="text-gray-500 hover:text-gray-700" title="Detail"><i class="fas fa-eye text-lg"></i></button>`;
+        let options = '';
 
         if (canEdit && qt.status === 'DRAFT') {
-            actionHtml = `
-                <button onclick="updateQTStatus('${qt.id}', 'CONFIRMED')" class="text-blue-500 hover:text-blue-700" title="Confirm"><i class="fas fa-check text-lg"></i></button>
-                <button onclick="viewQT('${qt.id}')" class="text-gray-500 hover:text-gray-700" title="Detail"><i class="fas fa-eye text-lg"></i></button>
-                <button onclick="openSendQTModal('${qt.id}')" class="text-blue-500 hover:text-blue-700 border border-blue-200 px-2 py-1 rounded text-[10px] font-bold bg-blue-50/30" title="Kirim">Kirim</button>
-                <button onclick="deleteQT('${qt.id}')" class="text-red-500 hover:text-red-700" title="Delete"><i class="fas fa-trash text-lg"></i></button>
-            `;
+            options += `<option value="confirm">Konfirmasi</option>`;
+            options += `<option value="edit">Edit</option>`;
+            options += `<option value="send">Kirim Quotation</option>`;
+            options += `<option value="delete">Hapus</option>`;
         } else if (canEdit && qt.status === 'SENT') {
-            actionHtml = `
-                <button onclick="updateQTStatus('${qt.id}', 'CONFIRMED')" class="text-blue-500 hover:text-blue-700" title="Confirm"><i class="fas fa-check text-lg"></i></button>
-                <button onclick="viewQT('${qt.id}')" class="text-gray-500 hover:text-gray-700" title="Detail"><i class="fas fa-eye text-lg"></i></button>
-                <button onclick="openSendQTModal('${qt.id}')" class="text-blue-500 hover:text-blue-700 border border-blue-200 px-2 py-1 rounded text-[10px] font-bold bg-blue-50/30" title="Kirim">Kirim</button>
-                <button onclick="deleteQT('${qt.id}')" class="text-red-500 hover:text-red-700" title="Delete"><i class="fas fa-trash text-lg"></i></button>
-            `;
+            options += `<option value="confirm">Konfirmasi</option>`;
+            options += `<option value="edit">Edit</option>`;
+            options += `<option value="send">Kirim Ulang</option>`;
+            options += `<option value="delete">Hapus</option>`;
         } else if (canEdit && qt.status === 'CONFIRMED') {
-            actionHtml = `
-                <button onclick="convertQTtoSO('${qt.id}')" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-[10px] font-black uppercase tracking-widest shadow-sm" title="Buat Sales Order">Buat SO</button>
-                <button onclick="viewQT('${qt.id}')" class="text-gray-500 hover:text-gray-700" title="Detail"><i class="fas fa-eye text-lg"></i></button>
-                <button onclick="openSendQTModal('${qt.id}')" class="text-blue-500 hover:text-blue-700 border border-blue-200 px-2 py-1 rounded text-[10px] font-bold bg-blue-50/30" title="Kirim">Kirim</button>
-                <button onclick="deleteQT('${qt.id}')" class="text-red-500 hover:text-red-700" title="Delete"><i class="fas fa-trash text-lg"></i></button>
-            `;
+            options += `<option value="makeso">Buat Sales Order</option>`;
+            options += `<option value="edit">Edit</option>`;
+            options += `<option value="send">Kirim Ulang</option>`;
+            options += `<option value="delete">Hapus</option>`;
+        } else if (canEdit && qt.status === 'SO_CREATED') {
+            options += `<option value="edit">Edit</option>`;
+            options += `<option value="send">Kirim Ulang</option>`;
+            options += `<option value="delete">Hapus</option>`;
         } else if (qt.status === 'SO_CREATED') {
-            actionHtml = `
-                <button onclick="viewQT('${qt.id}')" class="text-gray-500 hover:text-gray-700" title="Detail"><i class="fas fa-eye text-lg"></i></button>
-                <button onclick="openSendQTModal('${qt.id}')" class="text-blue-500 hover:text-blue-700 border border-blue-200 px-2 py-1 rounded text-[10px] font-bold bg-blue-50/30" title="Kirim">Kirim</button>
-                <button onclick="deleteQT('${qt.id}')" class="text-red-500 hover:text-red-700" title="Delete"><i class="fas fa-trash text-lg"></i></button>
-            `;
+            options += `<option value="send">Kirim Ulang</option>`;
         }
 
+        let actionHtml = `
+            <div class="inline-block relative w-full md:w-[130px]">
+                <select class="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs rounded-lg pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none transition-all shadow-sm" onchange="handleSalesAction(this, '${qt.id}')">
+                    <option value="" disabled selected>Pilih Aksi...</option>
+                    <option value="view">Lihat Detail</option>
+                    ${options}
+                </select>
+                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
+                    <i class="fas fa-chevron-down text-[10px]"></i>
+                </div>
+            </div>
+        `;
+
         return `
-            <tr class="border-b border-gray-100 hover:bg-gray-50/50 transition-colors">
+            <tr class="border-b border-gray-100 hover:bg-slate-50 transition-colors">
                 <td class="py-4 px-4">
-                    <span class="bg-blue-50 text-blue-700 px-3 py-1 rounded-lg text-[11px] font-black font-mono border border-blue-100 shadow-sm">
+                    <input type="checkbox" class="qt-row-checkbox w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer">
+                </td>
+                <td class="py-4 px-4 text-sm text-slate-900 font-bold tracking-tight">${customerNameDisplay}</td>
+                <td class="py-4 px-4">
+                    <span class="px-3 py-1 rounded-full text-[10px] font-bold tracking-tight shadow-sm border ${qt.status === 'DRAFT' ? 'bg-orange-50 text-orange-600 border-orange-100' : statusColor}">
+                        ${qt.status === 'DRAFT' ? 'Open' : (qt.status === 'SO_CREATED' ? 'CREATED' : qt.status)}
+                    </span>
+                </td>
+                <td class="py-4 px-4 text-sm text-slate-500 font-medium">${qt.date.split('T')[0].split('-').reverse().join('-')}</td>
+                <td class="py-4 px-4 text-sm text-slate-800 font-bold text-right">${formatCurrency(qt.totalAmount)}</td>
+                <td class="py-4 px-4">
+                    <button onclick="viewQT('${qt.id}')" class="text-slate-700 hover:text-blue-600 font-mono text-[11px] font-bold transition-colors cursor-pointer outline-none">
                         ${qt.qtNumber}
-                    </span>
+                    </button>
                 </td>
-                <td class="py-4 px-4 text-sm text-gray-600 font-medium">${formatDate(qt.date).split(' ')[0]}</td>
-                <td class="py-4 px-4 text-sm text-gray-800 font-bold tracking-tight">${customerNameDisplay}</td>
-                <td class="py-4 px-4 text-sm text-gray-800 font-medium text-right">${formatCurrency(qt.totalAmount)}</td>
-                <td class="py-4 px-4 text-center">
-                    <span class="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest shadow-sm border border-black/5 ${statusColor}">
-                        ${qt.status === 'SO_CREATED' ? 'CREATED' : qt.status}
-                    </span>
-                </td>
-                <td class="py-4 px-4 text-right whitespace-nowrap">
-                    <div class="flex items-center justify-end gap-2 px-1">
-                        ${actionHtml}
-                    </div>
+                <td class="py-4 px-4 text-right">
+                    ${actionHtml}
                 </td>
             </tr>
         `;
@@ -4128,81 +4813,85 @@ function renderSalesQuotations() {
     if (qts.length === 0) rows = `<tr><td colspan="6" class="py-24 text-center text-gray-400 font-bold uppercase tracking-widest"><i class="fas fa-search-minus text-4xl mb-3 opacity-20"></i><br>Tidak ada Quotation ditemukan</td></tr>`;
 
     mainContent.innerHTML = `
-        <div class="animate-in fade-in duration-300">
-            <!-- Filter Bar Accordion (Option 1 Demo) -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-4 overflow-hidden">
-                <div onclick="toggleQTFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
-                    <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
-                        <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
-                        ${(!window._uiState.qtFilterOpen && (filters.start || filters.end || filters.customer)) ?
-            `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
-                    </h3>
-                    <div class="flex items-center gap-3">
-                        <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.qtFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
-                        <i class="fas fa-chevron-${window._uiState.qtFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
+        <div id="qt-list-view" class="animate-in fade-in duration-300 h-[calc(100vh-64px)] flex flex-col bg-slate-50 -m-4 sm:-m-6">
+            <!-- Full Width Fixed Filter Bar -->
+            <div class="bg-white border-b border-gray-200 shrink-0 z-40 shadow-sm">
+                <div class="flex flex-wrap md:flex-nowrap justify-between items-center px-6 py-4 gap-4">
+                    <div class="flex items-center gap-3 flex-1">
+                        <div class="flex-1 max-w-md relative">
+                            <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 text-sm"></i>
+                            <input type="text" id="qt_global_search" onkeyup="filterQTTable()" placeholder="Search or type a command" 
+                                class="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 placeholder:text-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all shadow-sm">
+                        </div>
+                        
+                        <!-- Date Filter Dropdown Trigger -->
+                        <div class="relative" id="qt_date_filter_container">
+                            <button onclick="toggleQTDateDropdown()" class="flex items-center bg-slate-50 border border-slate-200 rounded-lg overflow-hidden hover:bg-slate-100 transition-all shadow-sm h-[42px] group">
+                                <span class="bg-slate-200/60 border-r border-slate-200 px-3 h-full flex items-center text-slate-700 transition-colors">
+                                    <i class="fas fa-sort-amount-up text-sm"></i>
+                                </span>
+                                <span class="px-4 text-sm font-medium text-blue-700">Date</span>
+                                <span class="pr-3 text-slate-600">
+                                    <i class="fas fa-chevron-down text-[12px]"></i>
+                                </span>
+                            </button>
+                            
+                            <!-- Dropdown Content -->
+                            <div id="qt_date_dropdown" class="absolute left-0 mt-2 w-72 bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] hidden p-5 animate-in fade-in zoom-in-95 duration-200">
+                                <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Filter Berdasarkan Tanggal</h4>
+                                <div class="space-y-4">
+                                    <div>
+                                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Dari Tanggal</label>
+                                        <input type="date" id="qt_header_start" value="${filters.start}" class="w-full border-2 border-slate-50 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Sampai Tanggal</label>
+                                        <input type="date" id="qt_header_end" value="${filters.end}" class="w-full border-2 border-slate-50 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50">
+                                    </div>
+                                    <div class="flex gap-2 pt-2">
+                                        <button onclick="applyQTHeaderDateFilter()" class="flex-1 bg-blue-600 text-white py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95">Apply</button>
+                                        <button onclick="resetQTHeaderDateFilter()" class="flex-1 bg-slate-50 text-slate-400 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-100 transition-all">Reset</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                </div>
 
-                <div class="${window._uiState.qtFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                        <div class="flex-1">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Dari Tanggal</label>
-                            <input type="date" id="qt_f_start" value="${filters.start}" class="w-full border-2 border-slate-50 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white">
-                        </div>
-                        <div class="flex-1">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Sampai Tanggal</label>
-                            <input type="date" id="qt_f_end" value="${filters.end}" class="w-full border-2 border-slate-50 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white">
-                        </div>
-                        <div class="md:col-span-2">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Pilih Customer</label>
-                            <select id="qt_f_customer" class="w-full border-2 border-slate-50 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white cursor-pointer">
-                                <option value="">-- Semua Customer --</option>
-                                ${custOptions}
-                            </select>
-                        </div>
-                    </div>
-                    <div class="flex gap-2 pt-4 mt-4 border-t border-slate-50">
-                        <button onclick="applyQTFilter()" class="bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
-                            <i class="fas fa-search mr-2"></i> CARI DOKUMEN
-                        </button>
-                        <button onclick="resetQTFilter()" class="bg-slate-50 hover:bg-slate-100 text-slate-400 px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">
-                            <i class="fas fa-undo mr-2"></i> RESET
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                <div class="flex justify-between items-center p-6 border-b border-gray-100 bg-slate-50/30">
-                    <div>
-                        <h2 class="text-lg font-black text-gray-800 uppercase tracking-tighter">Daftar Quotations</h2>
-                        <p class="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Ditemukan ${qts.length} dokumen Quotation</p>
-                    </div>
                     ${canEdit ? `
-                    <button onclick="openQTModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest shadow-xl active:scale-95">
+                    <button onclick="openQTModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95">
                         <i class="fas fa-plus mr-2"></i>Buat Quotation
                     </button>
                     ` : `
                     <span class="text-[10px] font-black text-blue-500 bg-blue-50 border border-blue-100 px-4 py-2 rounded-xl uppercase tracking-widest">Mode Lihat Saja</span>
                     `}
                 </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="bg-slate-50/80 border-b border-gray-200">
-                                <th class="py-5 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">No. Quotation</th>
-                                <th class="py-5 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Tanggal</th>
-                                <th class="py-5 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">Customer</th>
-                                <th class="py-5 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Total</th>
-                                <th class="py-5 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">Status</th>
-                                <th class="py-5 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right">Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-100 font-sans">${rows}</tbody>
-                    </table>
+            </div>
+
+            <!-- Content Area -->
+            <div class="p-4 sm:p-6 flex-1 overflow-y-auto">
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div class="overflow-x-auto min-h-[400px]">
+                        <table class="w-full text-left border-collapse">
+                            <thead class="sticky top-0 z-20">
+                                <tr class="bg-slate-50 border-b border-slate-100 text-slate-500 font-semibold uppercase text-[10px] tracking-wider shadow-sm">
+                                    <th class="px-6 py-4 w-10">
+                                        <input type="checkbox" id="selectAllQT" onclick="toggleSelectAllQT(this)" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer">
+                                    </th>
+                                    <th class="px-4 py-4">Customer Name</th>
+                                    <th class="px-4 py-4">Status</th>
+                                    <th class="px-4 py-4">Date</th>
+                                    <th class="px-4 py-4 text-right">Grand Total</th>
+                                    <th class="px-4 py-4">ID</th>
+                                    <th class="px-4 py-4 text-right w-[150px]">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100 font-sans">${rows}</tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
+        <div id="qt-form-view" class="hidden"></div>
     `;
 
 }
@@ -4282,113 +4971,261 @@ function generateQTNumber() {
     return `QT-${dateStr}-${seqStr}`;
 }
 
-window.openQTModal = () => {
-    const fgProducts = db.read('inventoryItems').filter(i => i.category === 'FINISHED_GOODS' && i.status !== 'INACTIVE');
-    const prodOptions = fgProducts.map(p => `<option value="${p.id}" data-name="${p.itemName}" data-unit="${p.unit}">${p.itemCode} - ${p.itemName}</option>`).join('');
+window.openQTModal = (qtId = null) => {
+    // Sync navigation context
+    if (window.navigateTo) navigateTo('sales-quotations');
+    
+    const listView = document.getElementById('qt-list-view');
+    const formView = document.getElementById('qt-form-view');
+    if (!listView || !formView) return;
 
-    const body = `
-            <div class="space-y-4">
-                <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+    listView.classList.add('hidden');
+    formView.classList.remove('hidden');
+
+    window._editingQTId = qtId;
+    const qt = qtId ? db.findById('salesQuotations', qtId) : null;
+    
+    // Reset temp items
+    window.tempQTItems = qt ? (Array.isArray(qt.items) ? JSON.parse(JSON.stringify(qt.items)) : []) : [];
+
+    renderBreadcrumb(['Sales', 'Quotations', qt ? 'Edit Quotation' : 'Buat Quotation']);
+
+    formView.innerHTML = `
+        <div class="animate-in fade-in slide-in-from-bottom-2 duration-400 -m-6 h-[calc(100vh-64px)] flex flex-col overflow-hidden bg-white">
+            <!-- Record Header / Action Bar (STICKY AREA) -->
+            <div class="sticky top-0 z-40 bg-white border-b border-slate-100 px-8 py-5 flex items-center justify-between shrink-0 shadow-sm">
+                <div class="flex items-center gap-6">
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">No. Quotation <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-                        <input type="text" id="qt_number" value="${generateQTNumber()}" class="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50 font-mono text-sm" readonly>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Customer <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-                        <div class="space-y-1">
-                            <select id="qt_customer_id" class="w-full border border-gray-300 rounded px-3 py-2 bg-white focus:ring-blue-500 focus:border-blue-500">
-                                <option value="">-- Pilih Customer --</option>
-                                ${db.read('customers').map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
-                            </select>
-                            <button type="button" onclick="openCustomerModal(null, 'QT')" class="text-[10px] text-blue-600 hover:underline"><i class="fas fa-plus-circle mr-1"></i>Tambah Pelanggan Baru</button>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Tanggal Quotation <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-                        <input type="date" id="qt_date" value="${new Date().toISOString().split('T')[0]}" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Pajak (PPN %) <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-                        <select id="qt_tax_rate" onchange="refreshQTItemsTable()" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
-                            <option value="0">0% (Tanpa Pajak)</option>
-                            <option value="11" selected>11% (PPN)</option>
-                        </select>
                     </div>
                 </div>
                 
-                <div class="border-t border-gray-200 pt-4 mt-4">
-                    <h4 class="text-md font-medium text-gray-800 mb-2">Item Quotation</h4>
-                    <div class="flex space-x-2 mb-2">
-                        <select id="qt_item_name" onchange="onQTItemSelect()" class="flex-1 border border-gray-300 rounded px-2 py-1 text-sm bg-white">
-                            <option value="">-- Pilih Produk --</option>
-                            ${(() => {
-            const items = db.read('inventoryItems').filter(i => i.category === 'FINISHED_GOODS' && i.status !== 'INACTIVE');
-            return items.length ? items.map(i => `<option value="${i.id}" data-name="${i.itemName}" data-unit="${i.unit}" data-price="${i.sellingPrice || 0}">${i.itemCode} - ${i.itemName}</option>`).join('') : '<option disabled>Belum ada produk</option>';
-        })()}
-                        </select>
-                        <input type="number" id="qt_item_qty" placeholder="Qty" min="1" class="w-20 border border-gray-300 rounded px-2 py-1 text-sm">
-                        <input type="number" id="qt_item_price" placeholder="Harga Satuan" min="1" class="w-32 border border-gray-300 rounded px-2 py-1 text-sm">
-                        <button type="button" onclick="addQTItemRow()" class="bg-gray-800 text-white px-3 py-1 rounded text-sm"><i class="fas fa-plus"></i></button>
-                    </div>
-                    
-                    <table class="w-full text-sm text-left border mb-2">
-                        <thead class="bg-gray-50">
-                            <tr><th>Produk</th><th class="text-right">Qty</th><th class="text-right">Harga</th><th class="text-right">Subtotal</th><th></th></tr>
-                        </thead>
-                        <tbody id="qt_items_list"></tbody>
-                    </table>
-                    <!-- Notes Section -->
-                    <div class="border-t border-gray-100 pt-2 space-y-2 mt-2">
-                        <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider">Keterangan / Notes</label>
-                        <textarea id="qt_notes" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm h-16 focus:ring-2 focus:ring-blue-500 transition-all" placeholder="Tambahkan catatan di sini..."></textarea>
+                <div class="flex items-center gap-3">
+                    <button type="button" onclick="renderSalesQuotations()" class="px-6 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95">
+                        Batal
+                    </button>
+                    <button type="button" onclick="saveNewQT()" class="px-8 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all shadow-lg active:scale-95 flex items-center gap-2">
+                        <i class="fas fa-check-circle text-[10px]"></i> ${qt ? 'Simpan Perubahan' : 'Simpan Draft Quotation'}
+                    </button>
+                </div>
+            </div>
+
+            <!-- Scrollable Content Area -->
+            <div class="flex-1 overflow-y-auto bg-slate-50/50 custom-scrollbar pb-32">
+                <div class="max-w-6xl mx-auto p-8 space-y-8">
+                    <!-- Basic Information Card -->
+                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-6">
+                        <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                            <i class="fas fa-info-circle text-blue-600"></i> Informasi Dasar
+                        </h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-4 gap-6">
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">No. Quotation <span class="text-red-400">*</span></label>
+                                <input type="text" id="qt_number" value="${qt ? qt.qtNumber : generateQTNumber()}" 
+                                    class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 outline-none transition-all" readonly>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Customer <span class="text-red-400">*</span></label>
+                                <div class="relative" id="qt_customer_container">
+                                    <input type="text" id="qt_customer_search" value="${qt ? (db.findById('customers', qt.customerId)?.name || '-- Pilih Customer --') : '-- Pilih Customer --'}" readonly
+                                        onclick="toggleCustomerDropdown('qt_customer_dropdown')"
+                                        class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 cursor-pointer focus:ring-2 focus:ring-blue-500/10 outline-none transition-all">
+                                    <input type="hidden" id="qt_customer_id" value="${qt ? qt.customerId : ''}">
+                                    
+                                    <div id="qt_customer_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden animate-in fade-in zoom-in-95 duration-200 min-w-[280px]">
+                                        <div class="max-h-60 overflow-y-auto p-1" id="qt_customer_list">
+                                            ${db.read('customers').map(c => `
+                                                <div onclick="selectCustomer('QT', '${c.id}', '${c.name.replace(/'/g, "\\'")}')" 
+                                                    class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5 ${qt && qt.customerId === c.id ? 'bg-slate-50' : ''}">
+                                                    ${c.name}
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                        <div class="p-2 border-t border-slate-50 bg-white space-y-1">
+                                            <button type="button" onclick="openCustomerModal(null, 'QT'); toggleCustomerDropdown('qt_customer_dropdown')" 
+                                                class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
+                                                <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shrink-0">
+                                                    <i class="fas fa-plus text-xs"></i>
+                                                </div>
+                                                Create a new Customer
+                                            </button>
+                                            <button type="button" onclick="openAdvancedCustomerSearch('QT')" 
+                                                class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
+                                                <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shrink-0">
+                                                    <i class="fas fa-search text-xs"></i>
+                                                </div>
+                                                Advanced Search
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Date <span class="text-red-400">*</span></label>
+                                <input type="date" id="qt_date" value="${qt ? qt.date.split('T')[0] : new Date().toISOString().split('T')[0]}" 
+                                    class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/10 outline-none transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Pajak (PPN %)</label>
+                                <select id="qt_tax_rate" onchange="refreshQTItemsTable()" class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/10 outline-none transition-all cursor-pointer">
+                                    <option value="0" ${qt && qt.taxRate == 0 ? 'selected' : ''}>0% (Tanpa Pajak)</option>
+                                    <option value="11" ${!qt || (qt && qt.taxRate == 11) ? 'selected' : ''}>11% (PPN)</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
 
-                    <div class="border-t border-gray-100 pt-2 space-y-1 text-right text-sm">
-                        <div class="flex justify-end gap-4">
-                            <span class="text-gray-500">Subtotal:</span>
-                            <span id="qt_subtotal_display" class="text-gray-700 w-52 text-right">Rp 0</span>
+                    <!-- Items Section -->
+                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-6">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                                <i class="fas fa-boxes text-blue-600"></i> Manifest Barang
+                            </h3>
                         </div>
-                        <div class="flex justify-end gap-4 border-t pt-1">
-                            <span class="text-gray-800 font-bold">Total:</span>
-                            <span id="qt_total_display" class="font-bold text-gray-900 text-lg w-52 text-right">Rp 0</span>
+
+                        <div class="bg-slate-50 p-6 rounded-2xl border border-slate-100 flex flex-wrap items-end gap-4 mb-6">
+                            <div class="flex-1 min-w-[300px] relative">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Pilih Produk</label>
+                                <input type="text" id="qt_item_search" placeholder="-- Cari Kode atau Nama Produk --" autocomplete="off"
+                                    onclick="toggleItemProductDropdown('qt')" readonly
+                                    class="w-full border-none rounded-xl px-4 py-2.5 bg-white font-bold text-slate-700 shadow-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all cursor-pointer">
+                                <input type="hidden" id="qt_item_name"> <!-- Will store ID -->
+                                
+                                <div id="qt_item_dropdown" class="absolute left-0 mt-2 w-full bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] hidden overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                    <div class="p-3 border-b border-slate-50">
+                                        <input type="text" id="qt_item_dropdown_search" placeholder="Ketik kode atau nama..." onkeyup="filterItemProductList('qt', this.value)" class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                    </div>
+                                    <div class="max-h-60 overflow-y-auto p-1" id="qt_item_list">
+                                        <!-- Items here -->
+                                    </div>
+                                    <div class="p-2 border-t border-slate-50 bg-slate-50/10 space-y-1">
+                                        <button onclick="renderMasterProducts()" class="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-black text-slate-500 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-all uppercase tracking-widest">
+                                            <div class="w-7 h-7 flex items-center justify-center bg-slate-100 rounded-lg">
+                                                <i class="fas fa-plus text-[10px]"></i>
+                                            </div>
+                                            Create a new Product
+                                        </button>
+                                        <button onclick="openAdvancedProductSearch('qt')" class="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-black text-slate-500 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-all uppercase tracking-widest">
+                                            <div class="w-7 h-7 flex items-center justify-center bg-slate-100 rounded-lg">
+                                                <i class="fas fa-search text-[10px]"></i>
+                                            </div>
+                                            Advanced Search
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="w-24">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Qty</label>
+                                <input type="number" id="qt_item_qty" placeholder="0" class="w-full border-none rounded-xl px-4 py-2.5 bg-white font-bold text-slate-700 shadow-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all">
+                            </div>
+                            <div class="w-44">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Price</label>
+                                <input type="number" id="qt_item_price" placeholder="0.00" class="w-full border-none rounded-xl px-4 py-2.5 bg-white font-bold text-slate-700 shadow-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all">
+                            </div>
+                            <button type="button" onclick="addQTItemRow()" class="h-[46px] px-6 bg-slate-900 border border-slate-800 text-white rounded-xl flex items-center gap-2 font-black text-[10px] uppercase tracking-widest hover:bg-blue-600 transition-all shadow-lg active:scale-95">
+                                <i class="fas fa-plus"></i> Tambah
+                            </button>
+                        </div>
+                        
+                        <div class="overflow-hidden border border-slate-100 rounded-2xl shadow-sm">
+                            <table class="w-full text-sm text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-50 border-b border-slate-100 text-slate-400 text-[9px] uppercase font-black tracking-widest">
+                                        <th class="py-4 px-4 w-12 text-center"></th>
+                                        <th class="py-4 px-6 w-12 text-center">#</th>
+                                        <th class="py-4 px-6">Item Code / Product</th>
+                                        <th class="py-4 px-6 text-right">Qty</th>
+                                        <th class="py-4 px-6 text-right">Rate</th>
+                                        <th class="py-4 px-6 text-right">Amount</th>
+                                        <th class="py-4 px-6 w-12 text-center"><i class="fas fa-cog"></i></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="qt_items_list" class="divide-y divide-slate-50"></tbody>
+                            </table>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 pt-6">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Catatan Tambahan</label>
+                                <textarea id="qt_notes" class="w-full border-none rounded-2xl px-5 py-4 bg-slate-50 font-medium text-slate-800 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all h-32" placeholder="Tulis catatan di sini...">${qt ? (qt.notes || '') : ''}</textarea>
+                            </div>
+                            <div class="bg-slate-50 rounded-2xl p-6 border border-slate-100 space-y-3 mt-4">
+                                <div class="flex justify-between items-center pb-3 border-b border-slate-200">
+                                    <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">Subtotal</span>
+                                    <span id="qt_subtotal_display" class="text-sm font-bold text-slate-700">Rp 0</span>
+                                </div>
+                                <div class="flex justify-between items-center pt-2">
+                                    <span class="text-xs font-black uppercase tracking-widest text-slate-900">Grand Total</span>
+                                    <span id="qt_total_display" class="text-2xl font-black text-blue-700">Rp 0</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
-        `;
+        </div>
+    `;
 
-    const footer = `
-            <button type="button" onclick="saveNewQT()" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-white font-medium focus:outline-none sm:ml-3 sm:w-auto sm:text-sm">Simpan Draft Quotation</button>
-            <button type="button" onclick="closeModal()" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-gray-700 font-medium sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">Batal</button>
-        `;
-
-    window.tempQTItems = [];
-    showModal('Buat Quotation', body, footer, 'full');
+    if (qt) refreshQTItemsTable();
 };
 
 window.addQTItemRow = () => {
-    const sel = document.getElementById('qt_item_name');
-    const opt = sel?.selectedOptions[0];
-    const inventoryItemId = sel?.value;
-    const prodText = opt?.dataset.name || '';
-    const prodUnit = opt?.dataset.unit || 'PCS';
+    const inventoryItemId = document.getElementById('qt_item_name').value;
+    const searchVal = document.getElementById('qt_item_search').value;
+
+    let prodText = searchVal;
+    let itemCode = '';
+    let prodUnit = 'PCS';
+
+    if (inventoryItemId) {
+        const p = db.findById('inventoryItems', inventoryItemId);
+        if (p) {
+            prodText = p.itemName;
+            itemCode = p.itemCode;
+            prodUnit = p.unit || 'PCS';
+        }
+    }
 
     const qty = parseFloat(document.getElementById('qt_item_qty').value);
     const price = parseFloat(document.getElementById('qt_item_price').value);
 
-    if (!inventoryItemId) { showToast('Pilih produk dari daftar', 'error'); return; }
-    if (!qty || !price) { showToast('Qty dan Harga Satuan harus diisi', 'error'); return; }
+    if (!prodText) { showToast('Pilih produk atau ketik nama produk', 'error'); return; }
+    if (!qty || !price) { showToast('Qty dan Harga Jual harus diisi', 'error'); return; }
 
     const subtotal = qty * price;
-    window.tempQTItems.push({ id: Date.now().toString(), inventoryItemId, productId: null, prodText, prodUnit, qty, price, subtotal });
+    window.tempQTItems.push({ 
+        id: Date.now().toString(), 
+        inventoryItemId, 
+        itemCode,
+        productId: null, 
+        prodText, 
+        prodUnit, 
+        qty, 
+        price, 
+        subtotal 
+    });
 
-    sel.value = '';
+    document.getElementById('qt_item_name').value = '';
+    document.getElementById('qt_item_search').value = '';
     document.getElementById('qt_item_qty').value = '';
     document.getElementById('qt_item_price').value = '';
     refreshQTItemsTable();
 };
 
+window.editQTItemRow = (itemId) => {
+    const item = window.tempQTItems.find(i => i.id === itemId);
+    if (!item) return;
+    document.getElementById('qt_item_name').value = item.inventoryItemId || '';
+    document.getElementById('qt_item_search').value = item.prodText;
+    document.getElementById('qt_item_qty').value = item.qty;
+    document.getElementById('qt_item_price').value = item.price;
+    window.tempQTItems = window.tempQTItems.filter(i => i.id !== itemId);
+    refreshQTItemsTable();
+    document.getElementById('qt_item_qty').focus();
+    document.getElementById('qt_item_qty').select();
+};
+
 window.removeQTItemRow = (itemId) => {
+    if(!confirm('Hapus item ini dari daftar?')) return;
     window.tempQTItems = window.tempQTItems.filter(i => i.id !== itemId);
     refreshQTItemsTable();
 };
@@ -4396,18 +5233,34 @@ window.removeQTItemRow = (itemId) => {
 window.refreshQTItemsTable = () => {
     const tbody = document.getElementById('qt_items_list');
     let total = 0;
-    tbody.innerHTML = window.tempQTItems.map(item => {
-        total += item.subtotal;
-        return `
-                <tr class="border-t">
-                    <td class="px-2 py-1">${item.prodText.split(' (')[0]}</td>
-                    <td class="px-2 py-1 text-right">${formatNumber(item.qty)} ${item.prodUnit}</td>
-                    <td class="px-2 py-1 text-right">${formatCurrency(item.price)}</td>
-                    <td class="px-2 py-1 text-right">${formatCurrency(item.subtotal)}</td>
-                    <td class="px-2 py-1 text-center"><button class="text-red-500" onclick="removeQTItemRow('${item.id}')"><i class="fas fa-times"></i></button></td>
-                </tr>
-            `;
-    }).join('');
+    
+    if (window.tempQTItems.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-10 text-center text-slate-400 italic bg-slate-50/30">Belum ada item ditambahkan</td></tr>`;
+    } else {
+        tbody.innerHTML = window.tempQTItems.map((item, idx) => {
+            total += item.subtotal;
+            return `
+                    <tr class="hover:bg-slate-50/50 transition-colors">
+                        <td class="py-3 px-4 w-12"><input type="checkbox" class="rounded border-slate-300"></td>
+                        <td class="py-3 px-2 text-slate-400 text-center">${idx + 1}</td>
+                        <td class="py-3 px-4 font-bold text-slate-800">${item.itemCode || '---'}</td>
+                        <td class="py-3 px-4 text-right font-bold text-slate-700">${formatNumber(item.qty)}</td>
+                        <td class="py-3 px-4 text-right font-bold text-slate-700">${formatNumber(item.price)}</td>
+                        <td class="py-3 px-4 text-right text-slate-500">${formatNumber(item.subtotal)}</td>
+                        <td class="py-3 px-4 text-center">
+                            <div class="flex items-center justify-center gap-2">
+                                <button type="button" class="w-7 h-7 flex items-center justify-center bg-blue-50 text-blue-500 hover:bg-blue-600 hover:text-white rounded-lg transition-all" onclick="editQTItemRow('${item.id}')" title="Edit Item">
+                                    <i class="fas fa-pencil-alt text-[10px]"></i>
+                                </button>
+                                <button type="button" class="w-7 h-7 flex items-center justify-center bg-red-50 text-red-400 hover:bg-red-500 hover:text-white rounded-lg transition-all" onclick="removeQTItemRow('${item.id}')" title="Hapus Item">
+                                    <i class="fas fa-trash text-[10px]"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+        }).join('');
+    }
     const fmt = v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR' }).format(v);
 
     const grandTotalBeforeTax = total;
@@ -4424,14 +5277,18 @@ window.refreshQTItemsTable = () => {
     if (!taxRow) {
         taxRow = document.createElement('div');
         taxRow.id = 'qt_tax_row';
-        taxRow.className = 'flex justify-end gap-4';
-        taxRow.innerHTML = `<span class="text-orange-600">PPN (${taxRate}%):</span><span id="qt_tax_display" class="font-medium text-orange-600 w-52 text-right"></span>`;
+        taxRow.className = 'flex justify-between items-center pb-3 border-b border-slate-200';
+        taxRow.innerHTML = `<span class="text-[10px] font-black uppercase tracking-widest text-orange-500">PPN (${taxRate}%):</span><span id="qt_tax_display" class="text-sm font-bold text-orange-600"></span>`;
         totalRow.parentNode.insertBefore(taxRow, totalRow);
     }
     document.getElementById('qt_tax_display').innerText = fmt(taxAmt);
     document.getElementById('qt_tax_row').querySelector('span').innerText = `PPN (${taxRate}%):`;
 
     document.getElementById('qt_total_display').innerText = fmt(grandTotal);
+    
+    // Sync globals for saving
+    window._qtTaxAmount = taxAmt;
+    window._qtTaxRate = taxRate;
     window._qtDiscountAmt = 0;
     window._qtDiscountDesc = '';
     window._qtDiscountType = '';
@@ -4452,6 +5309,7 @@ window.saveNewQT = () => {
         const qtNumber = document.getElementById('qt_number')?.value;
         const customerId = document.getElementById('qt_customer_id')?.value;
         const qtDate = document.getElementById('qt_date')?.value;
+        const validTill = document.getElementById('qt_valid_till')?.value;
         const notes = document.getElementById('qt_notes')?.value || '';
 
         if (!qtNumber) { showToast('No. Quotation harus ada', 'error'); return; }
@@ -4468,29 +5326,38 @@ window.saveNewQT = () => {
         }
 
         const rawTotal = window.tempQTItems.reduce((sum, item) => sum + (parseFloat(item.subtotal) || 0), 0);
-        const totalAmount = rawTotal + (window._qtTaxAmount || 0);
+        const finalTaxRate = window._qtTaxRate || parseFloat(document.getElementById('qt_tax_rate')?.value) || 0;
+        const taxAmount = window._qtTaxAmount || Math.round(rawTotal * finalTaxRate / 100);
+        const totalAmount = rawTotal + taxAmount;
 
-        db.insert('salesQuotations', {
+        const qtData = {
             qtNumber: finalQTNumber,
             date: new Date(qtDate).toISOString(),
-            validUntil: '',
+            validUntil: validTill ? new Date(validTill).toISOString() : '',
             customerId,
-            status: 'DRAFT',
+            status: window._editingQTId ? (existing.find(q => q.id === window._editingQTId)?.status || 'DRAFT') : 'DRAFT',
             totalAmount,
-            taxRate: window._qtTaxRate || 0,
-            taxAmount: window._qtTaxAmount || 0,
+            taxRate: finalTaxRate,
+            taxAmount,
             discountType: '',
             discountValue: '',
             discountAmount: 0,
             discountDescription: '',
             items: window.tempQTItems,
             notes: notes
-        });
+        };
 
+        if (window._editingQTId) {
+            db.update('salesQuotations', window._editingQTId, qtData);
+            showToast(`Quotation ${finalQTNumber} berhasil diperbarui.`);
+        } else {
+            db.insert('salesQuotations', qtData);
+            showToast(`Quotation ${finalQTNumber} berhasil dibuat.`);
+        }
+
+        window._editingQTId = null;
         window._qtDiscountAmt = 0; window._qtDiscountDesc = ''; window._qtDiscountType = ''; window._qtDiscountValue = '';
 
-        showToast('Quotation Berhasil Disimpan!', 'success');
-        closeModal();
         renderSalesQuotations();
     } catch (err) {
         console.error('Save QT Error:', err);
@@ -4839,7 +5706,7 @@ window.openPurchaseRFQModal = () => {
     `;
 
     window.tempRFQItems = [];
-    showModal('Buat Request For Quotation (Purchase)', body, footer, 'full');
+    showModal('Buat Request For Quotation (Purchase)', body, footer, 'xl');
 };
 
 window.convertRFQtoPO = (rfqId) => {
@@ -5040,7 +5907,7 @@ window.viewPurchaseRFQ = (id) => {
         </div>
     `;
 
-    showModal(`RFQ Detail - ${rfq.rfqNumber}`, detailHTML, footer, 'full');
+    showModal(`RFQ Detail - ${rfq.rfqNumber}`, detailHTML, footer, 'xl');
 };
 
 window.openSendPurchaseRFQModal = (id) => {
@@ -5170,99 +6037,135 @@ window.deleteQT = (id) => {
 window.viewQT = (id) => {
     const qt = db.findById('salesQuotations', id);
     const customer = db.findById('customers', qt.customerId);
+    const mainContent = document.getElementById('main-content');
+    
+    // Set breadcrumb
+    renderBreadcrumb(['Sales', 'Quotations', 'Detail ' + qt.qtNumber]);
 
     const printableHTML = `
-           <div class="max-w-4xl mx-auto bg-white p-2 sm:p-6 mb-4">
-                <div class="flex justify-between items-start mb-6">
+           <div class="max-w-5xl mx-auto bg-white p-6 sm:p-10 shadow-sm border border-slate-100 rounded-3xl my-6">
+                <div class="flex justify-between items-start mb-10">
                     <div>
-                        <h2 class="text-3xl font-bold text-gray-800">QUOTATION</h2>
-                        <p class="text-gray-500 mt-1">${qt.qtNumber}</p>
+                        <h2 class="text-4xl font-black text-slate-900 tracking-tight">QUOTATION</h2>
+                        <p class="text-slate-400 mt-2 font-mono text-lg">${qt.qtNumber}</p>
                     </div>
                     <div class="text-right">
-                        <h1 class="text-xl font-bold text-blue-800">${CONFIG.companyName}</h1>
-                        <p class="text-sm text-gray-500">${CONFIG.companyAddress}</p>
-                        <p class="text-xs text-gray-400">${CONFIG.companyPhone} | ${CONFIG.companyEmail}</p>
+                        <img src="assets/logo.png" alt="Logo" class="h-14 ml-auto mb-3 object-contain opacity-20">
+                        <h1 class="text-xl font-black text-slate-900 uppercase tracking-tight">${CONFIG.companyName}</h1>
+                        <p class="text-xs text-slate-400 max-w-xs ml-auto leading-relaxed mt-1">${CONFIG.companyAddress}</p>
                     </div>
                 </div>
                 
-                <div class="grid grid-cols-2 gap-8 mb-8">
-                        <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Customer</h3>
-                        <p class="font-medium text-gray-800">${customer ? customer.name : (qt.customerName || '-')}</p>
-                        ${customer && customer.phone ? `<p class="text-sm text-gray-600">${customer.phone}</p>` : ''}
-                        ${customer && customer.address ? `<p class="text-sm text-gray-600 whitespace-pre-wrap">${customer.address}</p>` : ''}
+                <div class="grid grid-cols-2 gap-12 mb-12">
+                    <div class="space-y-4">
+                        <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Customer / Recipient</h3>
+                        <div class="p-5 bg-slate-50 rounded-2xl border border-slate-100">
+                            <p class="font-black text-slate-900 text-lg mb-1">${customer ? customer.name : (qt.customerName || '-')}</p>
+                            ${customer && customer.phone ? `<p class="text-sm font-bold text-slate-500">${customer.phone}</p>` : ''}
+                            ${customer && (customer.address || qt.notes) ? `
+                                <div class="mt-4 pt-4 border-t border-slate-200">
+                                    <p class="text-sm text-slate-600 leading-relaxed font-medium italic">"${customer?.address || 'No specific shipping address provided.'}"</p>
+                                </div>
+                            ` : ''}
+                        </div>
                     </div>
-                    <div class="text-right">
-                        <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Detail Quotation</h3>
-                        <p class="text-gray-800 text-sm mb-1">Tanggal: ${formatDate(qt.date).slice(0, 11)}</p>
-                        ${qt.validUntil ? `<p class="text-gray-800 text-sm mb-1">Berlaku Hingga: <span class="font-medium">${qt.validUntil}</span></p>` : ''}
-                        ${qt.paymentTerms ? (() => { const d1 = new Date(qt.date); const d2 = new Date(qt.paymentTerms); const days = Math.round((d2 - d1) / 86400000); return `<p class="text-gray-800 text-sm mb-1">Jatuh Tempo Pembayaran: <span class="font-medium">Net ${days} Hari (${qt.paymentTerms})</span></p>`; })() : ''}
-                        <p class="text-gray-800 text-sm mt-2">Status: <span class="font-medium px-2 py-1 rounded bg-gray-100 text-gray-800">${qt.status}</span></p>
+                    <div class="text-right space-y-4">
+                        <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Quotation Info</h3>
+                        <div class="space-y-2">
+                             <div class="flex justify-end gap-4 items-center">
+                                <span class="text-xs font-bold text-slate-400">TANGGAL:</span>
+                                <span class="text-sm font-black text-slate-800 uppercase">${formatDate(qt.date).slice(0, 11)}</span>
+                            </div>
+                            ${qt.validUntil ? `
+                            <div class="flex justify-end gap-4 items-center">
+                                <span class="text-xs font-bold text-slate-400">VALID UNTIL:</span>
+                                <span class="text-sm font-black text-red-500 uppercase">${qt.validUntil}</span>
+                            </div>` : ''}
+                            <div class="flex justify-end gap-4 items-center mt-4">
+                                <span class="text-[10px] font-black px-3 py-1 rounded-full bg-slate-900 text-white uppercase tracking-widest">${qt.status}</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                ${qt.notes ? `
-                <div class="mb-8 p-4 bg-gray-50 rounded-lg border border-gray-100">
-                    <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Keterangan / Catatan:</h3>
-                    <p class="text-sm text-gray-700 whitespace-pre-wrap">${qt.notes}</p>
-                </div>
-                ` : ''}
-                
-                <table class="w-full text-left mb-8 border-collapse">
+                <table class="w-full text-left mb-12 border-collapse">
                     <thead>
-                        <tr class="border-b-2 border-gray-800 text-gray-800 text-sm">
-                            <th class="py-3 px-2">Produk</th>
-                            <th class="py-3 px-2 text-right">Qty</th>
-                            <th class="py-3 px-2 text-right">Harga Satuan</th>
-                            <th class="py-3 px-2 text-right">Subtotal</th>
+                        <tr class="bg-slate-50 text-slate-500 text-[10px] uppercase font-black tracking-widest border-y border-slate-100">
+                            <th class="py-5 px-4">Deskripsi Produk</th>
+                            <th class="py-5 px-4 text-right">Quantity</th>
+                            <th class="py-5 px-4 text-right">Rate</th>
+                            <th class="py-5 px-4 text-right">Amount</th>
                         </tr>
                     </thead>
-                    <tbody class="text-gray-700 text-sm">
+                    <tbody class="text-slate-700">
                         ${qt.items.map(i => `
-                            <tr class="border-b border-gray-200">
-                                <td class="py-3 px-2">${i.prodText.split(' (')[0]}</td>
-                                <td class="py-3 px-2 text-right">${formatNumber(i.qty)}</td>
-                                <td class="py-3 px-2 text-right">${formatCurrency(i.price)}</td>
-                                <td class="py-3 px-2 text-right">${formatCurrency(i.subtotal)}</td>
+                            <tr class="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group">
+                                <td class="py-6 px-4">
+                                    <div class="font-black text-slate-900 text-sm group-hover:text-blue-600 transition-colors uppercase select-all">${i.prodText.split(' (')[0]}</div>
+                                    <div class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Item Code: ${i.prodCode || 'N/A'}</div>
+                                </td>
+                                <td class="py-6 px-4 text-right font-black text-slate-800">${formatNumber(i.qty)}</td>
+                                <td class="py-6 px-4 text-right font-bold text-slate-500">${formatCurrency(i.price)}</td>
+                                <td class="py-6 px-4 text-right font-black text-slate-900">${formatCurrency(i.subtotal)}</td>
                             </tr>
                         `).join('')}
                     </tbody>
-                    <tfoot>
-                        <!-- Subtotal -->
+                    <tfoot class="bg-slate-50/50">
                         <tr>
-                            <td colspan="3" class="py-2 px-2 text-right text-sm text-gray-500">Subtotal:</td>
-                            <td class="py-2 px-2 text-right text-sm text-gray-800 font-medium border-t border-gray-100">${formatCurrency(qt.items.reduce((sum, i) => sum + (parseFloat(i.subtotal) || 0), 0))}</td>
+                            <td colspan="3" class="py-4 px-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Subtotal (Gross)</td>
+                            <td class="py-4 px-4 text-right text-sm font-black text-slate-800">${formatCurrency(qt.items.reduce((sum, i) => sum + (parseFloat(i.subtotal) || 0), 0))}</td>
                         </tr>
-
-
-
-                        <!-- Tax if any -->
                         ${qt.taxAmount > 0 ? `
                         <tr>
-                            <td colspan="3" class="py-2 px-2 text-right text-sm text-orange-600 font-medium">PPN (${qt.taxRate}%):</td>
-                            <td class="py-2 px-2 text-right text-sm text-orange-600 font-bold">${formatCurrency(qt.taxAmount)}</td>
+                            <td colspan="3" class="py-4 px-4 text-right text-[10px] font-black text-orange-400 uppercase tracking-widest">PPN (${qt.taxRate}%)</td>
+                            <td class="py-4 px-4 text-right text-sm font-black text-orange-600">${formatCurrency(qt.taxAmount)}</td>
                         </tr>
                         ` : ''}
-
-
-                        <!-- Grand Total -->
                         <tr>
-                            <td colspan="3" class="py-4 px-2 text-right font-bold text-gray-800">Total:</td>
-                            <td class="py-4 px-2 text-right font-bold text-blue-600 text-lg border-t-2 border-gray-800">${formatCurrency(qt.totalAmount)}</td>
+                            <td colspan="2"></td>
+                            <td class="py-8 px-4 text-right font-black text-slate-400 uppercase tracking-[0.2em] text-[10px]">Grand Total</td>
+                            <td class="py-8 px-4 text-right font-black text-blue-700 text-3xl tracking-tighter border-t-2 border-slate-900">${formatCurrency(qt.totalAmount)}</td>
                         </tr>
                     </tfoot>
                 </table>
            </div>
         `;
 
-    const footer = `
-            <div class="flex flex-wrap gap-2 w-full sm:w-auto">
-                <button onclick='printHTML(\`${printableHTML.replace(/`/g, "\\`").replace(/\n/g, "")}\`, "Quotation ${qt.qtNumber}")' class="flex-1 sm:flex-none inline-flex justify-center items-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-purple-600 text-white font-medium hover:bg-purple-700 sm:text-sm transition-colors"> <i class="fas fa-file-pdf mr-2"></i> Print </button>
-                <button onclick="openSendQTModal('${qt.id}')" class="flex-1 sm:flex-none inline-flex justify-center items-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-white font-medium hover:bg-blue-700 sm:text-sm transition-colors"> <i class="fas fa-paper-plane mr-2"></i> Kirim </button>
-                <button onclick="closeModal()" class="w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-gray-700 font-medium hover:bg-gray-50 transition-colors sm:text-sm"> Tutup</button>
-            </div>
-        `;
+    mainContent.innerHTML = `
+        <div class="animate-in fade-in slide-in-from-bottom-2 duration-400 -m-6 h-[calc(100vh-64px)] flex flex-col overflow-hidden bg-white">
+            <!-- Record Header / Action Bar (STICKY AREA) -->
+            <div class="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 px-8 py-5 flex items-center justify-between shrink-0 shadow-sm">
+                <div class="flex items-center gap-6">
 
-    showModal(`Detail Quotation - ${qt.qtNumber} `, printableHTML, footer);
+                    <div>
+                    </div>
+                    <div class="ml-4 px-4 py-1.5 rounded-full bg-slate-900 text-white text-[10px] font-black tracking-widest uppercase">
+                        ${qt.status}
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <button onclick='printHTML(\`${printableHTML.replace(/`/g, "\\`").replace(/\n/g, "")}\`, "Quotation ${qt.qtNumber}")' 
+                        class="px-6 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all flex items-center gap-2 active:scale-95">
+                        <i class="fas fa-print text-slate-400"></i> Print PDF
+                    </button>
+                    <button onclick="openSendQTModal('${qt.id}')" 
+                        class="px-6 py-2.5 bg-blue-50 text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all flex items-center gap-2 active:scale-95 shadow-sm">
+                        <i class="fas fa-paper-plane mr-1 text-[9px]"></i> Kirim
+                    </button>
+                    <div class="w-px h-6 bg-slate-200 mx-2"></div>
+                    <button onclick="renderSalesQuotations()" class="px-6 py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-xl active:scale-95 group">
+                        Tutup <i class="fas fa-times ml-2 text-slate-400 group-hover:text-white"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Scrollable Content Area -->
+            <div class="flex-1 overflow-y-auto bg-slate-50/50 custom-scrollbar pb-24">
+                ${printableHTML}
+            </div>
+        </div>
+    `;
 };
 
 window.openSendQTModal = (id) => {
@@ -5402,157 +6305,282 @@ window.convertQTtoSO = (qtId) => {
     const qt = db.findById('salesQuotations', qtId);
     if (!qt) return;
 
-    // Now just open the modal with prefilled data
+    // Track the source quotation
+    window._qtBeingConverted = qtId;
+
+    // First, navigate to Sales Order module to initialize the SO form container
+    renderSalesOrders();
+
+    // Now open the modal/form with prefilled data
     window.openSOModal(qt);
     showToast('Silakan cek dan sesuaikan data Sales Order ini.', 'info');
 };
 
 // --- Sales Orders Module ---
+window.handleSOAction = (selectEl, id) => {
+    const act = selectEl.value;
+    if (!act) return;
+    selectEl.value = ""; // Reset for next use
+    
+    if (act === 'view') viewSO(id);
+    else if (act === 'edit') openSOModal(db.findById('salesOrders', id)); // Logic handles edit if object passed
+    else if (act === 'confirm') updateSOStatus(id, 'CONFIRMED');
+    else if (act === 'send') openSendSOModal(id);
+    else if (act === 'delete') deleteSO(id);
+};
+
+window.filterSOTable = () => {
+    const q = (document.getElementById('so_global_search')?.value || '').toLowerCase();
+    const rows = document.querySelectorAll('#so_main_table tbody tr');
+    rows.forEach(row => {
+        const text = row.innerText.toLowerCase();
+        row.style.display = text.includes(q) ? '' : 'none';
+    });
+};
+
+window.toggleSODateDropdown = () => {
+    const d = document.getElementById('so_date_dropdown');
+    d?.classList.toggle('hidden');
+};
+
+window.applySOHeaderDateFilter = () => {
+    const s = document.getElementById('so_header_start')?.value;
+    const e = document.getElementById('so_header_end')?.value;
+    window.currentFilters.salesOrders.start = s || '';
+    window.currentFilters.salesOrders.end = e || '';
+    document.getElementById('so_date_dropdown')?.classList.add('hidden');
+    renderSalesOrders();
+};
+
+window.resetSOHeaderDateFilter = () => {
+    window.currentFilters.salesOrders.start = '';
+    window.currentFilters.salesOrders.end = '';
+    document.getElementById('so_date_dropdown')?.classList.add('hidden');
+    renderSalesOrders();
+};
+
+window.toggleSelectAllSO = (master) => {
+    const checkboxes = document.querySelectorAll(".so-row-checkbox");
+    checkboxes.forEach(cb => {
+        cb.checked = master.checked;
+    });
+};
+
+window.handleSOAction = (selectEl, id) => {
+    const act = selectEl.value;
+    if (!act) return;
+    selectEl.value = ""; // Reset for next use
+    
+    if (act === 'view') viewSO(id);
+    else if (act === 'edit') openSOModal(db.findById('salesOrders', id)); 
+    else if (act === 'confirm') updateSOStatus(id, 'CONFIRMED');
+    else if (act === 'send') openSendSOModal(id);
+    else if (act === 'delete') deleteSO(id);
+};
+
+window.filterSOTable = () => {
+    const q = (document.getElementById('so_global_search')?.value || '').toLowerCase();
+    const rows = document.querySelectorAll('#so_main_table tbody tr');
+    rows.forEach(row => {
+        const text = row.innerText.toLowerCase();
+        row.style.display = text.includes(q) ? '' : 'none';
+    });
+};
+
+window.toggleSODateDropdown = () => {
+    const d = document.getElementById('so_date_dropdown');
+    d?.classList.toggle('hidden');
+};
+
+window.applySOHeaderDateFilter = () => {
+    const s = document.getElementById('so_header_start')?.value;
+    const e = document.getElementById('so_header_end')?.value;
+    window.currentFilters.salesOrders.start = s || '';
+    window.currentFilters.salesOrders.end = e || '';
+    document.getElementById('so_date_dropdown')?.classList.add('hidden');
+    renderSalesOrders();
+};
+
+window.resetSOHeaderDateFilter = () => {
+    window.currentFilters.salesOrders.start = '';
+    window.currentFilters.salesOrders.end = '';
+    document.getElementById('so_date_dropdown')?.classList.add('hidden');
+    renderSalesOrders();
+};
+
+window.toggleSelectAllSO = (master) => {
+    const checkboxes = document.querySelectorAll(".so-row-checkbox");
+    checkboxes.forEach(cb => {
+        cb.checked = master.checked;
+    });
+};
+
 function renderSalesOrders() {
     const canEdit = getModulePermission('penjualan').edit;
-    document.getElementById('pageTitle').innerText = 'Sales Orders';
+    renderBreadcrumb(['Sales', 'Sales Orders']);
     const mainContent = document.getElementById('main-content');
 
-    // SO Logic is almost identical to PO but deducts stock on DELIVERED and validates stock first
     let sos = db.read('salesOrders').sort((a, b) => new Date(b.date) - new Date(a.date));
-
-    // Apply Date Filter
     const customers = db.read('customers');
-    const invoices = db.read('salesInvoices');
     const filters = window.currentFilters.salesOrders || { start: '', end: '', customer: '' };
 
-    let filteredSos = filterByDateRange(sos, 'salesOrders');
-    if (filters.customer) {
-        filteredSos = filteredSos.filter(s => s.customerId === filters.customer);
+    // Apply Filters
+    if (filters.start) {
+        const d = new Date(filters.start); d.setHours(0, 0, 0, 0);
+        sos = sos.filter(q => new Date(q.date) >= d);
+    }
+    if (filters.end) {
+        const d = new Date(filters.end); d.setHours(23, 59, 59, 999);
+        sos = sos.filter(q => new Date(q.date) <= d);
     }
 
-    let rows = filteredSos.map(so => {
+    let rows = sos.map(so => {
         const customer = customers.find(c => c.id === so.customerId) || { name: 'Unknown' };
-        const existingInvoice = invoices.find(inv => inv.salesOrderId === so.id && inv.status !== 'CANCELLED');
-
+        
         let statusBadge = '';
-        if (so.status === 'DRAFT') statusBadge = '<span class="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-semibold">DRAFT</span>';
-        if (so.status === 'CONFIRMED') statusBadge = '<span class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-semibold">CONFIRMED</span>';
-        if (so.status === 'DELIVERED') statusBadge = '<span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-semibold">DELIVERED</span>';
+        if (so.status === 'DRAFT') statusBadge = '<span class="px-3 py-1 bg-orange-50 text-orange-600 border border-orange-100 rounded-full text-[10px] font-bold tracking-tight shadow-sm">Open</span>';
+        if (so.status === 'CONFIRMED') statusBadge = '<span class="px-3 py-1 bg-blue-50 text-blue-600 border border-blue-100 rounded-full text-[10px] font-bold tracking-tight shadow-sm">CONFIRMED</span>';
+        if (so.status === 'DELIVERED') statusBadge = '<span class="px-3 py-1 bg-green-50 text-green-600 border border-green-100 rounded-full text-[10px] font-bold tracking-tight shadow-sm">DELIVERED</span>';
 
-        let actions = `
-            <button onclick="viewSO('${so.id}')" class="text-gray-500 hover:text-gray-700" title="Detail"> <i class="fas fa-eye text-lg"></i></button>
-            <button onclick="openSendSOModal('${so.id}')" class="text-blue-500 hover:text-blue-700 border border-blue-200 px-2 py-1 rounded text-[10px] font-bold bg-blue-50/30" title="Kirim">Kirim</button>
+        let options = '';
+        if (canEdit && so.status === 'DRAFT') {
+            options += `<option value="confirm">Konfirmasi</option>`;
+            options += `<option value="edit">Edit</option>`;
+            options += `<option value="delete">Hapus</option>`;
+        } else if (canEdit && so.status === 'CONFIRMED') {
+            options += `<option value="edit">Edit</option>`;
+            options += `<option value="delete">Hapus</option>`;
+        }
+        
+        let actionHtml = `
+            <div class="inline-block relative w-full md:w-[130px]">
+                <select class="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs rounded-lg pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none transition-all shadow-sm" onchange="handleSOAction(this, '${so.id}')">
+                    <option value="" disabled selected>Pilih Aksi...</option>
+                    <option value="view">Lihat Detail</option>
+                    <option value="send">Kirim</option>
+                    ${options}
+                </select>
+                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
+                    <i class="fas fa-chevron-down text-[10px]"></i>
+                </div>
+            </div>
         `;
 
-        if (canEdit && so.status === 'DRAFT') {
-            actions += `
-                <button onclick="updateSOStatus('${so.id}', 'CONFIRMED')" class="text-blue-500 hover:text-blue-700" title="Confirm"> <i class="fas fa-check text-lg"></i></button>
-                <button onclick="deleteSO('${so.id}')" class="text-red-500 hover:text-red-700" title="Delete"><i class="fas fa-trash text-lg"></i></button>
-            `;
-        }
-
-        // Removed Invoice buttons as per user request to manage via Sales Invoice page directly
-
-
         return `
-        <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                <td class="py-3 px-4 text-sm font-medium text-blue-600">${so.soNumber}</td>
-                <td class="py-3 px-4 text-sm text-gray-600">${formatDate(so.date).slice(0, 11)}</td>
-                <td class="py-3 px-4 text-sm text-gray-800">${customer.name}</td>
-                <td class="py-3 px-4 text-sm text-gray-800 text-right font-medium">${formatCurrency(so.totalAmount)}</td>
-                <td class="py-3 px-4 text-sm">${statusBadge}</td>
-                <td class="py-3 px-4 text-sm text-right">
-                    <div class="flex items-center justify-end gap-3 min-w-max">
-                        ${actions}
-                    </div>
+            <tr class="border-b border-gray-100 hover:bg-slate-50 transition-colors">
+                <td class="py-4 px-4 w-10">
+                    <input type="checkbox" class="so-row-checkbox w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer">
+                </td>
+                <td class="py-4 px-4 text-sm text-slate-900 font-bold tracking-tight">${customer.name}</td>
+                <td class="py-4 px-4">${statusBadge}</td>
+                <td class="py-4 px-4 text-sm text-slate-500 font-medium">${so.date.split('T')[0].split('-').reverse().join('-')}</td>
+                <td class="py-4 px-4 text-sm text-slate-800 font-bold text-right">${formatCurrency(so.totalAmount)}</td>
+                <td class="py-4 px-4">
+                    <button onclick="viewSO('${so.id}')" class="text-slate-700 hover:text-blue-600 font-mono text-[11px] font-bold transition-colors cursor-pointer outline-none">
+                        ${so.soNumber}
+                    </button>
+                </td>
+                <td class="py-4 px-4 text-right">
+                    ${actionHtml}
                 </td>
             </tr>
         `;
     }).join('');
 
-    if (filteredSos.length === 0) rows = `<tr > <td colspan="6" class="py-4 text-center text-gray-500">Belum ada Sales Order</td></tr> `;
+    if (sos.length === 0) rows = `<tr><td colspan="7" class="py-24 text-center text-gray-400 font-bold uppercase tracking-widest"><i class="fas fa-receipt text-4xl mb-3 opacity-20"></i><br>Tidak ada Sales Order ditemukan</td></tr>`;
 
     mainContent.innerHTML = `
-        <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-5 overflow-hidden">
-            <div onclick="toggleSOFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
-                <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
-                    <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
-                    ${(!window._uiState.soFilterOpen && (filters.start || filters.end || filters.customer)) ?
-            `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
-                </h3>
-                <div class="flex items-center gap-3">
-                    <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.soFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
-                    <i class="fas fa-chevron-${window._uiState.soFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
+        <div id="so-list-view" class="animate-in fade-in duration-300 h-[calc(100vh-64px)] flex flex-col bg-slate-50 -m-4 sm:-m-6">
+            <!-- Full Width Fixed Filter Bar -->
+            <div class="bg-white border-b border-gray-200 shrink-0 z-40 shadow-sm relative">
+                <div class="flex flex-wrap md:flex-nowrap justify-between items-center px-6 py-4 gap-4">
+                    <div class="flex items-center gap-3 flex-1">
+                        <div class="flex-1 max-w-md relative">
+                            <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                            <input type="text" id="so_global_search" onkeyup="filterSOTable()" placeholder="Search Sales Orders..." 
+                                class="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 placeholder:text-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all">
+                        </div>
+                        
+                        <!-- Date Filter Dropdown Trigger -->
+                        <div class="relative" id="so_date_filter_container">
+                            <button onclick="toggleSODateDropdown()" class="flex items-center bg-slate-50 border border-slate-200 rounded-lg overflow-hidden hover:bg-slate-100 transition-all shadow-sm h-[42px] group">
+                                <span class="bg-slate-200/60 border-r border-slate-200 px-3 h-full flex items-center text-slate-700 transition-colors">
+                                    <i class="fas fa-sort-amount-up text-sm"></i>
+                                </span>
+                                <span class="px-4 text-sm font-medium text-blue-700">Date</span>
+                                <span class="pr-3 text-slate-600">
+                                    <i class="fas fa-chevron-down text-[12px]"></i>
+                                </span>
+                            </button>
+                            
+                            <!-- Dropdown Content -->
+                            <div id="so_date_dropdown" class="absolute left-0 mt-2 w-80 bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] hidden p-6 animate-in fade-in zoom-in-95 duration-200">
+                                <h4 class="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4">Filter Pesanan</h4>
+                                <div class="space-y-4">
+                                    <div class="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Dari</label>
+                                            <input type="date" id="so_header_start" value="${filters.start}" class="w-full border-2 border-slate-50 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50">
+                                        </div>
+                                        <div>
+                                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Ke</label>
+                                            <input type="date" id="so_header_end" value="${filters.end}" class="w-full border-2 border-slate-50 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50">
+                                        </div>
+                                    </div>
+                                    <div class="flex gap-2 pt-2">
+                                        <button onclick="applySOHeaderDateFilter()" class="flex-1 bg-blue-600 text-white py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95">Apply</button>
+                                        <button onclick="resetSOHeaderDateFilter()" class="flex-1 bg-slate-50 text-slate-400 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-100 transition-all">Reset</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <button onclick="openSalesReturnModal()" class="border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 px-4 py-2.5 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest shadow-sm flex items-center gap-2 active:scale-95">
+                            <i class="fas fa-undo-alt"></i>Retur
+                        </button>
+                        <button onclick="openExchangeModal()" class="border border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-600 px-4 py-2.5 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest shadow-sm flex items-center gap-2 active:scale-95">
+                            <i class="fas fa-exchange-alt"></i>Tukar Guling
+                        </button>
+                        <button onclick="openSOModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest shadow-xl active:scale-95 flex items-center gap-2">
+                            <i class="fas fa-plus"></i>Buat SO Baru
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            <div class="${window._uiState.soFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Dari Tanggal</label>
-                        <input type="date" id="so_start_date" value="${filters.start || ''}" 
-                            class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm bg-slate-50/50 font-bold text-slate-700 focus:border-blue-500 focus:bg-white outline-none transition-all">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Sampai Tanggal</label>
-                        <input type="date" id="so_end_date" value="${filters.end || ''}" 
-                            class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm bg-slate-50/50 font-bold text-slate-700 focus:border-blue-500 focus:bg-white outline-none transition-all">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Pilih Customer</label>
-                        <select id="so_customer_id" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm bg-slate-50/50 font-bold text-slate-700 focus:border-blue-500 focus:bg-white outline-none transition-all cursor-pointer font-sans">
-                            <option value="">-- Semua Customer --</option>
-                            ${customers.map(c => `<option value="${c.id}" ${filters.customer === c.id ? 'selected' : ''}>${c.name}</option>`).join('')}
-                        </select>
-                    </div>
+            <!-- Content Area -->
+            <div class="p-4 sm:p-6 flex-1 overflow-y-auto">
+                <div class="mb-3 flex justify-between items-center">
+                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total: ${sos.length} pesanan</p>
                 </div>
-                <div class="flex gap-2 pt-4 mt-4 border-t border-slate-50">
-                    <button onclick="applySOFilter()" class="bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
-                        <i class="fas fa-search mr-2"></i> TAMPILKAN
-                    </button>
-                    <button onclick="resetSOFilter()" class="bg-slate-50 hover:bg-slate-100 text-slate-400 px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all" title="Reset">
-                        <i class="fas fa-undo mr-2"></i> RESET
-                    </button>
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div class="overflow-x-auto min-h-[400px]">
+                        <table class="w-full text-left border-collapse" id="so_main_table">
+                            <thead class="sticky top-0 z-20">
+                            <tr class="bg-slate-50 border-b border-slate-100 text-slate-500 font-semibold uppercase text-[10px] tracking-wider shadow-sm">
+                                <th class="px-4 py-3.5 w-10">
+                                    <input type="checkbox" id="selectAllSO" onclick="toggleSelectAllSO(this)" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer">
+                                </th>
+                                <th class="px-4 py-3.5">Customer Name</th>
+                                <th class="px-4 py-3.5">Status</th>
+                                <th class="px-4 py-3.5">Date</th>
+                                <th class="px-4 py-3.5 text-right font-bold">Grand Total</th>
+                                <th class="px-4 py-3.5">ID SO</th>
+                                <th class="px-4 py-3.5 text-right w-[150px]">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100 font-sans">${rows}</tbody>
+                    </table>
+                </div>
                 </div>
             </div>
         </div>
-
-        <div class="bg-white rounded-lg shadow-sm border border-gray-100">
-            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 sm:p-6 border-b border-gray-100 gap-4">
-                <div>
-                    <h2 class="text-lg font-semibold text-gray-800">Daftar Sales Order</h2>
-                    <p class="text-xs text-gray-500 mt-1">Total: ${sos.length} pesanan</p>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button onclick="openSalesReturnModal()" class="border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 px-4 py-2 rounded-lg transition-colors text-xs font-bold shadow-sm flex items-center gap-2">
-                        <i class="fas fa-undo-alt"></i>Retur
-                    </button>
-                    <button onclick="openExchangeModal()" class="border border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-600 px-4 py-2 rounded-lg transition-colors text-xs font-bold shadow-sm flex items-center gap-2">
-                        <i class="fas fa-exchange-alt"></i>Tukar Guling
-                    </button>
-                    <button onclick="openSOModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-xs font-bold shadow-sm flex items-center gap-2">
-                        <i class="fas fa-plus"></i>Buat SO Baru
-                    </button>
-                </div>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="bg-gray-50 border-b border-gray-200">
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">No. SO</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Tanggal</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Customer</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">Total</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">Aksi</th>
-                        </tr>
-                    </thead>
-                    <tbody>${rows}</tbody>
-                </table>
-            </div>
-        </div>
-        `;
-
+        <div id="so-form-view" class="hidden"></div>
+    `;
 }
 
-// --- Sales Orders Helper Functions ---
-// --- Sales Order Helpers ---
 function romanize(num) {
     const roman = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
     return roman[num] || "";
@@ -5564,29 +6592,31 @@ function generateSONumber(isTax) {
     const month = now.getMonth() + 1;
     const year = now.getFullYear();
     const romanMonth = romanize(month);
-
-    // Filter SO by same month and year to get shared sequence
     const sameMonthSOs = sos.filter(s => {
         if (!s.soNumber) return false;
-        const parts = s.soNumber.split('/');
-        if (parts.length < 2) return false;
-        const [, , yearPart] = parts[1].split(' '); // This is complex, let's simplify pattern
-        // SO-TAX-001/III/2026
         const mainParts = s.soNumber.split('/');
-        const romanPart = mainParts[1];
-        const yearPartStr = mainParts[2];
-        return romanPart === romanMonth && yearPartStr === String(year);
+        return mainParts[1] === romanMonth && mainParts[2] === String(year);
     });
-
     const nextSeq = sameMonthSOs.length + 1;
     const seqStr = String(nextSeq).padStart(3, '0');
-    const type = isTax ? 'TAX' : 'NT';
+    const type = isTax ? 'A' : 'B';
     return `SO-${type}-${seqStr}/${romanMonth}/${year}`;
 }
 
 window.openSOModal = (qtToConvert = null) => {
+    // Hide list, show form view
+    const listView = document.getElementById('so-list-view');
+    const formView = document.getElementById('so-form-view');
+    if (!listView || !formView) return;
+
+    renderBreadcrumb(['Sales', 'Sales Orders', 'Buat Sales Order']);
+
+    listView.classList.add('hidden');
+    formView.classList.remove('hidden');
+
     window._qtBeingConverted = qtToConvert ? qtToConvert.id : null;
     let defaultCustId = '';
+    
     if (qtToConvert) {
         let custId = qtToConvert.customerId;
         if (qtToConvert.customerName && !custId) {
@@ -5605,117 +6635,229 @@ window.openSOModal = (qtToConvert = null) => {
     }
 
     const freshCustomers = db.read('customers');
-    const cusOptions = freshCustomers.map(c => `<option value="${c.id}" ${c.id === defaultCustId ? 'selected' : ''}> ${c.name}</option> `).join('');
+    const cusOptions = freshCustomers.map(c => `<option value="${c.id}" ${c.id === defaultCustId ? 'selected' : ''}>${c.name}</option>`).join('');
 
-    const body = `
-        <div class="space-y-4">
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    formView.innerHTML = `
+        <div class="animate-in fade-in slide-in-from-bottom-2 duration-400 -m-6 h-[calc(100vh-64px)] flex flex-col overflow-hidden bg-white">
+            <!-- Sticky Header / Action Bar -->
+            <div class="sticky top-0 z-40 bg-white border-b border-slate-100 px-8 py-5 flex items-center justify-between shrink-0 shadow-sm">
+                <div class="flex items-center gap-6">
+
                     <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">No. SO <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-                        <div class="flex">
-                             <select id="so_is_tax" onchange="updateSONumberPreview()" class="border border-gray-300 rounded-l px-2 py-2 bg-gray-50 text-xs font-bold">
-                                <option value="true">TAX</option>
-                                <option value="false">NT</option>
-                             </select>
-                             <input type="text" id="so_number" value="${generateSONumber(true)}" class="w-full border border-gray-300 rounded-r px-3 py-2 bg-gray-50 font-mono text-xs" readonly>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Customer <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-                        <div class="space-y-1">
-                            <select id="so_customer" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
-                                <option value="">-- Pilih Customer --</option>
-                                ${cusOptions}
-                            </select>
-                            <button type="button" onclick="openCustomerModal(null, 'SO')" class="text-[10px] text-blue-600 hover:underline"><i class="fas fa-plus-circle mr-1"></i>Tambah Customer Baru</button>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Tanggal Sales Order <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-                        <input type="date" id="so_date" value="${new Date().toISOString().split('T')[0]}" onchange="updateSODueDate()" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Sales / Pembuat <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-                        <input type="text" id="so_sales_name" placeholder="Nama Sales" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
-                    </div>
-                </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Term Pembayaran <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-                        <select id="so_payment_terms" onchange="updateSODueDate()" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
-                            <option value="">-- Pilih Term --</option>
-                            <option value="Cash" ${qtToConvert?.paymentTerms === 'Cash' ? 'selected' : ''}>Cash</option>
-                            <option value="Tempo 7 S/d 10 Hari" ${qtToConvert?.paymentTerms === 'Tempo 7 S/d 10 Hari' ? 'selected' : ''}>Tempo 7 S/d 10 Hari</option>
-                            <option value="30 Hari" ${qtToConvert?.paymentTerms === '30 Hari' ? 'selected' : ''}>30 Hari</option>
-                            <option value="45 Hari" ${qtToConvert?.paymentTerms === '45 Hari' ? 'selected' : ''}>45 Hari</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Tanggal Jatuh Tempo <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-                        <input type="date" id="so_due_date" value="${new Date().toISOString().split('T')[0]}" class="w-full border border-gray-300 rounded px-3 py-2 bg-white font-bold text-blue-600">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Pajak (PPN %) <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-                        <select id="so_tax_rate" onchange="recalcSOTotal()" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
-                            <option value="0" ${CONFIG.taxRate == 0 ? 'selected' : ''}>0% (Tanpa Pajak)</option>
-                            <option value="11" ${(CONFIG.taxRate == 11 || !CONFIG.taxRate) ? 'selected' : ''}>11% (PPN)</option>
-                        </select>
                     </div>
                 </div>
                 
-                <div class="border-t border-gray-200 pt-4 mt-4">
-                    <h4 class="text-md font-medium text-gray-800 mb-2">Item Penjualan <span class="text-xs text-gray-400 font-normal">(Finished Goods dari Gudang)</span></h4>
-                    <div class="flex space-x-2 mb-2 flex-wrap gap-y-2">
-                        <select id="so_inv_item" onchange="onSOItemSelect()" class="flex-1 min-w-[200px] border border-gray-300 rounded px-2 py-1.5 text-sm bg-white">
-                            <option value="">-- Pilih Item (Finished Goods) --</option>
-                            ${(() => { const items = db.read('inventoryItems').filter(i => i.category === 'FINISHED_GOODS' && i.status !== 'INACTIVE'); return items.length ? items.map(i => { const stk = db.getInventoryStock(i.id); return `<option value="${i.id}" data-name="${i.itemName}" data-unit="${i.unit}" data-stock="${stk}" data-price="${i.sellingPrice || 0}">${i.itemCode} - ${i.itemName} (Stok: ${formatNumber(stk)} ${i.unit})</option>`; }).join('') : '<option disabled>Belum ada Finished Goods di Gudang</option>'; })()}
-                        </select>
-                        <input id="so_item_qty" type="number" placeholder="Qty" min="1" class="w-20 border border-gray-300 rounded px-2 py-1 text-sm">
-                        <input id="so_item_price" type="number" placeholder="Harga Jual" min="1" class="w-32 border border-gray-300 rounded px-2 py-1 text-sm">
-                        <button type="button" onclick="addSOItemRow()" class="bg-gray-800 text-white px-3 py-1 rounded text-sm"><i class="fas fa-plus"></i></button>
-                    </div>
-                    <div id="so_inv_stock_info" class="text-xs text-blue-600 mb-2 hidden"></div>
-                    
-                    <table class="w-full text-sm text-left border mb-2">
-                        <thead class="bg-gray-50">
-                            <tr><th>Produk</th><th class="text-right">Qty</th><th class="text-right">Harga</th><th class="text-right">Subtotal</th><th></th></tr>
-                        </thead>
-                        <tbody id="so_items_list"></tbody>
-                    </table>
+                <div class="flex items-center gap-3">
+                    <button onclick="renderSalesOrders()" class="px-6 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95">
+                        Batal
+                    </button>
+                    <button onclick="saveNewSO()" class="px-8 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all shadow-lg active:scale-95 flex items-center gap-2">
+                        <i class="fas fa-check-circle text-[10px]"></i> Simpan Sales Order
+                    </button>
+                </div>
+            </div>
 
-                    <!-- Notes Section -->
-                    <div class="border-t border-gray-100 pt-2 space-y-2 mt-2">
-                        <label class="block text-xs font-semibold text-gray-500 uppercase tracking-wider">Keterangan / Notes</label>
-                        <textarea id="so_notes" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm h-16 focus:ring-2 focus:ring-blue-500 transition-all" placeholder="Tambahkan catatan di sini...">${qtToConvert?.notes || ''}</textarea>
+            <!-- Scrollable Content -->
+            <div class="flex-1 overflow-y-auto bg-slate-50/30 p-8 custom-scrollbar pb-32">
+                <div class="max-w-6xl mx-auto space-y-8">
+                    <!-- Basic Information Card -->
+                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-6">
+                        <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                            <i class="fas fa-info-circle text-blue-600"></i> Informasi Dasar
+                        </h3>
+                        
+                        <div class="grid grid-cols-1 sm:grid-cols-4 gap-6">
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">No. Sales Order <span class="text-red-400">*</span></label>
+                                <div class="flex">
+                                     <select id="so_is_tax" onchange="updateSONumberPreview()" class="border-none rounded-l-xl px-3 py-3 bg-slate-100 text-xs font-black text-slate-700 outline-none cursor-pointer">
+                                        <option value="true">TAX</option>
+                                        <option value="false">NT</option>
+                                     </select>
+                                     <input type="text" id="so_number" value="${generateSONumber(true)}" 
+                                        class="w-full border-none rounded-r-xl px-4 py-3 bg-slate-50 font-bold text-slate-400 outline-none" readonly>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Customer <span class="text-red-400">*</span></label>
+                                <div class="relative" id="so_customer_container">
+                                    <input type="text" id="so_customer_search" value="${qtToConvert ? (db.findById('customers', defaultCustId)?.name || '-- Pilih Customer --') : '-- Pilih Customer --'}" readonly
+                                        onclick="toggleCustomerDropdown('so_customer_dropdown')"
+                                        class="w-full border-none rounded-xl px-4 py-3 bg-slate-100 font-bold text-slate-800 cursor-pointer focus:ring-2 focus:ring-blue-500/10 outline-none transition-all">
+                                    <input type="hidden" id="so_customer_id" value="${defaultCustId}">
+                                    
+                                    <div id="so_customer_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden animate-in fade-in zoom-in-95 duration-200 min-w-[280px]">
+                                        <div class="max-h-60 overflow-y-auto p-1" id="so_customer_list">
+                                            ${db.read('customers').map(c => `
+                                                <div onclick="selectCustomer('SO', '${c.id}', '${c.name.replace(/'/g, "\\'")}')" 
+                                                    class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5 ${defaultCustId === c.id ? 'bg-slate-50' : ''}">
+                                                    ${c.name}
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                        <div class="p-2 border-t border-slate-50 bg-white space-y-1">
+                                            <button type="button" onclick="openCustomerModal(null, 'SO'); toggleCustomerDropdown('so_customer_dropdown')" 
+                                                class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
+                                                <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shrink-0">
+                                                    <i class="fas fa-plus text-xs"></i>
+                                                </div>
+                                                Create a new Customer
+                                            </button>
+                                            <button type="button" onclick="openAdvancedCustomerSearch('SO')" 
+                                                class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
+                                                <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shrink-0">
+                                                    <i class="fas fa-search text-xs"></i>
+                                                </div>
+                                                Advanced Search
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Tanggal Sales Order <span class="text-red-400">*</span></label>
+                                <input type="date" id="so_date" value="${new Date().toISOString().split('T')[0]}" 
+                                    class="w-full border-none rounded-xl px-4 py-3 bg-slate-100 font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/10 outline-none transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Sales / Pembuat <span class="text-red-400">*</span></label>
+                                <input type="text" id="so_sales_name" placeholder="Nama Sales" 
+                                    class="w-full border-none rounded-xl px-4 py-3 bg-slate-100 font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/10 outline-none transition-all">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Term Pembayaran <span class="text-red-400">*</span></label>
+                                <select id="so_payment_terms" onchange="updateSODueDate()" class="w-full border-none rounded-xl px-4 py-3 bg-slate-100 font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/10 outline-none transition-all cursor-pointer">
+                                    <option value="">-- Pilih Term --</option>
+                                    <option value="Cash" ${qtToConvert?.paymentTerms === 'Cash' ? 'selected' : ''}>Cash</option>
+                                    <option value="Tempo 7 S/d 10 Hari" ${qtToConvert?.paymentTerms === 'Tempo 7 S/d 10 Hari' ? 'selected' : ''}>Tempo 7 S/d 10 Hari</option>
+                                    <option value="30 Hari" ${qtToConvert?.paymentTerms === '30 Hari' ? 'selected' : ''}>30 Hari</option>
+                                    <option value="45 Hari" ${qtToConvert?.paymentTerms === '45 Hari' ? 'selected' : ''}>45 Hari</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Tgl. Jatuh Tempo <span class="text-red-400">*</span></label>
+                                <input type="date" id="so_due_date" 
+                                    class="w-full border-none rounded-xl px-4 py-3 bg-slate-100 font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/10 outline-none transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Pajak (PPN %)</label>
+                                <select id="so_tax_rate" onchange="recalcSOTotal()" class="w-full border-none rounded-xl px-4 py-3 bg-slate-100 font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/10 outline-none transition-all cursor-pointer">
+                                    <option value="0" ${CONFIG.taxRate == 0 ? 'selected' : ''}>0% (Tanpa Pajak)</option>
+                                    <option value="11" ${(CONFIG.taxRate == 11 || !CONFIG.taxRate) ? 'selected' : ''}>11% (PPN)</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
 
-                    <div class="border-t border-gray-100 pt-2 mt-2 space-y-1 text-right text-sm">
-                        <div class="flex justify-end gap-4">
-                            <span class="text-gray-500">DPP (Sebelum Pajak):</span>
-                            <span id="so_dpp_display" class="font-medium text-gray-700 w-56 text-right">Rp 0</span>
+                    <!-- Items Card -->
+                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm">
+                        <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
+                            <i class="fas fa-list-ul text-blue-600"></i> Daftar Item Produk
+                        </h3>
+
+                        <div class="bg-slate-50/50 p-6 rounded-2xl border border-slate-100 flex flex-wrap gap-4 mb-8">
+                            <div class="flex-1 min-w-[300px] relative">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Pilih Produk</label>
+                                <input type="text" id="so_inv_item_search" placeholder="-- Cari Kode atau Nama Produk --" autocomplete="off"
+                                    onclick="toggleItemProductDropdown('so')" readonly
+                                    class="w-full border-2 border-slate-100 rounded-xl px-4 py-2.5 text-sm bg-white font-bold text-slate-700 outline-none transition-all focus:border-blue-500 cursor-pointer">
+                                <input type="hidden" id="so_inv_item"> <!-- Will store ID -->
+                                
+                                <div id="so_inv_item_dropdown" class="absolute left-0 mt-2 w-full bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] hidden overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                    <div class="p-3 border-b border-slate-50">
+                                        <input type="text" id="so_inv_item_dropdown_search" placeholder="Ketik kode atau nama..." onkeyup="filterItemProductList('so', this.value)" class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                    </div>
+                                    <div class="max-h-60 overflow-y-auto p-1" id="so_inv_item_list">
+                                        <!-- Items here -->
+                                    </div>
+                                    <div class="p-2 border-t border-slate-50 bg-slate-50/10 space-y-1">
+                                        <button onclick="renderMasterProducts()" class="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-black text-slate-500 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-all uppercase tracking-widest">
+                                            <div class="w-7 h-7 flex items-center justify-center bg-slate-100 rounded-lg">
+                                                <i class="fas fa-plus text-[10px]"></i>
+                                            </div>
+                                            Create a new Product
+                                        </button>
+                                        <button onclick="openAdvancedProductSearch('so')" class="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-black text-slate-500 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-all uppercase tracking-widest">
+                                            <div class="w-7 h-7 flex items-center justify-center bg-slate-100 rounded-lg">
+                                                <i class="fas fa-search text-[10px]"></i>
+                                            </div>
+                                            Advanced Search
+                                        </button>
+                                    </div>
+                                </div>
+                                <div id="so_inv_stock_info" class="text-[10px] mt-2 hidden"></div>
+                            </div>
+                            <div class="w-32">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Quantity</label>
+                                <input type="number" id="so_item_qty" placeholder="0" class="w-full border-2 border-slate-100 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 outline-none transition-all focus:border-blue-500">
+                            </div>
+                            <div class="w-48">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Rate (Harga)</label>
+                                <input type="number" id="so_item_price" placeholder="0.00" class="w-full border-2 border-slate-100 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 outline-none transition-all focus:border-blue-500">
+                            </div>
+                            <div class="flex items-end">
+                                <button type="button" onclick="addSOItemRow()" class="h-[46px] px-6 bg-slate-900 hover:bg-blue-600 text-white rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 text-[10px] font-black uppercase tracking-widest">
+                                    <i class="fas fa-plus"></i> Tambah
+                                </button>
+                            </div>
                         </div>
-                        <div class="flex justify-end gap-4">
-                            <span class="text-gray-500" id="so_tax_label">PPN (${CONFIG.taxRate}%):</span>
-                            <span id="so_tax_display" class="font-medium text-orange-600 w-56 text-right">Rp 0</span>
+                        
+                        <div class="overflow-hidden border border-slate-100 rounded-2xl shadow-sm">
+                            <table class="w-full text-sm text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-gray-50/50 border-b border-slate-100 text-slate-500 font-bold text-[10px] uppercase tracking-widest">
+                                        <th class="py-4 px-6 w-12 text-center"></th>
+                                        <th class="py-4 px-6 w-12 text-center">No.</th>
+                                        <th class="py-4 px-2">Item Description</th>
+                                        <th class="py-4 px-6 text-right">Qty</th>
+                                        <th class="py-4 px-6 text-right">Rate</th>
+                                        <th class="py-4 px-6 text-right">Total</th>
+                                        <th class="py-4 px-6 w-12 text-center"><i class="fas fa-cog"></i></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="so_items_list" class="divide-y divide-slate-50"></tbody>
+                            </table>
                         </div>
-                        <div class="flex justify-end gap-4 border-t pt-1">
-                            <span class="text-gray-800 font-bold">Grand Total:</span>
-                            <span id="so_total_display" class="font-bold text-gray-900 text-lg w-56 text-right">Rp 0</span>
+
+                        <!-- Notes & Totals Grid -->
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 mt-10 p-4">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Keterangan / Internal Notes</label>
+                                <textarea id="so_notes" class="w-full border-2 border-slate-50 rounded-2xl px-5 py-4 text-sm h-32 focus:border-blue-500 outline-none transition-all bg-slate-50/50 placeholder:text-slate-300 font-medium leading-relaxed" placeholder="Tambahkan catatan khusus untuk order ini...">${qtToConvert?.notes || ''}</textarea>
+                            </div>
+
+                            <div class="space-y-4 pt-2">
+                                <div class="flex justify-between items-center px-4">
+                                    <span class="text-slate-400 font-bold uppercase text-[10px] tracking-widest">Net Amount (DPP):</span>
+                                    <span id="so_dpp_display" class="font-bold text-slate-700 text-lg">Rp 0</span>
+                                </div>
+                                <div class="flex justify-between items-center px-4">
+                                    <span class="text-orange-400 font-bold uppercase text-[10px] tracking-widest" id="so_tax_label">Tax (PPN 11%):</span>
+                                    <span id="so_tax_display" class="font-bold text-orange-600 text-lg">Rp 0</span>
+                                </div>
+                                <div class="h-px bg-slate-100 mx-4 mt-4"></div>
+                                <div class="flex justify-between items-center px-4 pt-4">
+                                    <span class="text-slate-900 font-black uppercase text-[11px] tracking-[0.2em]">Grand Total:</span>
+                                    <span id="so_total_display" class="font-black text-slate-900 text-4xl tracking-tighter">Rp 0</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
+        </div>
     `;
 
-    const footer = `
-        <button type="button" onclick="saveNewSO()" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-white font-medium focus:outline-none sm:ml-3 sm:w-auto sm:text-sm"> Simpan SO Draft</button>
-            <button type="button" onclick="closeModal()" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-gray-700 font-medium sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">Batal</button>
-    `;
-
-    showModal('Buat Sales Order', body, footer, 'full');
-    setTimeout(() => updateSODueDate(), 100);
-    if (qtToConvert) refreshSOItemsTable();
+    setTimeout(() => {
+        if(window.recalcSOTotal) recalcSOTotal();
+        if(window.updateSODueDate) updateSODueDate();
+        if (qtToConvert) refreshSOItemsTable();
+    }, 100);
 };
+
 
 window.updateSODueDate = () => {
     const soDateVal = document.getElementById('so_date')?.value;
@@ -5748,8 +6890,8 @@ window.onSOItemSelect = () => {
     const unit = opt.dataset.unit || '';
     if (info) {
         info.classList.remove('hidden');
-        info.innerHTML = `<i class="fas fa-info-circle mr-1"></i>Stok tersedia: <strong>${stock} ${unit}</strong>`;
-        info.className = `text-xs mb-2 ${stock <= 0 ? 'text-red-600' : 'text-blue-600'}`;
+        info.innerHTML = `<i class="fas fa-info-circle mr-1"></i>Stok tersedia: <strong>${formatNumber(stock)} ${unit}</strong>`;
+        info.className = `text-[10px] mt-3 mb-2 ${stock <= 0 ? 'text-red-600' : 'text-blue-600'} font-bold`;
     }
 };
 
@@ -5757,36 +6899,310 @@ window.onQTItemSelect = () => {
     // Pricing is manual now per requirement
 };
 
+window.onSalesCustomerSelect = (selectId, mode) => {
+    const custId = document.getElementById(selectId).value;
+    if (!custId) return;
+    const cust = db.findById('customers', custId);
+    if (!cust) return;
+
+    // Set PPN
+    const taxRateEl = document.getElementById(mode === 'QT' ? 'qt_tax_rate' : 'so_tax_rate');
+    if (taxRateEl && cust.ppn !== undefined) {
+        taxRateEl.value = cust.ppn;
+        if (mode === 'SO' && window.recalcSOTotal) recalcSOTotal();
+        if (mode === 'QT' && window.refreshQTItemsTable) refreshQTItemsTable();
+    }
+
+    // Set Payment Terms (for SO)
+    if (mode === 'SO') {
+        const termEl = document.getElementById('so_payment_terms');
+        if (termEl && cust.paymentTerm) {
+            termEl.value = cust.paymentTerm;
+            if(window.updateSODueDate) updateSODueDate();
+        }
+    }
+
+    // Set Common Products & Special Prices
+    if (cust.commonProducts && cust.commonProducts.length > 0) {
+        if (confirm(`Customer ini memiliki ${cust.commonProducts.length} produk khusus dengan harga yang disepakati.\nApakah Anda ingin mengisi otomatis produk-produk ini ke dalam tabel item?`)) {
+            const inventory = db.read('inventoryItems');
+            const newItems = [];
+            
+            for (const cp of cust.commonProducts) {
+                const i = inventory.find(x => x.id === cp.itemId);
+                if (i) {
+                    newItems.push({
+                        itemId: i.id,
+                        itemName: i.itemName,
+                        unit: i.unit,
+                        qty: 1, // Default qty to 1
+                        price: cp.price,
+                        subtotal: 1 * cp.price
+                    });
+                }
+            }
+
+            if (mode === 'QT') {
+                window.tempQTItems = newItems;
+                if(window.refreshQTItemsTable) refreshQTItemsTable();
+            } else if (mode === 'SO') {
+                window.tempSOItems = newItems;
+                if(window.refreshSOItemsTable) refreshSOItemsTable();
+            }
+            showToast('Produk & harga khusus berhasil dimuat.', 'success');
+        }
+    }
+};
+
+window.toggleItemProductDropdown = function (prefix) {
+    const dropdown = document.getElementById(prefix === 'qt' ? 'qt_item_dropdown' : 'so_inv_item_dropdown');
+    const isOpen = !dropdown.classList.contains('hidden');
+    
+    // Close other dropdowns
+    document.querySelectorAll('[id$="_dropdown"]').forEach(el => {
+        if (el.id !== dropdown.id) el.classList.add('hidden');
+    });
+
+    if (!isOpen) {
+        dropdown.classList.remove('hidden');
+        const searchInput = document.getElementById(prefix === 'qt' ? 'qt_item_dropdown_search' : 'so_inv_item_dropdown_search');
+        searchInput.value = '';
+        searchInput.focus();
+        filterItemProductList(prefix, '');
+    }
+};
+
+window.filterItemProductList = function (prefix, val) {
+    const container = document.getElementById(prefix === 'qt' ? 'qt_item_list' : 'so_inv_item_list');
+    const search = val.toLowerCase();
+    const allItems = db.read('inventoryItems') || [];
+    
+    // Inclusive filter for Finished Goods (Gudang Jadi)
+    const products = allItems.filter(i => {
+        const cat = (i.category || '').toUpperCase();
+        return (cat.includes('FINISH') || cat.includes('PRODUK_JADI') || cat.includes('GUDANG_JADI') || cat.includes('FG')) && i.status !== 'INACTIVE';
+    });
+    
+    container.innerHTML = products
+        .filter(p => (p.itemName || '').toLowerCase().includes(search) || (p.itemCode || '').toLowerCase().includes(search))
+        .map(p => {
+            const stk = db.getInventoryStock(p.id);
+            return `
+                <div onclick="selectItemProduct('${prefix}', '${p.id}', '${p.itemCode} - ${p.itemName.replace(/'/g, "\\'")}', ${p.sellingPrice || 0}, '${p.unit || 'PCS'}', ${stk})" 
+                    class="px-4 py-3 text-xs font-bold text-slate-600 hover:bg-blue-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5">
+                    <div class="flex justify-between items-center">
+                        <div class="flex flex-col gap-0.5">
+                            <span class="text-slate-800">${p.itemName}</span>
+                            <span class="text-[9px] text-slate-300 uppercase font-black tracking-widest">${p.itemCode}</span>
+                        </div>
+                        <div class="text-right">
+                             <div class="text-[9px] text-blue-500 font-black uppercase">Stock: ${stk}</div>
+                             <div class="text-[9px] text-slate-400 font-bold">${formatCurrency(p.sellingPrice || 0)}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('') || '';
+    
+    // Add "Use as Free Text" option if there is search text
+    if (search.length > 0) {
+        container.innerHTML = `
+            <div onclick="selectItemFreeText('${prefix}')" 
+                class="px-4 py-3 bg-blue-50/50 hover:bg-blue-100/50 border-b border-blue-100/50 mb-1 cursor-pointer transition-all">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shadow-md">
+                        <i class="fas fa-keyboard text-xs"></i>
+                    </div>
+                    <div>
+                        <div class="text-[10px] font-black text-blue-600 uppercase tracking-widest">Gunakan Teks Bebas</div>
+                        <div class="text-[11px] font-bold text-slate-700 italic">"${val}"</div>
+                    </div>
+                </div>
+            </div>
+            ${container.innerHTML}
+        `;
+    }
+
+    if (!container.innerHTML) {
+        container.innerHTML = '<div class="px-5 py-8 text-center text-[10px] font-bold text-slate-300 italic uppercase tracking-widest">Produk tidak ditemukan</div>';
+    }
+};
+
+window.selectItemFreeText = function (prefix) {
+    const val = document.getElementById(prefix === 'qt' ? 'qt_item_dropdown_search' : 'so_inv_item_dropdown_search').value;
+    if (prefix === 'qt') {
+        document.getElementById('qt_item_name').value = ''; // No ID
+        document.getElementById('qt_item_search').value = val;
+        document.getElementById('qt_item_dropdown').classList.add('hidden');
+        document.getElementById('qt_item_qty').focus();
+    } else {
+        document.getElementById('so_inv_item').value = ''; // No ID
+        document.getElementById('so_inv_item_search').value = val;
+        document.getElementById('so_inv_item_dropdown').classList.add('hidden');
+        document.getElementById('so_inv_stock_info').classList.add('hidden');
+        document.getElementById('so_item_qty').focus();
+    }
+};
+
+window.openAdvancedProductSearch = function (prefix, subId = null) {
+    // Hide the dropdown immediately
+    if (prefix === 'qt') document.getElementById('qt_item_dropdown')?.classList.add('hidden');
+    else if (prefix === 'so') document.getElementById('so_inv_item_dropdown')?.classList.add('hidden');
+    else if (prefix === 'sj_kosong' && subId) document.getElementById(`doi_dropdown_${subId}`)?.classList.add('hidden');
+
+    const allItems = db.read('inventoryItems') || [];
+    const products = allItems.filter(i => {
+        const cat = (i.category || '').toUpperCase();
+        return (cat.includes('FINISH') || cat.includes('PRODUK_JADI') || cat.includes('GUDANG_JADI') || cat.includes('FG')) && i.status !== 'INACTIVE';
+    });
+
+    const body = `
+        <div class="space-y-6">
+            <div class="relative">
+                <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                <input type="text" id="adv_prod_search_input" onkeyup="filterAdvancedProductTable()" placeholder="Cari Nama atau Kode Produk..." 
+                    class="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 transition-all">
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50/50 border-b border-slate-50">
+                            <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Kode Produk</th>
+                            <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Nama Produk</th>
+                            <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Stok</th>
+                            <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="adv_prod_table_body">
+                        ${products.map(p => {
+                            const stock = db.getInventoryStock(p.id);
+                            return `
+                            <tr class="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group">
+                                <td class="py-4 px-6 text-xs font-bold text-slate-400 font-mono tracking-tight">${p.itemCode}</td>
+                                <td class="py-4 px-6 text-sm font-black text-slate-700">${p.itemName}</td>
+                                <td class="py-4 px-6 text-sm font-bold text-slate-500 text-right"><span class="px-2 py-0.5 bg-slate-100 rounded text-[10px] font-black">${stock} ${p.unit}</span></td>
+                                <td class="py-4 px-6 text-right">
+                                    <button onclick="selectProductFromAdvanced('${prefix}', '${p.id}', '${p.itemName.replace(/'/g, "\\'")}', '${p.sellingPrice || 0}', '${p.unit}', '${stock}', '${subId || ''}')" 
+                                        class="px-5 py-2 bg-blue-600 hover:bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-md active:scale-95">
+                                        Pilih
+                                    </button>
+                                </td>
+                            </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+
+    showModal('Advanced Product Search', body, `<button onclick="closeModal()" class="px-8 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all">Close</button>`, 'lg');
+};
+
+window.filterAdvancedProductTable = () => {
+    const q = document.getElementById('adv_prod_search_input').value.toLowerCase();
+    const rows = document.querySelectorAll('#adv_prod_table_body tr');
+    rows.forEach(row => {
+        const text = row.innerText.toLowerCase();
+        row.style.display = text.includes(q) ? '' : 'none';
+    });
+};
+
+window.selectProductFromAdvanced = (prefix, id, name, price, unit, stock, subId) => {
+    if (prefix === 'sj_kosong') {
+        const actualId = subId || window._currentBlankDOFocusId;
+        if (typeof selectBlankDOProduct === 'function') {
+            selectBlankDOProduct(actualId, name, unit);
+        }
+    } else {
+        selectItemProduct(prefix, id, name, price, unit, stock);
+    }
+    closeModal();
+};
+
+window.selectItemProduct = function (prefix, id, displayText, price, unit, stock) {
+    if (prefix === 'qt') {
+        document.getElementById('qt_item_name').value = id;
+        document.getElementById('qt_item_search').value = displayText;
+        document.getElementById('qt_item_price').value = price;
+        document.getElementById('qt_item_dropdown').classList.add('hidden');
+        document.getElementById('qt_item_qty').focus();
+    } else {
+        document.getElementById('so_inv_item').value = id;
+        document.getElementById('so_inv_item_search').value = displayText;
+        document.getElementById('so_item_price').value = price;
+        document.getElementById('so_inv_item_dropdown').classList.add('hidden');
+        
+        const stockInfo = document.getElementById('so_inv_stock_info');
+        if (stockInfo) {
+            stockInfo.innerHTML = `<span class="px-3 py-1 bg-blue-50 text-blue-600 rounded-lg font-black uppercase tracking-widest border border-blue-100">Stock tersedia: ${stock} ${unit}</span>`;
+            stockInfo.classList.remove('hidden');
+        }
+        
+        document.getElementById('so_item_qty').focus();
+    }
+};
+
 window.addSOItemRow = () => {
-    const sel = document.getElementById('so_inv_item');
-    const opt = sel?.selectedOptions[0];
-    const inventoryItemId = sel?.value;
-    const prodText = opt?.dataset.name || '';
-    const prodUnit = opt?.dataset.unit || 'PCS';
+    const inventoryItemId = document.getElementById('so_inv_item').value;
+    const searchVal = document.getElementById('so_inv_item_search').value;
+    
+    let prodText = searchVal;
+    let prodUnit = 'PCS';
+    
+    if (inventoryItemId) {
+        const p = db.findById('inventoryItems', inventoryItemId);
+        if (p) {
+            prodText = p.itemName;
+            prodUnit = p.unit || 'PCS';
+        }
+    }
+
     const qty = parseFloat(document.getElementById('so_item_qty').value);
     const price = parseFloat(document.getElementById('so_item_price').value);
 
-    if (!inventoryItemId) { showToast('Pilih produk dari daftar', 'error'); return; }
+    if (!prodText) { showToast('Pilih produk atau ketik nama produk', 'error'); return; }
     if (!qty || !price) { showToast('Qty dan Harga Jual harus diisi', 'error'); return; }
 
-    // Cek stok
-    const currentStock = parseFloat(opt.dataset.stock) || 0;
-    if (qty > currentStock) {
-        if (!confirm(`Stok "${prodText}" hanya ${currentStock} ${prodUnit}, tapi kamu mau jual ${qty}. Lanjut tetap buat SO?`)) return;
-    }
-
     const subtotal = qty * price;
-    window.tempSOItems.push({ id: Date.now().toString(), inventoryItemId, productId: null, prodText, prodUnit, qty, price, subtotal });
+    window.tempSOItems.push({ 
+        id: Date.now().toString(), 
+        inventoryItemId, 
+        productId: null, 
+        prodText, 
+        prodUnit, 
+        qty, 
+        price, 
+        subtotal 
+    });
 
-    sel.value = '';
+    document.getElementById('so_inv_item').value = '';
+    document.getElementById('so_inv_item_search').value = '';
     document.getElementById('so_item_qty').value = '';
     document.getElementById('so_item_price').value = '';
+    
     const info = document.getElementById('so_inv_stock_info');
     if (info) info.classList.add('hidden');
+    
     refreshSOItemsTable();
 };
 
+window.editSOItemRow = (itemId) => {
+    const item = window.tempSOItems.find(i => i.id === itemId);
+    if (!item) return;
+    document.getElementById('so_inv_item').value = item.inventoryItemId || '';
+    document.getElementById('so_inv_item_search').value = item.prodText;
+    document.getElementById('so_item_qty').value = item.qty;
+    document.getElementById('so_item_price').value = item.price;
+    window.tempSOItems = window.tempSOItems.filter(i => i.id !== itemId);
+    refreshSOItemsTable();
+    document.getElementById('so_item_qty').focus();
+    document.getElementById('so_item_qty').select();
+};
+
 window.removeSOItemRow = (itemId) => {
+    if(!confirm('Hapus item ini dari daftar?')) return;
     window.tempSOItems = window.tempSOItems.filter(i => i.id !== itemId);
     refreshSOItemsTable();
 };
@@ -5794,18 +7210,34 @@ window.removeSOItemRow = (itemId) => {
 window.refreshSOItemsTable = () => {
     const tbody = document.getElementById('so_items_list');
     let total = 0;
-    tbody.innerHTML = window.tempSOItems.map(item => {
-        total += item.subtotal;
-        return `
-        <tr class="border-t">
-                <td class="px-2 py-1">${item.prodText.split(' (')[0]}</td>
-                <td class="px-2 py-1 text-right">${formatNumber(item.qty)} ${item.prodUnit}</td>
-                <td class="px-2 py-1 text-right">${formatCurrency(item.price)}</td>
-                <td class="px-2 py-1 text-right">${formatCurrency(item.subtotal)}</td>
-                <td class="px-2 py-1 text-center"><button class="text-red-500" onclick="removeSOItemRow('${item.id}')"><i class="fas fa-times"></i></button></td>
-            </tr>
-        `;
-    }).join('');
+    
+    if (window.tempSOItems.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="py-10 text-center text-slate-400 italic bg-slate-50/30">Belum ada item ditambahkan</td></tr>`;
+    } else {
+        tbody.innerHTML = window.tempSOItems.map((item, idx) => {
+            total += item.subtotal;
+            return `
+                    <tr class="hover:bg-slate-50/50 transition-colors">
+                        <td class="py-3 px-4 w-12"><input type="checkbox" class="rounded border-slate-300"></td>
+                        <td class="py-3 px-2 text-slate-400 text-center">${idx + 1}</td>
+                        <td class="py-3 px-4 font-bold text-slate-800">${item.itemCode || item.prodText.split(' (')[0]}</td>
+                        <td class="py-3 px-4 text-right font-bold text-slate-700">${formatNumber(item.qty)} ${item.prodUnit || ''}</td>
+                        <td class="py-3 px-4 text-right font-bold text-slate-700">${formatNumber(item.price)}</td>
+                        <td class="py-3 px-4 text-right text-slate-500">${formatNumber(item.subtotal)}</td>
+                        <td class="py-3 px-4 text-center">
+                            <div class="flex items-center justify-center gap-2">
+                                <button type="button" class="w-7 h-7 flex items-center justify-center bg-blue-50 text-blue-500 hover:bg-blue-600 hover:text-white rounded-lg transition-all" onclick="editSOItemRow('${item.id}')" title="Edit Item">
+                                    <i class="fas fa-pencil-alt text-[10px]"></i>
+                                </button>
+                                <button type="button" class="w-7 h-7 flex items-center justify-center bg-red-50 text-red-400 hover:bg-red-500 hover:text-white rounded-lg transition-all" onclick="removeSOItemRow('${item.id}')" title="Hapus Item">
+                                    <i class="fas fa-trash text-[10px]"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+        }).join('');
+    }
     // Store raw total
     window._soRawTotal = total;
     recalcSOTotal();
@@ -5839,12 +7271,12 @@ window.recalcSOTotal = () => {
 window.saveNewSO = () => {
     if (window.tempSOItems.length === 0) { showToast('SO harus memiliki minimal 1 item', 'error'); return; }
 
-    const soNumberInitial = document.getElementById('so_number').value;
-    const isTax = document.getElementById('so_is_tax').value === 'true';
-    const customerId = document.getElementById('so_customer').value;
-    const soDate = document.getElementById('so_date').value;
-    const salesName = document.getElementById('so_sales_name').value;
-    const paymentTerms = document.getElementById('so_payment_terms').value;
+    const soNumberInitial = document.getElementById('so_number')?.value;
+    const isTax = document.getElementById('so_is_tax')?.value === 'true';
+    const customerId = document.getElementById('so_customer_id')?.value;
+    const soDate = document.getElementById('so_date')?.value;
+    const salesName = document.getElementById('so_sales_name')?.value;
+    const paymentTerms = document.getElementById('so_payment_terms')?.value;
     const dueDate = document.getElementById('so_due_date')?.value;
     const taxRateRaw = document.getElementById('so_tax_rate')?.value;
 
@@ -5862,11 +7294,11 @@ window.saveNewSO = () => {
         soNumber = generateSONumber(isTax);
     }
 
-    const taxPct = parseFloat(taxRateRaw) || 0;
-    const taxLabel = document.getElementById('so_tax_rate')?.selectedOptions[0]?.text || `${taxPct}%`;
+    const taxRate = window._soTaxRate || parseFloat(taxRateRaw) || 0;
+    const taxLabel = document.getElementById('so_tax_rate')?.selectedOptions[0]?.text || `${taxRate}%`;
     const dpp = window.tempSOItems.reduce((sum, item) => sum + item.subtotal, 0);
     const notes = document.getElementById('so_notes')?.value || '';
-    const taxAmount = Math.round(dpp * taxPct / 100);
+    const taxAmount = window._soTaxAmount || Math.round(dpp * taxRate / 100);
     const totalAmount = dpp + taxAmount;
 
     db.insert('salesOrders', {
@@ -5878,7 +7310,7 @@ window.saveNewSO = () => {
         customerId,
         paymentTerms,
         dueDate: dueDate ? new Date(dueDate).toISOString() : null,
-        taxRate: taxPct,
+        taxRate: taxRate,
         taxLabel,
         taxAmount,
         dpp,
@@ -5904,9 +7336,11 @@ window.saveNewSO = () => {
     window._soDiscountValue = '';
 
     showToast('SO Draft berhasil disimpan');
-    closeModal();
+    
+    // BACK TO LIST
     renderSalesOrders();
 };
+
 
 window.updateSOStatus = (id, newStatus) => {
     db.update('salesOrders', id, { status: newStatus });
@@ -5948,90 +7382,105 @@ window.deleteSO = (id) => {
 window.viewSO = (id) => {
     const so = db.findById('salesOrders', id);
     const customer = db.findById('customers', so.customerId);
+    const mainContent = document.getElementById('main-content');
+    
+    // Set breadcrumb
+    renderBreadcrumb(['Sales', 'Sales Orders', 'Detail ' + so.soNumber]);
 
     const printableHTML = `
-           <div class="max-w-4xl mx-auto bg-white p-2 sm:p-6 mb-4">
-                <div class="flex justify-between items-start mb-6">
+           <div class="max-w-5xl mx-auto bg-white p-6 sm:p-10 shadow-sm border border-slate-100 rounded-3xl my-6">
+                <div class="flex justify-between items-start mb-10">
                     <div>
-                        <h2 class="text-3xl font-bold text-gray-800">SALES ORDER</h2>
-                        <p class="text-gray-500 mt-1">${so.soNumber}</p>
+                        <h2 class="text-4xl font-black text-slate-900 tracking-tight">SALES ORDER</h2>
+                        <p class="text-slate-400 mt-2 font-mono text-lg">${so.soNumber}</p>
                     </div>
                     <div class="text-right">
-                        <h1 class="text-xl font-bold text-blue-800">${CONFIG.companyName}</h1>
-                        <p class="text-sm text-gray-500">${CONFIG.companyAddress}</p>
-                        <p class="text-xs text-gray-400">${CONFIG.companyPhone} | ${CONFIG.companyEmail}</p>
+                        <img src="assets/logo.png" alt="Logo" class="h-14 ml-auto mb-3 object-contain opacity-20">
+                        <h1 class="text-xl font-black text-slate-900 uppercase tracking-tight">${CONFIG.companyName}</h1>
+                        <p class="text-xs text-slate-400 max-w-xs ml-auto leading-relaxed mt-1">${CONFIG.companyAddress}</p>
                     </div>
                 </div>
                 
-                <div class="grid grid-cols-2 gap-8 mb-8">
-                    <div>
-                        <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Customer</h3>
-                        <p class="font-medium text-gray-800">${customer ? customer.name : '-'}</p>
-                        ${customer && customer.phone ? `<p class="text-sm text-gray-600">${customer.phone}</p>` : ''}
-                        ${customer && customer.address ? `<p class="text-sm text-gray-600 whitespace-pre-wrap">${customer.address}</p>` : ''}
+                <div class="grid grid-cols-2 gap-12 mb-12">
+                    <div class="space-y-4">
+                        <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Customer / Bill To</h3>
+                        <div class="p-5 bg-slate-50 rounded-2xl border border-slate-100">
+                            <p class="font-black text-slate-900 text-lg mb-1">${customer ? customer.name : '-'}</p>
+                            ${customer && customer.phone ? `<p class="text-sm font-bold text-slate-500">${customer.phone}</p>` : ''}
+                            ${customer && customer.address ? `
+                                <div class="mt-4 pt-4 border-t border-slate-200">
+                                    <p class="text-sm text-slate-600 leading-relaxed font-medium italic">"${customer.address}"</p>
+                                </div>
+                            ` : ''}
+                        </div>
                     </div>
-                    <div class="text-right">
-                        <h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Detail Pesanan</h3>
-                        <p class="text-gray-800 text-sm mb-1">Tanggal SO: ${formatDate(so.date).slice(0, 11)}</p>
-                        <p class="text-gray-800 text-sm mb-1">Sales: <span class="font-medium">${so.salesName || '-'}</span></p>
-                        <p class="text-gray-800 text-sm mb-1">Term Pembayaran: <span class="font-medium">${so.paymentTerms || '-'}</span></p>
-                        <p class="text-gray-800 text-sm mb-1">Jatuh Tempo: <span class="font-bold text-red-600">${so.dueDate ? formatDate(so.dueDate).slice(0, 11) : '-'}</span></p>
-                        <p class="text-gray-800 text-sm mt-2">Status: <span class="font-medium px-2 py-1 rounded bg-gray-100 text-gray-800">${so.status}</span></p>
+                    <div class="text-right space-y-4">
+                        <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Order Logistics</h3>
+                        <div class="space-y-2">
+                             <div class="flex justify-end gap-4 items-center">
+                                <span class="text-xs font-bold text-slate-400">TANGGAL SO:</span>
+                                <span class="text-sm font-black text-slate-800 uppercase">${formatDate(so.date).slice(0, 11)}</span>
+                            </div>
+                            <div class="flex justify-end gap-4 items-center">
+                                <span class="text-xs font-bold text-slate-400">SALES:</span>
+                                <span class="text-sm font-black text-slate-600 uppercase italic">${so.salesName || '-'}</span>
+                            </div>
+                            <div class="flex justify-end gap-4 items-center">
+                                <span class="text-xs font-bold text-slate-400">TERM:</span>
+                                <span class="text-sm font-black text-slate-800 uppercase">${so.paymentTerms || '-'}</span>
+                            </div>
+                            <div class="flex justify-end gap-4 items-center mt-4">
+                                <span class="text-[10px] font-black px-4 py-1.5 rounded-full bg-slate-900 text-white uppercase tracking-widest shadow-lg">${so.status}</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
                 ${so.notes ? `
-                <div class="mb-8 p-4 bg-gray-50 rounded-lg border border-gray-100">
-                    <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Keterangan / Catatan:</h3>
-                    <p class="text-sm text-gray-700 whitespace-pre-wrap">${so.notes}</p>
+                <div class="mb-12 p-6 bg-slate-50 rounded-3xl border border-slate-100 relative overflow-hidden">
+                    <div class="absolute top-0 left-0 w-1.5 h-full bg-blue-500"></div>
+                    <h3 class="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mb-2">Keterangan / Internal Notes</h3>
+                    <p class="text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-wrap">${so.notes}</p>
                 </div>
                 ` : ''}
                 
-                <table class="w-full text-left mb-8 border-collapse">
+                <table class="w-full text-left mb-12 border-collapse">
                     <thead>
-                        <tr class="border-b-2 border-gray-800 text-gray-800 text-sm">
-                            <th class="py-3 px-2">Produk</th>
-                            <th class="py-3 px-2 text-right">Qty</th>
-                            <th class="py-3 px-2 text-right">Harga Satuan</th>
-                            <th class="py-3 px-2 text-right">Subtotal</th>
+                        <tr class="bg-slate-50 text-slate-500 text-[10px] uppercase font-black tracking-widest border-y border-slate-100">
+                            <th class="py-5 px-4 font-black">Item Description</th>
+                            <th class="py-5 px-4 text-right font-black">Quantity</th>
+                            <th class="py-5 px-4 text-right font-black">Rate</th>
+                            <th class="py-5 px-4 text-right font-black">Total</th>
                         </tr>
                     </thead>
-                    <tbody class="text-gray-700 text-sm">
+                    <tbody class="text-slate-700">
                         ${so.items.map(i => `
-                            <tr class="border-b border-gray-200">
-                                <td class="py-3 px-2">${i.prodText.split(' (')[0]}</td>
-                                <td class="py-3 px-2 text-right">${formatNumber(i.qty)}</td>
-                                <td class="py-3 px-2 text-right">${formatCurrency(i.price)}</td>
-                                <td class="py-3 px-2 text-right">${formatCurrency(i.subtotal)}</td>
+                            <tr class="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group">
+                                <td class="py-6 px-4">
+                                    <div class="font-black text-slate-900 text-sm group-hover:text-blue-600 transition-colors uppercase">${i.prodText.split(' (')[0]}</div>
+                                    <div class="text-[9px] text-slate-300 font-bold uppercase tracking-widest mt-0.5">Stock Item: ${i.inventoryItemId?.slice(0, 8) || 'N/A'}</div>
+                                </td>
+                                <td class="py-6 px-4 text-right font-black text-slate-800">${formatNumber(i.qty)}</td>
+                                <td class="py-6 px-4 text-right font-bold text-slate-500">${formatCurrency(i.price)}</td>
+                                <td class="py-6 px-4 text-right font-black text-slate-900">${formatCurrency(i.subtotal)}</td>
                             </tr>
                         `).join('')}
                     </tbody>
-                    <tfoot>
-                        <!-- Subtotal -->
+                    <tfoot class="bg-slate-50/20">
                         <tr>
-                            <td colspan="3" class="py-2 px-2 text-right text-sm text-gray-500 font-medium">Subtotal (Gross):</td>
-                            <td class="py-2 px-2 text-right text-sm text-gray-800 font-medium border-t-2 border-gray-100">${formatCurrency(so.dpp || so.totalAmount)}</td>
+                            <td colspan="3" class="py-4 px-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Net Value (DPP)</td>
+                            <td class="py-4 px-4 text-right text-sm font-black text-slate-800">${formatCurrency(so.dpp || so.totalAmount)}</td>
                         </tr>
-
-
-
-                        <!-- DPP (Net after discount) -->
-                        ${so.dpp != null ? `
-                        <tr class="bg-gray-50/50">
-                            <td colspan="3" class="py-2 px-2 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">DPP (Dasar Pengenaan Pajak):</td>
-                            <td class="py-2 px-2 text-right text-sm text-gray-900 font-black border-y border-gray-200">
-                                ${formatCurrency(Math.max(0, (so.dpp || 0) - (so.discountAmount || 0)))}
-                            </td>
+                        ${so.taxAmount > 0 ? `
+                        <tr>
+                            <td colspan="3" class="py-4 px-4 text-right text-[10px] font-black text-orange-400 uppercase tracking-widest">Tax Provision (${so.taxRate || 11}%)</td>
+                            <td class="py-4 px-4 text-right text-sm font-black text-orange-600">${formatCurrency(so.taxAmount)}</td>
                         </tr>
+                        ` : ''}
                         <tr>
-                            <td colspan="3" class="py-2 px-2 text-right text-sm text-gray-600">${so.taxLabel || `PPN (${so.taxRate || 0}%)`}:</td>
-                            <td class="py-2 px-2 text-right text-sm text-orange-600 font-medium">${formatCurrency(so.taxAmount || 0)}</td>
-                        </tr>` : ''}
-
-                        <!-- Grand Total -->
-                        <tr>
-                            <td colspan="3" class="py-4 px-2 text-right font-bold text-gray-800 text-base">Grand Total:</td>
-                            <td class="py-4 px-2 text-right font-bold text-blue-700 text-xl border-t-4 border-gray-800">
+                            <td colspan="2"></td>
+                            <td class="py-8 px-4 text-right font-black text-slate-400 uppercase tracking-[0.2em] text-[10px]">Total Order Amount</td>
+                            <td class="py-8 px-4 text-right font-black text-blue-700 text-3xl tracking-tighter border-t-2 border-slate-900">
                                 ${formatCurrency(so.totalAmount)}
                             </td>
                         </tr>
@@ -6040,13 +7489,38 @@ window.viewSO = (id) => {
            </div>
         `;
 
-    const footer = `
-            <button onclick='printHTML(\`${printableHTML.replace(/`/g, "\\`").replace(/\n/g, "")}\`, "Sales Order ${so.soNumber}")' class="w-full sm:w-auto inline-flex justify-center items-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-purple-600 text-white font-medium hover:bg-purple-700 sm:text-sm mr-0 mb-3 sm:mb-0 sm:mr-3 transition-colors"> <i class="fas fa-file-pdf mr-2"></i> Print / Save PDF</button>
-            <button onclick="openSendSOModal('${so.id}')" class="w-full sm:w-auto inline-flex justify-center items-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-white font-medium hover:bg-blue-700 sm:text-sm mr-0 mb-3 sm:mb-0 sm:mr-3 transition-colors"> <i class="fas fa-paper-plane mr-2"></i> Kirim</button>
-            <button onclick="closeModal()" class="w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-gray-700 font-medium hover:bg-gray-50 transition-colors sm:text-sm"> Tutup</button>
-        `;
+    mainContent.innerHTML = `
+        <div class="animate-in fade-in slide-in-from-bottom-2 duration-400 -m-6 h-[calc(100vh-64px)] flex flex-col overflow-hidden bg-white">
+            <!-- Record Header / Action Bar (STICKY AREA) -->
+            <div class="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 px-8 py-5 flex items-center justify-between shrink-0 shadow-sm">
+                <div class="flex items-center gap-6">
 
-    showModal(`Detail SO-${so.soNumber} `, printableHTML, footer);
+                    <div>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <button onclick='printHTML(\`${printableHTML.replace(/`/g, "\\`").replace(/\n/g, "")}\`, "Sales Order ${so.soNumber}")' 
+                        class="px-6 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all flex items-center gap-2 active:scale-95">
+                        <i class="fas fa-file-pdf text-slate-400"></i> Print / Save PDF
+                    </button>
+                    <button onclick="openSendSOModal('${so.id}')" 
+                        class="px-6 py-2.5 bg-blue-50 text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 hover:text-white transition-all flex items-center gap-2 active:scale-95 shadow-sm">
+                        <i class="fas fa-paper-plane mr-1 text-[9px]"></i> Kirim Dokumen
+                    </button>
+                    <div class="w-px h-6 bg-slate-200 mx-2"></div>
+                    <button onclick="renderSalesOrders()" class="px-6 py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-xl active:scale-95 group">
+                        Tutup Order <i class="fas fa-times ml-2 text-slate-400 group-hover:text-white"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Scrollable Content Area -->
+            <div class="flex-1 overflow-y-auto bg-slate-50/50 custom-scrollbar pb-24">
+                ${printableHTML}
+            </div>
+        </div>
+    `;
 };
 
 // --- Create Invoice Logic ---
@@ -6068,164 +7542,266 @@ window.generateInvoiceNumber = (isTax) => {
 
     const nextSeq = sameMonthInvs.length + 1;
     const seqStr = String(nextSeq).padStart(3, '0');
-    const type = isTax ? 'TAX' : 'NT';
+    const type = isTax ? 'A' : 'B';
     return `INV-${type}-${seqStr}/${romanMonth}/${year}`;
 };
 
-window.openInvoiceModal = (soId) => {
-    const so = db.findById('salesOrders', soId);
-    if (!so) { showToast('Sales Order tidak ditemukan', 'error'); return; }
-    if (so.status !== 'DELIVERED') {
-        showToast('Barang harus dikirim terlebih dahulu (Status Delivered) sebelum membuat invoice.', 'error');
+window.openInvoiceModal = (soId = null, customerId = null) => {
+    // Hide list, show form view
+    const listView = document.getElementById('si-list-view');
+    const formView = document.getElementById('si-form-view');
+    if (!listView || !formView) {
+        // Fallback for direct navigation if views aren't ready
+        renderSalesInvoices();
+        setTimeout(() => openInvoiceModal(soId, customerId), 100);
         return;
     }
 
+    renderBreadcrumb(['Sales', 'Sales Invoices', 'Buat Sales Invoice']);
+
+    listView.classList.add('hidden');
+    formView.classList.remove('hidden');
+
+    const allSOs = db.read('salesOrders') || [];
+    const invoices = db.read('salesInvoices') || [];
     const customers = db.read('customers') || [];
-    const customer = customers.find(c => c.id === so.customerId) || { name: 'Unknown' };
 
-    // Get packaging data from related DO
-    const relatedDO = db.read('deliveryOrders').find(d => d.salesOrderId === so.id && d.status === 'SHIPPED');
-
-    const isSOTaxed = (parseFloat(so.taxAmount) || 0) > 0;
+    let so = soId ? db.findById('salesOrders', soId) : null;
+    const initialCustomer = (so ? (customers.find(c => c.id === so.customerId)) : (customerId ? db.findById('customers', customerId) : null)) || null;
+    
+    // Filter valid SOs for the initial SO if provided
+    const relatedDO = so ? db.read('deliveryOrders').find(d => d.salesOrderId === so.id && d.status === 'SHIPPED') : null;
+    const isSOTaxed = so ? (parseFloat(so.taxAmount) || 0) > 0 : false;
     const defaultTaxRate = isSOTaxed ? 11 : 0;
-
-    // Auto-generate invoice number based on current tax status
     const initialInvNumber = generateInvoiceNumber(isSOTaxed);
 
-    const itemsPreview = (so.items || []).map(item => {
-        const doItem = relatedDO ? relatedDO.items.find(di => di.inventoryItemId === item.inventoryItemId) : null;
-        const kemasan = doItem?.kemasan || '-';
-        const colly = doItem?.colly || '-';
-        return `
-            <tr class="border-t">
-                <td class="px-2 py-1">
-                    <div class="text-[11px] font-bold text-gray-800">${item.prodText}</div>
-                    ${kemasan !== '-' ? `<div class="text-[9px] text-gray-500 italic">Kemasan: ${kemasan}</div>` : ''}
-                </td>
-                <td class="px-2 py-1 text-center font-bold text-[11px] text-blue-600">${colly}</td>
-                <td class="px-2 py-1 text-right text-[11px]">${formatNumber(item.qty)} ${item.prodUnit}</td>
-                <td class="px-2 py-1 text-right text-[11px]">${formatCurrency(item.price || 0)}</td>
-                <td class="px-2 py-1 text-right text-[11px] font-bold">${formatCurrency(item.subtotal || 0)}</td>
-            </tr>
-        `;
-    }).join('');
+    let itemsPreview = '<tr><td colspan="5" class="py-16 text-center text-slate-400 italic bg-white flex flex-col items-center justify-center border-2 border-dashed border-slate-100 rounded-3xl m-8"><div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4"><i class="fas fa-file-invoice text-2xl"></i></div><p class="font-bold uppercase tracking-widest text-[10px]">Silakan pilih Customer & Sales Order terlebih dahulu...</p></td></tr>';
+    if (so) {
+        itemsPreview = (so.items || []).map(item => {
+            const doItem = relatedDO ? relatedDO.items.find(di => di.inventoryItemId === item.inventoryItemId) : null;
+            const kemasan = doItem?.kemasan || '-';
+            const colly = doItem?.colly || '-';
+            return `
+                <tr class="border-t hover:bg-slate-50/50 transition-colors">
+                    <td class="px-8 py-5">
+                        <div class="text-sm font-bold text-slate-800">${item.prodText}</div>
+                        ${kemasan !== '-' ? `<div class="text-[10px] text-slate-400 font-bold uppercase tracking-wide mt-1">Kemasan: ${kemasan}</div>` : ''}
+                    </td>
+                    <td class="px-8 py-5 text-center font-black text-sm text-blue-600">${colly}</td>
+                    <td class="px-8 py-5 text-right text-sm font-bold text-slate-700">${formatNumber(item.qty)} ${item.prodUnit}</td>
+                    <td class="px-8 py-5 text-right text-sm font-mono font-bold text-slate-500">${formatCurrency(item.price || 0)}</td>
+                    <td class="px-8 py-5 text-right text-sm font-black font-mono text-slate-900 bg-slate-50/30">${formatCurrency(item.subtotal || 0)}</td>
+                </tr>
+            `;
+        }).join('');
+    }
 
-    const baseSubtotal = (so.items || []).reduce((sum, item) => sum + (parseFloat(item.subtotal) || 0), 0);
+    const baseSubtotal = so ? (so.items || []).reduce((sum, item) => sum + (parseFloat(item.subtotal) || 0), 0) : 0;
+    let defaultDiscType = so ? so.discountType || '' : '';
+    let defaultDiscValue = so ? so.discountValue || '' : '';
+    let inheritedDiscountAmount = so ? so.discountAmount || 0 : 0;
 
-    let defaultDiscType = so.discountType || '';
-    let defaultDiscValue = so.discountValue || '';
-    let inheritedDiscountAmount = so.discountAmount || 0;
-
-    const body = `
-        <div class="space-y-4">
-            <input type="hidden" id="inv_so_id" value="${so.id}">
-            <input type="hidden" id="inv_customer_id" value="${so.customerId}">
-            <input type="hidden" id="inv_base_subtotal" value="${baseSubtotal}">
-            
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">No. Invoice</label>
-                    <input type="text" id="inv_number" value="${initialInvNumber}" class="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50 font-mono text-sm" readonly>
+    formView.innerHTML = `
+        <div class="animate-in fade-in slide-in-from-bottom-2 duration-500 flex flex-col bg-white rounded-3xl shadow-2xl border border-slate-200 mb-20">
+            <!-- Header / Action Bar -->
+            <div class="bg-white border-b border-slate-100 px-8 py-5 flex items-center justify-between shrink-0 sticky top-0 z-50 rounded-t-3xl backdrop-blur-md bg-white/95">
+                <div class="flex items-center gap-6">
+                    <div class="flex flex-col">
+                        <h2 class="text-lg font-black text-slate-800 tracking-tight flex items-center gap-3">
+                        </h2>
+                    </div>
                 </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Customer</label>
-                    <input type="text" value="${customer.name}" class="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50 text-sm font-medium" readonly>
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Tanggal Transaksi</label>
-                    <input type="date" id="inv_date" value="${new Date().toISOString().split('T')[0]}" onchange="updateInvDueDate()" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
-                </div>
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Term Pembayaran</label>
-                    <select id="inv_due_date_term" onchange="updateInvDueDate()" class="w-full border border-gray-300 rounded px-3 py-2 bg-white text-sm focus:ring-2 focus:ring-blue-400">
-                        <option value="0">Cash</option>
-                        <option value="10" selected>Tempo 7 s/d 10 Hari</option>
-                        <option value="30">30 Hari</option>
-                        <option value="45">45 Hari</option>
-                    </select>
+                
+                <div class="flex items-center gap-3">
+                    <button onclick="renderSalesInvoices()" class="px-6 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95">
+                        Batal
+                    </button>
+                    <button onclick="saveNewInvoice()" class="px-8 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all shadow-lg active:scale-95 flex items-center gap-2">
+                        <i class="fas fa-check-circle text-[10px]"></i> Konfirmasi & Simpan Invoice
+                    </button>
                 </div>
             </div>
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-2">
-                <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Tanggal Jatuh Tempo</label>
-                    <input type="date" id="inv_due_date" class="w-full border border-gray-300 rounded px-3 py-2 bg-white text-sm font-bold text-red-600">
-                </div>
-            </div>
-            
-            <div class="border-t border-gray-200 pt-4 mt-4">
-                <h4 class="text-md font-medium text-gray-800 mb-2">Item Invoice (Berdasarkan SO-${so.soNumber})</h4>
-                <div class="max-h-48 overflow-y-auto mb-4 border rounded">
-                    <table class="w-full text-sm text-left">
-                        <thead class="bg-gray-50 sticky top-0">
-                            <tr>
-                                <th class="px-2 py-1">Produk</th>
-                                <th class="px-2 py-1 text-center">Colly</th>
-                                <th class="px-2 py-1 text-right">Qty</th>
-                                <th class="px-2 py-1 text-right">Harga</th>
-                                <th class="px-2 py-1 text-right">Subtotal</th>
-                            </tr>
-                        </thead>
-                        <tbody class="bg-white">
-                            ${itemsPreview}
-                        </tbody>
-                    </table>
-                </div>
 
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div>
-                        <div class="bg-gray-50 p-4 rounded border mb-4">
-                            <label class="block text-sm font-medium text-gray-700 mb-2">Catatan Tambahan (Opsional)</label>
-                            <textarea id="inv_notes" class="w-full border border-gray-300 rounded px-3 py-2 text-sm h-16" placeholder="Cth: Harap segera dilunasi..."></textarea>
+            <!-- Content Area -->
+            <div class="bg-slate-50/30 p-8 pb-32">
+                <div class="max-w-6xl mx-auto space-y-8">
+                    
+                    <input type="hidden" id="inv_so_id" value="${so ? so.id : ''}">
+                    <input type="hidden" id="inv_customer_id" value="${so ? so.customerId : ''}">
+                    <input type="hidden" id="inv_base_subtotal" value="${baseSubtotal}">
+
+                    <!-- Section: Header Info -->
+                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-8">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
+                            <!-- Customer Selection -->
+                            <div class="space-y-3">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Customer / Mitra Dagang <span class="text-red-400">*</span></label>
+                                <div class="relative" id="inv_customer_container">
+                                    <input type="text" id="inv_customer_search" value="${initialCustomer ? initialCustomer.name : '-- Pilih Customer --'}" readonly
+                                        onclick="toggleCustomerDropdown('inv_customer_dropdown')"
+                                        class="w-full border-none rounded-xl px-5 py-3.5 bg-slate-100/80 font-bold text-slate-800 shadow-sm focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-base cursor-pointer">
+                                    
+                                    <div id="inv_customer_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] hidden overflow-hidden animate-in fade-in zoom-in-95 duration-200 min-w-[320px]">
+                                        <div class="max-h-60 overflow-y-auto p-1" id="inv_customer_list">
+                                            ${customers.map(c => `
+                                                <div onclick="selectCustomer('INV', '${c.id}', '${c.name.replace(/'/g, "\\'")}')" 
+                                                    class="px-5 py-3 text-sm font-bold text-slate-700 hover:bg-blue-50 rounded-xl cursor-pointer transition-colors m-0.5 ${initialCustomer && initialCustomer.id === c.id ? 'bg-blue-50 text-blue-600' : ''}">
+                                                    ${c.name}
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                        <div class="p-3 border-t border-slate-50 bg-slate-50/30 space-y-1.5 font-sans">
+                                            <button type="button" onclick="openCustomerModal(null, 'INV'); toggleCustomerDropdown('inv_customer_dropdown')" 
+                                                class="flex items-center gap-4 w-full px-5 py-2.5 text-sm text-slate-700 hover:bg-white hover:shadow-sm transition-all rounded-xl font-bold text-left group whitespace-nowrap">
+                                                <div class="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-slate-400 group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm shrink-0">
+                                                    <i class="fas fa-plus text-xs"></i>
+                                                </div>
+                                                Create a new Customer
+                                            </button>
+                                            <button type="button" onclick="openAdvancedCustomerSearch('INV')" 
+                                                class="flex items-center gap-4 w-full px-5 py-2.5 text-sm text-slate-700 hover:bg-white hover:shadow-sm transition-all rounded-xl font-bold text-left group whitespace-nowrap">
+                                                <div class="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-slate-400 group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm shrink-0">
+                                                    <i class="fas fa-search text-xs"></i>
+                                                </div>
+                                                Advanced Search
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- SO Selection -->
+                            <div class="space-y-3">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Referensi Sales Order (Selesai Kirim)</label>
+                                <select id="inv_source_so" onchange="openInvoiceModal(this.value)" class="w-full border-none rounded-xl px-5 py-3.5 bg-slate-100/80 font-bold text-slate-800 shadow-sm focus:ring-4 focus:ring-blue-500/10 outline-none transition-all cursor-pointer text-base ${!initialCustomer ? 'opacity-50 pointer-events-none' : ''}">
+                                    <option value="" disabled ${!so ? 'selected' : ''}>${initialCustomer ? '-- Pilih Sales Order (Status: Delivered) --' : '-- Pilih Customer Dahulu --'}</option>
+                                    ${(() => {
+                                        if (!initialCustomer) return '';
+                                        const custSOs = allSOs.filter(s => {
+                                            if (s.customerId !== initialCustomer.id) return false;
+                                            if (s.status !== 'DELIVERED') return false;
+                                            const hasInvoice = invoices.some(inv => inv.salesOrderId === s.id && inv.status !== 'CANCELLED');
+                                            return !hasInvoice || s.id === (so?.id);
+                                        });
+                                        return custSOs.map(s => `<option value="${s.id}" ${soId === s.id ? 'selected' : ''}>SO-${s.soNumber} (${formatCurrency(s.totalAmount)})</option>`).join('');
+                                    })()}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-8 pt-4">
+                            <div class="space-y-3">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Nomor Faktur</label>
+                                <input type="text" id="inv_number" value="${initialInvNumber}" class="w-full px-5 py-3.5 bg-slate-50 border-2 border-slate-50 rounded-xl font-bold text-slate-400 font-mono outline-none text-base" readonly>
+                            </div>
+                            <div class="space-y-3">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Tanggal Transaksi <span class="text-red-400">*</span></label>
+                                <input type="date" id="inv_date" value="${new Date().toISOString().split('T')[0]}" onchange="updateInvDueDate()" class="w-full px-5 py-3.5 bg-slate-100/80 border-2 border-transparent rounded-xl font-bold text-slate-800 focus:bg-white focus:border-blue-500 focus:ring-0 outline-none transition-all text-sm cursor-pointer">
+                            </div>
+                            <div class="space-y-3">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Term Pembayaran</label>
+                                <select id="inv_due_date_term" onchange="updateInvDueDate()" class="w-full px-5 py-3.5 bg-slate-100/80 border-2 border-transparent rounded-xl font-bold text-slate-800 focus:bg-white focus:border-blue-500 outline-none transition-all cursor-pointer text-sm">
+                                    <option value="0">Cash (COD)</option>
+                                    <option value="10" selected>Tempo 7-10 Hari</option>
+                                    <option value="30">30 Hari</option>
+                                    <option value="45">45 Hari</option>
+                                </select>
+                            </div>
+                            <div class="space-y-3 text-red-600">
+                                <label class="block text-[10px] font-black text-red-400 uppercase tracking-[0.2em] ml-1">Tanggal Jatuh Tempo</label>
+                                <input type="date" id="inv_due_date" class="w-full px-6 py-4 bg-red-50/50 border-2 border-transparent rounded-2xl font-black text-red-700 focus:bg-white focus:border-red-500 outline-none transition-all text-lg cursor-pointer">
+                            </div>
                         </div>
                     </div>
                     
-                    <div class="space-y-2 text-sm">
-                        <div class="flex justify-between items-center bg-gray-50 p-2 rounded">
-                            <span class="text-gray-600 font-medium">Subtotal Item:</span>
-                            <span class="font-bold">${formatCurrency(baseSubtotal)}</span>
+                    <!-- Section: Items Table -->
+                    <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden min-h-[300px] flex flex-col">
+                        <div class="px-8 py-5 bg-slate-50/50 border-b border-slate-100 flex items-center justify-between">
+                            <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-3">
+                                <i class="fas fa-list-ul text-blue-600"></i> Manifest Barang (Invoice)
+                                ${so ? `<span class="bg-blue-600 text-white font-black px-3 py-1 rounded-lg italic tracking-tight text-[9px] transform -rotate-1 shadow-sm ml-2">Refer To SO-${so.soNumber}</span>` : ''}
+                            </h4>
                         </div>
-                        
-                        <div class="flex justify-between items-center border-b pb-2">
-                            <div class="flex items-center gap-2">
-                                <span class="text-gray-600 font-medium">Diskon / Promo:</span>
-                                <select id="inv_discount_type" onchange="refreshInvoiceCalculation()" class="border border-gray-300 rounded px-2 py-1 text-xs bg-white w-28">
-                                    <option value="" ${!defaultDiscType ? 'selected' : ''}>-- Tidak Ada --</option>
-                                    <option value="cash" ${defaultDiscType === 'cash' ? 'selected' : ''}>Cash Disc (%)</option>
-                                    <option value="cash_flat" ${defaultDiscType === 'cash_flat' ? 'selected' : ''}>Cash Disc (Rp)</option>
-                                    <option value="other" ${defaultDiscType === 'other' ? 'selected' : ''}>Lainnya</option>
-                                </select>
-                            </div>
-                            <div id="inv_discount_detail" class="${!defaultDiscType ? 'hidden' : 'flex'} gap-2">
-                                <input type="text" id="inv_discount_value" value="${defaultDiscValue}" oninput="refreshInvoiceCalculation()" placeholder="Isi diskon..." class="border border-gray-300 rounded px-2 py-1 text-xs w-24 text-right focus:ring-1 focus:ring-blue-400">
-                            </div>
+                        <div class="overflow-x-auto flex-1">
+                            <table class="w-full text-sm text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-50/20 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 font-sans">
+                                        <th class="px-8 py-4">Nama Produk / Deskripsi Item</th>
+                                        <th class="px-8 py-4 text-center">Colly</th>
+                                        <th class="px-8 py-4 text-right">Qty / Unit</th>
+                                        <th class="px-8 py-4 text-right">Satuan Harga</th>
+                                        <th class="px-8 py-4 text-right">Subtotal</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-50">
+                                    ${itemsPreview}
+                                </tbody>
+                            </table>
                         </div>
+                    </div>
 
-                        <div class="flex justify-between items-center text-green-600 mb-1" id="inv_discount_row" style="display:${inheritedDiscountAmount > 0 ? 'flex' : 'none'}">
-                            <span id="inv_discount_label">Diskon:</span>
-                            <span id="inv_discount_display" class="font-medium">- ${formatCurrency(inheritedDiscountAmount)}</span>
+                    <!-- Section: Notes & Totals -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
+                        <!-- Notes -->
+                        <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-4">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Keterangan / Internal Payment Notes</label>
+                            <textarea id="inv_notes" class="w-full px-8 py-6 bg-slate-50 border-2 border-slate-50 rounded-2xl text-slate-700 h-40 focus:bg-white focus:border-blue-500 outline-none transition-all resize-none shadow-inner font-medium text-base" placeholder="Tambahkan instruksi pembayaran, nomor rekening, atau catatan internal di sini..."></textarea>
                         </div>
                         
-                        <div class="flex justify-between items-center border-b pb-2">
-                           <span class="text-gray-600 font-medium">Pajak (PPN %):</span>
-                           <select id="inv_tax_rate" onchange="refreshInvoiceCalculation()" class="border border-gray-300 rounded px-2 py-1 text-xs bg-white w-32">
-                               <option value="0" ${defaultTaxRate === 0 ? 'selected' : ''}>0% (Non-Pajak)</option>
-                               <option value="11" ${defaultTaxRate > 0 ? 'selected' : ''}>11% (PPN)</option>
-                           </select>
-                        </div>
-                        
-                        <div class="flex justify-between items-center text-orange-600 mb-1" id="inv_tax_row">
-                            <span id="inv_tax_label">PPN (${defaultTaxRate}%):</span>
-                            <span id="inv_tax_display" class="font-medium">Rp 0</span>
-                        </div>
-                        
-                        <div class="flex-col gap-1 mt-2 mb-2 p-2 bg-orange-50 rounded border border-orange-100" id="inv_nsfp_row" style="display:${defaultTaxRate > 0 ? 'flex' : 'none'}">
-                            <label class="text-xs font-semibold text-orange-800">No. Seri Faktur Pajak (NSFP)</label>
-                            <input type="text" id="inv_nsfp" placeholder="000.000-00.00000000" class="border border-orange-200 rounded px-2 py-1 text-xs w-full focus:ring-1 focus:ring-orange-400 focus:border-orange-400 bg-white">
-                        </div>
+                        <!-- Totals Card -->
+                        <div class="bg-white rounded-3xl p-10 border border-slate-100 shadow-2xl space-y-6 relative overflow-hidden group">
+                           <div class="absolute top-0 right-0 w-48 h-48 bg-blue-50/50 rounded-full -mr-24 -mt-24 transition-transform group-hover:scale-110 duration-700"></div>
+                            
+                            <div class="space-y-4 relative z-10">
+                                <div class="flex justify-between items-center px-2">
+                                    <span class="text-xs font-black text-slate-400 uppercase tracking-[0.1em]">Total DPP (Subtotal):</span>
+                                    <span class="font-black text-slate-800 text-xl font-mono">${formatCurrency(baseSubtotal)}</span>
+                                </div>
+                                
+                                <div class="bg-slate-50/80 rounded-3xl p-8 border border-slate-100 space-y-5 shadow-inner">
+                                    <!-- Discount Selector -->
+                                    <div class="flex justify-between items-center">
+                                        <div class="flex items-center gap-4">
+                                            <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Adjustment Discount:</span>
+                                            <select id="inv_discount_type" onchange="refreshInvoiceCalculation()" class="border-none rounded-xl px-3 py-1.5 text-[11px] font-black bg-white shadow-sm ring-1 ring-slate-100 outline-none appearance-none hover:ring-blue-500 cursor-pointer transition-all">
+                                                <option value="" ${!defaultDiscType ? 'selected' : ''}>Tanpa Diskon</option>
+                                                <option value="cash" ${defaultDiscType === 'cash' ? 'selected' : ''}>Persentase (%)</option>
+                                                <option value="cash_flat" ${defaultDiscType === 'cash_flat' ? 'selected' : ''}>Flat Amount (Rp)</option>
+                                            </select>
+                                        </div>
+                                        <div id="inv_discount_detail" class="${!defaultDiscType ? 'hidden' : 'block'}">
+                                            <input type="text" id="inv_discount_value" value="${defaultDiscValue}" oninput="refreshInvoiceCalculation()" class="border-none ring-2 ring-blue-500/10 rounded-xl px-4 py-2 text-sm w-32 text-right font-black outline-none focus:ring-blue-500 shadow-sm bg-white">
+                                        </div>
+                                    </div>
 
-                        <div class="flex justify-between items-center pt-2 mt-2 border-t-2 border-gray-800">
-                            <span class="text-gray-900 font-bold text-lg">Total Tagihan:</span>
-                            <span id="inv_total_display" class="font-bold text-blue-700 text-xl">Rp 0</span>
+                                    <div class="flex justify-between items-center text-emerald-600 font-black px-2 text-sm" id="inv_discount_row" style="display:${inheritedDiscountAmount > 0 ? 'flex' : 'none'}">
+                                        <span id="inv_discount_label" class="uppercase text-[10px]">Potongan Khusus:</span>
+                                        <span id="inv_discount_display" class="font-mono">- ${formatCurrency(inheritedDiscountAmount)}</span>
+                                    </div>
+                                    
+                                    <div class="border-t border-slate-200/40 my-2"></div>
+
+                                    <!-- Tax Selector -->
+                                    <div class="flex justify-between items-center">
+                                       <div class="flex items-center gap-4">
+                                           <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pajak Pertambahan Nilai:</span>
+                                           <select id="inv_tax_rate" onchange="refreshInvoiceCalculation()" class="border-none rounded-xl px-3 py-1.5 text-[11px] font-black bg-white shadow-sm ring-1 ring-slate-100 outline-none cursor-pointer hover:ring-blue-500 transition-all">
+                                               <option value="0" ${defaultTaxRate === 0 ? 'selected' : ''}>Non PPN (0%)</option>
+                                               <option value="11" ${defaultTaxRate > 0 ? 'selected' : ''}>PPN Luar (11%)</option>
+                                           </select>
+                                       </div>
+                                       <div class="flex flex-col items-end" id="inv_tax_row">
+                                           <span id="inv_tax_label" class="text-[9px] font-black text-slate-400 uppercase tracking-tight">PPN (${defaultTaxRate}%):</span>
+                                           <span id="inv_tax_display" class="font-black text-orange-600 font-mono text-base">+ Rp 0</span>
+                                       </div>
+                                    </div>
+                                </div>
+
+                                <div class="pt-6 border-t border-slate-100 flex justify-between items-center px-2">
+                                    <span class="text-slate-800 font-black text-xl uppercase tracking-tighter">TOTAL TAGIHAN:</span>
+                                    <span id="inv_total_display" class="font-black text-blue-700 text-4xl font-mono tracking-tighter drop-shadow-sm transition-all duration-300">Rp 0</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -6233,18 +7809,18 @@ window.openInvoiceModal = (soId) => {
         </div>
     `;
 
-    const footer = `
-        <button type="button" onclick="saveNewInvoice()" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-white font-medium focus:outline-none sm:ml-3 sm:w-auto sm:text-sm">Buat Invoice</button>
-        <button type="button" onclick="closeModal()" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-gray-700 font-medium sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">Batal</button>
-    `;
 
-    showModal('Buat Sales Invoice', body, footer, 'full');
-
-    // Initialize calculation
     setTimeout(() => {
         refreshInvoiceCalculation();
         updateInvDueDate();
+        // Scroll to top of content
+        formView.scrollTop = 0;
     }, 100);
+};
+
+
+window.onInvCustomerSelect = (customerId) => {
+    openInvoiceModal(null, customerId);
 };
 
 window.updateInvDueDate = () => {
@@ -6413,180 +7989,271 @@ window.saveNewInvoice = () => {
 };
 
 // --- Sales Invoices Module ---
+window.handleSIAction = (selectEl, id) => {
+    const act = selectEl.value;
+    if (!act) return;
+    selectEl.value = ""; // Reset for next use
+    
+    if (act === 'view') viewInvoice(id);
+    else if (act === 'cancel') cancelInvoice(id);
+};
+
+window.onInvCustomerSelect = (customerId) => {
+    openInvoiceModal(null, customerId);
+};
+
+window.filterSITable = () => {
+    const q = (document.getElementById('si_global_search')?.value || '').toLowerCase();
+    const rows = document.querySelectorAll('#si_main_table tbody tr');
+    
+    let sumTagihan = 0;
+    let sumPaid = 0;
+
+    rows.forEach(row => {
+        const text = row.innerText.toLowerCase();
+        const isVisible = text.includes(q);
+        row.style.display = isVisible ? '' : 'none';
+        
+        if (isVisible) {
+            sumTagihan += parseFloat(row.dataset.amount || 0);
+            sumPaid += parseFloat(row.dataset.paid || 0);
+        }
+    });
+
+    // Update Footer Values dynamically
+    const footerTagihan = document.getElementById('si_footer_total_tagihan');
+    const footerTerbayar = document.getElementById('si_footer_total_terbayar');
+    const footerGrand = document.getElementById('si_footer_grand_total');
+    
+    if (footerTagihan) footerTagihan.innerText = formatCurrency(sumTagihan);
+    if (footerTerbayar) footerTerbayar.innerText = formatCurrency(sumPaid);
+    if (footerGrand) footerGrand.innerText = formatCurrency(sumTagihan - sumPaid);
+};
+
+window.toggleSIDateDropdown = () => {
+    const d = document.getElementById('si_date_dropdown');
+    d?.classList.toggle('hidden');
+};
+
+window.applySIHeaderDateFilter = () => {
+    const s = document.getElementById('si_header_start')?.value;
+    const e = document.getElementById('si_header_end')?.value;
+    window.currentFilters.salesInvoices.start = s || '';
+    window.currentFilters.salesInvoices.end = e || '';
+    document.getElementById('si_date_dropdown')?.classList.add('hidden');
+    renderSalesInvoices();
+};
+
+window.resetSIHeaderDateFilter = () => {
+    window.currentFilters.salesInvoices.start = '';
+    window.currentFilters.salesInvoices.end = '';
+    document.getElementById('si_date_dropdown')?.classList.add('hidden');
+    renderSalesInvoices();
+};
+
+window.toggleSelectAllSI = (master) => {
+    const checkboxes = document.querySelectorAll(".si-row-checkbox");
+    checkboxes.forEach(cb => {
+        cb.checked = master.checked;
+    });
+};
+
 function renderSalesInvoices() {
     document.getElementById('pageTitle').innerText = 'Sales Invoices';
     const mainContent = document.getElementById('main-content');
-    const filters = window.currentFilters.salesInvoices || { start: '', end: '', taxType: '', status: '', customer: '' };
+    
+    // Setup List vs Form view containers
+    mainContent.innerHTML = `
+        <div id="si-list-view" class="h-full flex flex-col space-y-6 animate-in fade-in duration-500 font-sans">
+            <!-- Filter & Action Bar (Fraction Style) -->
+            <div class="bg-white border-b border-gray-100 shrink-0 z-40 shadow-[0_2px_15px_-3px_rgba(0,0,0,0.04)] rounded-3xl">
+                <div class="flex flex-wrap md:flex-nowrap justify-between items-center px-8 py-5 gap-4">
+                    <div class="flex items-center gap-4 flex-1">
+                        <div class="flex-1 max-w-lg relative group">
+                            <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors"></i>
+                            <input type="text" id="si_global_search" onkeyup="filterSITable()" placeholder="Cari No. Invoice, Nama Customer, atau Tipe Faktur..." 
+                                class="w-full pl-12 pr-6 py-3.5 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-700 placeholder:text-slate-300 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all shadow-inner">
+                        </div>
+                        
+                        <div class="relative">
+                            <button onclick="toggleSIDateDropdown()" class="flex items-center bg-slate-50 border border-slate-200 rounded-lg overflow-hidden hover:bg-slate-100 transition-all shadow-sm h-[44px] group">
+                                <span class="bg-slate-200/40 border-r border-slate-200 px-3 h-full flex items-center text-slate-500 transition-colors">
+                                    <i class="fas fa-sort-amount-up text-sm"></i>
+                                </span>
+                                <span class="px-4 text-sm font-semibold text-blue-600">Date</span>
+                                <span class="pr-3 text-slate-400">
+                                    <i class="fas fa-chevron-down text-[11px]"></i>
+                                </span>
+                            </button>
+                            
+                            <div id="si_date_dropdown" class="absolute left-0 mt-3 w-80 bg-white border border-slate-100 rounded-3xl shadow-[0_20px_50px_-10px_rgba(0,0,0,0.1)] z-[200] hidden p-6 animate-in fade-in zoom-in-95 duration-200">
+                                <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                                    <span class="w-1 h-3 bg-blue-600 rounded-full"></span> Date Range Filter
+                                </h4>
+                                <div class="space-y-4">
+                                    <div class="grid grid-cols-2 gap-3 font-sans">
+                                        <div>
+                                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Start Date</label>
+                                            <input type="date" id="si_header_start" class="w-full border-2 border-slate-50 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 bg-slate-50/50 outline-none focus:border-blue-500/20">
+                                        </div>
+                                        <div>
+                                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">End Date</label>
+                                            <input type="date" id="si_header_end" class="w-full border-2 border-slate-50 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 bg-slate-50/50 outline-none focus:border-blue-500/20">
+                                        </div>
+                                    </div>
+                                    <div class="flex gap-2 pt-2 uppercase text-[10px] font-black tracking-[0.1em]">
+                                        <button onclick="applySIHeaderDateFilter()" class="flex-1 bg-blue-600 text-white py-3 rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-500/20 active:scale-95 transition-all">Apply Filter</button>
+                                        <button onclick="resetSIHeaderDateFilter()" class="flex-1 bg-slate-100 text-slate-500 py-3 rounded-xl hover:bg-slate-200 active:scale-95 transition-all">Reset</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-3">
+                        <button onclick="openInvoiceModal()" class="bg-blue-600 hover:bg-slate-900 text-white px-6 py-2.5 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-600/10 active:scale-95 flex items-center gap-2">
+                            <i class="fas fa-plus text-sm"></i> Buat Invoice
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Table Block (Premium Style) -->
+            <div class="bg-white rounded-[32px] border border-slate-100 shadow-[0_10px_30px_-15px_rgba(0,0,0,0.05)] flex-1 flex flex-col min-h-0 overflow-hidden">
+                <div class="overflow-x-auto flex-1 custom-scrollbar">
+                    <table class="w-full text-sm text-left border-collapse" id="si_main_table">
+                        <thead class="sticky top-0 z-20 bg-white/95 backdrop-blur-md shadow-sm">
+                            <tr class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b border-slate-100">
+                                <th class="py-6 px-10 w-12 text-center">
+                                    <input type="checkbox" onchange="toggleSelectAllSI(this)" class="w-5 h-5 rounded-lg border-slate-200 text-blue-600 focus:ring-blue-500/20 cursor-pointer shadow-sm">
+                                </th>
+                                <th class="py-6 px-4">Informasi Faktur</th>
+                                <th class="py-6 px-4">Tanggal Pelunasan</th>
+                                <th class="py-6 px-4 text-right">Tagihan Bruto</th>
+                                <th class="py-6 px-4 text-right">Sudah Bayar</th>
+                                <th class="py-6 px-4 text-right">Sisa Hutang</th>
+                                <th class="py-6 px-6 text-center">Status</th>
+                                <th class="py-6 px-8 text-center">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50 uppercase text-[10px] font-black">
+                            <!-- Invoiced dynamically -->
+                        </tbody>
+                    </table>
+
+                    <!-- Totals Summary Bar (Minimalist) -->
+                    <div class="px-10 py-6 flex items-center justify-between border-t border-slate-50 bg-white rounded-b-[32px]">
+                        <div>
+                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 opacity-70">Total Outstanding</p>
+                            <p class="text-2xl font-black font-mono tracking-tighter text-slate-800" id="si_footer_grand_total">Rp 0</p>
+                        </div>
+                        
+                        <div class="flex gap-12 text-right items-center">
+                            <div class="flex flex-col">
+                                <span class="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1">Total Tagihan</span>
+                                <span class="text-sm font-bold font-mono text-slate-500" id="si_footer_total_tagihan">Rp 0</span>
+                            </div>
+                            <div class="flex flex-col">
+                                <span class="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1">Total Terbayar</span>
+                                <span class="text-sm font-bold font-mono text-slate-500" id="si_footer_total_terbayar">Rp 0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="si-form-view" class="hidden animate-in fade-in slide-in-from-right-4 duration-500">
+            <!-- Form View Content -->
+        </div>
+    `;
+
+    const tbody = mainContent.querySelector('#si_main_table tbody');
+    const filters_data = window.currentFilters.salesInvoices || { start: '', end: '' };
 
     let invoices = db.read('salesInvoices').sort((a, b) => new Date(b.date) - new Date(a.date));
-
-    // Apply Filters
-    invoices = filterByDateRange(invoices, 'salesInvoices');
-    if (filters.taxType) {
-        invoices = invoices.filter(inv => {
-            const actualType = inv.taxType || (inv.invoiceNumber?.startsWith('INV-') && !inv.invoiceNumber?.startsWith('INVN-') ? 'Pajak' : 'Non-Pajak');
-            return actualType === filters.taxType;
-        });
-    }
-
-    if (filters.status) {
-        invoices = invoices.filter(inv => inv.status === filters.status);
-    }
-
-    if (filters.customer) {
-        invoices = invoices.filter(inv => inv.customerId === filters.customer);
-    }
-
     const customers = db.read('customers');
     const payments = db.read('payments');
 
-    let totalTagihan = 0;
-    let totalTerbayar = 0;
+    // Filter Logic
+    if (filters_data.start) {
+        const d = new Date(filters_data.start); d.setHours(0,0,0,0);
+        invoices = invoices.filter(x => new Date(x.date) >= d);
+    }
+    if (filters_data.end) {
+        const d = new Date(filters_data.end); d.setHours(23,59,59,999);
+        invoices = invoices.filter(x => new Date(x.date) <= d);
+    }
 
-    let rows = invoices.map(inv => {
-        const customer = customers.find(c => c.id === inv.customerId) || { name: 'Unknown' };
+    if (invoices.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8" class="py-40 text-center">
+                    <div class="flex flex-col items-center justify-center opacity-30 select-none">
+                        <div class="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mb-6">
+                            <i class="fas fa-file-invoice text-4xl text-slate-400"></i>
+                        </div>
+                        <h3 class="text-lg font-black text-slate-600 uppercase tracking-[0.2em] mb-1">Data Tidak Ditemukan</h3>
+                        <p class="text-xs font-bold text-slate-400 uppercase tracking-widest">Belum ada faktur yang tercatat atau cocok dengan filter</p>
+                    </div>
+                </td>
+            </tr>
+        `;
+        return;
+    }
 
-        // Calculate paid amount
+    let pageTagihan = 0;
+    let pagePaid = 0;
+
+    tbody.innerHTML = invoices.map(inv => {
+        const customer = customers.find(c => c.id === inv.customerId) || { name: 'Unknown Customer' };
         const invPayments = payments.filter(p => p.invoiceId === inv.id);
         const totalPaid = invPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
         const balance = inv.totalAmount - totalPaid;
 
-        totalTagihan += (parseFloat(inv.totalAmount) || 0);
-        totalTerbayar += totalPaid;
+        pageTagihan += (parseFloat(inv.totalAmount) || 0);
+        pagePaid += totalPaid;
 
         let statusBadge = '';
-        if (inv.status === 'UNPAID') statusBadge = '<span class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-semibold">UNPAID</span>';
-        if (inv.status === 'PAID') statusBadge = '<span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-semibold">PAID</span>';
-        if (inv.status === 'CANCELLED') statusBadge = '<span class="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-semibold">CANCELLED</span>';
-
-        let actionHtml = `<button onclick="viewInvoice('${inv.id}')" class="text-gray-500 hover:text-gray-700 mr-2" title="Detail"><i class="fas fa-eye"></i></button>`;
-
-        if (inv.status === 'UNPAID' && balance > 0) {
-            // Menghapus actionHtml Bayar sesuai permintaan user
-            actionHtml += `<button onclick="cancelInvoice('${inv.id}')" class="text-red-500 hover:text-red-700" title="Batalkan"><i class="fas fa-times-circle"></i></button>`;
-        }
-
-        const actualTaxType = inv.taxType || (inv.invoiceNumber?.startsWith('INV-') && !inv.invoiceNumber?.startsWith('INVN-') ? 'Pajak' : 'Non-Pajak');
-        const taxBadge = actualTaxType === 'Pajak'
-            ? '<span class="px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[10px] font-bold border border-blue-100 uppercase">Pajak</span>'
-            : '<span class="px-2 py-0.5 bg-gray-50 text-gray-500 rounded-full text-[10px] font-bold border border-gray-100 uppercase">Non-Pajak</span>';
+        if (inv.status === 'UNPAID') statusBadge = '<span class="px-4 py-1.5 bg-red-50 text-red-600 border border-red-100 rounded-xl text-[10px] font-black tracking-widest shadow-sm">UNPAID</span>';
+        else if (inv.status === 'PAID') statusBadge = '<span class="px-4 py-1.5 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl text-[10px] font-black tracking-widest shadow-sm">PAID</span>';
+        else if (inv.status === 'PARTIAL') statusBadge = '<span class="px-4 py-1.5 bg-blue-50 text-blue-600 border border-blue-100 rounded-xl text-[10px] font-black tracking-widest shadow-sm uppercase">Partial</span>';
+        else if (inv.status === 'CANCELLED') statusBadge = '<span class="px-4 py-1.5 bg-slate-50 text-slate-400 border border-slate-100 rounded-xl text-[10px] font-bold tracking-widest uppercase">Cancelled</span>';
 
         return `
-            <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                <td class="py-3 px-4 text-sm font-medium text-blue-600">${inv.invoiceNumber}</td>
-                <td class="py-3 px-4 text-sm text-center">${taxBadge}</td>
-                <td class="py-3 px-4 text-sm text-gray-800">${formatDate(inv.date).slice(0, 11)}</td>
-                <td class="py-3 px-4 text-sm text-gray-800">${customer.name}</td>
-                <td class="py-3 px-4 text-sm text-gray-800 text-right">${formatCurrency(inv.totalAmount)}</td>
-                <td class="py-3 px-4 text-sm text-gray-800 text-right text-green-600">${formatCurrency(totalPaid)}</td>
-                <td class="py-3 px-4 text-sm text-center">${statusBadge}</td>
-                <td class="py-3 px-4 text-sm text-right whitespace-nowrap">${actionHtml}</td>
+            <tr class="hover:bg-blue-50/20 transition-all group duration-300" data-amount="${inv.totalAmount}" data-paid="${totalPaid}">
+                <td class="py-6 px-10 text-center">
+                    <input type="checkbox" class="si-row-checkbox w-5 h-5 rounded-lg border-slate-200 text-blue-600 focus:ring-blue-500/10 cursor-pointer shadow-sm">
+                </td>
+                <td class="py-6 px-4">
+                    <div class="flex flex-col">
+                        <span class="font-black text-slate-800 tracking-tight text-sm">${inv.invoiceNumber}</span>
+                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">${customer.name}</span>
+                    </div>
+                </td>
+                <td class="py-6 px-4">
+                    <div class="flex flex-col">
+                        <span class="text-xs font-bold text-slate-700">${new Date(inv.date).toLocaleDateString('id-ID', {day:'2-digit', month:'short', year:'numeric'})}</span>
+                        <span class="text-[9px] font-black text-red-400 uppercase mt-0.5 italic">Jatuh Tempo: ${new Date(inv.dueDate).toLocaleDateString('id-ID', {day:'2-digit', month:'short'})}</span>
+                    </div>
+                </td>
+                <td class="py-6 px-4 text-right font-black text-slate-900 font-mono text-sm tracking-tighter">${formatCurrency(inv.totalAmount)}</td>
+                <td class="py-6 px-4 text-right font-bold text-emerald-600 font-mono text-sm tracking-tighter">${formatCurrency(totalPaid)}</td>
+                <td class="py-6 px-4 text-right font-black ${balance > 0 ? 'text-red-500' : 'text-slate-400'} font-mono text-sm tracking-tighter">${formatCurrency(balance)}</td>
+                <td class="py-6 px-6 text-center">${statusBadge}</td>
+                <td class="py-6 px-8 text-center relative font-sans">
+                    <select onchange="handleSIAction(this, '${inv.id}')" class="w-full bg-slate-50 border-none rounded-xl py-2.5 px-4 text-[10px] font-black uppercase tracking-widest text-slate-500 cursor-pointer focus:ring-4 focus:ring-blue-500/10 hover:bg-slate-100 transition-all shadow-sm">
+                        <option value="">Aksi...</option>
+                        <option value="view">Lihat Detail</option>
+                        <option value="cancel">Batalkan SI</option>
+                    </select>
+                </td>
             </tr>
         `;
     }).join('');
 
-    if (invoices.length === 0) rows = `<tr><td colspan="8" class="py-4 text-center text-gray-500">Belum ada Invoice</td></tr>`;
-
-    mainContent.innerHTML = `
-        <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-5 overflow-hidden">
-            <div onclick="toggleSIFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
-                <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
-                    <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
-                    ${(!window._uiState.siFilterOpen && (filters.start || filters.end || filters.customer || filters.taxType || filters.status)) ?
-            `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
-                </h3>
-                <div class="flex items-center gap-3">
-                    <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.siFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
-                    <i class="fas fa-chevron-${window._uiState.siFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
-                </div>
-            </div>
-
-            <div class="${window._uiState.siFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
-                <div class="grid grid-cols-1 md:grid-cols-5 gap-3">
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Dari Tanggal</label>
-                        <input type="date" id="inv_start_date" value="${filters.start || ''}" 
-                            class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Sampai Tanggal</label>
-                        <input type="date" id="inv_end_date" value="${filters.end || ''}" 
-                            class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Customer</label>
-                        <select id="inv_filter_customer" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white cursor-pointer font-sans">
-                            <option value="">-- Semua Customer --</option>
-                            ${customers.map(c => `<option value="${c.id}" ${filters.customer === c.id ? 'selected' : ''}>${c.name}</option>`).join('')}
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Tipe Faktur</label>
-                        <select id="inv_filter_type" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white cursor-pointer font-sans">
-                            <option value="" ${filters.taxType === '' ? 'selected' : ''}>Semua</option>
-                            <option value="Pajak" ${filters.taxType === 'Pajak' ? 'selected' : ''}>Pajak</option>
-                            <option value="Non-Pajak" ${filters.taxType === 'Non-Pajak' ? 'selected' : ''}>Non-Pajak</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Status</label>
-                        <select id="inv_filter_status" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white cursor-pointer font-sans">
-                            <option value="" ${filters.status === '' ? 'selected' : ''}>Semua Status</option>
-                            <option value="UNPAID" ${filters.status === 'UNPAID' ? 'selected' : ''}>UNPAID</option>
-                            <option value="PAID" ${filters.status === 'PAID' ? 'selected' : ''}>PAID</option>
-                            <option value="CANCELLED" ${filters.status === 'CANCELLED' ? 'selected' : ''}>CANCELLED</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="flex gap-2 pt-4 mt-4 border-t border-slate-50">
-                    <button onclick="applyInvFilter()" class="bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
-                        <i class="fas fa-search mr-2"></i> CARI INVOICE
-                    </button>
-                    <button onclick="resetInvFilter()" class="bg-slate-50 hover:bg-slate-100 text-slate-400 px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">
-                        <i class="fas fa-undo mr-2"></i> RESET
-                    </button>
-                </div>
-            </div>
-        </div>
-
-
-        <div class="bg-white rounded-lg shadow-sm border border-gray-100">
-            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center p-4 sm:p-6 border-b border-gray-100 gap-4">
-                <div>
-                    <h2 class="text-lg font-semibold text-gray-800">Daftar Sales Invoice</h2>
-                    <p class="text-xs text-gray-500 mt-1">Total: ${invoices.length} invoice</p>
-                </div>
-                <button onclick="openInvoiceFromSOSelectorModal()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-md transition-colors text-sm font-medium">
-                    <i class="fas fa-plus mr-2"></i>Buat Invoice
-                </button>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="bg-gray-50 border-b border-gray-200">
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">No. INV</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-center">Tipe</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Tanggal</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider">Customer</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">Total Tagihan</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">Terbayar</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-center">Status</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase tracking-wider text-right">Aksi</th>
-                        </tr>
-                    </thead>
-                    <tbody>${rows}</tbody>
-                    <tfoot>
-                        <tr class="bg-gray-100 border-t-2 border-gray-300 font-bold">
-                            <td colspan="4" class="py-3 px-4 text-right text-xs font-black uppercase tracking-wider text-gray-600">TOTAL KESELURUHAN:</td>
-                            <td class="py-3 px-4 text-sm text-right text-blue-800">${formatCurrency(totalTagihan)}</td>
-                            <td class="py-3 px-4 text-sm text-right text-green-700">${formatCurrency(totalTerbayar)}</td>
-                            <td colspan="2" class="py-3 px-4 text-sm text-right text-red-600">Sisa: ${formatCurrency(totalTagihan - totalTerbayar)}</td>
-                        </tr>
-                    </tfoot>
-                </table>
-            </div>
-        </div>
-    `;
+    // Re-apply search filter and update totals
+    filterSITable();
 }
 
 window.openInvoiceFromSOSelectorModal = () => {
@@ -7047,8 +8714,8 @@ function renderSalesPayments(prefillInvoiceId = null) {
     let filterHtml = '';
     if (!prefillInvoiceId) {
         filterHtml = `
-        <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-5 overflow-hidden">
-            <div onclick="toggleSPFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-5 sticky top-0 z-30 transition-all">
+            <div onclick="toggleSPFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none backdrop-blur-md bg-white/90 rounded-xl">
                 <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
                     <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
                     ${(!window._uiState.spFilterOpen && (window.currentFilters.salesPayments.start || window.currentFilters.salesPayments.end)) ?
@@ -7869,7 +9536,7 @@ window.openProductionModal = () => {
             <button type="button" onclick="closeModal()" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-gray-700 font-medium sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">Batal</button>
     `;
 
-    showModal('Buat SPK Produksi', body, footer, 'full');
+    showModal('Buat SPK Produksi', body, footer, 'xl');
     setTimeout(() => window.calculateProdEstimation(), 100);
 };
 
@@ -8215,14 +9882,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const toggleBtn = document.getElementById('sidebarToggleBtn');
 
     if (toggleBtn && sidebar) {
-        // Load initial state
-        const isCollapsed = localStorage.getItem('sidebar-collapsed') === 'true';
-        if (isCollapsed) {
-            sidebar.classList.add('w-20');
-            sidebar.classList.remove('w-64');
-        }
-
         toggleBtn.addEventListener('click', () => {
+            if (window._currentView && window._currentView !== 'launcher') {
+                window.goBack();
+                return;
+            }
+
+            // Fallback to toggle for launcher
             const nowCollapsed = sidebar.classList.contains('w-64');
             if (nowCollapsed) {
                 sidebar.classList.remove('w-64');
@@ -8234,6 +9900,21 @@ document.addEventListener('DOMContentLoaded', () => {
             localStorage.setItem('sidebar-collapsed', nowCollapsed);
         });
     }
+
+    window.goBack = () => {
+        // If modal is open, back button should close it first
+        if (window._isModalOpen) {
+            closeModal();
+            return;
+        }
+
+        if (window._navigationHistory.length > 0) {
+            const lastView = window._navigationHistory.pop();
+            navigateTo(lastView, true);
+        } else {
+            navigateTo('launcher');
+        }
+    };
 
     renderNotifications();
 
@@ -8267,6 +9948,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Load initial view
     navigateTo('launcher');
+    window.navigateTo = navigateTo;
 });
 
 // --- Date Filter Event Handlers ---
@@ -8333,5 +10015,185 @@ window.resetSalesPayFilter = () => {
     renderSalesPayments();
 };
 
+// --- Custom Dropdown Helpers ---
+window.toggleCustomerDropdown = (id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const isHidden = el.classList.contains('hidden');
+    // Hide all first
+    document.querySelectorAll('[id$="_customer_dropdown"]').forEach(d => d.classList.add('hidden'));
+    if (isHidden) el.classList.remove('hidden');
+    
+    // Close on click outside
+    const closeHandler = (e) => {
+        if (!e.target.closest('#qt_customer_container')) {
+            el.classList.add('hidden');
+            document.removeEventListener('click', closeHandler);
+        }
+    };
+    if (isHidden) setTimeout(() => document.addEventListener('click', closeHandler), 10);
+};
+
+window.selectCustomer = (prefix, id, name) => {
+    const idInput = document.getElementById(`${prefix.toLowerCase()}_customer_id`);
+    const searchInput = document.getElementById(`${prefix.toLowerCase()}_customer_search`);
+    const dropdown = document.getElementById(`${prefix.toLowerCase()}_customer_dropdown`);
+    
+    if (idInput) idInput.value = id;
+    if (searchInput) searchInput.value = name;
+    if (dropdown) dropdown.classList.add('hidden');
+    
+    // Close overlay if exists (for modal context)
+    const overlay = document.getElementById('customer_selection_overlay');
+    if (overlay) overlay.remove();
+
+    // Close modal if it was an "Advanced Search" modal (for full-page context)
+    if (!overlay && document.getElementById('adv_customer_search_input')) {
+        closeModal();
+    }
+    
+    if (prefix === 'QT' || prefix === 'SO') {
+        if (typeof onSalesCustomerSelect === 'function') {
+            onSalesCustomerSelect(`${prefix.toLowerCase()}_customer_id`, prefix);
+        }
+    } else if (prefix === 'INV') {
+        if (typeof onInvCustomerSelect === 'function') {
+            onInvCustomerSelect(id);
+        }
+    }
+};
+
+window.openAdvancedCustomerSearch = (prefix) => {
+    // Hide the dropdown if it's open
+    const dropdown = document.getElementById(`${prefix.toLowerCase()}_customer_dropdown`);
+    if (dropdown) dropdown.classList.add('hidden');
+
+    const customers = db.read('customers') || [];
+    const body = `
+        <div class="space-y-4">
+            <div class="relative">
+                <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                <input type="text" id="adv_customer_search_input" onkeyup="filterAdvancedCustomerTable()" placeholder="Cari Nama, Alamat, atau Kontak..." 
+                    class="w-full pl-12 pr-4 py-3 bg-slate-50 border-2 border-slate-100 rounded-xl focus:border-blue-500 outline-none transition-all font-medium">
+            </div>
+            <div class="overflow-hidden border border-slate-100 rounded-xl max-h-[400px] overflow-y-auto">
+                <table class="w-full text-sm text-left">
+                    <thead class="bg-slate-50 text-slate-500 font-semibold uppercase text-[10px] tracking-wider sticky top-0 z-10">
+                        <tr>
+                            <th class="px-4 py-3">Nama Customer</th>
+                            <th class="px-4 py-3">Alamat</th>
+                            <th class="px-4 py-3">Kontak</th>
+                            <th class="px-4 py-3 text-right">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="adv_customer_table_body" class="divide-y divide-slate-50">
+                        ${customers.map(c => `
+                            <tr class="hover:bg-blue-50/30 transition-colors">
+                                <td class="px-4 py-3 font-bold text-slate-700">${c.name}</td>
+                                <td class="px-4 py-3 text-slate-500 truncate max-w-[200px]">${c.address || '-'}</td>
+                                <td class="px-4 py-3 text-slate-500">${c.phone || '-'}</td>
+                                <td class="px-4 py-3 text-right">
+                                    <button onclick="selectCustomer('${prefix}', '${c.id}', '${c.name.replace(/'/g, "\\'")}')" 
+                                        class="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-all active:scale-95 shadow-sm">
+                                        Pilih
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+    
+    const modalBackdrop = document.getElementById('modal-backdrop');
+    if (modalBackdrop) {
+        // Nested Selection Overlay for when already in a modal (e.g. Sales Invoice)
+        const selectionOverlay = document.createElement('div');
+        selectionOverlay.id = 'customer_selection_overlay';
+        selectionOverlay.className = 'absolute inset-0 bg-white z-[300] p-6 animate-slide-up flex flex-col';
+        selectionOverlay.innerHTML = `
+            <div class="flex items-center justify-between mb-6 shrink-0">
+                <h3 class="text-xl font-black text-slate-800 tracking-tight flex items-center gap-3">
+                    <i class="fas fa-search text-blue-600"></i> Advanced Customer Search
+                </h3>
+                <button onclick="document.getElementById('customer_selection_overlay').remove()" class="w-10 h-10 flex items-center justify-center rounded-full text-slate-400 hover:bg-slate-100 transition-all">
+                    <i class="fas fa-times text-lg"></i>
+                </button>
+            </div>
+            <div class="flex-1 overflow-y-auto">
+                ${body}
+            </div>
+        `;
+        const modalContent = modalBackdrop.querySelector('.bg-white');
+        if (modalContent) {
+            modalContent.style.position = 'relative';
+            modalContent.appendChild(selectionOverlay);
+        }
+    } else {
+        // Standard modal for when in full-page forms (e.g. QT, SO)
+        showModal('Advanced Customer Search', body, `<button onclick="closeModal()" class="px-8 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all">Close</button>`, 'lg');
+    }
+};
+
+window.filterAdvancedCustomerTable = () => {
+    const q = document.getElementById('adv_customer_search_input').value.toLowerCase();
+    const rows = document.querySelectorAll('#adv_customer_table_body tr');
+    rows.forEach(row => {
+        const text = row.innerText.toLowerCase();
+        row.style.display = text.includes(q) ? '' : 'none';
+    });
+};
 
 
+
+
+window.filterQTTable = () => {
+    const q = (document.getElementById('qt_global_search')?.value || '').toLowerCase();
+    const rows = document.querySelectorAll('tbody tr');
+    rows.forEach(row => {
+        const text = row.innerText.toLowerCase();
+        row.style.display = text.includes(q) ? '' : 'none';
+    });
+};
+
+window.toggleQTDateDropdown = () => {
+    const d = document.getElementById('qt_date_dropdown');
+    d?.classList.toggle('hidden');
+};
+
+window.applyQTHeaderDateFilter = () => {
+    const s = document.getElementById('qt_header_start')?.value;
+    const e = document.getElementById('qt_header_end')?.value;
+    
+    // Update global filter state
+    window.currentFilters.salesQuotations.start = s || '';
+    window.currentFilters.salesQuotations.end = e || '';
+    
+    // Close dropdown
+    document.getElementById('qt_date_dropdown')?.classList.add('hidden');
+    
+    // Re-render
+    renderSalesQuotations();
+};
+
+window.resetQTHeaderDateFilter = () => {
+    window.currentFilters.salesQuotations.start = '';
+    window.currentFilters.salesQuotations.end = '';
+    document.getElementById('qt_date_dropdown')?.classList.add('hidden');
+    renderSalesQuotations();
+};
+
+window.addEventListener('click', (e) => {
+    const c = document.getElementById('qt_date_filter_container');
+    if (c && !c.contains(e.target)) {
+        document.getElementById('qt_date_dropdown')?.classList.add('hidden');
+    }
+});
+
+window.toggleSelectAllQT = (master) => {
+    const checkboxes = document.querySelectorAll(".qt-row-checkbox");
+    checkboxes.forEach(cb => {
+        cb.checked = master.checked;
+    });
+};

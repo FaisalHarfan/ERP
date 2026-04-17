@@ -80,8 +80,8 @@ window.renderSalesReturns = function () {
     mc.innerHTML = `
         <div class="space-y-4">
             <!-- Collapsible Filter Section -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-5 overflow-hidden">
-                <div onclick="toggleSRETFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-5 sticky top-0 z-30 transition-all">
+                <div onclick="toggleSRETFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none backdrop-blur-md bg-white/90 rounded-xl">
                     <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
                         <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
                         ${(!window._uiState.sretFilterOpen && (f.start || f.end || f.customerId || f.status || f.condition)) ? 
@@ -147,7 +147,7 @@ window.renderSalesReturns = function () {
             <!-- Table -->
             <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <table class="w-full text-left border-collapse">
-                    <thead class="bg-gray-50 text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                    <thead class="bg-gray-50 text-slate-500 text-[10px] font-black uppercase tracking-widest sticky top-[55px] z-20 shadow-sm ${window._uiState.sretFilterOpen ? 'hidden' : ''}">
                         <tr>
                             <th class="px-4 py-3 border-b border-gray-100">No. Retur</th>
                             <th class="px-4 py-3 border-b border-gray-100">Tanggal</th>
@@ -427,7 +427,7 @@ window.processReturnRefund = function (id) {
         });
         showToast(`Credit Note ${noteNumber} berhasil dibuat untuk Store Credit.`);
     } else {
-        // Cash or Bank refund â€” create journal entry
+        // Cash or Bank refund -- create journal entry
         const cashAccountId = method === 'Bank' ? 'acc_bank' : 'acc_cash';
         if (typeof db.addJournalEntry === 'function') {
             db.addJournalEntry({
@@ -491,8 +491,8 @@ window.renderProductExchanges = function () {
     mc.innerHTML = `
         <div class="space-y-4">
             <!-- Collapsible Filter Section -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-5 overflow-hidden">
-                <div onclick="toggleSEXCHFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-5 sticky top-0 z-30 transition-all">
+                <div onclick="toggleSEXCHFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none backdrop-blur-md bg-white/90 rounded-xl">
                     <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
                         <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
                         ${(!window._uiState.sexchFilterOpen && (f.start || f.end || f.customerId || f.status)) ? 
@@ -549,12 +549,12 @@ window.renderProductExchanges = function () {
 
             <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
                 <table class="w-full text-left border-collapse">
-                    <thead class="bg-gray-50 text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                    <thead class="bg-gray-50 text-slate-500 text-[10px] font-black uppercase tracking-widest sticky top-[55px] z-20 shadow-sm ${window._uiState.sexchFilterOpen ? 'hidden' : ''}">
                         <tr>
                             <th class="px-4 py-3 border-b border-gray-100">No. Exchange</th>
                             <th class="px-4 py-3 border-b border-gray-100">Tanggal</th>
                             <th class="px-4 py-3 border-b border-gray-100">Pelanggan</th>
-                            <th class="px-4 py-3 border-b border-gray-100">Produk Lama â†’ Baru</th>
+                            <th class="px-4 py-3 border-b border-gray-100">Produk Lama -> Baru</th>
                             <th class="px-4 py-3 border-b border-gray-100 text-right">Selisih Harga</th>
                             <th class="px-4 py-3 border-b border-gray-100">Status</th>
                             <th class="px-4 py-3 border-b border-gray-100 text-right">Aksi</th>
@@ -880,7 +880,7 @@ window.shipExchangeReplacement = function (id) {
     if (diff !== 0 && typeof db.addJournalEntry === 'function') {
         const absDiff = Math.abs(diff);
         if (diff > 0) {
-            // Customer pays more â€” revenue
+            // Customer pays more -- revenue
             db.addJournalEntry({
                 description: `Selisih Tukar Guling ${ex.exchangeNumber} (Customer Bayar)`,
                 referenceId: ex.id, referenceType: 'PRODUCT_EXCHANGE',
@@ -890,7 +890,7 @@ window.shipExchangeReplacement = function (id) {
                 ]
             });
         } else {
-            // Company refunds â€” cost
+            // Company refunds -- cost
             db.addJournalEntry({
                 description: `Selisih Tukar Guling ${ex.exchangeNumber} (Perusahaan Kembalikan)`,
                 referenceId: ex.id, referenceType: 'PRODUCT_EXCHANGE',

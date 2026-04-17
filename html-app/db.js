@@ -30,8 +30,6 @@ const db = {
             const newData = localStorage.getItem(DB_PREFIX + table);
             if (oldData && !newData) {
                 localStorage.setItem(DB_PREFIX + table, oldData);
-                // We keep old data for safety, or we could remove it. 
-                // Let's keep it for now but the app will use the new one.
             }
         });
 
@@ -40,113 +38,6 @@ const db = {
                 localStorage.setItem(DB_PREFIX + table, JSON.stringify([]));
             }
         });
-
-        // Data Cleanup / Migration: Rename Stock Mixing (KARUNG) to Stock Mixing
-        const items = db.read('inventoryItems');
-        let itemChanged = false;
-        items.forEach(it => {
-            if (it.itemName === 'Stock Mixing (KARUNG)' || it.itemName === 'Stock Mixing') {
-                it.itemName = 'Stock Mixing';
-                it.category = 'MIXING_STOCK';
-                itemChanged = true;
-            }
-            if (it.category === 'MIXING_STOCK' && it.itemName !== 'Stock Mixing') {
-                it.category = 'FINISHED_GOODS';
-                itemChanged = true;
-            }
-        });
-        if (itemChanged) db.save('inventoryItems', items);
-
-        // Migration: Populate productId for existing MOs by matching name
-        const mos = db.read('productionOrders');
-        let moChanged = false;
-        mos.forEach(mo => {
-            if (!mo.productId && mo.productName) {
-                const p = items.find(i => i.itemName === mo.productName && i.category === 'FINISHED_GOODS');
-                if (p) {
-                    mo.productId = p.id;
-                    moChanged = true;
-                }
-            }
-        });
-        // Migration: Consolidate all Mixing stock into a single 'Stock Mixing' item
-        let mixingMaster = items.find(i => i.itemName === 'Stock Mixing');
-        if (!mixingMaster) {
-            mixingMaster = {
-                id: db.uuid(),
-                itemCode: 'FG-0015', // User's code from screenshot
-                itemName: 'Stock Mixing',
-                category: 'MIXING_STOCK',
-                unit: 'SAK',
-                status: 'ACTIVE',
-                purchasePrice: 0,
-                minStock: 0
-            };
-            items.push(mixingMaster);
-            itemChanged = true;
-        }
-
-        if (mixingMaster) {
-            const txs = db.read('stockTransactions');
-            let txChanged = false;
-            items.forEach(it => {
-                if (it.itemName && it.itemName.includes('(Mixing)') && it.id !== mixingMaster.id) {
-                    // Move all transactions from it.id to mixingMaster.id
-                    txs.forEach(t => {
-                        if (t.itemId === it.id) {
-                            t.itemId = mixingMaster.id;
-                            t.itemName = mixingMaster.itemName;
-                            t.itemCode = mixingMaster.itemCode;
-                            txChanged = true;
-                        }
-                    });
-                    // Mark it for deletion
-                    it._toDelete = true;
-                }
-            });
-            if (txChanged) db.save('stockTransactions', txs);
-
-            const finalItems = items.filter(i => !i._toDelete);
-            if (finalItems.length !== items.length) {
-                db.save('inventoryItems', finalItems);
-                // Also update the local 'items' variable for any subsequent logic in init
-                items.length = 0;
-                items.push(...finalItems);
-                itemChanged = true;
-            }
-        }
-
-        if (moChanged) db.save('productionOrders', mos);
-
-        // Migration: Move all (Oven Kering) stock/tx to genuine Finish Goods
-        let cleanUpNeeded = false;
-        items.forEach(it => {
-            if (it.itemName && it.itemName.includes('(Oven Kering)')) {
-                const baseName = it.itemName.replace(' (Oven Kering)', '').trim();
-                const parent = items.find(i => i.itemName === baseName && i.category === 'FINISHED_GOODS');
-                if (parent) {
-                    const txs = db.read('stockTransactions');
-                    let txMoved = false;
-                    txs.forEach(t => {
-                        if (t.itemId === it.id) {
-                            t.itemId = parent.id;
-                            t.itemName = parent.itemName;
-                            t.itemCode = parent.itemCode;
-                            txMoved = true;
-                        }
-                    });
-                    if (txMoved) db.save('stockTransactions', txs);
-                }
-                it._toDelete = true;
-                cleanUpNeeded = true;
-            }
-        });
-        if (cleanUpNeeded) {
-            const purged = items.filter(i => !i._toDelete);
-            db.save('inventoryItems', purged);
-            items.length = 0;
-            items.push(...purged);
-        }
     },
 
     read: (table) => {
@@ -270,9 +161,19 @@ const db = {
 
     // Get current inventory stock for an inventoryItem at a specific location
     getInventoryStock: (itemId, location = null) => {
+        const item = db.findById('inventoryItems', itemId);
         const txs = db.read('stockTransactions').filter(t => {
             if (t.itemId !== itemId) return false;
-            if (location && t.location !== location) return false;
+            
+            let tLoc = t.location;
+            if (tLoc === 'WHS' || !tLoc) {
+                if (item && item.category === 'MIXING_STOCK') tLoc = 'MIXING';
+                else if (item && item.category === 'OVEN_BASAH_STOCK') tLoc = 'OVEN_BASAH';
+                else if (item && item.category === 'OVEN_KERING_STOCK') tLoc = 'OVEN_KERING';
+                else tLoc = 'WHS';
+            }
+
+            if (location && tLoc !== location) return false;
             return true;
         });
         return txs.reduce((total, t) => {
@@ -288,10 +189,18 @@ const db = {
         }, 0);
     },
 
-    addInventoryTransaction: (itemId, type, qty, reference, referenceId, notes, createdBy = 'Admin', location = 'WHS') => {
+    addInventoryTransaction: (itemId, type, qty, reference, referenceId, notes, createdBy = 'Admin', location = null) => {
         const item = db.findById('inventoryItems', itemId);
         if (!item) return null;
         const txNo = db.generateTxNo(type);
+
+        let finalLoc = location;
+        if (!finalLoc || finalLoc === 'WHS') {
+            if (item.category === 'MIXING_STOCK') finalLoc = 'MIXING';
+            else if (item.category === 'OVEN_BASAH_STOCK') finalLoc = 'OVEN_BASAH';
+            else if (item.category === 'OVEN_KERING_STOCK') finalLoc = 'OVEN_KERING';
+            else finalLoc = 'WHS';
+        }
 
         const tx = db.insert('stockTransactions', {
             txNo,
@@ -305,7 +214,7 @@ const db = {
             referenceId,
             notes,
             createdBy,
-            location        // 'WHS', 'MIXING', 'OVEN_BASAH', 'OVEN_KERING'
+            location: finalLoc        // 'WHS', 'MIXING', 'OVEN_BASAH', 'OVEN_KERING'
         });
 
         return tx;

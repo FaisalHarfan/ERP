@@ -1,5 +1,41 @@
 // finance.js - Finance Module Logic
 
+// Initialize Global States and Filters
+window._uiState = window._uiState || {};
+window._apFilters = window._apFilters || { status: 'BELUM_LUNAS', supplierId: '', startDate: '', endDate: '' };
+window._apHistoryFilters = window._apHistoryFilters || { supplierId: '', date: '', method: '' };
+window._arFilters = window._arFilters || { customer: '', date: '' };
+window._arHistoryFilters = window._arHistoryFilters || { customer: '', date: '', method: '' };
+window._journalFilters = window._journalFilters || { q: '' };
+window._expenseFilters = window._expenseFilters || { start: '', end: '', coaId: '' };
+window._receiptFilters = window._receiptFilters || { start: '', end: '', coaId: '' };
+window._coaFilters = window._coaFilters || { accountId: '', type: '' };
+
+// Ensure filter open states are initialized
+window._uiState.apFilterOpen = window._uiState.apFilterOpen ?? false;
+window._uiState.apHistFilterOpen = window._uiState.apHistFilterOpen ?? false;
+window._uiState.apActiveTab = window._uiState.apActiveTab || 'unpaid';
+window._uiState.arFilterOpen = window._uiState.arFilterOpen ?? false;
+window._uiState.arHistFilterOpen = window._uiState.arHistFilterOpen ?? false;
+window._uiState.arActiveTab = window._uiState.arActiveTab || 'unpaid';
+window._uiState.journalFilterOpen = window._uiState.journalFilterOpen ?? false;
+window._uiState.expFilterOpen = window._uiState.expFilterOpen ?? false;
+window._uiState.recFilterOpen = window._uiState.recFilterOpen ?? false;
+window._uiState.coaFilterOpen = window._uiState.coaFilterOpen ?? false;
+window._uiState.repFilterOpen = window._uiState.repFilterOpen ?? false;
+
+window.formatAmountInput = function(val) {
+    if (!val) return '';
+    let number = val.toString().replace(/[^0-9]/g, '');
+    if (!number) return '';
+    return number.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+};
+
+window.parseAmountInput = function(val) {
+    if (!val) return 0;
+    return parseFloat(val.toString().replace(/\./g, '')) || 0;
+};
+
 window.renderFinanceDashboard = function () {
     document.getElementById('pageTitle').innerText = 'Dashboard Finance';
     const mc = document.getElementById('main-content');
@@ -13,8 +49,19 @@ window.renderFinanceDashboard = function () {
     const netProfit = totalRevenue - totalExpenses;
 
     const cashBankBalance = accounts.filter(a => a.code.startsWith('11')).reduce((sum, a) => sum + db.getAccountBalance(a.id), 0);
-    const totalAR = db.read('salesInvoices').filter(i => i.status === 'UNPAID').reduce((sum, i) => sum + (parseFloat(i.totalAmount) || 0), 0);
-    const totalAP = db.read('purchaseInvoices').filter(i => i.status === 'UNPAID').reduce((sum, i) => sum + (parseFloat(i.totalAmount) || 0), 0);
+    const salesInvoices = db.read('salesInvoices');
+    const purchaseInvoices = db.read('purchaseInvoices');
+    const allPayments = db.read('payments');
+    const allSuppPayments = db.read('supplierPayments');
+
+    const totalAR = salesInvoices.filter(i => i.status === 'UNPAID' || i.status === 'PARTIAL').reduce((sum, i) => {
+        const paid = allPayments.filter(p => p.invoiceId === i.id).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+        return sum + ((parseFloat(i.totalAmount) || 0) - paid);
+    }, 0);
+    const totalAP = purchaseInvoices.filter(i => i.status === 'UNPAID' || i.status === 'PARTIAL').reduce((sum, i) => {
+        const paid = allSuppPayments.filter(p => p.invoiceId === i.id).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+        return sum + ((parseFloat(i.totalAmount) || 0) - paid);
+    }, 0);
 
     mc.innerHTML = `
         <!-- Summary Cards -->
@@ -232,6 +279,7 @@ window.renderFinanceAccounts = function () {
                                     </td>
                                     <td class="px-6 py-4 text-right">
                                         <div class="flex justify-end gap-2">
+                                            <button onclick="viewAccountMutasi('${a.id}')" class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-green-50 hover:text-green-600 transition-all" title="Lihat Mutasi"><i class="fas fa-list-ul text-xs"></i></button>
                                             <button onclick="editAccount('${a.id}')" class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-blue-50 hover:text-blue-600 transition-all"><i class="fas fa-edit text-xs"></i></button>
                                             <button onclick="deleteAccount('${a.id}')" class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"><i class="fas fa-trash text-xs"></i></button>
                                         </div>
@@ -348,55 +396,562 @@ window.deleteAccount = function(id) {
     }
 };
 
-window.renderFinanceExpenses = function () {
-    document.getElementById('pageTitle').innerText = 'Manajemen Pengeluaran & Biaya';
-    const mc = document.getElementById('main-content');
-    const expenses = db.read('expenses');
+window.viewAccountMutasi = function(accountId, startDate = '', endDate = '') {
+    const acc = db.findById('accounts', accountId);
+    if (!acc) return;
+    
+    const journalEntries = db.read('journalEntries').sort((a,b) => new Date(a.date) - new Date(b.date));
+    const ledger = [];
+    let runningBalance = parseFloat(acc.openingBalance) || 0;
+    
+    // Add Opening Balance as first entry
+    ledger.push({
+        date: acc.createdAt || new Date().toISOString(),
+        journalNo: '-',
+        description: 'Saldo Awal',
+        debit: 0,
+        credit: 0,
+        balance: runningBalance
+    });
+    
+    journalEntries.forEach(j => {
+        j.items.forEach(item => {
+            if (item.accountId === accountId) {
+                const debit = parseFloat(item.debit) || 0;
+                const credit = parseFloat(item.credit) || 0;
+                
+                // Normal Balance Logic: Assets/Expenses are +Debit, -Credit. Liability/Equity/Income are -Debit, +Credit.
+                if (acc.type === 'ASSET' || acc.type === 'EXPENSE') {
+                    runningBalance += (debit - credit);
+                } else {
+                    runningBalance += (credit - debit);
+                }
+                
+                ledger.push({
+                    date: j.date,
+                    journalNo: j.journalNo,
+                    description: j.description,
+                    debit: debit,
+                    credit: credit,
+                    balance: runningBalance
+                });
+            }
+        });
+    });
+    
+    // Filter by date if provided
+    let filteredLedger = ledger;
+    if (startDate) {
+        filteredLedger = filteredLedger.filter(l => l.date.slice(0, 10) >= startDate || l.description === 'Saldo Awal');
+    }
+    if (endDate) {
+        filteredLedger = filteredLedger.filter(l => l.date.slice(0, 10) <= endDate || l.description === 'Saldo Awal');
+    }
 
-    mc.innerHTML = `
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                <div>
-                    <h3 class="font-bold text-gray-700 text-lg">Riwayat Biaya</h3>
-                    <p class="text-xs text-gray-500 text-red-500">Catat setiap pengeluaran kas perusahaan</p>
+    // Sort reverse for display
+    filteredLedger.reverse();
+
+    const body = `
+        <div class="space-y-4">
+            <!-- Filter & Action Header -->
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center p-4 bg-slate-50 border border-slate-200 rounded-xl gap-4 no-print">
+                <div class="flex flex-wrap items-center gap-3">
+                    <div class="flex flex-col">
+                        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Dari Tanggal</label>
+                        <input type="date" id="mutasi_start" value="${startDate}" class="border-2 border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold focus:border-blue-500 outline-none">
+                    </div>
+                    <div class="flex flex-col">
+                        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Sampai Tanggal</label>
+                        <input type="date" id="mutasi_end" value="${endDate}" class="border-2 border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold focus:border-blue-500 outline-none">
+                    </div>
+                    <button onclick="applyMutasiFilter('${accountId}')" class="mt-4 bg-blue-600 hover:bg-slate-900 text-white px-5 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all">
+                        <i class="fas fa-filter mr-2"></i> FILTER
+                    </button>
                 </div>
-                <button onclick="openExpenseModal()" class="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 transition-colors shadow-sm">
-                    <i class="fas fa-plus mr-2"></i>Catat Biaya
-                </button>
+                <div class="flex gap-2 w-full md:w-auto mt-2 md:mt-0">
+                    <button onclick="exportMutasiToPDF('${accountId}', '${startDate}', '${endDate}')" class="flex-1 md:flex-none bg-red-600 hover:bg-black text-white px-5 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2">
+                        <i class="fas fa-file-pdf"></i> CETAK PDF
+                    </button>
+                </div>
             </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead class="bg-gray-50 text-slate-500 text-[11px] uppercase tracking-wider font-semibold">
+
+            <div class="flex justify-between items-center bg-white p-4 rounded-lg border-2 border-slate-100 shadow-sm">
+                <div>
+                    <h4 class="text-sm font-black text-slate-800 uppercase tracking-widest">${acc.code} - ${acc.name}</h4>
+                    <p class="text-[10px] text-gray-500 uppercase font-bold tracking-tight mt-1">Periode: <span class="text-blue-600">${startDate || 'Awal'} s/d ${endDate || 'Sekarang'}</span></p>
+                </div>
+                <div class="text-right">
+                    <p class="text-[10px] text-gray-400 uppercase font-black">Saldo Akhir Periode</p>
+                    <p class="text-lg font-black text-blue-600">${formatCurrency(Math.abs(filteredLedger[0]?.balance || 0))}</p>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto border rounded-xl overflow-hidden shadow-sm bg-white">
+                <table id="mutasiTable" class="w-full text-left text-xs border-collapse">
+                    <thead class="bg-slate-800 text-white uppercase tracking-widest text-[9px]">
                         <tr>
-                            <th class="px-6 py-3 border-b border-gray-100">Tgl & Ref</th>
-                            <th class="px-6 py-3 border-b border-gray-100">Keterangan</th>
-                            <th class="px-6 py-3 border-b border-gray-100">Departemen</th>
-                            <th class="px-6 py-3 border-b border-gray-100">Akun (Kas)</th>
-                            <th class="px-6 py-3 border-b border-gray-100 text-right">Jumlah</th>
+                            <th class="px-4 py-3 border-r border-slate-700">Tanggal</th>
+                            <th class="px-4 py-3 border-r border-slate-700">Ref / Jurnal</th>
+                            <th class="px-4 py-3 border-r border-slate-700">Keterangan</th>
+                            <th class="px-4 py-3 text-right border-r border-slate-700 uppercase">Debit</th>
+                            <th class="px-4 py-3 text-right border-r border-slate-700 uppercase">Kredit</th>
+                            <th class="px-4 py-3 text-right uppercase">Saldo</th>
                         </tr>
                     </thead>
-                    <tbody class="text-sm divide-y divide-gray-100">
-                        ${expenses.map(e => `
-                            <tr class="hover:bg-red-50/30 transition-colors">
-                                <td class="px-6 py-4">
-                                    <div class="text-[10px] text-gray-400 font-bold">${formatDate(e.date).slice(0, 10)}</div>
-                                    <div class="font-bold text-gray-800">${e.expenseNo}</div>
-                                </td>
-                                <td class="px-6 py-4 text-gray-600">${e.description}</td>
-                                <td class="px-6 py-4">
-                                    <span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-md text-[10px] uppercase font-bold">
-                                        ${db.findById('departments', e.departmentId)?.name || '-'}
-                                    </span>
-                                </td>
-                                <td class="px-6 py-4 text-gray-600 text-xs">${db.findById('accounts', e.fromAccountId)?.name || '-'}</td>
-                                <td class="px-6 py-4 text-right font-bold text-red-600">${formatCurrency(e.amount)}</td>
+                    <tbody class="divide-y divide-gray-100">
+                        ${filteredLedger.map(l => `
+                            <tr class="hover:bg-blue-50/50 transition-colors">
+                                <td class="px-4 py-3 text-gray-400 whitespace-nowrap font-medium">${l.date.slice(0, 10).split('-').reverse().join('/')}</td>
+                                <td class="px-4 py-3 font-bold text-slate-700 whitespace-nowrap">${l.journalNo}</td>
+                                <td class="px-4 py-3 text-gray-600 min-w-[200px] font-medium">${l.description}</td>
+                                <td class="px-4 py-3 text-right font-bold ${l.debit > 0 ? 'text-blue-600' : 'text-slate-100'}">${l.debit > 0 ? formatCurrency(l.debit).replace('Rp ', '') : '0,00'}</td>
+                                <td class="px-4 py-3 text-right font-bold ${l.credit > 0 ? 'text-red-500' : 'text-slate-100'}">${l.credit > 0 ? formatCurrency(l.credit).replace('Rp ', '') : '0,00'}</td>
+                                <td class="px-4 py-3 text-right font-black text-slate-800 bg-slate-50/50">${formatCurrency(Math.abs(l.balance)).replace('Rp ', '')}</td>
                             </tr>
-                        `).join('') || '<tr><td colspan="5" class="px-6 py-12 text-center text-gray-400 italic">Belum ada pengeluaran yang dicatat.</td></tr>'}
+                        `).join('')}
                     </tbody>
                 </table>
             </div>
         </div>
     `;
+    
+    const footer = `
+        <button onclick="closeModal()" class="px-8 py-2.5 bg-slate-900 text-white rounded-lg text-xs font-black uppercase tracking-widest hover:bg-black transition-all">Tutup</button>
+    `;
+    
+    showModal(`Mutasi Buku Besar: ${acc.name}`, body, footer, 'full');
+};
+
+window.applyMutasiFilter = function(accountId) {
+    const start = document.getElementById('mutasi_start').value;
+    const end = document.getElementById('mutasi_end').value;
+    viewAccountMutasi(accountId, start, end);
+};
+
+window.exportMutasiToPDF = function(accountId, startDate, endDate) {
+    const acc = db.findById('accounts', accountId);
+    if (!acc) return;
+
+    const printHeader = `
+        <div style="text-align: center; margin-bottom: 20px; border-bottom: 2px solid #333; padding-bottom: 10px;">
+            <h1 style="margin: 0; font-size: 24px;">PT. TANA SUBUR NUSANTARA</h1>
+            <p style="margin: 5px 0; font-size: 14px;">LAPORAN MUTASI BUKU BESAR</p>
+            <h2 style="margin: 5px 0; font-size: 18px; color: #1a56db;">${acc.code} - ${acc.name}</h2>
+            <p style="margin: 5px 0; font-size: 12px; color: #666;">Periode: ${startDate || 'Awal'} s/d ${endDate || 'Sekarang'}</p>
+        </div>
+    `;
+
+    const tableToPrint = document.getElementById('mutasiTable').cloneNode(true);
+    
+    // Customize table for print
+    tableToPrint.style.width = '100%';
+    tableToPrint.style.borderCollapse = 'collapse';
+    tableToPrint.style.fontSize = '10px';
+    
+    const ths = tableToPrint.querySelectorAll('th');
+    ths.forEach(th => {
+        th.style.border = '1px solid #ddd';
+        th.style.padding = '8px';
+        th.style.backgroundColor = '#f8fafc';
+        th.style.color = '#333';
+        th.style.textAlign = 'left';
+    });
+    
+    const tds = tableToPrint.querySelectorAll('td');
+    tds.forEach(td => {
+        td.style.border = '1px solid #ddd';
+        td.style.padding = '6px';
+        if (td.classList.contains('text-right')) td.style.textAlign = 'right';
+    });
+
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+        <html>
+            <head>
+                <title>Mutasi_${acc.name}_${new Date().toISOString().slice(0, 10)}</title>
+                <style>
+                    body { font-family: 'Inter', system-ui, sans-serif; padding: 20px; }
+                    @page { margin: 1cm; }
+                    .text-right { text-align: right; }
+                    .font-bold { font-weight: bold; }
+                    .text-blue-600 { color: #1a56db; }
+                    .text-red-500 { color: #ef4444; }
+                </style>
+            </head>
+            <body>
+                ${printHeader}
+                ${tableToPrint.outerHTML}
+                <div style="margin-top: 30px; text-align: right;">
+                    <p style="font-size: 10px; color: #999;">Dicetak pada: ${new Date().toLocaleString()}</p>
+                </div>
+            </body>
+        </html>
+    `);
+
+    printWindow.document.close();
+    setTimeout(() => {
+        printWindow.print();
+        // printWindow.close(); // Optional: close after print
+    }, 500);
+};
+
+window.renderFinanceExpenses = function () {
+    document.getElementById('pageTitle').innerText = 'Manajemen Pengeluaran & Biaya';
+    const mc = document.getElementById('main-content');
+    
+    // Filters logic
+    const fDateStart = window._expenseFilters?.start || '';
+    const fDateEnd = window._expenseFilters?.end || '';
+    const fCoaId = window._expenseFilters?.coaId || '';
+    const allCoa = db.read('accounts').filter(a => a.type === 'EXPENSE');
+
+    let expenses = db.read('expenses') || [];
+    if (fDateStart) expenses = expenses.filter(e => e.date >= fDateStart);
+    if (fDateEnd) expenses = expenses.filter(e => e.date <= fDateEnd);
+    if (fCoaId) expenses = expenses.filter(e => e.toAccountId === fCoaId);
+
+    mc.innerHTML = `
+        <div class="flex flex-col gap-6">
+            <!-- Filter Section -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                <div onclick="toggleExpenseFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
+                    <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
+                        <i class="fas fa-filter text-red-600"></i> FILTER PENCARIAN
+                        ${(fDateStart || fDateEnd || fCoaId) ? `<span class="ml-2 px-2 py-0.5 bg-red-50 text-red-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
+                    </h3>
+                    <div class="flex items-center gap-3">
+                        <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.expFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
+                        <i class="fas fa-chevron-${window._uiState.expFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
+                    </div>
+                </div>
+                <div class="${window._uiState.expFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Dari Tanggal</label>
+                            <input type="date" id="expFStart" value="${fDateStart}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 outline-none focus:border-red-500 transition-all">
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Sampai Tanggal</label>
+                            <input type="date" id="expFEnd" value="${fDateEnd}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 outline-none focus:border-red-500 transition-all">
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nama COA (Biaya)</label>
+                            <select id="expFCoa" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 outline-none focus:border-red-500 transition-all">
+                                <option value="">-- Semua Kategori --</option>
+                                ${allCoa.map(a => `<option value="${a.id}" ${fCoaId === a.id ? 'selected' : ''}>${a.code} - ${a.name}</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 pt-6 mt-6 border-t border-slate-50">
+                        <button onclick="applyExpenseFilters()" class="bg-red-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
+                            CARI DATA
+                        </button>
+                        <button onclick="resetExpenseFilters()" class="bg-slate-50 hover:bg-slate-100 text-slate-400 px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">
+                            RESET
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                    <div>
+                        <h3 class="font-bold text-gray-700 text-lg">Riwayat Pengeluaran (Biaya)</h3>
+                        <p class="text-xs text-gray-500 text-red-500">Catat setiap pengeluaran kas perusahaan</p>
+                    </div>
+                    <button onclick="openExpenseModal()" class="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 transition-colors shadow-sm">
+                        <i class="fas fa-plus mr-2"></i>Catat Biaya
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-gray-50 text-slate-500 text-[11px] uppercase tracking-wider font-semibold">
+                            <tr>
+                                <th class="px-6 py-3 border-b border-gray-100">Tgl & Ref</th>
+                                <th class="px-6 py-3 border-b border-gray-100">Kebutuhan</th>
+                                <th class="px-6 py-3 border-b border-gray-100">Nama COA</th>
+                                <th class="px-6 py-3 border-b border-gray-100">Kas Bank</th>
+                                <th class="px-6 py-3 border-b border-gray-100 text-right">Jumlah</th>
+                            </tr>
+                        </thead>
+                        <tbody class="text-sm divide-y divide-gray-100">
+                            ${expenses.map(e => `
+                                <tr class="hover:bg-red-50/30 transition-colors">
+                                    <td class="px-6 py-4">
+                                        <div class="text-[10px] text-gray-400 font-bold">${formatDate(e.date).slice(0, 10)}</div>
+                                        <div class="font-bold text-gray-800">${e.expenseNo}</div>
+                                    </td>
+                                    <td class="px-6 py-4 text-gray-600 font-medium">${e.description}</td>
+                                    <td class="px-6 py-4">
+                                        <span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-md text-[10px] uppercase font-bold">
+                                            ${db.findById('accounts', e.toAccountId)?.name || '-'}
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 text-gray-600 text-xs font-bold uppercase">${db.findById('accounts', e.fromAccountId)?.name || '-'}</td>
+                                    <td class="px-6 py-4 text-right font-black text-red-600">${formatCurrency(e.amount)}</td>
+                                </tr>
+                            `).join('') || '<tr><td colspan="5" class="px-6 py-12 text-center text-gray-400 italic">Belum ada pengeluaran yang ditemukan.</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+};
+
+window.toggleExpenseFilter = function() {
+    window._uiState.expFilterOpen = !window._uiState.expFilterOpen;
+    renderFinanceExpenses();
+};
+
+window.applyExpenseFilters = function() {
+    window._expenseFilters = {
+        start: document.getElementById('expFStart').value,
+        end: document.getElementById('expFEnd').value,
+        coaId: document.getElementById('expFCoa').value
+    };
+    renderFinanceExpenses();
+};
+
+window.resetExpenseFilters = function() {
+    window._expenseFilters = { start: '', end: '', coaId: '' };
+    renderFinanceExpenses();
+};
+
+window.renderFinanceReceipts = function () {
+    document.getElementById('pageTitle').innerText = 'Penerimaan Kas & Bank';
+    const mc = document.getElementById('main-content');
+    
+    // Filters logic
+    const fDateStart = window._receiptFilters?.start || '';
+    const fDateEnd = window._receiptFilters?.end || '';
+    const fCoaId = window._receiptFilters?.coaId || '';
+    const allCoa = db.read('accounts').filter(a => a.type === 'INCOME' || a.type === 'EQUITY' || a.type === 'LIABILITY');
+
+    let receipts = db.read('receipts') || [];
+    if (fDateStart) receipts = receipts.filter(r => r.date >= fDateStart);
+    if (fDateEnd) receipts = receipts.filter(r => r.date <= fDateEnd);
+    if (fCoaId) receipts = receipts.filter(r => r.sourceAccountId === fCoaId);
+
+    mc.innerHTML = `
+        <div class="flex flex-col gap-6">
+            <!-- Filter Section -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                <div onclick="toggleReceiptFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
+                    <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
+                        <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
+                        ${(fDateStart || fDateEnd || fCoaId) ? `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
+                    </h3>
+                    <div class="flex items-center gap-3">
+                        <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.recFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
+                        <i class="fas fa-chevron-${window._uiState.recFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
+                    </div>
+                </div>
+                <div class="${window._uiState.recFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Dari Tanggal</label>
+                            <input type="date" id="recFStart" value="${fDateStart}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 outline-none focus:border-blue-500 transition-all">
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Sampai Tanggal</label>
+                            <input type="date" id="recFEnd" value="${fDateEnd}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 outline-none focus:border-blue-500 transition-all">
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Sumber COA</label>
+                            <select id="recFCoa" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 outline-none focus:border-blue-500 transition-all">
+                                <option value="">-- Semua Sumber --</option>
+                                ${allCoa.map(a => `<option value="${a.id}" ${fCoaId === a.id ? 'selected' : ''}>${a.code} - ${a.name}</option>`).join('')}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 pt-6 mt-6 border-t border-slate-50">
+                        <button onclick="applyReceiptFilters()" class="bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
+                            CARI DATA
+                        </button>
+                        <button onclick="resetReceiptFilters()" class="bg-slate-50 hover:bg-slate-100 text-slate-400 px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">
+                            RESET
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                    <div>
+                        <h3 class="font-bold text-gray-700 text-lg">Riwayat Penerimaan</h3>
+                        <p class="text-xs text-gray-500 text-blue-500">Catat setiap uang yang masuk ke kas/bank perusahaan</p>
+                    </div>
+                    <button onclick="openReceiptModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm">
+                        <i class="fas fa-plus mr-2"></i>Catat Penerimaan
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-gray-50 text-slate-500 text-[11px] uppercase tracking-wider font-semibold">
+                            <tr>
+                                <th class="px-6 py-3 border-b border-gray-100">Tgl & Ref</th>
+                                <th class="px-6 py-3 border-b border-gray-100">Keterangan</th>
+                                <th class="px-6 py-3 border-b border-gray-100">Sumber (COA)</th>
+                                <th class="px-6 py-3 border-b border-gray-100">Penerima (Kas)</th>
+                                <th class="px-6 py-3 border-b border-gray-100 text-right">Jumlah</th>
+                            </tr>
+                        </thead>
+                        <tbody class="text-sm divide-y divide-gray-100">
+                            ${receipts.map(r => `
+                                <tr class="hover:bg-blue-50/30 transition-colors">
+                                    <td class="px-6 py-4">
+                                        <div class="text-[10px] text-gray-400 font-bold">${formatDate(r.date).slice(0, 10)}</div>
+                                        <div class="font-bold text-gray-800">${r.receiptNo}</div>
+                                    </td>
+                                    <td class="px-6 py-4 text-gray-600 font-medium">${r.description}</td>
+                                    <td class="px-6 py-4 text-gray-500 text-xs font-bold uppercase tracking-tight">${db.findById('accounts', r.sourceAccountId)?.name || '-'}</td>
+                                    <td class="px-6 py-4 text-gray-500 text-xs font-bold uppercase tracking-tight">${db.findById('accounts', r.targetAccountId)?.name || '-'}</td>
+                                    <td class="px-6 py-4 text-right font-black text-blue-600">${formatCurrency(r.amount)}</td>
+                                </tr>
+                            `).join('') || '<tr><td colspan="5" class="px-6 py-12 text-center text-gray-400 italic">Belum ada penerimaan yang ditemukan.</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+};
+
+window.toggleReceiptFilter = function() {
+    window._uiState.recFilterOpen = !window._uiState.recFilterOpen;
+    renderFinanceReceipts();
+};
+
+window.toggleARFilter = function() {
+    window._uiState.arFilterOpen = !window._uiState.arFilterOpen;
+    renderFinanceAR();
+};
+
+window.toggleAPFilter = function() {
+    window._uiState.apFilterOpen = !window._uiState.apFilterOpen;
+    renderFinanceAP();
+};
+
+window.toggleJournalFilter = function() {
+    window._uiState.journalFilterOpen = !window._uiState.journalFilterOpen;
+    renderFinanceJournal();
+};
+
+window.applyJournalFilters = function() {
+    window._journalFilters = {
+        q: document.getElementById('journalFilterQ').value
+    };
+    renderFinanceJournal();
+};
+
+window.applyReceiptFilters = function() {
+    window._receiptFilters = {
+        start: document.getElementById('recFStart').value,
+        end: document.getElementById('recFEnd').value,
+        coaId: document.getElementById('recFCoa').value
+    };
+    renderFinanceReceipts();
+};
+
+window.resetReceiptFilters = function() {
+    window._receiptFilters = { start: '', end: '', coaId: '' };
+    renderFinanceReceipts();
+};
+
+window.openReceiptModal = function () {
+    const assetAccounts = db.read('accounts').filter(a => a.type === 'ASSET' && a.code.startsWith('11'));
+    const allAccounts = db.read('accounts');
+
+    const body = `
+        <form id="receiptForm" class="space-y-8 py-6">
+            <div class="grid grid-cols-2 gap-8">
+                <div class="col-span-2 md:col-span-1">
+                    <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Tanggal Terima</label>
+                    <input type="date" id="recDate" class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all bg-slate-50/30" value="${new Date().toISOString().slice(0, 10)}">
+                </div>
+                <div class="col-span-2 md:col-span-1">
+                    <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Jumlah diterima (IDR)</label>
+                    <input type="text" id="recAmount" 
+                           oninput="this.value = formatAmountInput(this.value)"
+                           class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all bg-slate-50/30" 
+                           placeholder="0" required>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-8">
+                <div class="col-span-2 md:col-span-1">
+                    <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Masuk Ke (Kas/Bank Penerima)</label>
+                    <select id="recTargetAccount" class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all bg-slate-50/30">
+                        ${assetAccounts.map(a => `<option value="${a.id}">${a.name} (${a.code})</option>`).join('')}
+                    </select>
+                </div>
+                <div class="col-span-2 md:col-span-1">
+                    <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Sumber COA (Asal Dana)</label>
+                    <select id="recSourceAccount" class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all bg-slate-50/30">
+                        <option value="">- Pilih Akun Sumber -</option>
+                        ${allAccounts.map(a => `<option value="${a.id}">${a.code} - ${a.name}</option>`).join('')}
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-8">
+                <div class="col-span-2 md:col-span-1">
+                    <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Metode Penerimaan</label>
+                    <select id="recMethod" class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all bg-slate-50/30">
+                        <option value="Transfer">Transfer Bank</option>
+                        <option value="Tunai">Tunai / Cash</option>
+                        <option value="Cek/Giro">Cek / Giro</option>
+                    </select>
+                </div>
+                <div class="col-span-2 md:col-span-1">
+                    <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Keterangan Transaksi</label>
+                    <textarea id="recDesc" class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all bg-slate-50/30" rows="2" placeholder="Tuliskan alasan atau detail penerimaan dana..."></textarea>
+                </div>
+            </div>
+        </form>
+    `;
+    const footer = `
+        <button onclick="saveReceipt()" class="px-8 py-3 bg-blue-600 text-white rounded-lg text-xs font-black uppercase tracking-widest shadow-lg hover:bg-slate-900 transition-all active:scale-95">Simpan Penerimaan</button>
+        <button onclick="closeModal()" class="px-5 py-3 bg-gray-100 text-gray-500 rounded-lg text-xs font-black uppercase tracking-widest mr-2 hover:bg-gray-200 transition-all">Batal</button>
+    `;
+    showModal('Catat Penerimaan Kas & Bank', body, footer, 'xl');
+};
+
+window.saveReceipt = function () {
+    const date = document.getElementById('recDate').value;
+    const amountVal = document.getElementById('recAmount').value;
+    const amount = parseAmountInput(amountVal);
+    const targetAccId = document.getElementById('recTargetAccount').value;
+    const sourceAccId = document.getElementById('recSourceAccount').value;
+    const method = document.getElementById('recMethod').value;
+    const desc = document.getElementById('recDesc').value;
+
+    if (!amount || amount <= 0) return showToast('Mohon isi jumlah penerimaan.', 'error');
+    if (!sourceAccId) return showToast('Mohon pilih akun sumber (COA).', 'error');
+
+    const receiptNo = db.generateFinanceTxNo('RECEIPT');
+    const receipt = db.insert('receipts', {
+        date, receiptNo, amount, targetAccountId: targetAccId, sourceAccountId: sourceAccId, method, description: desc
+    });
+
+    // Create Journal Entry
+    // Debit: Cash/Bank (Target), Credit: Source COA
+    db.addJournalEntry({
+        date, 
+        journalNo: receiptNo, 
+        description: desc || `Penerimaan Kas - ${receiptNo}`, 
+        items: [
+            { accountId: targetAccId, debit: amount, credit: 0 },
+            { accountId: sourceAccId, debit: 0, credit: amount }
+        ], 
+        referenceType: 'RECEIPT', 
+        referenceId: receipt.id
+    });
+
+    closeModal();
+    showToast('Penerimaan berhasil dicatat', 'success');
+    renderFinanceReceipts();
 };
 
 window.openExpenseModal = function () {
@@ -405,72 +960,89 @@ window.openExpenseModal = function () {
     const depts = db.read('departments');
 
     const body = `
-        <form id="expenseForm" class="space-y-4">
-            <div class="grid grid-cols-2 gap-4">
+        <form id="expenseForm" class="space-y-8 py-6">
+            <div class="grid grid-cols-2 gap-8">
                 <div>
-                    <label class="block text-xs font-bold text-gray-500 mb-1">Tanggal</label>
-                    <input type="date" id="expDate" class="w-full border border-gray-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" value="${new Date().toISOString().slice(0, 10)}">
+                    <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Tanggal di bayar</label>
+                    <input type="date" id="expDate" class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-red-500/10 focus:border-red-500 outline-none transition-all bg-slate-50/30" value="${new Date().toISOString().slice(0, 10)}">
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-gray-500 mb-1">Jumlah (IDR)</label>
-                    <input type="number" id="expAmount" class="w-full border border-gray-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="0" required>
+                    <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Jumlah yang di bayar (IDR)</label>
+                    <input type="text" id="expAmount" 
+                           oninput="this.value = formatAmountInput(this.value)"
+                           class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-red-500/10 focus:border-red-500 outline-none transition-all bg-slate-50/30" 
+                           placeholder="0" required>
                 </div>
             </div>
-            <div class="grid grid-cols-2 gap-4">
+
+            <div class="grid grid-cols-2 gap-8">
                 <div>
-                    <label class="block text-xs font-bold text-gray-500 mb-1">Bayar Dari (Kas/Bank)</label>
-                    <select id="expFromAccount" class="w-full border border-gray-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Kas Bank yang mengeluarkan dana</label>
+                    <select id="expFromAccount" class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-red-500/10 focus:border-red-500 outline-none transition-all bg-slate-50/30">
                         ${assetAccounts.map(a => `<option value="${a.id}">${a.name} (${a.code})</option>`).join('')}
                     </select>
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-gray-500 mb-1">Departemen</label>
-                    <select id="expDept" class="w-full border border-gray-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Nama COA (Kategori Biaya)</label>
+                    <select id="expToAccount" class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-red-500/10 focus:border-red-500 outline-none transition-all bg-slate-50/30">
+                        ${expenseAccounts.map(a => `<option value="${a.id}">${a.name} (${a.code})</option>`).join('')}
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-8">
+                <div>
+                    <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Metode Pembayaran</label>
+                    <select id="expMethod" class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-red-500/10 focus:border-red-500 outline-none transition-all bg-slate-50/30">
+                        <option value="Transfer">Transfer Bank</option>
+                        <option value="Tunai">Tunai / Cash</option>
+                        <option value="Cek/Giro">Cek / Giro</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Departemen Alokasi</label>
+                    <select id="expDept" class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-red-500/10 focus:border-red-500 outline-none transition-all bg-slate-50/30">
                         <option value="">- Pilih Departemen -</option>
                         ${depts.map(d => `<option value="${d.id}">${d.name}</option>`).join('')}
                     </select>
                 </div>
             </div>
-            <div>
-                <label class="block text-xs font-bold text-gray-500 mb-1">Kategori Biaya</label>
-                <select id="expToAccount" class="w-full border border-gray-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                    ${expenseAccounts.map(a => `<option value="${a.id}">${a.name} (${a.code})</option>`).join('')}
-                </select>
-            </div>
-            <div>
-                <label class="block text-xs font-bold text-gray-500 mb-1">Keterangan</label>
-                <textarea id="expDesc" class="w-full border border-gray-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" rows="2" placeholder="Misal: Bayar Listrik Kantor Maret 2024"></textarea>
-            </div>
 
+            <div>
+                <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Kebutuhan (Keterangan)</label>
+                <textarea id="expDesc" class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-red-500/10 focus:border-red-500 outline-none transition-all bg-slate-50/30" rows="2" placeholder="Tuliskan tujuan atau kebutuhan pengeluaran dana..."></textarea>
+            </div>
         </form>
     `;
     const footer = `
-        <button onclick="saveExpense()" class="px-6 py-2 bg-red-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-red-700 transition-colors">Simpan Pengeluaran</button>
-        <button onclick="closeModal()" class="px-4 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-bold mr-2">Batal</button>
+        <button onclick="saveExpense()" class="px-8 py-3 bg-red-600 text-white rounded-lg text-xs font-black uppercase tracking-widest shadow-lg hover:bg-slate-900 transition-all active:scale-95">Simpan Pengeluaran</button>
+        <button onclick="closeModal()" class="px-5 py-3 bg-gray-100 text-gray-500 rounded-lg text-xs font-black uppercase tracking-widest mr-2 hover:bg-gray-200 transition-all">Batal</button>
     `;
-    showModal('Catat Pengeluaran Baru', body, footer);
+    showModal('Catat Pengeluaran Baru', body, footer, 'xl');
 };
 
 window.saveExpense = function () {
     const date = document.getElementById('expDate').value;
-    const amount = parseFloat(document.getElementById('expAmount').value);
+    const amountVal = document.getElementById('expAmount').value;
+    const amount = parseAmountInput(amountVal);
     const fromAccId = document.getElementById('expFromAccount').value;
     const toAccId = document.getElementById('expToAccount').value;
     const deptId = document.getElementById('expDept').value;
+    const method = document.getElementById('expMethod').value;
     const desc = document.getElementById('expDesc').value;
 
-    if (!amount || amount <= 0) return alert('Mohon isi jumlah pengeluaran.');
+    if (!amount || amount <= 0) return showToast('Mohon isi jumlah pengeluaran.', 'error');
 
     const expenseNo = db.generateFinanceTxNo('EXPENSE');
     const expense = db.insert('expenses', {
-        date, expenseNo, amount, fromAccountId: fromAccId, toAccountId: toAccId, departmentId: deptId, description: desc
+        date, expenseNo, amount, fromAccountId: fromAccId, toAccountId: toAccId, departmentId: deptId, description: desc, method: method
     });
 
     // Create Journal Entry
     db.addJournalEntry({
         date, 
         journalNo: expenseNo, 
-        description: desc, 
+        description: desc || `Pengeluaran - ${expenseNo}`, 
         items: [
             { accountId: toAccId, debit: amount, credit: 0 },
             { accountId: fromAccId, debit: 0, credit: amount }
@@ -481,17 +1053,64 @@ window.saveExpense = function () {
     });
 
     closeModal();
-    showToast('Pengeluaran berhasil dicatat');
+    showToast('Pengeluaran berhasil dicatat', 'success');
     renderFinanceExpenses();
 };
 
 window.renderFinanceJournal = function () {
     document.getElementById('pageTitle').innerText = 'Jurnal Umum (General Journal)';
     const mc = document.getElementById('main-content');
-    const journal = db.read('journalEntries');
+    const journal = db.read('journalEntries') || [];
+    // Filter logic
+    window._journalFilters = window._journalFilters || { q: '' };
+    const f = window._journalFilters;
+    let filteredJournal = [...journal];
+    if (f.q) {
+        const query = f.q.toLowerCase();
+        filteredJournal = filteredJournal.filter(j => 
+            j.description.toLowerCase().includes(query) || 
+            j.journalNo.toLowerCase().includes(query) ||
+            (j.partnerName && j.partnerName.toLowerCase().includes(query))
+        );
+    }
 
     mc.innerHTML = `
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="space-y-6">
+            <!-- New Standard Filter Section -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-6 overflow-hidden">
+                <div onclick="toggleJournalFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
+                    <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
+                        <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
+                        ${f.q ? `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
+                    </h3>
+                    <div class="flex items-center gap-3">
+                        <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.journalFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
+                        <i class="fas fa-chevron-${window._uiState.journalFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
+                    </div>
+                </div>
+
+                <div class="${window._uiState.journalFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Pencarian Jurnal</label>
+                        <div class="relative">
+                            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                            <input type="text" id="journalFilterQ" value="${f.q}" placeholder="Cari Deskripsi, Nomor Jurnal, atau Mitra..." 
+                                class="w-full border-2 border-slate-100 rounded-lg pl-10 pr-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white overflow-hidden"
+                                onkeyup="if(event.key === 'Enter') applyJournalFilters()">
+                        </div>
+                    </div>
+                    <div class="flex gap-2 pt-4 mt-4 border-t border-slate-50">
+                        <button onclick="applyJournalFilters()" class="bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
+                            <i class="fas fa-search mr-2"></i> TAMPILKAN DATA
+                        </button>
+                        <button onclick="document.getElementById('journalFilterQ').value=''; applyJournalFilters()" class="bg-slate-50 hover:bg-slate-100 text-slate-400 px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">
+                            <i class="fas fa-undo mr-2"></i> RESET
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                 <div>
                      <h3 class="font-bold text-gray-700 text-lg">Semua Transaksi</h3>
@@ -513,7 +1132,7 @@ window.renderFinanceJournal = function () {
                         </tr>
                     </thead>
                     <tbody class="text-xs divide-y divide-gray-100">
-                        ${journal.map(j => `
+                        ${filteredJournal.map(j => `
                             <tr class="bg-slate-50/50">
                                 <td class="px-6 py-4" colspan="2">
                                     <div class="flex items-center gap-3">
@@ -872,48 +1491,59 @@ window.renderFinancePartnerLedger = function () {
 window.renderFinanceAR = function () {
     document.getElementById('pageTitle').innerText = 'Data Piutang (AR)';
     const mc = document.getElementById('main-content');
-    
-    const filterCust = (window._arFilters?.customer || '').toLowerCase();
-    const filterDate = window._arFilters?.date || '';
+    const activeTab = window._uiState.arActiveTab;
 
-    let invoices = db.read('salesInvoices').filter(i => i.status === 'UNPAID');
-    
-    if (filterCust) {
-        invoices = invoices.filter(i => {
-            const cName = (i.customerName || db.findById('customers', i.customerId)?.name || '').toLowerCase();
-            return cName.includes(filterCust);
-        });
-    }
-    if (filterDate) {
-        invoices = invoices.filter(i => i.date && i.date.startsWith(filterDate));
-    }
-    const payments = db.read('payments').sort((a, b) => new Date(b.date) - new Date(a.date));
+    let contentHtml = '';
 
-    // Summary stats for AR
-    const totalAR = invoices.reduce((sum, i) => sum + (parseFloat(i.totalAmount) || 0), 0);
+    if (activeTab === 'unpaid') {
+        const filterCust = (window._arFilters?.customer || '').toLowerCase();
+        const filterDate = window._arFilters?.date || '';
 
-    mc.innerHTML = `
-        <div class="space-y-6">
-            <!-- Compact Filter Section -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-5 mb-5">
-                <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-2"><i class="fas fa-filter text-blue-500"></i> Filter Pencarian</h3>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end mb-4">
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Cari Customer</label>
-                        <input type="text" id="arFilterCustomer" placeholder="Nama customer..." class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all" value="${window._arFilters?.customer || ''}" onkeyup="if(event.key === 'Enter') updateARFilters()">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Cari Tanggal</label>
-                        <input type="date" id="arFilterDate" class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all" value="${window._arFilters?.date || ''}">
+        let invoices = db.read('salesInvoices').filter(i => i.status === 'UNPAID' || i.status === 'PARTIAL');
+        if (filterCust) {
+            invoices = invoices.filter(i => {
+                const cName = (i.customerName || db.findById('customers', i.customerId)?.name || '').toLowerCase();
+                return cName.includes(filterCust);
+            });
+        }
+        if (filterDate) {
+            invoices = invoices.filter(i => i.date && i.date.startsWith(filterDate));
+        }
+
+        const allPayments = db.read('payments');
+        const totalAR = invoices.reduce((sum, i) => {
+            const paid = allPayments.filter(p => p.invoiceId === i.id).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+            return sum + (parseFloat(i.totalAmount) - paid);
+        }, 0);
+
+        contentHtml = `
+            <!-- Filter Section (Unpaid) -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-6 overflow-hidden">
+                <div onclick="toggleARFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
+                    <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
+                        <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
+                        ${(filterCust || filterDate) ? `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
+                    </h3>
+                    <div class="flex items-center gap-3">
+                        <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.arFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
+                        <i class="fas fa-chevron-${window._uiState.arFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
                     </div>
                 </div>
-                <div class="flex gap-2">
-                    <button onclick="updateARFilters()" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all active:scale-95 shadow-sm shadow-blue-100">
-                        <i class="fas fa-search mr-2"></i> TAMPILKAN
-                    </button>
-                    <button onclick="document.getElementById('arFilterCustomer').value=''; document.getElementById('arFilterDate').value=''; updateARFilters()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-lg transition-all active:scale-95 shadow-sm" title="Reset Filter">
-                        <i class="fas fa-undo"></i>
-                    </button>
+                <div class="${window._uiState.arFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nama Customer</label>
+                            <input type="text" id="arFilterCustomer" value="${window._arFilters?.customer || ''}" placeholder="Cari Nama Customer..." class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50">
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Bulan Faktur</label>
+                            <input type="month" id="arFilterDate" value="${window._arFilters?.date || ''}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50">
+                        </div>
+                    </div>
+                    <div class="flex gap-2 pt-4 mt-4 border-t border-slate-50">
+                        <button onclick="updateARFilters()" class="bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">TAMPILKAN DATA</button>
+                        <button onclick="document.getElementById('arFilterCustomer').value=''; document.getElementById('arFilterDate').value=''; updateARFilters()" class="bg-slate-50 hover:bg-slate-100 text-slate-400 px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">RESET</button>
+                    </div>
                 </div>
             </div>
 
@@ -921,9 +1551,9 @@ window.renderFinanceAR = function () {
                 <div class="p-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center flex-wrap gap-4">
                     <div>
                         <h3 class="font-bold text-gray-700">Daftar Faktur Penjualan Belum Lunas</h3>
-                        <p class="text-xs text-gray-500">Total piutang aktif sesuai filter: <span class="font-bold text-orange-600">${formatCurrency(totalAR)}</span></p>
+                        <p class="text-xs text-gray-500">Total piutang aktif: <span class="font-bold text-orange-600">${formatCurrency(totalAR)}</span></p>
                     </div>
-                    <button onclick="openFinanceARPaymentModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold shadow-sm hover:bg-blue-700 transition-colors whitespace-nowrap">
+                    <button onclick="openFinanceARPaymentModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold shadow-sm hover:bg-blue-700 transition-colors">
                         <i class="fas fa-plus mr-1"></i> Input Pelunasan
                     </button>
                 </div>
@@ -933,40 +1563,93 @@ window.renderFinanceAR = function () {
                             <tr>
                                 <th class="px-6 py-3 border-b border-gray-100">Faktur</th>
                                 <th class="px-6 py-3 border-b border-gray-100">Customer</th>
-                                <th class="px-6 py-3 border-b border-gray-100">Tgl Jatuh Tempo</th>
-                                <th class="px-6 py-3 border-b border-gray-100 text-right">Total</th>
+                                <th class="px-6 py-3 border-b border-gray-100">Jatuh Tempo</th>
+                                <th class="px-6 py-3 border-b border-gray-100 text-right">Sisa Piutang</th>
                                 <th class="px-6 py-3 border-b border-gray-100">Status</th>
                             </tr>
                         </thead>
                         <tbody class="text-sm divide-y divide-gray-100">
-                            ${invoices.map(i => `
+                            ${invoices.map(i => {
+                                const paid = allPayments.filter(p => p.invoiceId === i.id).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+                                return `
                                 <tr>
                                     <td class="px-6 py-4">
                                         <div class="font-bold text-gray-800">${i.invoiceNumber}</div>
                                         <div class="text-[10px] text-gray-400">${formatDate(i.date).slice(0, 10)}</div>
                                     </td>
-                                    <td class="px-6 py-4">
-                                        <div class="text-gray-700 font-medium">${i.customerName || db.findById('customers', i.customerId)?.name || 'Unknown'}</div>
-                                    </td>
+                                    <td class="px-6 py-4 text-gray-700 font-medium">${i.customerName || db.findById('customers', i.customerId)?.name || 'Unknown'}</td>
                                     <td class="px-6 py-4 text-gray-600">${i.dueDate || '-'}</td>
-                                    <td class="px-6 py-4 text-right font-bold text-blue-600">${formatCurrency(i.totalAmount)}</td>
+                                    <td class="px-6 py-4 text-right font-bold text-blue-600">${formatCurrency(i.totalAmount - paid)}</td>
                                     <td class="px-6 py-4">
-                                        <span class="px-2 py-1 bg-red-100 text-red-700 rounded-full text-[10px] font-bold">UNPAID</span>
+                                        <span class="px-2 py-1 ${i.status === 'PARTIAL' ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700'} rounded-full text-[10px] font-bold">${i.status}</span>
                                     </td>
                                 </tr>
-                            `).join('') || '<tr><td colspan="5" class="px-6 py-12 text-center text-gray-400">Tidak ada piutang aktif saat ini.</td></tr>'}
+                            `}).join('') || '<tr><td colspan="5" class="px-6 py-12 text-center text-gray-400">Tidak ada piutang aktif.</td></tr>'}
                         </tbody>
                     </table>
                 </div>
             </div>
+        `;
+    } else {
+        // Riwayat Tab
+        const f = window._arHistoryFilters;
+        const filterCust = (f.customer || '').toLowerCase();
+        const filterDate = f.date || '';
+        const filterMethod = f.method || '';
 
-            <!-- PAYMENT HISTORY (RECEIVED FROM SALES) -->
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div class="p-6 border-b border-gray-100 bg-slate-50/50">
-                    <h3 class="font-bold text-gray-700 flex items-center gap-2">
-                        <i class="fas fa-history text-green-500"></i> Riwayat Penerimaan Pembayaran (Sales)
+        let payments = db.read('payments').sort((a, b) => new Date(b.date) - new Date(a.date));
+        if (filterCust) {
+            payments = payments.filter(p => {
+                const inv = db.findById('salesInvoices', p.invoiceId);
+                const cust = db.findById('customers', inv?.customerId);
+                return (cust?.name || '').toLowerCase().includes(filterCust);
+            });
+        }
+        if (filterDate) payments = payments.filter(p => p.date && p.date.startsWith(filterDate));
+        if (filterMethod) payments = payments.filter(p => p.method === filterMethod);
+
+        contentHtml = `
+            <!-- Filter Section (History) -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-6 overflow-hidden">
+                <div onclick="toggleARHistFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
+                    <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
+                        <i class="fas fa-filter text-blue-600"></i> FILTER RIWAYAT
+                        ${(filterCust || filterDate || filterMethod) ? `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
                     </h3>
-                    <p class="text-xs text-gray-500">Daftar pembayaran yang telah di-upload oleh tim Sales</p>
+                    <div class="flex items-center gap-3">
+                        <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.arHistFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
+                        <i class="fas fa-chevron-${window._uiState.arHistFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
+                    </div>
+                </div>
+                <div class="${window._uiState.arHistFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nama Customer</label>
+                            <input type="text" id="arHistFilterCustomer" value="${f.customer}" placeholder="Cari Nama..." class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50">
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Bulan Pembayaran</label>
+                            <input type="month" id="arHistFilterDate" value="${f.date}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50">
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Metode</label>
+                            <select id="arHistFilterMethod" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50">
+                                <option value="">Semua Metode</option>
+                                <option value="Transfer Bank" ${f.method === 'Transfer Bank' ? 'selected' : ''}>Transfer Bank</option>
+                                <option value="Tunai" ${f.method === 'Tunai' ? 'selected' : ''}>Tunai / Cash</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 pt-4 mt-4 border-t border-slate-50">
+                        <button onclick="applyARHistFilters()" class="bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">TAMPILKAN</button>
+                        <button onclick="resetARHistoryFilters()" class="bg-slate-50 hover:bg-slate-100 text-slate-400 px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">RESET</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div class="p-4 border-b border-gray-100 bg-slate-50/50">
+                    <h3 class="font-bold text-gray-700">Riwayat Penerimaan Pembayaran</h3>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
@@ -975,8 +1658,6 @@ window.renderFinanceAR = function () {
                                 <th class="px-6 py-3 border-b border-gray-100">Tgl & Ref</th>
                                 <th class="px-6 py-3 border-b border-gray-100">Faktur</th>
                                 <th class="px-6 py-3 border-b border-gray-100">Customer</th>
-                                <th class="px-6 py-3 border-b border-gray-100">Metode</th>
-                                <th class="px-6 py-3 border-b border-gray-100">Bukti Upload</th>
                                 <th class="px-6 py-3 border-b border-gray-100 text-right">Jumlah</th>
                             </tr>
                         </thead>
@@ -985,29 +1666,40 @@ window.renderFinanceAR = function () {
                                 const inv = db.findById('salesInvoices', p.invoiceId) || { invoiceNumber: '-', customerId: null };
                                 const cust = db.findById('customers', inv.customerId) || { name: '-' };
                                 return `
-                                <tr class="hover:bg-green-50/30 transition-colors">
+                                <tr>
                                     <td class="px-6 py-4">
                                         <div class="text-[10px] text-gray-400 font-bold">${formatDate(p.date).slice(0, 10)}</div>
                                         <div class="font-bold text-gray-800">${p.paymentNumber}</div>
                                     </td>
                                     <td class="px-6 py-4 text-gray-600 font-medium">${inv.invoiceNumber}</td>
                                     <td class="px-6 py-4 text-gray-600">${cust.name}</td>
-                                    <td class="px-6 py-4"><span class="px-2 py-0.5 bg-gray-100 rounded text-[10px] font-bold">${p.method}</span></td>
-                                    <td class="px-6 py-4">
-                                        ${p.proofReference ? `
-                                            <a href="#" class="text-blue-600 font-bold hover:underline flex items-center gap-1" onclick="window.open('${p.proofReference}'); return false;">
-                                                <i class="fas fa-image text-xs"></i> Lihat Bukti
-                                            </a>
-                                            <span class="text-[9px] text-gray-400 block mt-0.5">${p.proofReference}</span>
-                                        ` : '<span class="text-gray-300 italic text-xs">Tidak ada bukti</span>'}
-                                    </td>
-                                    <td class="px-6 py-4 text-right font-bold text-green-600">${formatCurrency(p.amount)}</td>
+                                    <td class="px-6 py-4 text-right font-bold text-blue-600">${formatCurrency(p.amount)}</td>
                                 </tr>
-                            `}).join('') || '<tr><td colspan="6" class="px-6 py-12 text-center text-gray-400">Belum ada riwayat pembayaran.</td></tr>'}
+                            `}).join('') || '<tr><td colspan="4" class="px-6 py-12 text-center text-gray-400">Belum ada riwayat.</td></tr>'}
                         </tbody>
                     </table>
                 </div>
             </div>
+        `;
+    }
+
+    mc.innerHTML = `
+        <div class="space-y-6">
+            <!-- Tab Navigation -->
+            <div class="flex items-center gap-8 border-b border-slate-200 mb-6 px-2">
+                <button onclick="window._uiState.arActiveTab='unpaid'; renderFinanceAR()" 
+                    class="pb-4 text-sm font-bold transition-all relative ${activeTab === 'unpaid' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
+                    Antrean Piutang
+                    ${activeTab === 'unpaid' ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-[0_2px_10px_rgba(37,99,235,0.3)]"></div>' : ''}
+                </button>
+                <button onclick="window._uiState.arActiveTab='history'; renderFinanceAR()" 
+                    class="pb-4 text-sm font-bold transition-all relative ${activeTab === 'history' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
+                    Riwayat Penerimaan
+                    ${activeTab === 'history' ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-[0_2px_10px_rgba(37,99,235,0.3)]"></div>' : ''}
+                </button>
+            </div>
+
+            ${contentHtml}
         </div>
     `;
 };
@@ -1020,6 +1712,30 @@ window.updateARFilters = function() {
     renderFinanceAR();
 };
 
+window.toggleARFilter = function() {
+    window._uiState.arFilterOpen = !window._uiState.arFilterOpen;
+    renderFinanceAR();
+};
+
+window.toggleARHistFilter = function() {
+    window._uiState.arHistFilterOpen = !window._uiState.arHistFilterOpen;
+    renderFinanceAR();
+};
+
+window.applyARHistFilters = function() {
+    window._arHistoryFilters = {
+        customer: document.getElementById('arHistFilterCustomer').value,
+        date: document.getElementById('arHistFilterDate').value,
+        method: document.getElementById('arHistFilterMethod').value
+    };
+    renderFinanceAR();
+};
+
+window.resetARHistoryFilters = function() {
+    window._arHistoryFilters = { customer: '', date: '', method: '' };
+    renderFinanceAR();
+};
+
 // --- Finance AR Payment Feature ---
 window.openFinanceARPaymentModal = () => {
     const invoices = db.read('salesInvoices');
@@ -1027,7 +1743,7 @@ window.openFinanceARPaymentModal = () => {
     const customers = db.read('customers');
     const assetAccounts = db.read('accounts').filter(a => a.type === 'ASSET' && a.code.startsWith('11'));
 
-    const unpaidInvoices = invoices.filter(inv => inv.status === 'UNPAID');
+    const unpaidInvoices = invoices.filter(inv => inv.status === 'UNPAID' || inv.status === 'PARTIAL');
     if (unpaidInvoices.length === 0) {
         showToast('Tidak ada invoice piutang yang belum dibayar.', 'error');
         return;
@@ -1120,7 +1836,7 @@ window.updateARInvoicesByCustomer = () => {
         return;
     }
 
-    const invoices = db.read('salesInvoices').filter(inv => inv.status === 'UNPAID' && inv.customerId === customerId);
+    const invoices = db.read('salesInvoices').filter(inv => (inv.status === 'UNPAID' || inv.status === 'PARTIAL') && inv.customerId === customerId);
     const payments = db.read('payments');
 
     if (invoices.length === 0) {
@@ -1210,6 +1926,8 @@ window.saveFinanceARPayment = async () => {
     const newTotalPaid = totalPaid + inputAmount;
     if (newTotalPaid >= inv.totalAmount - 1) {
         db.update('salesInvoices', inv.id, { status: 'PAID' });
+    } else {
+        db.update('salesInvoices', inv.id, { status: 'PARTIAL' });
     }
 
     if (typeof db.addJournalEntry === 'function') {
@@ -1235,7 +1953,7 @@ window.saveFinanceARPayment = async () => {
     renderFinanceAR();
 };
 
-window._apFilters = window._apFilters || { status: 'UNPAID', supplierId: '', startDate: '', endDate: '' };
+window._apFilters = window._apFilters || { status: 'BELUM_LUNAS', supplierId: '', startDate: '', endDate: '' };
 
 window.applyAPFilters = () => {
     window._apFilters = {
@@ -1248,130 +1966,269 @@ window.applyAPFilters = () => {
 };
 
 window.resetAPFilters = () => {
-    window._apFilters = { status: 'UNPAID', supplierId: '', startDate: '', endDate: '' };
+    window._apFilters = { status: 'BELUM_LUNAS', supplierId: '', startDate: '', endDate: '' };
     renderFinanceAP();
 };
 
 window.renderFinanceAP = function () {
     document.getElementById('pageTitle').innerText = 'Data Hutang (AP)';
     const mc = document.getElementById('main-content');
-    
-    let invoices = db.read('purchaseInvoices') || [];
-    const suppliers = db.read('suppliers') || [];
+    const activeTab = window._uiState.apActiveTab;
 
-    if (window._apFilters.status) {
-        invoices = invoices.filter(i => i.status === window._apFilters.status);
-    }
-    if (window._apFilters.supplierId) {
-        invoices = invoices.filter(i => i.supplierId === window._apFilters.supplierId);
-    }
-    if (window._apFilters.startDate) {
-        invoices = invoices.filter(i => (i.date || '').substring(0, 10) >= window._apFilters.startDate);
-    }
-    if (window._apFilters.endDate) {
-        invoices = invoices.filter(i => (i.date || '').substring(0, 10) <= window._apFilters.endDate);
-    }
+    let contentHtml = '';
 
-    invoices.sort((a, b) => new Date(b.date) - new Date(a.date));
+    if (activeTab === 'unpaid') {
+        let invoices = db.read('purchaseInvoices') || [];
+        const suppliers = db.read('suppliers') || [];
 
-    const filterHtml = `
-        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-6 font-sans">
-            <div class="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
-                <div>
-                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Status</label>
-                    <select id="filter_ap_status" class="w-full border-slate-300 rounded-lg text-sm bg-slate-50 focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors">
-                        <option value="">Semua Status</option>
-                        <option value="UNPAID" ${window._apFilters.status === 'UNPAID' ? 'selected' : ''}>Unpaid</option>
-                        <option value="PAID" ${window._apFilters.status === 'PAID' ? 'selected' : ''}>Paid</option>
-                    </select>
+        const f = window._apFilters;
+        if (f.status === 'BELUM_LUNAS') {
+            invoices = invoices.filter(i => i.status === 'UNPAID' || i.status === 'PARTIAL');
+        } else if (f.status) {
+            invoices = invoices.filter(i => i.status === f.status);
+        }
+        if (f.supplierId) invoices = invoices.filter(i => i.supplierId === f.supplierId);
+        if (f.startDate) invoices = invoices.filter(i => (i.date || '').substring(0, 10) >= f.startDate);
+        if (f.endDate) invoices = invoices.filter(i => (i.date || '').substring(0, 10) <= f.endDate);
+
+        invoices.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        contentHtml = `
+            <!-- Filter Section (Unpaid) -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-6 overflow-hidden">
+                <div onclick="toggleAPFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
+                    <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
+                        <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
+                        ${(f.status || f.supplierId || f.startDate || f.endDate) ? `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
+                    </h3>
+                    <div class="flex items-center gap-3">
+                        <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.apFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
+                        <i class="fas fa-chevron-${window._uiState.apFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
+                    </div>
                 </div>
-                <div>
-                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Supplier</label>
-                    <select id="filter_ap_supplier" class="w-full border-slate-300 rounded-lg text-sm bg-slate-50 focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors">
-                        <option value="">Semua Supplier</option>
-                        ${suppliers.map(s => `<option value="${s.id}" ${window._apFilters.supplierId === s.id ? 'selected' : ''}>${s.name}</option>`).join('')}
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Dari Tanggal</label>
-                    <input type="date" id="filter_ap_start" value="${window._apFilters.startDate}" class="w-full border-slate-300 rounded-lg text-sm bg-slate-50 focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors">
-                </div>
-                <div>
-                    <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Sampai Tanggal</label>
-                    <input type="date" id="filter_ap_end" value="${window._apFilters.endDate}" class="w-full border-slate-300 rounded-lg text-sm bg-slate-50 focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors">
-                </div>
-                <div class="flex gap-2">
-                    <button onclick="applyAPFilters()" class="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm hover:bg-blue-700 transition-all focus:ring-2 focus:ring-blue-500 flex justify-center items-center"><i class="fas fa-filter mr-1"></i> TAMPILKAN</button>
-                    <button onclick="resetAPFilters()" class="px-3 py-2 bg-slate-100 text-slate-500 rounded-lg text-sm font-bold shadow-sm hover:bg-slate-200 transition-all" title="Reset Filter"><i class="fas fa-undo-alt"></i></button>
+                <div class="${window._uiState.apFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Status</label>
+                            <select id="filter_ap_status" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50">
+                                <option value="BELUM_LUNAS" ${f.status === 'BELUM_LUNAS' ? 'selected' : ''}>Belum Lunas</option>
+                                <option value="PAID" ${f.status === 'PAID' ? 'selected' : ''}>Paid</option>
+                            </select>
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Supplier</label>
+                            <select id="filter_ap_supplier" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50">
+                                <option value="">Semua Supplier</option>
+                                ${suppliers.map(s => `<option value="${s.id}" ${f.supplierId === s.id ? 'selected' : ''}>${s.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Dari</label>
+                            <input type="date" id="filter_ap_start" value="${f.startDate}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50">
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Sampai</label>
+                            <input type="date" id="filter_ap_end" value="${f.endDate}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50">
+                        </div>
+                    </div>
+                    <div class="flex gap-2 pt-4 mt-4 border-t border-slate-50">
+                        <button onclick="applyAPFilters()" class="bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">TAMPILKAN DATA</button>
+                        <button onclick="resetAPFilters()" class="bg-slate-50 hover:bg-slate-100 text-slate-400 px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">RESET</button>
+                    </div>
                 </div>
             </div>
-        </div>
-    `;
+
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div class="p-6 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
+                    <div>
+                        <h3 class="font-bold text-gray-700">Daftar Tagihan Supplier</h3>
+                        <p class="text-xs text-gray-500">Total hutang aktif: <span class="font-bold text-red-600">${formatCurrency(invoices.reduce((sum, inv) => {
+                            const paid = db.read('supplierPayments').filter(p => p.invoiceId === inv.id).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+                            return sum + (parseFloat(inv.totalAmount) - paid);
+                        }, 0))}</span></p>
+                    </div>
+                    <button onclick="openFinanceAPPaymentModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold shadow-sm hover:bg-blue-700 transition-colors">
+                        <i class="fas fa-plus mr-1"></i> Input Pelunasan
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-gray-50 text-slate-500 text-[11px] uppercase tracking-wider font-semibold">
+                            <tr>
+                                <th class="px-6 py-3 border-b border-gray-100">Tagihan</th>
+                                <th class="px-6 py-3 border-b border-gray-100">Supplier</th>
+                                <th class="px-6 py-3 border-b border-gray-100">Jatuh Tempo</th>
+                                <th class="px-6 py-3 border-b border-gray-100 text-right">Total</th>
+                                <th class="px-6 py-3 border-b border-gray-100 text-center">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody class="text-sm divide-y divide-gray-100">
+                            ${invoices.map(i => `
+                                <tr>
+                                    <td class="px-6 py-4">
+                                        <div class="font-bold text-gray-800">${i.invoiceNumber}</div>
+                                        <div class="text-[10px] text-gray-400">${formatDate(i.date).slice(0, 10)}</div>
+                                    </td>
+                                    <td class="px-6 py-4 font-medium text-gray-700">${suppliers.find(s => s.id === i.supplierId || s.name === i.supplierId)?.name || i.supplierId}</td>
+                                    <td class="px-6 py-4 text-gray-600">${i.dueDate || '-'}</td>
+                                    <td class="px-6 py-4 text-right font-bold text-blue-600">
+                                        ${(() => {
+                                            const paid = db.read('supplierPayments').filter(p => p.invoiceId === i.id).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+                                            return formatCurrency(i.totalAmount - paid);
+                                        })()}
+                                    </td>
+                                    <td class="px-6 py-4 text-center">
+                                        <span class="px-3 py-1 ${i.status === 'PAID' ? 'bg-green-50 text-green-700' : (i.status === 'PARTIAL' ? 'bg-orange-50 text-orange-700' : 'bg-red-50 text-red-700')} rounded-md text-[10px] font-black tracking-widest border">
+                                            ${i.status}
+                                        </span>
+                                    </td>
+                                </tr>
+                            `).join('') || '<tr><td colspan="5" class="px-6 py-12 text-center text-gray-400">Tidak ada data.</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    } else {
+        // Riwayat Tab
+        const f = window._apHistoryFilters;
+        const filterSuppId = f.supplierId;
+        const filterDate = f.date || '';
+        const filterMethod = f.method || '';
+
+        let payments = db.read('supplierPayments').sort((a, b) => new Date(b.date) - new Date(a.date));
+        const suppliers = db.read('suppliers');
+        if (filterSuppId) {
+            payments = payments.filter(p => {
+                const inv = db.findById('purchaseInvoices', p.invoiceId);
+                return (inv && inv.supplierId === filterSuppId);
+            });
+        }
+        if (filterDate) payments = payments.filter(p => p.date && p.date.startsWith(filterDate));
+        if (filterMethod) payments = payments.filter(p => p.method === filterMethod);
+
+        contentHtml = `
+            <!-- Filter Section (History) -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-6 overflow-hidden">
+                <div onclick="toggleAPHistFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
+                    <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
+                        <i class="fas fa-filter text-blue-600"></i> FILTER RIWAYAT
+                        ${(filterSuppId || filterDate || filterMethod) ? `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
+                    </h3>
+                    <div class="flex items-center gap-3">
+                        <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.apHistFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
+                        <i class="fas fa-chevron-${window._uiState.apHistFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
+                    </div>
+                </div>
+                <div class="${window._uiState.apHistFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Supplier</label>
+                            <select id="apHistFilterSupplier" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50">
+                                <option value="">Semua Supplier</option>
+                                ${suppliers.map(s => `<option value="${s.id}" ${f.supplierId === s.id ? 'selected' : ''}>${s.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Bulan Pembayaran</label>
+                            <input type="month" id="apHistFilterDate" value="${f.date}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50">
+                        </div>
+                        <div class="space-y-1.5">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Metode</label>
+                            <select id="apHistFilterMethod" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50">
+                                <option value="">Semua Metode</option>
+                                <option value="Transfer Bank" ${f.method === 'Transfer Bank' ? 'selected' : ''}>Transfer Bank</option>
+                                <option value="Tunai" ${f.method === 'Tunai' ? 'selected' : ''}>Tunai / Cash</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 pt-4 mt-4 border-t border-slate-50">
+                        <button onclick="applyAPHistFilters()" class="bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">TAMPILKAN</button>
+                        <button onclick="resetAPHistoryFilters()" class="bg-slate-50 hover:bg-slate-100 text-slate-400 px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">RESET</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div class="p-4 border-b border-gray-100 bg-slate-50/50">
+                    <h3 class="font-bold text-gray-700">Riwayat Pembayaran Supplier</h3>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-gray-50 text-slate-500 text-[11px] uppercase tracking-wider font-semibold">
+                            <tr>
+                                <th class="px-6 py-3 border-b border-gray-100">Tgl & Ref</th>
+                                <th class="px-6 py-3 border-b border-gray-100">Tagihan</th>
+                                <th class="px-6 py-3 border-b border-gray-100">Supplier</th>
+                                <th class="px-6 py-3 border-b border-gray-100 text-right">Jumlah</th>
+                            </tr>
+                        </thead>
+                        <tbody class="text-sm divide-y divide-gray-100">
+                            ${payments.map(p => {
+                                const inv = db.findById('purchaseInvoices', p.invoiceId) || { invoiceNumber: '-', supplierId: null };
+                                const foundSupp = suppliers.find(s => s.id === inv.supplierId || s.name === inv.supplierId);
+                                const suppName = foundSupp ? foundSupp.name : (inv.supplierId || '-');
+                                return `
+                                <tr>
+                                    <td class="px-6 py-4">
+                                        <div class="text-[10px] text-gray-400 font-bold">${formatDate(p.date).slice(0, 10)}</div>
+                                        <div class="font-bold text-gray-800">${p.paymentNumber}</div>
+                                    </td>
+                                    <td class="px-6 py-4 text-gray-600 font-medium">${inv.invoiceNumber}</td>
+                                    <td class="px-6 py-4 text-gray-600">${suppName}</td>
+                                    <td class="px-6 py-4 text-right font-bold text-red-600">${formatCurrency(p.amount)}</td>
+                                </tr>
+                            `}).join('') || '<tr><td colspan="4" class="px-6 py-12 text-center text-gray-400">Belum ada riwayat.</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
 
     mc.innerHTML = `
-        ${filterHtml}
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div class="p-6 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
-                <div>
-                    <h3 class="font-bold text-gray-700">Daftar Tagihan Supplier (Account Payable)</h3>
-                    <p class="text-xs text-gray-500">Menampilkan ${invoices.length} data tagihan</p>
-                </div>
-                <button onclick="openFinanceAPPaymentModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold shadow-sm hover:bg-blue-700 transition-colors">
-                    <i class="fas fa-plus mr-1"></i> Input Pelunasan Hutang
+        <div class="space-y-6">
+            <!-- Tab Navigation -->
+            <div class="flex items-center gap-8 border-b border-slate-200 mb-6 px-2">
+                <button onclick="window._uiState.apActiveTab='unpaid'; renderFinanceAP()" 
+                    class="pb-4 text-sm font-bold transition-all relative ${activeTab === 'unpaid' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
+                    Antrean Hutang
+                    ${activeTab === 'unpaid' ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-[0_2px_10px_rgba(37,99,235,0.3)]"></div>' : ''}
+                </button>
+                <button onclick="window._uiState.apActiveTab='history'; renderFinanceAP()" 
+                    class="pb-4 text-sm font-bold transition-all relative ${activeTab === 'history' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
+                    Riwayat Pembayaran
+                    ${activeTab === 'history' ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-[0_2px_10px_rgba(37,99,235,0.3)]"></div>' : ''}
                 </button>
             </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead class="bg-gray-50 text-slate-500 text-[11px] uppercase tracking-wider font-semibold">
-                        <tr>
-                            <th class="px-6 py-3 border-b border-gray-100">Tagihan</th>
-                            <th class="px-6 py-3 border-b border-gray-100">Supplier</th>
-                            <th class="px-6 py-3 border-b border-gray-100">Tgl Jatuh Tempo</th>
-                            <th class="px-6 py-3 border-b border-gray-100 text-right">Total</th>
-                            <th class="px-6 py-3 border-b border-gray-100 text-center">Status</th>
-                            <th class="px-6 py-3 border-b border-gray-100 text-right">Aksi</th>
-                        </tr>
-                    </thead>
-                    <tbody class="text-sm divide-y divide-gray-100">
-                        ${invoices.map(i => `
-                            <tr class="hover:bg-slate-50/50">
-                                <td class="px-6 py-4">
-                                    <div class="font-bold text-gray-800">${i.invoiceNumber}</div>
-                                    <div class="text-[10px] text-gray-400 font-medium">${formatDate(i.date).slice(0, 10)}</div>
-                                </td>
-                                <td class="px-6 py-4 text-gray-700 font-medium">
-                                    ${(() => {
-                                        const found = suppliers.find(s => s.id === i.supplierId || s.name === i.supplierId);
-                                        return found ? found.name : (i.supplierId || 'Unknown Supplier');
-                                    })()}
-                                </td>
-                                <td class="px-6 py-4 text-gray-600">${i.dueDate || '-'}</td>
-                                <td class="px-6 py-4 text-right font-bold ${i.status === 'UNPAID' ? 'text-blue-600' : 'text-slate-800'}">${formatCurrency(i.totalAmount)}</td>
-                                <td class="px-6 py-4 text-center">
-                                    ${i.status === 'PAID' 
-                                        ? '<span class="px-3 py-1 bg-green-50/80 text-green-700 rounded-md text-[10px] font-black tracking-widest border border-green-200">PAID</span>' 
-                                        : '<span class="px-3 py-1 bg-red-50/80 text-red-700 rounded-md text-[10px] font-black tracking-widest border border-red-200">UNPAID</span>'}
-                                </td>
-                                <td class="px-6 py-4 text-right">
-                                    <div class="flex items-center justify-end gap-1">
-                                        ${i.attachment ? `<i class="fas fa-paperclip text-slate-300 text-xs" title="Memiliki Lampiran"></i>` : ''}
-                                        <button onclick="viewPurchaseInvoice('${i.id}')" class="text-slate-400 hover:text-blue-600 transition-colors p-2 rounded-lg hover:bg-slate-50" title="Detail Tagihan">
-                                            <i class="fas fa-eye text-lg"></i>
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        `).join('') || '<tr><td colspan="6" class="px-6 py-12 text-center text-gray-400 font-medium italic">Tidak ada tagihan yang sesuai dengan filter.</td></tr>'}
-                    </tbody>
-                </table>
-            </div>
+
+            ${contentHtml}
         </div>
     `;
 };
 
+window.toggleAPHistFilter = function() {
+    window._uiState.apHistFilterOpen = !window._uiState.apHistFilterOpen;
+    renderFinanceAP();
+};
+
+window.applyAPHistFilters = function() {
+    window._apHistoryFilters = {
+        supplierId: document.getElementById('apHistFilterSupplier').value,
+        date: document.getElementById('apHistFilterDate').value,
+        method: document.getElementById('apHistFilterMethod').value
+    };
+    renderFinanceAP();
+};
+
+window.resetAPHistoryFilters = function() {
+    window._apHistoryFilters = { supplierId: '', date: '', method: '' };
+    renderFinanceAP();
+};
+
 // --- Finance AP Payment Feature ---
 window.openFinanceAPPaymentModal = () => {
-    const invoices = db.read('purchaseInvoices').filter(i => i.status === 'UNPAID');
+    const invoices = db.read('purchaseInvoices').filter(i => i.status === 'UNPAID' || i.status === 'PARTIAL');
     const payments = db.read('supplierPayments');
     const suppliers = db.read('suppliers');
     const assetAccounts = db.read('accounts').filter(a => a.type === 'ASSET' && a.code.startsWith('11'));
@@ -1483,7 +2340,7 @@ window.updateAPInvoicesBySupplier = () => {
         return;
     }
 
-    const invoices = db.read('purchaseInvoices').filter(inv => inv.status === 'UNPAID' && inv.supplierId === supplierId);
+    const invoices = db.read('purchaseInvoices').filter(inv => (inv.status === 'UNPAID' || inv.status === 'PARTIAL') && inv.supplierId === supplierId);
     const payments = db.read('supplierPayments');
 
     if (invoices.length === 0) {
@@ -1606,6 +2463,8 @@ window.saveFinanceAPPayment = async () => {
     const newTotalPaid = totalPaid + inputAmount;
     if (newTotalPaid >= inv.totalAmount - 1) {
         db.update('purchaseInvoices', inv.id, { status: 'PAID' });
+    } else {
+        db.update('purchaseInvoices', inv.id, { status: 'PARTIAL' });
     }
 
     // --- Journal Entry ---
@@ -1986,7 +2845,7 @@ window.generateCreditNoteNumber = function(isTax) {
     // Filter CN by same month and year to get shared sequence
     const sameMonthRecords = records.filter(s => {
         if (!s.noteNumber) return false;
-        // CN-TAX-001/III/2026
+        // CN-A-001/III/2026
         const mainParts = s.noteNumber.split('/');
         if (mainParts.length < 3) return false;
         const romanPart = mainParts[1];
@@ -1996,7 +2855,7 @@ window.generateCreditNoteNumber = function(isTax) {
 
     const nextSeq = sameMonthRecords.length + 1;
     const seqStr = String(nextSeq).padStart(3, '0');
-    const type = isTax ? 'TAX' : 'NT';
+    const type = isTax ? 'A' : 'B';
     return `CN-${type}-${seqStr}/${romanMonth}/${year}`;
 };
 
@@ -2010,7 +2869,7 @@ window.generateDebitNoteNumber = function(isTax) {
     // Filter DN by same month and year to get shared sequence
     const sameMonthRecords = records.filter(s => {
         if (!s.noteNumber) return false;
-        // DN-TAX-001/III/2026
+        // DN-A-001/III/2026
         const mainParts = s.noteNumber.split('/');
         if (mainParts.length < 3) return false;
         const romanPart = mainParts[1];
@@ -2020,7 +2879,7 @@ window.generateDebitNoteNumber = function(isTax) {
 
     const nextSeq = sameMonthRecords.length + 1;
     const seqStr = String(nextSeq).padStart(3, '0');
-    const type = isTax ? 'TAX' : 'NT';
+    const type = isTax ? 'A' : 'B';
     return `DN-${type}-${seqStr}/${romanMonth}/${year}`;
 };
 
@@ -2105,7 +2964,7 @@ window.saveCreditNote = function () {
     const invoiceId = document.getElementById('cn_invoice').value;
     const dateInput = document.getElementById('cn_date')?.value || new Date().toISOString().split('T')[0];
     const isTax = document.getElementById('cn_is_tax')?.value === 'true';
-    const taxType = isTax ? 'TAX' : 'NON_TAX';
+    const taxType = isTax ? 'A' : 'B';
     const noteNumberStr = document.getElementById('cn_number')?.value;
 
     if (!customerId || amount <= 0) { showToast('Mohon pilih pelanggan dan isi jumlah yang valid.', 'error'); return; }
@@ -2296,7 +3155,7 @@ window.saveDebitNote = function () {
     const invoiceId = document.getElementById('dn_invoice').value;
     const dateInput = document.getElementById('dn_date')?.value || new Date().toISOString().split('T')[0];
     const isTax = document.getElementById('dn_is_tax')?.value === 'true';
-    const taxType = isTax ? 'TAX' : 'NON_TAX';
+    const taxType = isTax ? 'A' : 'B';
     const noteNumberStr = document.getElementById('dn_number')?.value;
 
     if (!supplierId || amount <= 0) { showToast('Mohon pilih supplier dan isi jumlah yang valid.', 'error'); return; }
@@ -2372,14 +3231,14 @@ window.viewCreditNote = function (id) {
                     <tbody>
                         <tr class="border-b border-gray-100">
                             <td class="py-4 px-4 text-sm font-medium text-slate-800">${cn.notes || 'Penyesuaian Dokumen'}</td>
-                            <td class="py-4 px-4 text-sm font-bold text-slate-500 text-right">${cn.taxType === 'TAX' ? 'Termasuk PPN' : 'Non-Tax'}</td>
+                            <td class="py-4 px-4 text-sm font-bold text-slate-500 text-right">${(cn.taxType === 'TAX' || cn.taxType === 'A') ? 'Termasuk PPN' : 'Non-Tax'}</td>
                         </tr>
                     </tbody>
                 </table>
 
                 <div class="flex justify-end">
                     <div class="w-80 bg-slate-50 p-5 rounded-2xl border border-slate-100">
-                        ${cn.taxType === 'TAX' ? `
+                        ${(cn.taxType === 'TAX' || cn.taxType === 'A') ? `
                             <div class="flex justify-between mb-3 border-b border-dashed border-slate-200 pb-2">
                                 <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">DPP (Dasar Pengenaan Pajak)</span>
                                 <span class="text-sm font-bold text-slate-700">${formatCurrency(Math.round(cn.amount / 1.11))}</span>
@@ -2484,14 +3343,14 @@ window.viewDebitNote = function (id) {
                     <tbody>
                         <tr class="border-b border-gray-100">
                             <td class="py-4 px-4 text-sm font-medium text-slate-800">${dn.notes || 'Penyesuaian Dokumen'}</td>
-                            <td class="py-4 px-4 text-sm font-bold text-slate-500 text-right">${dn.taxType === 'TAX' ? 'Termasuk PPN' : 'Non-Tax'}</td>
+                            <td class="py-4 px-4 text-sm font-bold text-slate-500 text-right">${(dn.taxType === 'TAX' || dn.taxType === 'A') ? 'Termasuk PPN' : 'Non-Tax'}</td>
                         </tr>
                     </tbody>
                 </table>
 
                 <div class="flex justify-end">
                     <div class="w-80 bg-slate-50 p-5 rounded-2xl border border-slate-100">
-                        ${dn.taxType === 'TAX' ? `
+                        ${(dn.taxType === 'TAX' || dn.taxType === 'A') ? `
                             <div class="flex justify-between mb-3 border-b border-dashed border-slate-200 pb-2">
                                 <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">DPP (Dasar Pengenaan Pajak)</span>
                                 <span class="text-sm font-bold text-slate-700">${formatCurrency(Math.round(dn.amount / 1.11))}</span>
@@ -2667,29 +3526,64 @@ window.applyReportFilters = (targetFunc) => {
 function renderReportFilterUI(funcName) {
     const dates = getReportDates();
     return `
-        <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-6 font-sans">
-            <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-3"><i class="fas fa-filter text-blue-500"></i> FILTER LAPORAN</h3>
-            <div class="flex flex-wrap items-end gap-4">
-                <div>
-                    <label class="block text-xs font-medium text-gray-500 mb-1">Dari Tanggal</label>
-                    <input type="date" id="filter_rep_start" value="${dates.startDate}" class="border border-gray-300 rounded px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-6 overflow-hidden">
+            <div onclick="toggleRepFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
+                <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
+                    <i class="fas fa-filter text-blue-600"></i> FILTER LAPORAN
+                </h3>
+                <div class="flex items-center gap-3">
+                    <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.repFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
+                    <i class="fas fa-chevron-${window._uiState.repFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
                 </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-500 mb-1">Sampai Tanggal</label>
-                    <input type="date" id="filter_rep_end" value="${dates.endDate}" class="border border-gray-300 rounded px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            </div>
+
+            <div class="${window._uiState.repFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Dari Tanggal</label>
+                        <input type="date" id="filter_rep_start" value="${dates.startDate}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 outline-none focus:border-blue-500 transition-all cursor-pointer">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Sampai Tanggal</label>
+                        <input type="date" id="filter_rep_end" value="${dates.endDate}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 outline-none focus:border-blue-500 transition-all cursor-pointer">
+                    </div>
                 </div>
-                <div class="flex gap-2">
-                    <button onclick="applyReportFilters('${funcName}')" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">
-                        <i class="fas fa-search mr-2"></i>TAMPILKAN
+                <div class="flex gap-2 pt-4 mt-4 border-t border-slate-50">
+                    <button onclick="applyReportFilters('${funcName}')" class="bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
+                        <i class="fas fa-search mr-2"></i> TAMPILKAN DATA
                     </button>
-                    <button onclick="printFinanceReport()" class="bg-gray-800 hover:bg-black text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm">
-                        <i class="fas fa-print mr-2"></i>CETAK
+                    <button onclick="printFinanceReport()" class="bg-gray-800 hover:bg-black text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">
+                        <i class="fas fa-print mr-2"></i> CETAK
                     </button>
                 </div>
             </div>
         </div>
     `;
 }
+
+window.toggleRepFilter = function() {
+    window._uiState.repFilterOpen = !window._uiState.repFilterOpen;
+    // We don't know which report we are on, but a general re-render of current view would work
+    // Or just manually toggle current DOM if we want performance.
+    // For simplicity, we can reload current page via its stored name if we track it.
+    // But most reports re-render automatically on filter change anyway.
+    // Let's just do a manual toggle for report filter UI because it's a helper.
+    const block = document.querySelector('[onclick="toggleRepFilter()"]').nextElementSibling;
+    const span = document.querySelector('[onclick="toggleRepFilter()"] span');
+    const icon = document.querySelector('[onclick="toggleRepFilter()"] i.fa-chevron-up, [onclick="toggleRepFilter()"] i.fa-chevron-down');
+    
+    if (block.classList.contains('hidden')) {
+        block.classList.remove('hidden');
+        block.classList.add('block');
+        if (span) span.innerText = 'Sembunyikan';
+        if (icon) { icon.classList.remove('fa-chevron-down'); icon.classList.add('fa-chevron-up'); }
+    } else {
+        block.classList.add('hidden');
+        block.classList.remove('block');
+        if (span) span.innerText = 'Tampilkan';
+        if (icon) { icon.classList.remove('fa-chevron-up'); icon.classList.add('fa-chevron-down'); }
+    }
+};
 
 // 1. LAPORAN HPP
 window.renderFinanceHPP = function () {

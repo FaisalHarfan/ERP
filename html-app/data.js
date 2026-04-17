@@ -38,6 +38,41 @@ const seedData = () => {
 
     accounts.forEach(a => db.insert('accounts', a));
 
+    // 4. Seed Inventory Items for Sales Demo
+    const items = [
+        { itemCode: 'FG-001', itemName: 'Sambal Terasi 250g', category: 'FINISHED_GOODS', unit: 'PCS', basePrice: 25000, status: 'ACTIVE' },
+        { itemCode: 'FG-002', itemName: 'Kecap Manis 500ml', category: 'FINISHED_GOODS', unit: 'PCS', basePrice: 18000, status: 'ACTIVE' },
+        { itemCode: 'FG-003', itemName: 'Garam Industri', category: 'FINISHED_GOODS', unit: 'KG', basePrice: 5000, status: 'ACTIVE' }
+    ];
+    items.forEach(i => db.insert('inventoryItems', i));
+
+    // 5. Seed sales orders for dashboard trend visual
+    const custs = db.read('customers');
+    const products = db.read('inventoryItems');
+    if (custs.length > 0 && products.length > 0) {
+        const curYear = new Date().getFullYear();
+        // Seed some history orders
+        for (let m = 0; m < 5; m++) {
+            const date = new Date(curYear, m, 15).toISOString();
+            db.insert('salesOrders', {
+                soNumber: `SO-${curYear}-00${m+1}`,
+                customerId: custs[m % custs.length].id,
+                date: date,
+                totalAmount: 1500000 + (m * 200000),
+                status: 'CONFIRMED',
+                items: [{ itemId: products[0].id, itemName: products[0].itemName, qty: 10, price: 25000, subtotal: 250000 }]
+            });
+        }
+        // Seed some invoices
+        db.insert('salesInvoices', {
+            invNumber: `INV-${curYear}-001`,
+            customerId: custs[0].id,
+            date: new Date().toISOString(),
+            totalAmount: 5000000,
+            status: 'UNPAID'
+        });
+    }
+
     console.log("Seeding completed.");
 };
 
