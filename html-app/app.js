@@ -7447,15 +7447,36 @@ window.viewSO = (id) => {
                 
                 <div class="grid grid-cols-2 gap-12 mb-12">
                     <div class="space-y-4">
-                        <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Customer / Bill To</h3>
+                        <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Customer</h3>
                         <div class="p-5 bg-slate-50 rounded-2xl border border-slate-100">
                             <p class="font-black text-slate-900 text-lg mb-1">${customer ? customer.name : '-'}</p>
                             ${customer && customer.phone ? `<p class="text-sm font-bold text-slate-500">${customer.phone}</p>` : ''}
-                            ${customer && customer.address ? `
-                                <div class="mt-4 pt-4 border-t border-slate-200">
-                                    <p class="text-sm text-slate-600 leading-relaxed font-medium italic">"${customer.address}"</p>
-                                </div>
-                            ` : ''}
+                            
+                            ${(() => {
+                                if (!customer) return '';
+                                const bill = customer.address ? customer.address.trim() : '';
+                                const ship = customer.shippingAddress ? customer.shippingAddress.trim() : '';
+                                
+                                if (!bill && !ship) return '';
+                                
+                                if (bill.toLowerCase() === ship.toLowerCase() || (bill && !ship) || (!bill && ship)) {
+                                    const combined = bill || ship;
+                                    return `
+                                    <div class="mt-4 pt-4 border-t border-slate-200">
+                                        <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 shadow-sm px-2 py-1 bg-white inline-block rounded-md border border-slate-100">Shipping & Billing Address</p>
+                                        <p class="text-sm text-slate-600 leading-relaxed font-medium italic mt-1">${combined}</p>
+                                    </div>`;
+                                } else {
+                                    return `
+                                    <div class="mt-4 pt-4 border-t border-slate-200">
+                                        <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 shadow-sm px-2 py-1 bg-white inline-block rounded-md border border-slate-100">Billing Address</p>
+                                        <p class="text-xs text-slate-600 leading-relaxed font-medium italic mt-1 mb-3">${bill}</p>
+                                        
+                                        <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 shadow-sm px-2 py-1 bg-white inline-block rounded-md border border-slate-100">Shipping Address</p>
+                                        <p class="text-xs text-slate-600 leading-relaxed font-medium italic mt-1">${ship}</p>
+                                    </div>`;
+                                }
+                            })()}
                         </div>
                     </div>
                     <div class="text-right space-y-4">
@@ -8039,6 +8060,7 @@ window.handleSIAction = (selectEl, id) => {
     selectEl.value = ""; // Reset for next use
     
     if (act === 'view') viewInvoice(id);
+    else if (act === 'print') window.printSalesInvoiceLandscape(id);
     else if (act === 'cancel') cancelInvoice(id);
 };
 
@@ -8291,12 +8313,18 @@ function renderSalesInvoices() {
                 <td class="py-6 px-4 text-right font-bold text-emerald-600 font-mono text-sm tracking-tighter">${formatCurrency(totalPaid)}</td>
                 <td class="py-6 px-4 text-right font-black ${balance > 0 ? 'text-red-500' : 'text-slate-400'} font-mono text-sm tracking-tighter">${formatCurrency(balance)}</td>
                 <td class="py-6 px-6 text-center">${statusBadge}</td>
-                <td class="py-6 px-8 text-center relative font-sans">
-                    <select onchange="handleSIAction(this, '${inv.id}')" class="w-full bg-slate-50 border-none rounded-xl py-2.5 px-4 text-[10px] font-black uppercase tracking-widest text-slate-500 cursor-pointer focus:ring-4 focus:ring-blue-500/10 hover:bg-slate-100 transition-all shadow-sm">
-                        <option value="">Aksi...</option>
-                        <option value="view">Lihat Detail</option>
-                        <option value="cancel">Batalkan SI</option>
-                    </select>
+                <td class="py-6 px-8 text-right relative font-sans">
+                    <div class="inline-block relative w-full md:w-[130px]">
+                        <select onchange="handleSIAction(this, '${inv.id}')" class="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs rounded-lg pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none transition-all shadow-sm">
+                            <option value="" disabled selected>Pilih Aksi...</option>
+                            <option value="view">Lihat Detail</option>
+                            <option value="print">Cetak Invoice</option>
+                            <option value="cancel">Batalkan SI</option>
+                        </select>
+                        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
+                            <i class="fas fa-chevron-down text-[10px]"></i>
+                        </div>
+                    </div>
                 </td>
             </tr>
         `;
@@ -8354,6 +8382,169 @@ window.cancelInvoice = (id) => {
         db.update('salesInvoices', id, { status: 'CANCELLED' });
         showToast('Invoice dibatalkan');
         renderSalesInvoices();
+    }
+};
+
+window.printSalesInvoiceLandscape = function(id) {
+    const inv = db.findById('salesInvoices', id);
+    if (!inv) return;
+    const so = db.findById('salesOrders', inv.salesOrderId);
+    const customer = db.findById('customers', inv.customerId);
+
+    const cfg = JSON.parse(localStorage.getItem('unityerp_company_config') || '{}');
+    const company = {
+        name: cfg.companyName || (typeof CONFIG !== 'undefined' ? CONFIG.companyName : 'PT. NAMA PERUSAHAAN'),
+        address: cfg.companyAddress || (typeof CONFIG !== 'undefined' ? CONFIG.companyAddress : 'Jl. Alamat Perusahaan'),
+        phone: cfg.companyPhone || (typeof CONFIG !== 'undefined' ? CONFIG.companyPhone : '-'),
+        email: cfg.companyEmail || (typeof CONFIG !== 'undefined' ? CONFIG.companyEmail : '-'),
+        logo: cfg.logo || (typeof CONFIG !== 'undefined' ? CONFIG.logo : '')
+    };
+
+    const itemsTable = `
+        <table style="width:100%;border-collapse:collapse;margin-top:10px; margin-bottom:10px;">
+            <thead>
+                <tr style="background:#f1f5f9;border-bottom:2px solid #334155;">
+                    <th style="padding:6px 8px;text-align:center;font-size:10px;text-transform:uppercase;width:40px">No</th>
+                    <th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase">Deskripsi Barang</th>
+                    <th style="padding:6px 8px;text-align:center;font-size:10px;text-transform:uppercase;width:70px">Qty</th>
+                    <th style="padding:6px 8px;text-align:right;font-size:10px;text-transform:uppercase;width:100px">Harga (Rp)</th>
+                    <th style="padding:6px 8px;text-align:right;font-size:10px;text-transform:uppercase;width:120px">Total (Rp)</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${(inv.items || []).map((item, i) => `
+                    <tr style="border-bottom:1px solid #e2e8f0;">
+                        <td style="padding:4px 8px;text-align:center;font-size:10px;">${i+1}</td>
+                        <td style="padding:4px 8px;text-align:left;font-size:10px;">
+                            <div style="font-weight:bold;text-transform:uppercase">${item.prodText ? item.prodText.split(' (')[0] : (item.name || '-')}</div>
+                            ${item.kemasan && item.kemasan !== '-' ? `<div style="font-size:8px;color:#64748b;font-style:italic;margin-top:2px;">Kemasan: ${item.kemasan === '800 Gram' ? '4 KG (800 Gram)' : item.kemasan}</div>` : ''}
+                        </td>
+                        <td style="padding:4px 8px;text-align:center;font-size:11px;font-weight:900">${(item.qty || 0).toLocaleString('id-ID')}</td>
+                        <td style="padding:4px 8px;text-align:right;font-size:11px;font-weight:500;">${formatCurrency(item.price)}</td>
+                        <td style="padding:4px 8px;text-align:right;font-size:11px;font-weight:bold;">${formatCurrency(item.subtotal)}</td>
+                    </tr>
+                `).join('')}
+                 ${[...Array(Math.max(0, 5 - (inv.items?.length || 0)))].map(() => `
+                    <tr style="border-bottom:1px solid #e2e8f0;height:20px">
+                        <td style="padding:4px 8px;">&nbsp;</td><td style="padding:4px 8px;"></td><td style="padding:4px 8px;"></td><td style="padding:4px 8px;"></td><td style="padding:4px 8px;"></td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+
+    const rawSubtotal = (inv.totalAmount - (inv.taxAmount || 0)) + (inv.discountAmount || 0);
+    const totalsBlock = `
+        <table style="width: 250px; border-collapse:collapse; font-size:10px; margin-left: auto;">
+            <tr>
+                <td style="padding:3px; text-align:right; color:#64748b; font-weight:bold;">SUBTOTAL:</td>
+                <td style="padding:3px; text-align:right; font-weight:bold;">${formatCurrency(rawSubtotal)}</td>
+            </tr>
+            ${inv.discountAmount > 0 ? `
+            <tr>
+                <td style="padding:3px; text-align:right; color:#16a34a; font-weight:bold;">DISCOUNT:</td>
+                <td style="padding:3px; text-align:right; color:#16a34a; font-weight:bold;">- ${formatCurrency(inv.discountAmount)}</td>
+            </tr>` : ''}
+            ${inv.taxAmount > 0 ? `
+            <tr>
+                <td style="padding:3px; text-align:right; color:#ea580c; font-weight:bold;">PPN (${inv.taxRate || 11}%):</td>
+                <td style="padding:3px; text-align:right; color:#ea580c; font-weight:bold;">${formatCurrency(inv.taxAmount)}</td>
+            </tr>` : ''}
+            <tr style="border-top: 2px solid #0f172a;">
+                <td style="padding:5px 3px; text-align:right; font-weight:900; font-size:12px;">GRAND TOTAL:</td>
+                <td style="padding:5px 3px; text-align:right; font-weight:900; font-size:14px; color:#0f172a;">${formatCurrency(inv.totalAmount)}</td>
+            </tr>
+        </table>
+    `;
+
+    const printHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Invoice ${inv.invoiceNumber}</title>
+            <style>
+                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+                * { margin:0; padding:0; box-sizing:border-box; font-family:'Inter', sans-serif; }
+                body { padding:20px; color:#1e293b; background:#fff; margin:0; }
+                .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:15px; border-bottom:3px solid #0f172a; padding-bottom:10px; }
+                .company-name { font-size:20px; font-weight:900; color:#0f172a; text-transform:uppercase; letter-spacing:-0.5px; }
+                .company-info { font-size:9px; color:#64748b; margin-top:3px; line-height:1.4; font-weight:500; }
+                .doc-type { text-align:right; }
+                .doc-type h1 { font-size:24px; font-weight:900; color:#2563eb; margin:0; line-height:1; }
+                .doc-no { font-size:12px; font-weight:700; color:#0f172a; margin-top:3px; font-family:monospace; }
+                .meta-table { width:100%; border-collapse:collapse; margin-bottom:10px; }
+                .meta-table td { padding:3px 0; font-size:10px; vertical-align:top; }
+                .label { font-weight:bold; color:#64748b; text-transform:uppercase; font-size:8px; width:100px; }
+                .value { font-weight:700; color:#0f172a; text-transform:uppercase; }
+                .signatures { margin-top:15px; display:flex; justify-content:space-between; gap:20px; text-align:center; }
+                .sig-box { border:1px solid #e2e8f0; border-radius:8px; padding:10px; flex:1; }
+                .sig-title { font-size:9px; font-weight:900; color:#94a3b8; text-transform:uppercase; margin-bottom:40px; letter-spacing:1px; }
+                .sig-line { border-top:2px solid #0f172a; width:80%; margin:0 auto 3px; }
+                .sig-name { font-size:10px; font-weight:700; color:#0f172a; }
+                @page { size: landscape; margin: 10mm; }
+                @media print { body { padding:0; } .sig-box { border:1px solid #000; } .header { border-bottom:2px solid #000; } }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <div>
+                    <div class="company-name">${company.name}</div>
+                    <div class="company-info">${company.address}<br>Tel: ${company.phone} | ${company.email}</div>
+                </div>
+                <div class="doc-type">
+                    <h1>SALES INVOICE</h1>
+                    <div class="doc-no"># ${inv.invoiceNumber}</div>
+                </div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:40px; margin-bottom:10px;">
+                <table class="meta-table">
+                    <tr><td class="label">Ditagihkan Ke</td><td class="value" style="font-size:14px;color:#2563eb">${customer?.name || '-'}</td></tr>
+                    <tr><td class="label">Alamat</td><td class="value" style="font-weight:500;color:#475569">${customer?.address || '-'}</td></tr>
+                    <tr><td class="label">Ref SO</td><td class="value">${so?.soNumber || '-'}</td></tr>
+                </table>
+                <table class="meta-table">
+                    <tr><td class="label">Tanggal Faktur</td><td class="value">${formatDate(inv.date).slice(0, 11)}</td></tr>
+                    <tr><td class="label">Jatuh Tempo</td><td class="value" style="color:#dc2626">${inv.dueDate ? formatDate(inv.dueDate).slice(0, 11) : '-'}</td></tr>
+                    <tr><td class="label">Status</td><td class="value">${inv.status}</td></tr>
+                </table>
+            </div>
+
+            ${itemsTable}
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:40px;">
+                <div>
+                    ${inv.notes ? `<div style="font-size:9px; color:#475569; padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-left:3px solid #64748b; border-radius:6px;"><strong>Catatan Tambahan:</strong><br>${inv.notes}</div>` : ''}
+                </div>
+                <div>
+                    ${totalsBlock}
+                </div>
+            </div>
+
+            <div class="signatures">
+                <div class="sig-box">
+                    <div class="sig-title">Diterima Oleh</div>
+                    <div class="sig-line"></div>
+                    <div class="sig-name">Nama Terang & Ttd</div>
+                </div>
+                <div class="sig-box" style="border:none;">
+                    <!-- Spacer -->
+                </div>
+                <div class="sig-box">
+                    <div class="sig-title">Hormat Kami</div>
+                    <div class="sig-line"></div>
+                    <div class="sig-name">${company.name}</div>
+                </div>
+            </div>
+        </body>
+        </html>
+    `;
+
+    const pw = window.open('', '_blank', 'width=800,height=600');
+    if (pw) {
+        pw.document.write(printHtml);
+        pw.document.close();
+        pw.onload = () => { pw.focus(); pw.print(); };
     }
 };
 
@@ -8442,7 +8633,7 @@ window.viewInvoice = (id) => {
                                 <tr class="hover:bg-slate-50/50 transition-colors text-[11px]">
                                     <td class="py-3 px-4">
                                         <div class="font-bold text-slate-800">${i.prodText.split(' (')[0]}</div>
-                                        ${i.kemasan && i.kemasan !== '-' ? `<div class="text-[9px] text-slate-400 italic">Kemasan: ${i.kemasan}</div>` : ''}
+                                        ${i.kemasan && i.kemasan !== '-' ? `<div class="text-[9px] text-slate-400 italic">Kemasan: ${i.kemasan === '800 Gram' ? '4 KG (800 Gram)' : i.kemasan}</div>` : ''}
                                     </td>
                                     <td class="py-3 px-4 text-center font-bold text-blue-600">${i.colly || '-'}</td>
                                     <td class="py-3 px-4 text-center font-bold text-slate-500">${formatNumber(i.qty)}</td>

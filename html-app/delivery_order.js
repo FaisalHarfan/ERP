@@ -37,7 +37,7 @@ window.calculateColly = function (qty, kemasan) {
     else if (kemasan === '20 Kg') factor = 20;
     else if (kemasan === '15 Kg') factor = 15;
     else if (kemasan === '5 Kg') factor = 5;
-    else if (kemasan === '800 Gram') factor = 0.8;
+    else if (kemasan === '4 KG (800 Gram)' || kemasan === '800 Gram') factor = 4;
 
     const result = factor > 0 ? qty / factor : 0;
     return Number.isInteger(result) ? result : result.toFixed(2);
@@ -424,7 +424,7 @@ window.addBlankDOItem = function () {
                 <option value="20 Kg">20 Kg</option>
                 <option value="15 Kg">15 Kg</option>
                 <option value="5 Kg">5 Kg</option>
-                <option value="800 Gram">800 Gram</option>
+                <option value="4 KG (800 Gram)">4 KG (800 Gram)</option>
             </select>
         </div>
         <div class="col-span-1 text-right">
@@ -713,12 +713,6 @@ window.openDeliveryFromSOModal = function (soId = null) {
             <!-- Header / Action Bar -->
             <div class="bg-white border-b border-slate-100 px-8 py-5 flex items-center justify-between shrink-0 sticky top-0 z-50">
                 <div class="flex items-center gap-6">
-                    <div class="flex flex-col">
-                        <h2 class="text-lg font-black text-slate-800 tracking-tight flex items-center gap-3 uppercase">
-                            <span class="w-1.5 h-6 bg-blue-600 rounded-full"></span>
-                            BUAT <span class="text-blue-600">Surat Jalan</span>
-                        </h2>
-                    </div>
                 </div>
                 
                 <div class="flex items-center gap-3">
@@ -883,7 +877,7 @@ window.loadSOForDO = function () {
                                     <option value="20 Kg">20 Kg</option>
                                     <option value="15 Kg">15 Kg</option>
                                     <option value="5 Kg">5 Kg</option>
-                                    <option value="800 Gram">800 Gram</option>
+                                    <option value="4 KG (800 Gram)">4 KG (800 Gram)</option>
                                 </select>
                             </td>
                             <td class="px-4 py-3 text-center font-black text-blue-600 text-sm shadow-inner" id="dosi_colly_display_${idx}">0</td>
@@ -1000,25 +994,25 @@ window.printDeliveryOrder = function (id) {
             <tbody>
                 ${(d.items || []).map((item, i) => `
                     <tr style="border-bottom:1px solid #e2e8f0;">
-                        <td style="padding:12px 8px;text-align:center;font-size:11px;">${i+1}</td>
-                        <td style="padding:12px 8px;text-align:left;font-size:11px;">
+                        <td style="padding:6px 8px;text-align:center;font-size:10px;">${i+1}</td>
+                        <td style="padding:6px 8px;text-align:left;font-size:10px;">
                             <div style="font-weight:bold;text-transform:uppercase">${item.name || item.prodText || '-'}</div>
-                            ${item.remark ? `<div style="font-size:9px;color:#64748b;margin-top:2px;">${item.remark}</div>` : ''}
+                            ${item.remark ? `<div style="font-size:8px;color:#64748b;margin-top:2px;">${item.remark}</div>` : ''}
                         </td>
-                        <td style="padding:12px 8px;text-align:center;font-size:12px;font-weight:900">${(item.qty || 0).toLocaleString('id-ID')}</td>
-                        <td style="padding:12px 8px;text-align:center;font-size:11px;font-weight:bold;color:#64748b">${item.unit || 'PCS'}</td>
-                        <td style="padding:12px 8px;text-align:center;font-size:11px;color:#334155">${item.kemasan || '-'}</td>
-                        <td style="padding:12px 8px;text-align:center;font-size:12px;font-weight:bold;color:#2563eb">${item.colly || '-'}</td>
+                        <td style="padding:6px 8px;text-align:center;font-size:11px;font-weight:900">${(item.qty || 0).toLocaleString('id-ID')}</td>
+                        <td style="padding:6px 8px;text-align:center;font-size:10px;font-weight:bold;color:#64748b">${item.unit || 'PCS'}</td>
+                        <td style="padding:6px 8px;text-align:center;font-size:10px;color:#334155">${item.kemasan === '800 Gram' ? '4 KG (800 Gram)' : (item.kemasan || '-')}</td>
+                        <td style="padding:6px 8px;text-align:center;font-size:11px;font-weight:bold;color:#2563eb">${item.colly || '-'}</td>
                     </tr>
                 `).join('')}
-                 ${[...Array(Math.max(0, 10 - (d.items?.length || 0)))].map(() => `
-                    <tr style="border-bottom:1px solid #e2e8f0;height:40px">
-                        <td style="padding:12px 8px;">&nbsp;</td>
-                        <td style="padding:12px 8px;"></td>
-                        <td style="padding:12px 8px;"></td>
-                        <td style="padding:12px 8px;"></td>
-                        <td style="padding:12px 8px;"></td>
-                        <td style="padding:12px 8px;"></td>
+                 ${[...Array(Math.max(0, 5 - (d.items?.length || 0)))].map(() => `
+                    <tr style="border-bottom:1px solid #e2e8f0;height:25px">
+                        <td style="padding:6px 8px;">&nbsp;</td>
+                        <td style="padding:6px 8px;"></td>
+                        <td style="padding:6px 8px;"></td>
+                        <td style="padding:6px 8px;"></td>
+                        <td style="padding:6px 8px;"></td>
+                        <td style="padding:6px 8px;"></td>
                     </tr>
                 `).join('')}
             </tbody>
@@ -1032,24 +1026,25 @@ window.printDeliveryOrder = function (id) {
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
                 * { margin:0; padding:0; box-sizing:border-box; font-family:'Inter', sans-serif; }
-                body { padding:40px; color:#1e293b; background:#fff; }
-                .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:30px; border-bottom:3px solid #0f172a; padding-bottom:15px; }
-                .company-name { font-size:24px; font-weight:900; color:#0f172a; text-transform:uppercase; letter-spacing:-0.5px; }
-                .company-info { font-size:10px; color:#64748b; margin-top:5px; line-height:1.5; font-weight:500; }
+                body { padding:20px; color:#1e293b; background:#fff; margin:0; }
+                .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:15px; border-bottom:3px solid #0f172a; padding-bottom:10px; }
+                .company-name { font-size:20px; font-weight:900; color:#0f172a; text-transform:uppercase; letter-spacing:-0.5px; }
+                .company-info { font-size:9px; color:#64748b; margin-top:3px; line-height:1.4; font-weight:500; }
                 .doc-type { text-align:right; }
-                .doc-type h1 { font-size:28px; font-weight:900; color:#0f172a; margin:0; line-height:1; }
-                .doc-no { font-size:14px; font-weight:700; color:#2563eb; margin-top:5px; font-family:monospace; }
-                .meta-table { width:100%; border-collapse:collapse; margin-bottom:20px; }
-                .meta-table td { padding:6px 0; font-size:11px; vertical-align:top; }
-                .label { font-weight:bold; color:#64748b; text-transform:uppercase; font-size:9px; width:120px; }
+                .doc-type h1 { font-size:24px; font-weight:900; color:#0f172a; margin:0; line-height:1; }
+                .doc-no { font-size:12px; font-weight:700; color:#2563eb; margin-top:3px; font-family:monospace; }
+                .meta-table { width:100%; border-collapse:collapse; margin-bottom:10px; }
+                .meta-table td { padding:3px 0; font-size:10px; vertical-align:top; }
+                .label { font-weight:bold; color:#64748b; text-transform:uppercase; font-size:8px; width:100px; }
                 .value { font-weight:700; color:#0f172a; text-transform:uppercase; }
-                .signatures { margin-top:50px; display:grid; grid-template-cols:1fr 1fr 1fr; gap:40px; text-align:center; }
-                .sig-box { border:1px solid #e2e8f0; border-radius:12px; padding:15px; }
-                .sig-title { font-size:10px; font-weight:900; color:#94a3b8; text-transform:uppercase; margin-bottom:60px; letter-spacing:1px; }
-                .sig-line { border-top:2px solid #0f172a; width:80%; margin:0 auto 5px; }
-                .sig-name { font-size:11px; font-weight:700; color:#0f172a; }
-                .notes { margin-top:20px; padding:15px; background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #64748b; border-radius:8px; font-size:10px; color:#475569; line-height:1.6; }
-                @media print { body { padding:20px; } .sig-box { border:1px solid #000; } .header { border-bottom:2px solid #000; } }
+                .signatures { margin-top:15px; display:flex; justify-content:space-between; gap:20px; text-align:center; }
+                .sig-box { border:1px solid #e2e8f0; border-radius:8px; padding:10px; flex:1; }
+                .sig-title { font-size:9px; font-weight:900; color:#94a3b8; text-transform:uppercase; margin-bottom:40px; letter-spacing:1px; }
+                .sig-line { border-top:2px solid #0f172a; width:80%; margin:0 auto 3px; }
+                .sig-name { font-size:10px; font-weight:700; color:#0f172a; }
+                .notes { margin-top:10px; padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #64748b; border-radius:6px; font-size:9px; color:#475569; line-height:1.4; }
+                @page { size: landscape; margin: 10mm; }
+                @media print { body { padding:0; } .sig-box { border:1px solid #000; } .header { border-bottom:2px solid #000; } }
             </style>
         </head>
         <body>
@@ -1079,7 +1074,7 @@ window.printDeliveryOrder = function (id) {
 
             ${itemsTable}
 
-            <div style="display:grid; grid-template-cols:1.5fr 1fr; gap:40px;">
+            <div style="display:grid; grid-template-columns:1.5fr 1fr; gap:40px;">
                 <div class="notes">
                     <strong style="display:block;margin-bottom:5px;color:#0f172a;text-transform:uppercase;font-size:9px">Catatan Pengiriman:</strong>
                     ${d.notes || 'Hati-hati dalam pengiriman barang, pastikan barang sesuai dan diterima oleh pihak yang berwenang.'}

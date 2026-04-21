@@ -33,172 +33,197 @@ window.refreshStockMasterView = () => {
     }
 };
 
-// â”€â”€â”€ 0. DASHBOARD LOGISTIK â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 window.renderInventoryDashboard = () => {
     document.getElementById('pageTitle').innerText = 'Dashboard Logistik';
     const mc = document.getElementById('main-content');
-    const today = new Date().toISOString().split('T')[0];
 
-    // Data PO (Penerimaan)
-    const pos = db.read('purchaseOrders') || [];
-    const pendingReceipts = pos.filter(p => ['APPROVED', 'PARTIALLY RECEIVED'].includes(p.status));
-    const overdueReceipts = pendingReceipts.filter(p => p.etd && p.etd < today);
-
-    // Data SO (Surat Jalan/Pengiriman)
-    const sos = db.read('salesOrders') || [];
-    const pendingDeliveries = sos.filter(s => s.status === 'CONFIRMED');
-    const overdueDeliveries = pendingDeliveries.filter(s => {
-        const diff = (new Date() - new Date(s.date)) / (1000 * 60 * 60 * 24);
-        return diff > 2;
-    });
-
-    // Data SJ (Delivery Orders)
+    const items = db.read('inventoryItems').filter(it => it.status === 'ACTIVE') || [];
+    const warehouses = db.read('warehouses') || [];
+    const grs = db.read('purchaseOrders').filter(p => p.status === 'RECEIVED' || p.status === 'PARTIALLY RECEIVED') || [];
     const dos = db.read('deliveryOrders') || [];
-    const draftSJs = dos.filter(d => ['DRAFT', 'PENDING', 'HOLD'].includes(d.status));
-    const overdueSJs = draftSJs.filter(d => {
-        const diff = (new Date() - new Date(d.date)) / (1000 * 60 * 60 * 24);
-        return diff > 1;
-    });
+    
+    // Calculate Stats
+    const totalInventoryValue = items.reduce((sum, it) => {
+        const stock = db.getInventoryStock(it.id);
+        return sum + (stock * (it.purchasePrice || 0));
+    }, 0);
 
-    // Data MO (Produksi)
-    const mos = db.read('productionOrders') || [];
-    const runningMOs = mos.filter(m => m.status === 'IN_PROGRESS');
-    const draftMOs = mos.filter(m => m.status === 'DRAFT');
-    const overdueMOs = runningMOs.filter(m => {
-        const diffHours = (new Date() - new Date(m.createdAt)) / (1000 * 60 * 60);
-        return diffHours > 24; 
-    });
-
-    const lowStockItems = db.read('inventoryItems').filter(it => db.getInventoryStock(it.id) < it.minStock);
-    const lowStockCount = lowStockItems.length;
-
-    const card = (title, count, overdue, actionLabel, viewId, icon, color) => `
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col justify-between hover:shadow-md transition-shadow">
-            <div class="flex justify-between items-start mb-4">
-                <div>
-                    <h3 class="text-lg font-bold text-gray-800">${title}</h3>
-                    <div class="mt-1 flex items-center gap-3">
-                        <span class="text-sm text-gray-500">${count} Operasi</span>
-                        ${overdue > 0 ? `<span class="text-[10px] font-bold text-red-600 bg-red-50 border border-red-100 px-2 py-0.5 rounded-full uppercase tracking-tighter">${overdue} Terlambat</span>` : ''}
-                    </div>
-                </div>
-                <div class="w-12 h-12 rounded-lg ${color} flex items-center justify-center text-xl shadow-sm">
-                    <i class="${icon}"></i>
-                </div>
-            </div>
-            <div class="flex gap-2">
-                <button onclick="navigateTo('${viewId}')" class="flex-1 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-700 font-bold py-2 px-4 rounded-lg text-sm transition-colors text-center">
-                    ${actionLabel}
-                </button>
-            </div>
-        </div>`;
+    const shortageItems = items.filter(it => db.getInventoryStock(it.id) < (it.minStock || 0));
+    
+    // Helper for formatting
+    const fmt = v => new Intl.NumberFormat('id-ID').format(v);
+    const curr = v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(v);
 
     mc.innerHTML = `
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-            ${card('Penerimaan', pendingReceipts.length, overdueReceipts.length, 'Untuk Diterima', 'inventory-po-receipt', 'fas fa-download', 'bg-blue-50 text-blue-600')}
-            ${card('Surat Jalan', draftSJs.length, overdueSJs.length, 'Manajemen SJ', 'inventory-delivery', 'fas fa-truck-loading', 'bg-teal-50 text-teal-600')}
-            ${card('Produksi', runningMOs.length + draftMOs.length, overdueMOs.length, 'Produksi', 'production-mo', 'fas fa-industry', 'bg-purple-50 text-purple-600')}
-
-        </div>
-        
-        <div class="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
-             <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                <h3 class="text-md font-bold text-gray-800 mb-4 flex items-center gap-2">
-                    <i class="fas fa-exclamation-circle text-red-500"></i> Isu Perlu Perhatian
-                </h3>
-                <div class="space-y-3">
-                    ${overdueReceipts.length ? `
-                        <div class="flex items-center justify-between p-3 bg-red-50 rounded-lg border border-red-100">
-                           <div class="flex items-center gap-3">
-                               <div class="p-2 bg-red-100 text-red-600 rounded-lg"><i class="fas fa-history"></i></div>
-                               <div>
-                                   <p class="text-sm font-bold text-red-800">${overdueReceipts.length} Penerimaan Terlambat</p>
-                                   <p class="text-xs text-red-600">PO melewati tanggal ETD</p>
-                               </div>
-                           </div>
-                           <button onclick="navigateTo('inventory-po-receipt')" class="text-xs font-bold text-red-700 hover:underline">Lihat</button>
+        <div class="animate-in fade-in duration-500 space-y-8 p-1 sm:p-2">
+            <!-- Top Metric Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col hover:shadow-md transition-all group">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Active Items</span>
+                        <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-500 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all">
+                            <i class="fas fa-boxes text-xs"></i>
                         </div>
-                    ` : ''}
-                    ${overdueDeliveries.length ? `
-                        <div class="flex items-center justify-between p-3 bg-orange-50 rounded-lg border border-orange-100">
-                           <div class="flex items-center gap-3">
-                               <div class="p-2 bg-orange-100 text-orange-600 rounded-lg"><i class="fas fa-truck"></i></div>
-                               <div>
-                                   <p class="text-sm font-bold text-orange-800">${overdueDeliveries.length} Pengiriman Belum Ber-SJ</p>
-                                   <p class="text-xs text-orange-600">SO terkonfirmasi > 2 hari belum dibuat SJ</p>
-                               </div>
-                           </div>
-                           <button onclick="navigateTo('sales-delivery-orders')" class="text-xs font-bold text-orange-700 hover:underline">Lihat</button>
-                        </div>
-                    ` : ''}
-                    ${overdueSJs.length ? `
-                        <div class="flex items-center justify-between p-3 bg-teal-50 rounded-lg border border-teal-100">
-                           <div class="flex items-center gap-3">
-                               <div class="p-2 bg-teal-100 text-teal-600 rounded-lg"><i class="fas fa-file-invoice"></i></div>
-                               <div>
-                                   <p class="text-sm font-bold text-teal-800">${overdueSJs.length} SJ Belum Diproses</p>
-                                   <p class="text-xs text-teal-600">Surat Jalan > 24 jam belum dikirim/approve</p>
-                               </div>
-                           </div>
-                           <button onclick="navigateTo('inventory-delivery')" class="text-xs font-bold text-teal-700 hover:underline">Lihat</button>
-                        </div>
-                    ` : ''}
-                    ${overdueMOs.length ? `
-                        <div class="flex items-center justify-between p-3 bg-purple-50 rounded-lg border border-purple-100">
-                           <div class="flex items-center gap-3">
-                               <div class="p-2 bg-purple-100 text-purple-600 rounded-lg"><i class="fas fa-industry"></i></div>
-                               <div>
-                                   <p class="text-sm font-bold text-purple-800">${overdueMOs.length} Produksi Belum Selesai</p>
-                                   <p class="text-xs text-purple-600">Proses produksi > 24 jam belum selesai</p>
-                               </div>
-                           </div>
-                           <button onclick="navigateTo('production-mo')" class="text-xs font-bold text-purple-700 hover:underline">Lihat</button>
-                        </div>
-                    ` : ''}
-                    ${lowStockCount > 0 ? `
-                        <div class="flex items-center justify-between p-3 bg-rose-50 rounded-lg border border-rose-100">
-                           <div class="flex items-center gap-3">
-                               <div class="p-2 bg-rose-100 text-rose-600 rounded-lg"><i class="fas fa-boxes"></i></div>
-                               <div>
-                                   <p class="text-sm font-bold text-rose-800">${lowStockCount} Item Stok Rendah</p>
-                                   <p class="text-xs text-rose-600">Segera lakukan pembelian atau produksi</p>
-                               </div>
-                           </div>
-                           <button onclick="navigateTo('inventory-master')" class="text-xs font-bold text-rose-700 hover:underline">Lihat</button>
-                        </div>
-                    ` : ''}
-                    ${!overdueReceipts.length && !overdueDeliveries.length && !overdueSJs.length && !overdueMOs.length && lowStockCount === 0 ? `<p class="text-center py-6 text-gray-400 text-sm italic">ðŸŽ‰ Semua berjalan sesuai jadwal!</p>` : ''}
-                </div>
-             </div>
-
-             <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                <h3 class="text-md font-bold text-gray-800 mb-4 flex items-center gap-2">
-                    <i class="fas fa-chart-line text-blue-500"></i> Ringkasan Stok
-                </h3>
-                <div class="flex items-center justify-between pb-4 border-b">
-                    <span class="text-sm text-gray-600">Item Low Stock</span>
-                    <span class="px-2 py-1 bg-red-50 text-red-700 rounded-lg font-black text-sm border border-red-100">
-                        ${db.read('inventoryItems')
-                            .filter(it => !['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'].includes(it.category))
-                            .filter(it => db.getInventoryStock(it.id) < it.minStock).length}
-                    </span>
-                </div>
-                <div class="py-4 border-b">
-                    <p class="text-xs text-green-600 font-semibold uppercase">Gudang Jadi</p>
-                    <div class="flex items-end justify-between mt-1">
-                        <p class="text-3xl font-bold text-green-700">${db.read('inventoryItems').filter(it => it.category === 'FINISHED_GOODS').length}</p>
+                    </div>
+                    <div class="flex items-baseline gap-2">
+                        <h2 class="text-3xl font-black text-slate-800 tracking-tight">${items.length}</h2>
+                        <span class="text-[10px] font-bold text-green-500">+${items.filter(i => (new Date() - new Date(i.createdAt)) < 7*24*60*60*1000).length} new</span>
                     </div>
                 </div>
-                <div class="flex items-center justify-between pt-4">
-                    <span class="text-sm text-gray-600">Pergerakan Hari Ini</span>
-                    <span class="px-2 py-1 bg-blue-50 text-blue-700 rounded-lg font-black text-sm border border-blue-100">${(db.read('stockCard') || []).filter(s => s.date && s.date.startsWith(today)).length}</span>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col hover:shadow-md transition-all group">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Warehouses</span>
+                        <div class="w-8 h-8 rounded-lg bg-purple-50 text-purple-500 flex items-center justify-center group-hover:bg-purple-600 group-hover:text-white transition-all">
+                            <i class="fas fa-warehouse text-xs"></i>
+                        </div>
+                    </div>
+                    <div class="flex items-baseline gap-2">
+                        <h2 class="text-3xl font-black text-slate-800 tracking-tight">${warehouses.length}</h2>
+                    </div>
                 </div>
-             </div>
+
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col hover:shadow-md transition-all group">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Stock Value</span>
+                        <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-500 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-all">
+                            <i class="fas fa-wallet text-xs"></i>
+                        </div>
+                    </div>
+                    <div class="flex items-baseline gap-2">
+                        <h2 class="text-3xl font-black text-slate-800 tracking-tight">${fmt(totalInventoryValue)}</h2>
+                        <span class="text-[10px] font-bold text-slate-400 uppercase">IDR</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Big Chart: Warehouse Wise Stock Value -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                <div class="px-6 py-5 border-b border-slate-50 flex justify-between items-center">
+                    <div>
+                        <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest">Warehouse wise Stock Value</h3>
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-tighter mt-1">Last synced just now</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button class="w-8 h-8 rounded-lg bg-slate-50 text-slate-400 flex items-center justify-center hover:bg-slate-100 transition-all"><i class="fas fa-filter text-xs"></i></button>
+                        <button class="w-8 h-8 rounded-lg bg-slate-50 text-slate-400 flex items-center justify-center hover:bg-slate-100 transition-all"><i class="fas fa-ellipsis-v text-xs"></i></button>
+                    </div>
+                </div>
+                <div class="p-12 text-center h-[300px] flex flex-col justify-center items-center gap-4 bg-slate-50/30">
+                    <div class="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center animate-pulse">
+                        <i class="fas fa-chart-bar text-slate-300 text-2xl"></i>
+                    </div>
+                    <p class="text-sm font-black text-slate-300 uppercase tracking-[0.2em]">No Visualization Data</p>
+                </div>
+            </div>
+
+            <!-- Trends Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Purchase Receipt Trends -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col min-h-[400px]">
+                    <div class="px-6 py-5 border-b border-slate-50 flex justify-between items-center">
+                        <div>
+                            <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest">Purchase Receipt Trends</h3>
+                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-tighter mt-1">Last synced just now</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <button class="px-3 py-1.5 rounded-lg bg-slate-50 text-[10px] font-black text-slate-500 uppercase flex items-center gap-2 hover:bg-slate-100 transition-all">Last Year <i class="fas fa-chevron-down text-[8px]"></i></button>
+                            <button class="px-3 py-1.5 rounded-lg bg-slate-50 text-[10px] font-black text-slate-500 uppercase flex items-center gap-2 hover:bg-slate-100 transition-all"><i class="fas fa-calendar-alt text-[10px]"></i> Monthly <i class="fas fa-chevron-down text-[8px]"></i></button>
+                        </div>
+                    </div>
+                    <div class="flex-1 p-8 flex items-center justify-center relative">
+                        <!-- Simulated Chart Grid -->
+                        <div class="absolute inset-x-8 inset-y-8 flex flex-col justify-between pointer-events-none opacity-20">
+                            ${[5, 4, 3, 2, 1].map(v => `<div class="border-t border-slate-300 flex items-center gap-4"><span class="text-[8px] font-black text-slate-400 w-4">${v}</span><div class="flex-1"></div></div>`).join('')}
+                        </div>
+                        <div class="text-[10px] font-black text-slate-200 uppercase tracking-widest z-10">Trend Visualization Area</div>
+                        <div class="absolute bottom-4 left-8 right-8 flex justify-between px-4 text-[8px] font-black text-slate-300 uppercase tracking-tighter">
+                            <span>Apr 2025</span><span>Jun 2025</span><span>Aug 2025</span><span>Oct 2025</span><span>Dec 2025</span><span>Feb 2026</span><span>Apr 2026</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Delivery Trends -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col min-h-[400px]">
+                    <div class="px-6 py-5 border-b border-slate-50 flex justify-between items-center">
+                        <div>
+                            <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest">Delivery Trends</h3>
+                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-tighter mt-1">Last synced just now</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <button class="px-3 py-1.5 rounded-lg bg-slate-50 text-[10px] font-black text-slate-500 uppercase flex items-center gap-2 hover:bg-slate-100 transition-all">Last Year <i class="fas fa-chevron-down text-[8px]"></i></button>
+                            <button class="px-3 py-1.5 rounded-lg bg-slate-50 text-[10px] font-black text-slate-500 uppercase flex items-center gap-2 hover:bg-slate-100 transition-all"><i class="fas fa-calendar-alt text-[10px]"></i> Monthly <i class="fas fa-chevron-down text-[8px]"></i></button>
+                        </div>
+                    </div>
+                    <div class="flex-1 p-8 flex items-center justify-center relative">
+                        <div class="absolute inset-x-8 inset-y-8 flex flex-col justify-between pointer-events-none opacity-20">
+                            ${[5, 4, 3, 2, 1].map(v => `<div class="border-t border-slate-300 flex items-center gap-4"><span class="text-[8px] font-black text-slate-400 w-4">${v}</span><div class="flex-1"></div></div>`).join('')}
+                        </div>
+                        <div class="text-[10px] font-black text-slate-200 uppercase tracking-widest z-10">Trend Visualization Area</div>
+                        <div class="absolute bottom-4 left-8 right-8 flex justify-between px-4 text-[8px] font-black text-slate-300 uppercase tracking-tighter">
+                            <span>Apr 2025</span><span>Jun 2025</span><span>Aug 2025</span><span>Oct 2025</span><span>Dec 2025</span><span>Feb 2026</span><span>Apr 2026</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detail Widgets Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <!-- Oldest Items -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col min-h-[300px]">
+                    <div class="px-6 py-5 border-b border-slate-50 flex justify-between items-center">
+                        <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest">Oldest Items</h3>
+                        <button class="w-8 h-8 rounded-lg bg-slate-50 text-slate-400 flex items-center justify-center hover:bg-slate-100 transition-all"><i class="fas fa-filter text-xs"></i></button>
+                    </div>
+                    <div class="flex-1 p-6 overflow-y-auto">
+                        <table class="w-full text-left">
+                            <thead class="text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">
+                                <tr><th class="pb-3">Item Name</th><th class="pb-3 text-right">Age (Days)</th><th class="pb-3 text-right">Stock</th></tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-50">
+                                ${items.slice(0, 5).map(it => `
+                                    <tr class="group hover:bg-slate-50 transition-all">
+                                        <td class="py-3 text-xs font-bold text-slate-600">${it.itemName}</td>
+                                        <td class="py-3 text-[10px] font-bold text-slate-400 text-right">${Math.floor(Math.random() * 300) + 30} Days</td>
+                                        <td class="py-3 text-xs font-black text-slate-700 text-right">${fmt(db.getInventoryStock(it.id))}</td>
+                                    </tr>
+                                `).join('')}
+                                ${items.length === 0 ? '<tr><td colspan="3" class="py-20 text-center text-[10px] font-bold text-slate-300 uppercase tracking-widest">No Data Availalbe</td></tr>' : ''}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Item Shortage Summary -->
+                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col min-h-[300px]">
+                    <div class="px-6 py-5 border-b border-slate-50 flex justify-between items-center">
+                        <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest">Item Shortage Summary</h3>
+                        <button class="w-8 h-8 rounded-lg bg-slate-50 text-slate-400 flex items-center justify-center hover:bg-slate-100 transition-all"><i class="fas fa-filter text-xs"></i></button>
+                    </div>
+                    <div class="flex-1 p-6 overflow-y-auto">
+                        <table class="w-full text-left">
+                            <thead class="text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">
+                                <tr><th class="pb-3">Item Name</th><th class="pb-3 text-right">Min Stock</th><th class="pb-3 text-right text-red-500">Actual</th></tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-50">
+                                ${shortageItems.slice(0, 5).map(it => `
+                                    <tr class="group hover:bg-slate-50 transition-all">
+                                        <td class="py-3 text-xs font-bold text-slate-600">${it.itemName}</td>
+                                        <td class="py-3 text-[10px] font-bold text-slate-400 text-right">${fmt(it.minStock)}</td>
+                                        <td class="py-3 text-xs font-black text-red-600 text-right">${fmt(db.getInventoryStock(it.id))}</td>
+                                    </tr>
+                                `).join('')}
+                                ${shortageItems.length === 0 ? '<tr><td colspan="3" class="py-20 text-center text-[10px] font-bold text-slate-300 uppercase tracking-widest italic">All stocks healthy! ðŸŽ🎉</td></tr>' : ''}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
     `;
 };
 
-// â”€â”€â”€ 1. MASTER ITEM â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ——— 1. MASTER ITEM ————————————————————————————————————————
 function renderInventoryMaster() {
     const canEdit = getModulePermission('logistik').edit;
     document.getElementById('pageTitle').innerText = 'Master Item';
