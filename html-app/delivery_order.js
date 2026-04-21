@@ -979,6 +979,14 @@ window.printDeliveryOrder = function (id) {
         logo: cfg.logo || (typeof CONFIG !== 'undefined' ? CONFIG.logo : '')
     };
 
+    // Cek apakah customer Non-Tax (NT) dari SO terkait
+    let isNonTax = false;
+    if (d.salesOrderId) {
+        const so = db.findById('salesOrders', d.salesOrderId);
+        if (so && so.isTax === false) isNonTax = true;
+    }
+    if (!isNonTax && d.soNumber && d.soNumber.includes('-B-')) isNonTax = true;
+
     const itemsTable = `
         <table style="width:100%;border-collapse:collapse;margin-top:20px;">
             <thead>
@@ -1026,7 +1034,7 @@ window.printDeliveryOrder = function (id) {
             <style>
                 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
                 * { margin:0; padding:0; box-sizing:border-box; font-family:'Inter', sans-serif; }
-                body { padding:20px; color:#1e293b; background:#fff; margin:0; }
+                body { padding:20px; color:#1e293b; background:#e2e8f0; margin:0; }
                 .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:15px; border-bottom:3px solid #0f172a; padding-bottom:10px; }
                 .company-name { font-size:20px; font-weight:900; color:#0f172a; text-transform:uppercase; letter-spacing:-0.5px; }
                 .company-info { font-size:9px; color:#64748b; margin-top:3px; line-height:1.4; font-weight:500; }
@@ -1037,74 +1045,85 @@ window.printDeliveryOrder = function (id) {
                 .meta-table td { padding:3px 0; font-size:10px; vertical-align:top; }
                 .label { font-weight:bold; color:#64748b; text-transform:uppercase; font-size:8px; width:100px; }
                 .value { font-weight:700; color:#0f172a; text-transform:uppercase; }
-                .signatures { margin-top:15px; display:flex; justify-content:space-between; gap:20px; text-align:center; }
-                .sig-box { border:1px solid #e2e8f0; border-radius:8px; padding:10px; flex:1; }
+                .signatures { margin-top:15px; display:grid; grid-template-columns:1fr 1fr; gap:20px; text-align:center; }
+                .sig-box { border:1px solid #e2e8f0; border-radius:8px; padding:10px; }
                 .sig-title { font-size:9px; font-weight:900; color:#94a3b8; text-transform:uppercase; margin-bottom:40px; letter-spacing:1px; }
                 .sig-line { border-top:2px solid #0f172a; width:80%; margin:0 auto 3px; }
                 .sig-name { font-size:10px; font-weight:700; color:#0f172a; }
                 .notes { margin-top:10px; padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #64748b; border-radius:6px; font-size:9px; color:#475569; line-height:1.4; }
                 @page { size: landscape; margin: 10mm; }
-                @media print { body { padding:0; } .sig-box { border:1px solid #000; } .header { border-bottom:2px solid #000; } }
+                .page { page-break-after: always; background:#fff; padding:30px; margin-bottom:30px; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 4px 20px rgba(0,0,0,0.1); }
+                .page:last-child { page-break-after: auto; margin-bottom:0; }
+                @media print { body { padding:0; background:#fff; } .page { margin:0; padding:0; border:none; border-radius:0; box-shadow:none; } .sig-box { border:1px solid #000; } .header { border-bottom:2px solid #000; } .copy-label { display: none !important; } }
             </style>
         </head>
         <body>
-            <div class="header">
-                <div>
-                    <div class="company-name">${company.name}</div>
-                    <div class="company-info">${company.address}<br>Tel: ${company.phone} | ${company.email}</div>
-                </div>
-                <div class="doc-type">
-                    <h1>SURAT JALAN</h1>
-                    <div class="doc-no"># ${d.doNumber}</div>
-                </div>
-            </div>
-
-            <div style="display:grid; grid-template-cols:1fr 1fr; gap:40px; margin-bottom:20px;">
-                <table class="meta-table">
-                    <tr><td class="label">Kepada Yth</td><td class="value" style="font-size:14px;color:#2563eb">${d.recipientName || '-'}</td></tr>
-                    <tr><td class="label">Alamat</td><td class="value" style="font-weight:500;color:#475569">${d.address || '-'}</td></tr>
-                    <tr><td class="label">Ref Order</td><td class="value">${d.soNumber || d.invoiceNumber || '-'}</td></tr>
-                </table>
-                <table class="meta-table">
-                    <tr><td class="label">Tanggal</td><td class="value">${doDate(d.date)}</td></tr>
-                    <tr><td class="label">Driver</td><td class="value">${d.driverName || '-'}</td></tr>
-                    <tr><td class="label">Kendaraan</td><td class="value">${d.vehicleNo || '-'}</td></tr>
-                </table>
-            </div>
-
-            ${itemsTable}
-
-            <div style="display:grid; grid-template-columns:1.5fr 1fr; gap:40px;">
-                <div class="notes">
-                    <strong style="display:block;margin-bottom:5px;color:#0f172a;text-transform:uppercase;font-size:9px">Catatan Pengiriman:</strong>
-                    ${d.notes || 'Hati-hati dalam pengiriman barang, pastikan barang sesuai dan diterima oleh pihak yang berwenang.'}
-                </div>
-                <div class="notes" style="background:#fff;border-left:4px solid #2563eb">
-                    <strong style="display:block;margin-bottom:5px;color:#0f172a;text-transform:uppercase;font-size:9px">Info Warehouse:</strong>
-                    Barang ini telah melewati proses verifikasi standar unit gudang kami.
-                </div>
-            </div>
-
-            <div class="signatures">
-                <div class="sig-box">
-                    <div class="sig-title">Diterima Oleh</div>
-                    <div class="sig-line"></div>
-                    <div class="sig-name">Penerima / Pelanggan</div>
-                </div>
-                <div class="sig-box">
-                    <div class="sig-title">Pengirim / Driver</div>
-                    <div class="sig-line"></div>
-                    <div class="sig-name">${d.driverName || '________________'}</div>
-                </div>
-                <div class="sig-box">
-                    <div class="sig-title">Hormat Kami</div>
-                    <div class="sig-line"></div>
-                    <div class="sig-name">${company.name}</div>
-                </div>
-            </div>
+            ${buildPage('CUSTOMER')}
+            ${buildPage('GUDANG')}
         </body>
         </html>
     `;
+
+    function buildPage(copyType) {
+        const isGudang = copyType === 'GUDANG';
+        return `
+            <div class="page">
+                <div class="header">
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        ${!isNonTax && company.logo ? `<img src="${company.logo}" style="height:50px;width:auto;object-fit:contain;" alt="Logo">` : ''}
+                        <div>
+                            <div class="company-name">${company.name}</div>
+                            ${!isNonTax ? `<div class="company-info">${company.address}<br>Tel: ${company.phone} | ${company.email}</div>` : ''}
+                        </div>
+                    </div>
+                    <div class="doc-type">
+                        <h1>SURAT JALAN</h1>
+                        <div class="doc-no"># ${d.doNumber}</div>
+                        <div class="copy-label" style="font-size:8px;font-weight:900;color:#94a3b8;text-transform:uppercase;letter-spacing:2px;margin-top:4px;border:1px solid #e2e8f0;border-radius:4px;padding:2px 8px;display:inline-block;">Copy: ${copyType}</div>
+                    </div>
+                </div>
+
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:40px; margin-bottom:20px;">
+                    <table class="meta-table">
+                        <tr><td class="label">Kepada Yth</td><td class="value" style="font-size:14px;color:#2563eb">${d.recipientName || '-'}</td></tr>
+                        ${!isGudang ? `<tr><td class="label">Alamat</td><td class="value" style="font-weight:500;color:#475569">${d.address || '-'}</td></tr>` : ''}
+                        <tr><td class="label">Ref Order</td><td class="value">${d.soNumber || d.invoiceNumber || '-'}</td></tr>
+                    </table>
+                    <table class="meta-table">
+                        <tr><td class="label">Tanggal</td><td class="value">${doDate(d.date)}</td></tr>
+                        <tr><td class="label">Driver</td><td class="value">${d.driverName || '-'}</td></tr>
+                        <tr><td class="label">Kendaraan</td><td class="value">${d.vehicleNo || '-'}</td></tr>
+                    </table>
+                </div>
+
+                ${itemsTable}
+
+                <div style="display:grid; grid-template-columns:1.5fr 1fr; gap:40px;">
+                    <div class="notes">
+                        <strong style="display:block;margin-bottom:5px;color:#0f172a;text-transform:uppercase;font-size:9px">Catatan Pengiriman:</strong>
+                        ${d.notes || 'Hati-hati dalam pengiriman barang, pastikan barang sesuai dan diterima oleh pihak yang berwenang.'}
+                    </div>
+                    <div class="notes" style="background:#fff;border-left:4px solid #2563eb">
+                        <strong style="display:block;margin-bottom:5px;color:#0f172a;text-transform:uppercase;font-size:9px">Info Warehouse:</strong>
+                        Barang ini telah melewati proses verifikasi standar unit gudang kami.
+                    </div>
+                </div>
+
+                <div class="signatures">
+                    <div class="sig-box">
+                        <div class="sig-title">Diterima Oleh</div>
+                        <div class="sig-line"></div>
+                        <div class="sig-name">Penerima / Pelanggan</div>
+                    </div>
+                    <div class="sig-box">
+                        <div class="sig-title">Hormat Kami</div>
+                        <div class="sig-line"></div>
+                        <div class="sig-name">${company.name}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
 
     const pw = window.open('', '_blank', 'width=800,height=1000');
     if (pw) {

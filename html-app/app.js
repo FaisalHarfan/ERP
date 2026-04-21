@@ -7825,38 +7825,37 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
                                 
                                 <div class="bg-slate-50/80 rounded-3xl p-8 border border-slate-100 space-y-5 shadow-inner">
                                     <!-- Discount Selector -->
-                                    <div class="flex justify-between items-center">
-                                        <div class="flex items-center gap-4">
-                                            <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Adjustment Discount:</span>
+                                    <div class="flex justify-between items-center gap-4">
+                                        <div class="flex items-center gap-4 flex-wrap flex-1">
+                                            <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[120px] w-auto lg:w-[140px]">Adjustment Discount:</span>
                                             <select id="inv_discount_type" onchange="refreshInvoiceCalculation()" class="border-none rounded-xl px-3 py-1.5 text-[11px] font-black bg-white shadow-sm ring-1 ring-slate-100 outline-none appearance-none hover:ring-blue-500 cursor-pointer transition-all">
                                                 <option value="" ${!defaultDiscType ? 'selected' : ''}>Tanpa Diskon</option>
                                                 <option value="cash" ${defaultDiscType === 'cash' ? 'selected' : ''}>Persentase (%)</option>
                                                 <option value="cash_flat" ${defaultDiscType === 'cash_flat' ? 'selected' : ''}>Flat Amount (Rp)</option>
                                             </select>
                                         </div>
-                                        <div id="inv_discount_detail" class="${!defaultDiscType ? 'hidden' : 'block'}">
-                                            <input type="text" id="inv_discount_value" value="${defaultDiscValue}" oninput="refreshInvoiceCalculation()" class="border-none ring-2 ring-blue-500/10 rounded-xl px-4 py-2 text-sm w-32 text-right font-black outline-none focus:ring-blue-500 shadow-sm bg-white">
+                                        <div id="inv_discount_detail" class="${!defaultDiscType ? 'hidden' : 'block'} shrink-0 text-right">
+                                            <input type="text" id="inv_discount_value" value="${defaultDiscValue}" oninput="refreshInvoiceCalculation()" class="border-none ring-2 ring-blue-500/10 rounded-xl px-4 py-2 text-sm w-28 text-right font-black outline-none focus:ring-blue-500 shadow-sm bg-white">
                                         </div>
                                     </div>
 
                                     <div class="flex justify-between items-center text-emerald-600 font-black px-2 text-sm" id="inv_discount_row" style="display:${inheritedDiscountAmount > 0 ? 'flex' : 'none'}">
-                                        <span id="inv_discount_label" class="uppercase text-[10px]">Potongan Khusus:</span>
-                                        <span id="inv_discount_display" class="font-mono">- ${formatCurrency(inheritedDiscountAmount)}</span>
+                                        <span id="inv_discount_label" class="uppercase text-[10px] w-[140px]">Potongan Khusus:</span>
+                                        <span id="inv_discount_display" class="font-mono text-right">- ${formatCurrency(inheritedDiscountAmount)}</span>
                                     </div>
                                     
                                     <div class="border-t border-slate-200/40 my-2"></div>
 
                                     <!-- Tax Selector -->
-                                    <div class="flex justify-between items-center">
-                                       <div class="flex items-center gap-4">
-                                           <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pajak Pertambahan Nilai:</span>
+                                    <div class="flex justify-between items-center gap-4">
+                                       <div class="flex items-center gap-4 flex-wrap flex-1">
+                                           <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[120px] w-auto lg:w-[140px]">Pajak Pertambahan Nilai:</span>
                                            <select id="inv_tax_rate" onchange="refreshInvoiceCalculation()" class="border-none rounded-xl px-3 py-1.5 text-[11px] font-black bg-white shadow-sm ring-1 ring-slate-100 outline-none cursor-pointer hover:ring-blue-500 transition-all">
                                                <option value="0" ${defaultTaxRate === 0 ? 'selected' : ''}>Non PPN (0%)</option>
                                                <option value="11" ${defaultTaxRate > 0 ? 'selected' : ''}>PPN Luar (11%)</option>
                                            </select>
                                        </div>
-                                       <div class="flex flex-col items-end" id="inv_tax_row">
-                                           <span id="inv_tax_label" class="text-[9px] font-black text-slate-400 uppercase tracking-tight">PPN (${defaultTaxRate}%):</span>
+                                       <div class="flex items-center justify-end shrink-0" id="inv_tax_row">
                                            <span id="inv_tax_display" class="font-black text-orange-600 font-mono text-base">+ Rp 0</span>
                                        </div>
                                     </div>
@@ -7955,8 +7954,8 @@ window.refreshInvoiceCalculation = () => {
         document.getElementById('inv_nsfp').value = '';
     }
 
-    document.getElementById('inv_tax_label').innerText = `PPN (${taxRate}%):`;
-    document.getElementById('inv_tax_display').innerText = formatCurrency(taxAmt);
+    // document.getElementById('inv_tax_label').innerText = `PPN (${taxRate}%):`;
+    document.getElementById('inv_tax_display').innerText = '+ ' + formatCurrency(taxAmt);
     document.getElementById('inv_total_display').innerText = formatCurrency(grandTotal);
 
     const currentInvNumberEl = document.getElementById('inv_number');
