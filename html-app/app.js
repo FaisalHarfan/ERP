@@ -439,10 +439,12 @@ window.printHTML = (htmlContent, title) => {
                 <title>${title}</title>
                 <script src="https://cdn.tailwindcss.com"></script>
                 <style>
-                    body { font-family: 'Inter', sans-serif; padding: 2rem; background: white; color: black; }
+                    body { font-family: 'Inter', sans-serif; padding: 1rem; background: white; color: black; }
                     @media print {
+                        @page { margin: 5mm; size: auto; }
                         .no-print { display: none !important; }
-                        body { padding: 0.5rem; }
+                        body { padding: 0; margin: 0; }
+                        #print-internal-header { margin: 0 !important; padding: 0 !important; }
                     }
                 </style>
             </head>
@@ -456,7 +458,7 @@ window.printHTML = (htmlContent, title) => {
                     ${CONFIG.logo ? `<img src="${CONFIG.logo}" class="h-16 w-auto object-contain">` : ''}
                 </div>` : ''}
                 ${htmlContent}
-                <div class="mt-12 pt-4 border-t border-gray-100 text-[10px] text-gray-400 flex justify-between">
+                <div class="mt-4 print:mt-2 pt-2 border-t border-gray-100 text-[10px] text-gray-400 flex justify-between">
                     <span>Dicetak pada: ${new Date().toLocaleString('id-ID')}</span>
                     <span>${CONFIG.companyName} - ERP System</span>
                 </div>
@@ -5299,6 +5301,7 @@ window.refreshQTItemsTable = () => {
     }
     document.getElementById('qt_tax_display').innerText = fmt(taxAmt);
     document.getElementById('qt_tax_row').querySelector('span').innerText = `PPN (${taxRate}%):`;
+    taxRow.style.display = taxRate === 0 ? 'none' : 'flex';
 
     document.getElementById('qt_total_display').innerText = fmt(grandTotal);
     
@@ -6059,20 +6062,22 @@ window.viewQT = (id) => {
     renderBreadcrumb(['Sales', 'Quotations', 'Detail ' + qt.qtNumber]);
 
     const printableHTML = `
-           <div class="max-w-5xl mx-auto bg-white p-6 sm:p-10 shadow-sm border border-slate-100 rounded-3xl my-6">
+           <div class="max-w-5xl mx-auto bg-white p-6 sm:p-10 print:p-2 shadow-sm border border-slate-100 print:border-none rounded-3xl print:rounded-none my-6 print:m-0" id="print-internal-header">
                 <div class="flex justify-between items-start mb-10">
                     <div>
                         <h2 class="text-4xl font-black text-slate-900 tracking-tight">QUOTATION</h2>
                         <p class="text-slate-400 mt-2 font-mono text-lg">${qt.qtNumber}</p>
                     </div>
-                    <div class="text-right">
-                        <img src="assets/logo.png" alt="Logo" class="h-14 ml-auto mb-3 object-contain opacity-20">
-                        <h1 class="text-xl font-black text-slate-900 uppercase tracking-tight">${CONFIG.companyName}</h1>
-                        <p class="text-xs text-slate-400 max-w-xs ml-auto leading-relaxed mt-1">${CONFIG.companyAddress}</p>
+                    <div class="flex items-start gap-4">
+                        ${CONFIG.logo ? `<img src="${CONFIG.logo}" alt="Logo" class="h-16 w-auto object-contain">` : ''}
+                        <div class="text-right">
+                            <h1 class="text-xl font-black text-slate-900 uppercase tracking-tight">${CONFIG.companyName}</h1>
+                            <p class="text-xs text-slate-400 max-w-xs ml-auto leading-relaxed mt-1">${CONFIG.companyAddress}</p>
+                        </div>
                     </div>
                 </div>
                 
-                <div class="grid grid-cols-2 gap-12 mb-12">
+                <div class="grid grid-cols-2 gap-12 mb-8 print:mb-4">
                     <div class="space-y-4">
                         <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Customer / Recipient</h3>
                         <div class="p-5 bg-slate-50 rounded-2xl border border-slate-100">
@@ -6104,25 +6109,25 @@ window.viewQT = (id) => {
                     </div>
                 </div>
 
-                <table class="w-full text-left mb-12 border-collapse">
+                <table class="w-full text-left mb-8 print:mb-4 border-collapse">
                     <thead>
-                        <tr class="bg-slate-50 text-slate-500 text-[10px] uppercase font-black tracking-widest border-y border-slate-100">
-                            <th class="py-5 px-4">Deskripsi Produk</th>
-                            <th class="py-5 px-4 text-right">Quantity</th>
-                            <th class="py-5 px-4 text-right">Rate</th>
-                            <th class="py-5 px-4 text-right">Amount</th>
+                        <tr class="bg-slate-50 text-slate-500 text-[10px] uppercase font-black tracking-widest border-y border-slate-100 print:bg-white">
+                            <th class="py-5 px-4 print:py-2">Deskripsi Produk</th>
+                            <th class="py-5 px-4 text-right print:py-2">Quantity</th>
+                            <th class="py-5 px-4 text-right print:py-2">Rate</th>
+                            <th class="py-5 px-4 text-right print:py-2">Amount</th>
                         </tr>
                     </thead>
                     <tbody class="text-slate-700">
                         ${qt.items.map(i => `
                             <tr class="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group">
-                                <td class="py-6 px-4">
+                                <td class="py-6 px-4 print:py-2">
                                     <div class="font-black text-slate-900 text-sm group-hover:text-blue-600 transition-colors uppercase select-all">${i.prodText.split(' (')[0]}</div>
                                     <div class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Item Code: ${i.prodCode || 'N/A'}</div>
                                 </td>
-                                <td class="py-6 px-4 text-right font-black text-slate-800">${formatNumber(i.qty)}</td>
-                                <td class="py-6 px-4 text-right font-bold text-slate-500">${formatCurrency(i.price)}</td>
-                                <td class="py-6 px-4 text-right font-black text-slate-900">${formatCurrency(i.subtotal)}</td>
+                                <td class="py-6 px-4 text-right font-black text-slate-800 print:py-2">${formatNumber(i.qty)}</td>
+                                <td class="py-6 px-4 text-right font-bold text-slate-500 print:py-2">${formatCurrency(i.price)}</td>
+                                <td class="py-6 px-4 text-right font-black text-slate-900 print:py-2">${formatCurrency(i.subtotal)}</td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -6139,8 +6144,8 @@ window.viewQT = (id) => {
                         ` : ''}
                         <tr>
                             <td colspan="2"></td>
-                            <td class="py-8 px-4 text-right font-black text-slate-400 uppercase tracking-[0.2em] text-[10px]">Grand Total</td>
-                            <td class="py-8 px-4 text-right font-black text-blue-700 text-3xl tracking-tighter border-t-2 border-slate-900">${formatCurrency(qt.totalAmount)}</td>
+                            <td class="py-4 px-4 text-right font-black text-slate-400 uppercase tracking-[0.2em] text-[10px]">Grand Total</td>
+                            <td class="py-4 px-4 text-right font-black text-blue-700 text-3xl tracking-tighter border-t-2 border-slate-900">${formatCurrency(qt.totalAmount)}</td>
                         </tr>
                     </tfoot>
                 </table>
@@ -6856,7 +6861,7 @@ window.openSOModal = (qtToConvert = null) => {
                                     <span class="text-slate-400 font-bold uppercase text-[10px] tracking-widest">Net Amount (DPP):</span>
                                     <span id="so_dpp_display" class="font-bold text-slate-700 text-lg">Rp 0</span>
                                 </div>
-                                <div class="flex justify-between items-center px-4">
+                                <div class="flex justify-between items-center px-4" id="so_tax_row">
                                     <span class="text-orange-400 font-bold uppercase text-[10px] tracking-widest" id="so_tax_label">Tax (PPN 11%):</span>
                                     <span id="so_tax_display" class="font-bold text-orange-600 text-lg">Rp 0</span>
                                 </div>
@@ -7303,6 +7308,9 @@ window.recalcSOTotal = () => {
     if (document.getElementById('so_tax_label')) document.getElementById('so_tax_label').innerText = `PPN (${taxPct}%):`;
     if (document.getElementById('so_total_display')) document.getElementById('so_total_display').innerText = fmt(grand);
 
+    const taxRow = document.getElementById('so_tax_row');
+    if (taxRow) taxRow.style.display = taxPct === 0 ? 'none' : 'flex';
+
     // Store computed values
     window._soDiscountAmt = 0;
     window._soDiscountDesc = '';
@@ -7432,20 +7440,22 @@ window.viewSO = (id) => {
     renderBreadcrumb(['Sales', 'Sales Orders', 'Detail ' + so.soNumber]);
 
     const printableHTML = `
-           <div class="max-w-5xl mx-auto bg-white p-6 sm:p-10 shadow-sm border border-slate-100 rounded-3xl my-6">
+           <div class="max-w-5xl mx-auto bg-white p-6 sm:p-10 print:p-2 shadow-sm border border-slate-100 print:border-none rounded-3xl print:rounded-none my-6 print:m-0" id="print-internal-header">
                 <div class="flex justify-between items-start mb-10">
                     <div>
                         <h2 class="text-4xl font-black text-slate-900 tracking-tight">SALES ORDER</h2>
                         <p class="text-slate-400 mt-2 font-mono text-lg">${so.soNumber}</p>
                     </div>
-                    <div class="text-right">
-                        <img src="assets/logo.png" alt="Logo" class="h-14 ml-auto mb-3 object-contain opacity-20">
-                        <h1 class="text-xl font-black text-slate-900 uppercase tracking-tight">${CONFIG.companyName}</h1>
-                        <p class="text-xs text-slate-400 max-w-xs ml-auto leading-relaxed mt-1">${CONFIG.companyAddress}</p>
+                    <div class="flex items-start gap-4">
+                        ${CONFIG.logo ? `<img src="${CONFIG.logo}" alt="Logo" class="h-16 w-auto object-contain">` : ''}
+                        <div class="text-right">
+                            <h1 class="text-xl font-black text-slate-900 uppercase tracking-tight">${CONFIG.companyName}</h1>
+                            <p class="text-xs text-slate-400 max-w-xs ml-auto leading-relaxed mt-1">${CONFIG.companyAddress}</p>
+                        </div>
                     </div>
                 </div>
                 
-                <div class="grid grid-cols-2 gap-12 mb-12">
+                <div class="grid grid-cols-2 gap-12 mb-8 print:mb-4">
                     <div class="space-y-4">
                         <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Customer</h3>
                         <div class="p-5 bg-slate-50 rounded-2xl border border-slate-100">
@@ -7509,25 +7519,25 @@ window.viewSO = (id) => {
                 </div>
                 ` : ''}
                 
-                <table class="w-full text-left mb-12 border-collapse">
+                <table class="w-full text-left mb-8 print:mb-4 border-collapse">
                     <thead>
-                        <tr class="bg-slate-50 text-slate-500 text-[10px] uppercase font-black tracking-widest border-y border-slate-100">
-                            <th class="py-5 px-4 font-black">Item Description</th>
-                            <th class="py-5 px-4 text-right font-black">Quantity</th>
-                            <th class="py-5 px-4 text-right font-black">Rate</th>
-                            <th class="py-5 px-4 text-right font-black">Total</th>
+                        <tr class="bg-slate-50 text-slate-500 text-[10px] uppercase font-black tracking-widest border-y border-slate-100 print:bg-white">
+                            <th class="py-5 px-4 font-black print:py-2">Item Description</th>
+                            <th class="py-5 px-4 text-right font-black print:py-2">Quantity</th>
+                            <th class="py-5 px-4 text-right font-black print:py-2">Rate</th>
+                            <th class="py-5 px-4 text-right font-black print:py-2">Total</th>
                         </tr>
                     </thead>
                     <tbody class="text-slate-700">
                         ${so.items.map(i => `
                             <tr class="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group">
-                                <td class="py-6 px-4">
+                                <td class="py-6 px-4 print:py-2">
                                     <div class="font-black text-slate-900 text-sm group-hover:text-blue-600 transition-colors uppercase">${i.prodText.split(' (')[0]}</div>
                                     <div class="text-[9px] text-slate-300 font-bold uppercase tracking-widest mt-0.5">Stock Item: ${i.inventoryItemId?.slice(0, 8) || 'N/A'}</div>
                                 </td>
-                                <td class="py-6 px-4 text-right font-black text-slate-800">${formatNumber(i.qty)}</td>
-                                <td class="py-6 px-4 text-right font-bold text-slate-500">${formatCurrency(i.price)}</td>
-                                <td class="py-6 px-4 text-right font-black text-slate-900">${formatCurrency(i.subtotal)}</td>
+                                <td class="py-6 px-4 text-right font-black text-slate-800 print:py-2">${formatNumber(i.qty)}</td>
+                                <td class="py-6 px-4 text-right font-bold text-slate-500 print:py-2">${formatCurrency(i.price)}</td>
+                                <td class="py-6 px-4 text-right font-black text-slate-900 print:py-2">${formatCurrency(i.subtotal)}</td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -7544,8 +7554,8 @@ window.viewSO = (id) => {
                         ` : ''}
                         <tr>
                             <td colspan="2"></td>
-                            <td class="py-8 px-4 text-right font-black text-slate-400 uppercase tracking-[0.2em] text-[10px]">Total Order Amount</td>
-                            <td class="py-8 px-4 text-right font-black text-blue-700 text-3xl tracking-tighter border-t-2 border-slate-900">
+                            <td class="py-4 px-4 text-right font-black text-slate-400 uppercase tracking-[0.2em] text-[10px]">Total Order Amount</td>
+                            <td class="py-4 px-4 text-right font-black text-blue-700 text-3xl tracking-tighter border-t-2 border-slate-900">
                                 ${formatCurrency(so.totalAmount)}
                             </td>
                         </tr>
@@ -7754,18 +7764,18 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-1 md:grid-cols-4 gap-8 pt-4">
-                            <div class="space-y-3">
+                        <div class="grid grid-cols-1 md:grid-cols-5 gap-6 pt-4">
+                            <div class="space-y-3 max-w-[140px]">
                                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Nomor Faktur</label>
-                                <input type="text" id="inv_number" value="${initialInvNumber}" class="w-full px-5 py-3.5 bg-slate-50 border-2 border-slate-50 rounded-xl font-bold text-slate-400 font-mono outline-none text-base" readonly>
+                                <input type="text" id="inv_number" value="${initialInvNumber}" class="w-full px-4 py-3.5 bg-slate-50 border-2 border-slate-50 rounded-xl font-bold text-slate-400 font-mono outline-none text-[11px]" readonly>
                             </div>
                             <div class="space-y-3">
-                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Tanggal Transaksi <span class="text-red-400">*</span></label>
-                                <input type="date" id="inv_date" value="${new Date().toISOString().split('T')[0]}" onchange="updateInvDueDate()" class="w-full px-5 py-3.5 bg-slate-100/80 border-2 border-transparent rounded-xl font-bold text-slate-800 focus:bg-white focus:border-blue-500 focus:ring-0 outline-none transition-all text-sm cursor-pointer">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Tanggal <span class="text-red-400">*</span></label>
+                                <input type="date" id="inv_date" value="${new Date().toISOString().split('T')[0]}" onchange="updateInvDueDate()" class="w-full px-4 py-3.5 bg-slate-100/80 border-2 border-transparent rounded-xl font-bold text-slate-800 focus:bg-white focus:border-blue-500 focus:ring-0 outline-none transition-all text-xs cursor-pointer">
                             </div>
                             <div class="space-y-3">
-                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Term Pembayaran</label>
-                                <select id="inv_due_date_term" onchange="updateInvDueDate()" class="w-full px-5 py-3.5 bg-slate-100/80 border-2 border-transparent rounded-xl font-bold text-slate-800 focus:bg-white focus:border-blue-500 outline-none transition-all cursor-pointer text-sm">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Term</label>
+                                <select id="inv_due_date_term" onchange="updateInvDueDate()" class="w-full px-4 py-3.5 bg-slate-100/80 border-2 border-transparent rounded-xl font-bold text-slate-800 focus:bg-white focus:border-blue-500 outline-none transition-all cursor-pointer text-xs">
                                     <option value="0">Cash (COD)</option>
                                     <option value="10" selected>Tempo 7-10 Hari</option>
                                     <option value="30">30 Hari</option>
@@ -7773,8 +7783,15 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
                                 </select>
                             </div>
                             <div class="space-y-3 text-red-600">
-                                <label class="block text-[10px] font-black text-red-400 uppercase tracking-[0.2em] ml-1">Tanggal Jatuh Tempo</label>
-                                <input type="date" id="inv_due_date" class="w-full px-6 py-4 bg-red-50/50 border-2 border-transparent rounded-2xl font-black text-red-700 focus:bg-white focus:border-red-500 outline-none transition-all text-lg cursor-pointer">
+                                <label class="block text-[10px] font-black text-red-400 uppercase tracking-[0.2em] ml-1">Jatuh Tempo</label>
+                                <input type="date" id="inv_due_date" class="w-full px-4 py-3 bg-red-50/50 border-2 border-transparent rounded-xl font-black text-red-700 focus:bg-white focus:border-red-500 outline-none transition-all text-xs cursor-pointer">
+                            </div>
+                            <div class="space-y-3">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Pajak (PPN%)</label>
+                                <select id="inv_tax_rate" onchange="refreshInvoiceCalculation()" class="w-full px-4 py-3.5 bg-slate-100/80 border-2 border-transparent rounded-xl font-bold text-slate-800 focus:bg-white focus:border-blue-500 outline-none transition-all cursor-pointer text-xs">
+                                    <option value="0" ${defaultTaxRate === 0 ? 'selected' : ''}>0% (Non-PPN)</option>
+                                    <option value="11" ${defaultTaxRate > 0 ? 'selected' : ''}>11% (PPN)</option>
+                                </select>
                             </div>
                         </div>
                     </div>
@@ -7954,7 +7971,9 @@ window.refreshInvoiceCalculation = () => {
         document.getElementById('inv_nsfp').value = '';
     }
 
-    // document.getElementById('inv_tax_label').innerText = `PPN (${taxRate}%):`;
+    const invTaxRow = document.getElementById('inv_tax_row');
+    if (invTaxRow) invTaxRow.style.display = taxRate === 0 ? 'none' : 'flex';
+    document.getElementById('inv_tax_label').innerText = `Tax / PPN (${taxRate}%):`;
     document.getElementById('inv_tax_display').innerText = '+ ' + formatCurrency(taxAmt);
     document.getElementById('inv_total_display').innerText = formatCurrency(grandTotal);
 
@@ -8558,25 +8577,27 @@ window.viewInvoice = (id) => {
     const printableHTML = `
            <div class="max-w-4xl mx-auto bg-white p-6 shadow-sm rounded-xl border border-gray-100 mb-4">
                 <!-- Header: Premium Look -->
-                <div id="print-internal-header" class="flex justify-between items-start mb-8 pb-6 border-b-2 border-gray-50">
+                <div id="print-internal-header" class="flex justify-between items-start mb-8 print:mb-4 pb-6 print:pb-2 border-b-2 border-gray-50">
                     <div>
                         <div class="bg-blue-600 text-white px-3 py-1 rounded text-[10px] font-black uppercase tracking-widest mb-2 inline-block shadow-sm">Sales Invoice</div>
                         <h2 class="text-4xl font-black text-slate-800 tracking-tight">${inv.invoiceNumber}</h2>
                         <p class="text-sm text-slate-400 mt-1 font-medium italic">Referensi SO: <span class="text-blue-600 font-bold">${so ? so.soNumber : '-'}</span></p>
                     </div>
-                    <div class="text-right flex flex-col items-end">
-                        ${CONFIG.logo ? `<img src="${CONFIG.logo}" class="h-14 w-auto object-contain mb-3 drop-shadow-sm">` : ''}
-                        <h1 class="text-xl font-black text-slate-900 leading-none">${CONFIG.companyName}</h1>
-                        <p class="text-[10px] text-slate-500 max-w-[220px] leading-relaxed mt-2 uppercase font-bold tracking-tight">${CONFIG.companyAddress}</p>
-                        <div class="flex gap-2 mt-2">
-                            <span class="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">${CONFIG.companyPhone}</span>
-                            <span class="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">${CONFIG.companyEmail}</span>
+                    <div class="flex items-start gap-4">
+                        ${CONFIG.logo ? `<img src="${CONFIG.logo}" class="h-16 w-auto object-contain drop-shadow-sm">` : ''}
+                        <div class="text-right flex flex-col items-end">
+                            <h1 class="text-xl font-black text-slate-900 leading-none">${CONFIG.companyName}</h1>
+                            <p class="text-[10px] text-slate-500 max-w-[220px] leading-relaxed mt-2 uppercase font-bold tracking-tight">${CONFIG.companyAddress}</p>
+                            <div class="flex gap-2 mt-2">
+                                <span class="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">${CONFIG.companyPhone}</span>
+                                <span class="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-bold">${CONFIG.companyEmail}</span>
+                            </div>
                         </div>
                     </div>
                 </div>
                 
                 <!-- Info Section -->
-                <div class="grid grid-cols-2 gap-12 mb-10">
+                <div class="grid grid-cols-2 gap-12 mb-10 print:mb-4">
                     <div class="bg-slate-50 p-5 rounded-2xl border border-slate-100 shadow-inner">
                         <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
                             <i class="fas fa-user-tie text-blue-500"></i> DITAGIHKAN KE
@@ -8616,28 +8637,28 @@ window.viewInvoice = (id) => {
                 </div>
                 
                 <!-- Items Table -->
-                <div class="overflow-hidden rounded-2xl border border-slate-100 shadow-sm mb-8">
+                <div class="overflow-hidden rounded-2xl border border-slate-100 shadow-sm mb-8 print:mb-2">
                     <table class="w-full text-left border-collapse">
                         <thead>
                             <tr class="bg-slate-800 text-white text-[10px] uppercase font-black tracking-widest">
-                                <th class="py-4 px-4">Produk / Layanan</th>
-                                <th class="py-4 px-4 text-center">Colly</th>
-                                <th class="py-4 px-4 text-center">Qty</th>
-                                <th class="py-4 px-4 text-right">Harga Satuan</th>
-                                <th class="py-4 px-4 text-right">Subtotal</th>
+                                <th class="py-4 px-4 print:py-2">Produk / Layanan</th>
+                                <th class="py-4 px-4 text-center print:py-2">Colly</th>
+                                <th class="py-4 px-4 text-center print:py-2">Qty</th>
+                                <th class="py-4 px-4 text-right print:py-2">Harga Satuan</th>
+                                <th class="py-4 px-4 text-right print:py-2">Subtotal</th>
                             </tr>
                         </thead>
-                        <tbody class="text-slate-700 text-sm divide-y divide-slate-50">
+                        <tbody class="text-slate-700 text-sm divide-y divide-slate-50 print:divide-none">
                             ${inv.items ? inv.items.map(i => `
                                 <tr class="hover:bg-slate-50/50 transition-colors text-[11px]">
-                                    <td class="py-3 px-4">
+                                    <td class="py-3 px-4 print:py-1">
                                         <div class="font-bold text-slate-800">${i.prodText.split(' (')[0]}</div>
                                         ${i.kemasan && i.kemasan !== '-' ? `<div class="text-[9px] text-slate-400 italic">Kemasan: ${i.kemasan === '800 Gram' ? '4 KG (800 Gram)' : i.kemasan}</div>` : ''}
                                     </td>
-                                    <td class="py-3 px-4 text-center font-bold text-blue-600">${i.colly || '-'}</td>
-                                    <td class="py-3 px-4 text-center font-bold text-slate-500">${formatNumber(i.qty)}</td>
-                                    <td class="py-3 px-4 text-right font-medium text-slate-600">${formatCurrency(i.price)}</td>
-                                    <td class="py-3 px-4 text-right font-black text-slate-800">${formatCurrency(i.subtotal)}</td>
+                                    <td class="py-3 px-4 text-center font-bold text-blue-600 print:py-1">${i.colly || '-'}</td>
+                                    <td class="py-3 px-4 text-center font-bold text-slate-500 print:py-1">${formatNumber(i.qty)}</td>
+                                    <td class="py-3 px-4 text-right font-medium text-slate-600 print:py-1">${formatCurrency(i.price)}</td>
+                                    <td class="py-3 px-4 text-right font-black text-slate-800 print:py-1">${formatCurrency(i.subtotal)}</td>
                                 </tr>
                             `).join('') : '<tr><td colspan="5" class="py-8 text-center italic text-slate-400 font-medium">Tidak ada item terdaftar</td></tr>'}
                         </tbody>
@@ -8674,8 +8695,8 @@ window.viewInvoice = (id) => {
 
                             <!-- Grand Total -->
                              <tr class="bg-slate-900 text-white shadow-xl">
-                                <td colspan="4" class="py-5 px-4 text-right text-sm font-black uppercase tracking-[0.2em] italic">Grand Total:</td>
-                                <td class="py-5 px-4 text-right font-black text-2xl">${formatCurrency(inv.totalAmount)}</td>
+                                <td colspan="4" class="py-5 px-4 print:py-2 text-right text-sm font-black uppercase tracking-[0.2em] italic">Grand Total:</td>
+                                <td class="py-5 px-4 print:py-2 text-right font-black text-2xl">${formatCurrency(inv.totalAmount)}</td>
                             </tr>
                             
                             <!-- Payments info if any -->
@@ -8720,7 +8741,7 @@ window.viewInvoice = (id) => {
                 </div>
                 ` : ''}
                 
-                <div class="mt-12 border-t-2 border-dashed border-slate-100 pt-6 text-center">
+                <div class="mt-12 print:mt-4 border-t-2 border-dashed border-slate-100 pt-6 print:pt-2 text-center">
                     <p class="text-[10px] text-slate-400 font-black uppercase tracking-[0.3em]">Thank you for your business!</p>
                 </div>
            </div>
@@ -10459,3 +10480,24 @@ window.toggleSelectAllQT = (master) => {
         cb.checked = master.checked;
     });
 };
+
+/**
+ * ── DYNAMIC BRANDING ──────────────────────────────────────────
+ * Updates the sidebar logo and company name based on CONFIG.
+ */
+window.renderAppBranding = () => {
+    const logoMain = document.getElementById('sidebar-logo-main');
+    const logoCollapsed = document.getElementById('sidebar-logo-collapsed');
+    
+    if (CONFIG.logo) {
+        if (logoMain) logoMain.src = CONFIG.logo;
+        if (logoCollapsed) logoCollapsed.src = CONFIG.logo;
+    }
+};
+
+// Initial branding call
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => window.renderAppBranding());
+} else {
+    window.renderAppBranding();
+}

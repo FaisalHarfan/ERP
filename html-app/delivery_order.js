@@ -1045,7 +1045,7 @@ window.printDeliveryOrder = function (id) {
                 .meta-table td { padding:3px 0; font-size:10px; vertical-align:top; }
                 .label { font-weight:bold; color:#64748b; text-transform:uppercase; font-size:8px; width:100px; }
                 .value { font-weight:700; color:#0f172a; text-transform:uppercase; }
-                .signatures { margin-top:15px; display:grid; grid-template-columns:1fr 1fr; gap:20px; text-align:center; }
+                .signatures { margin-top:15px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; text-align:center; }
                 .sig-box { border:1px solid #e2e8f0; border-radius:8px; padding:10px; }
                 .sig-title { font-size:9px; font-weight:900; color:#94a3b8; text-transform:uppercase; margin-bottom:40px; letter-spacing:1px; }
                 .sig-line { border-top:2px solid #0f172a; width:80%; margin:0 auto 3px; }
@@ -1070,10 +1070,10 @@ window.printDeliveryOrder = function (id) {
             <div class="page">
                 <div class="header">
                     <div style="display:flex;align-items:center;gap:12px;">
-                        ${!isNonTax && company.logo ? `<img src="${company.logo}" style="height:50px;width:auto;object-fit:contain;" alt="Logo">` : ''}
+                        ${!isNonTax && company.logo && !isGudang ? `<img src="${company.logo}" style="height:50px;width:auto;object-fit:contain;" alt="Logo">` : ''}
                         <div>
                             <div class="company-name">${company.name}</div>
-                            ${!isNonTax ? `<div class="company-info">${company.address}<br>Tel: ${company.phone} | ${company.email}</div>` : ''}
+                            ${!isNonTax && !isGudang ? `<div class="company-info">${company.address}<br>Tel: ${company.phone} | ${company.email}</div>` : ''}
                         </div>
                     </div>
                     <div class="doc-type">
@@ -1083,10 +1083,11 @@ window.printDeliveryOrder = function (id) {
                     </div>
                 </div>
 
+                ${!isGudang ? `
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:40px; margin-bottom:20px;">
                     <table class="meta-table">
                         <tr><td class="label">Kepada Yth</td><td class="value" style="font-size:14px;color:#2563eb">${d.recipientName || '-'}</td></tr>
-                        ${!isGudang ? `<tr><td class="label">Alamat</td><td class="value" style="font-weight:500;color:#475569">${d.address || '-'}</td></tr>` : ''}
+                        <tr><td class="label">Alamat</td><td class="value" style="font-weight:500;color:#475569">${d.address || '-'}</td></tr>
                         <tr><td class="label">Ref Order</td><td class="value">${d.soNumber || d.invoiceNumber || '-'}</td></tr>
                     </table>
                     <table class="meta-table">
@@ -1095,9 +1096,11 @@ window.printDeliveryOrder = function (id) {
                         <tr><td class="label">Kendaraan</td><td class="value">${d.vehicleNo || '-'}</td></tr>
                     </table>
                 </div>
+                ` : ''}
 
                 ${itemsTable}
 
+                ${!isGudang ? `
                 <div style="display:grid; grid-template-columns:1.5fr 1fr; gap:40px;">
                     <div class="notes">
                         <strong style="display:block;margin-bottom:5px;color:#0f172a;text-transform:uppercase;font-size:9px">Catatan Pengiriman:</strong>
@@ -1116,11 +1119,17 @@ window.printDeliveryOrder = function (id) {
                         <div class="sig-name">Penerima / Pelanggan</div>
                     </div>
                     <div class="sig-box">
+                        <div class="sig-title">Pengemudi</div>
+                        <div class="sig-line"></div>
+                        <div class="sig-name">${d.driverName || 'Driver / Kurir'}</div>
+                    </div>
+                    <div class="sig-box">
                         <div class="sig-title">Hormat Kami</div>
                         <div class="sig-line"></div>
                         <div class="sig-name">${company.name}</div>
                     </div>
                 </div>
+                ` : ''}
             </div>
         `;
     }

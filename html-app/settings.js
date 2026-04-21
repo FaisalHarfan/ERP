@@ -499,6 +499,7 @@ window.saveCompanyConfig = () => {
     localStorage.setItem('unityerp_company_config', JSON.stringify(cfg));
     // Update runtime CONFIG
     Object.assign(CONFIG, cfg);
+    if (window.renderAppBranding) window.renderAppBranding();
     showToast('Pengaturan perusahaan berhasil disimpan', 'success');
 };
 
