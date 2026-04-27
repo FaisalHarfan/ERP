@@ -6579,6 +6579,7 @@ function renderPurchaseRFQs() {
         let options = `<option value="view">Lihat Detail</option>`;
 
         if (canEdit && rfq.status === 'DRAFT') {
+            options += `<option value="edit">Edit</option>`;
             options += `<option value="send">Kirim ke Supplier</option>`;
             options += `<option value="confirm">Confirm</option>`;
             options += `<option value="delete">Hapus</option>`;
@@ -6726,6 +6727,7 @@ window.handleRFQAction = (selectEl, rfqId) => {
     if (!action) return;
 
     if (action === 'view')      return viewPurchaseRFQ(rfqId);
+    if (action === 'edit')      return openRFQForm(rfqId);
     if (action === 'send')      return openSendPurchaseRFQModal(rfqId);
     if (action === 'confirm')   return updatePurchaseRFQStatus(rfqId, 'CONFIRMED');
     if (action === 'create_po') return convertRFQtoPO(rfqId);
@@ -6794,21 +6796,34 @@ window.onRFQCategoryChange = () => {
     // Legacy function. Item clearing is now handled directly in selectPurchaseCategory.
 };
 
-window.openRFQForm = () => {
+window.openRFQForm = (rfqId = null) => {
     if (window.navigateTo) navigateTo('purchase-rfqs');
     const listView = document.getElementById('rfq-list-view');
     const formView = document.getElementById('rfq-form-view');
-    if (!listView || !formView) { renderPurchaseRFQs(); setTimeout(openRFQForm, 80); return; }
+    if (!listView || !formView) { renderPurchaseRFQs(); setTimeout(() => openRFQForm(rfqId), 80); return; }
 
     listView.classList.add('hidden');
     formView.classList.remove('hidden');
-    window.tempRFQItems = [];
 
-    renderBreadcrumb(['Purchasing', 'Request For Quotation', 'Buat RFQ Baru']);
+    let rfq = null;
+    window._editingRFQId = null;
+
+    if (rfqId) {
+        rfq = db.findById('purchaseRFQs', rfqId);
+        if (rfq) {
+            window._editingRFQId = rfqId;
+            window.tempRFQItems = [...rfq.items];
+            renderBreadcrumb(['Purchasing', 'Request For Quotation', 'Edit RFQ']);
+        }
+    } else {
+        window.tempRFQItems = [];
+        renderBreadcrumb(['Purchasing', 'Request For Quotation', 'Buat RFQ Baru']);
+    }
 
     const suppliers = db.read('suppliers');
     const supOpts = suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = rfq ? rfq.date.split('T')[0] : new Date().toISOString().split('T')[0];
+    const rfqNumberStr = rfq ? rfq.rfqNumber : generatePurchaseRFQNumber();
 
     formView.innerHTML = `
         <div class="animate-in fade-in slide-in-from-bottom-2 duration-400 -m-4 sm:-m-6 h-[calc(100vh-64px)] flex flex-col overflow-hidden bg-white">
@@ -6835,16 +6850,16 @@ window.openRFQForm = () => {
                         <div class="grid grid-cols-1 sm:grid-cols-4 gap-6">
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">No. RFQ <span class="text-red-400">*</span></label>
-                                <input type="text" id="rfq_number" value="${generatePurchaseRFQNumber()}"
+                                <input type="text" id="rfq_number" value="${rfqNumberStr}"
                                     class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 outline-none" readonly>
                             </div>
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Supplier <span class="text-red-400">*</span></label>
                                 <div class="relative" id="rfq_supplier_container">
-                                    <input type="text" id="rfq_supplier_display" value="-- Pilih Supplier --" readonly
+                                    <input type="text" id="rfq_supplier_display" value="${rfq ? (suppliers.find(s => s.id === rfq.supplierId)?.name || '-- Pilih Supplier --') : '-- Pilih Supplier --'}" readonly
                                         onclick="toggleSupplierDropdown('rfq_supplier_dropdown')"
                                         class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
-                                    <input type="hidden" id="rfq_supplier_id" value="">
+                                    <input type="hidden" id="rfq_supplier_id" value="${rfq ? rfq.supplierId : ''}">
                                     <div id="rfq_supplier_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden min-w-full animate-in fade-in zoom-in-95 duration-200">
                                         <div class="max-h-56 overflow-y-auto p-1">
                                             ${suppliers.map(s => `
@@ -6881,10 +6896,10 @@ window.openRFQForm = () => {
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Kategori <span class="text-red-400">*</span></label>
                                 <div class="relative" id="rfq_category_container">
-                                    <input type="text" id="rfq_category_display" value="-- Pilih Kategori --" readonly
+                                    <input type="text" id="rfq_category_display" value="${rfq && rfq.category ? rfq.category : '-- Pilih Kategori --'}" readonly
                                         onclick="toggleCategoryDropdown('rfq_category_dropdown')"
                                         class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
-                                    <input type="hidden" id="rfq_category" value="">
+                                    <input type="hidden" id="rfq_category" value="${rfq && rfq.category ? rfq.category : ''}">
                                     <div id="rfq_category_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden min-w-full animate-in fade-in zoom-in-95 duration-200">
                                         <div class="max-h-56 overflow-y-auto p-1">
                                             <div onclick="selectPurchaseCategory('RFQ', 'Bahan Baku')" class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">Bahan Baku</div>
@@ -6965,7 +6980,7 @@ window.openRFQForm = () => {
                         <div class="pt-4 border-t border-dashed border-slate-100">
                             <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Catatan / Keterangan</label>
                             <textarea id="rfq_notes" rows="3" placeholder="Tambahkan catatan atau instruksi khusus..."
-                                class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 text-sm text-slate-700 outline-none resize-none"></textarea>
+                                class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 text-sm text-slate-700 outline-none resize-none">${rfq && rfq.notes ? rfq.notes : ''}</textarea>
                         </div>
                     </div>
 
@@ -7128,21 +7143,36 @@ window.saveNewPurchaseRFQ = () => {
     const supplierId = document.getElementById('rfq_supplier_id').value;
     const rfqDate = document.getElementById('rfq_date').value;
     const category = document.getElementById('rfq_category').value;
+    const notes = document.getElementById('rfq_notes')?.value || '';
 
     if (!supplierId) { showToast('Pilih Supplier', 'error'); return; }
     if (!rfqDate) { showToast('Pilih Tanggal RFQ', 'error'); return; }
     if (!category) { showToast('Pilih Kategori Pembelian', 'error'); return; }
 
-    db.insert('purchaseRFQs', {
-        rfqNumber,
-        date: new Date(rfqDate).toISOString(),
-        supplierId,
-        category,
-        status: 'DRAFT',
-        items: window.tempRFQItems
-    });
+    if (window._editingRFQId) {
+        db.update('purchaseRFQs', window._editingRFQId, {
+            rfqNumber,
+            date: new Date(rfqDate).toISOString(),
+            supplierId,
+            category,
+            items: window.tempRFQItems,
+            notes
+        });
+        showToast('RFQ Berhasil Diperbarui!');
+    } else {
+        db.insert('purchaseRFQs', {
+            rfqNumber,
+            date: new Date(rfqDate).toISOString(),
+            supplierId,
+            category,
+            status: 'DRAFT',
+            items: window.tempRFQItems,
+            notes
+        });
+        showToast('RFQ Berhasil Disimpan!');
+    }
 
-    showToast('RFQ Berhasil Disimpan!');
+    window._editingRFQId = null;
     closeRFQForm();
     renderPurchaseRFQs();
 };
