@@ -12854,6 +12854,17 @@ document.addEventListener('DOMContentLoaded', () => {
             if (window.renderSalesDeliveryOrders) { renderSalesDeliveryOrders(); return; }
         }
 
+        // Intercept back button for Purchasing Module Form Views
+        const rfqForm = document.getElementById('rfq-form-view');
+        if (rfqForm && !rfqForm.classList.contains('hidden')) {
+            if (window.closeRFQForm) { closeRFQForm(); return; }
+        }
+
+        const poFormView = document.getElementById('po-form-view');
+        if (poFormView && !poFormView.classList.contains('hidden')) {
+            if (window.renderPurchaseOrders) { renderPurchaseOrders(); return; }
+        }
+
 
         if (window._navigationHistory.length > 0) {
             const lastView = window._navigationHistory.pop();
