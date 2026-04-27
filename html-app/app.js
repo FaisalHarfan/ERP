@@ -110,7 +110,7 @@ const BREADCRUMB_MAP = {
     'purchase-invoices': ['Purchasing', 'Purchase Invoice'],
     'purchase-receiving': ['Purchasing', 'Purchase Received'],
     'purchase-reports': ['Purchasing', 'Reports'],
-    'master-suppliers': ['Purchasing', 'Suppliers'],
+    'master-suppliers': ['Purchasing', 'Supplier Addresses & Contacts'],
     'inventory-dashboard': ['Stock', 'Dashboard'],
     'inventory-master': ['Stock', 'Master Items'],
     'inventory-logs': ['Stock', 'Daily Logs'],
