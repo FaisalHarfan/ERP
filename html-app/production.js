@@ -564,19 +564,21 @@ window.updateMOForm = () => {
         for (let opt of mchSelect.options) { opt.classList.remove('hidden'); }
     }
 
-    if (stage === 'MIXING') {
+    if (stage === 'MIXING' || stage === 'OVEN_BASAH') {
         grpBom?.classList.remove('hidden');
         grpMch?.classList.add('hidden');
         grpProd?.classList.remove('hidden');
         grpShift?.classList.add('hidden');
         
-        const rmItems = invItems.filter(i => i.category === 'RAW_MATERIAL' && i.status !== 'INACTIVE');
+        const stageLabel = stage === 'OVEN_BASAH' ? 'Oven Basah' : 'Campuran';
+        const stageColor = stage === 'OVEN_BASAH' ? 'orange' : 'indigo';
+        const rmItems = invItems.filter(i => (i.category === 'RAW_MATERIAL') && i.status !== 'INACTIVE');
         const rmOpts = rmItems.map(i => `<option value="${i.id}" data-unit="${i.unit}" data-stock="${db.getInventoryStock(i.id)}">${i.itemName} (Gudang: ${prodFmt(db.getInventoryStock(i.id))})</option>`).join('');
         sec.innerHTML = `
-            <div class="bg-indigo-50 border-2 border-indigo-100 rounded-xl p-4">
-                <h4 class="text-xs font-black text-indigo-800 mb-3 flex items-center justify-between uppercase tracking-widest">
-                    <span><i class="fas fa-boxes mr-1"></i>Kebutuhan Bahan Baku</span>
-                    <span class="text-[10px] lowercase font-normal italic">* stok campuran bisa bertambah karena air</span>
+            <div class="bg-${stageColor}-50 border-2 border-${stageColor}-100 rounded-xl p-4">
+                <h4 class="text-xs font-black text-${stageColor}-800 mb-3 flex items-center justify-between uppercase tracking-widest">
+                    <span><i class="fas fa-boxes mr-1"></i>Kebutuhan Bahan Baku & Bumbu</span>
+                    <span class="text-[10px] lowercase font-normal italic">* untuk proses ${stageLabel}</span>
                 </h4>
                 <div class="flex items-center gap-2 mb-2 px-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">
                     <div class="w-24">Lokasi</div>
@@ -585,7 +587,7 @@ window.updateMOForm = () => {
                     <div class="w-8"></div>
                 </div>
                 <div id="mo_rm_list" class="space-y-3"></div>
-                <button type="button" onclick="addRMRowMO()" class="mt-3 text-[10px] font-black text-indigo-600 hover:text-indigo-800 bg-white border border-indigo-200 px-4 py-2 rounded-lg shadow-sm transition-all active:scale-95">
+                <button type="button" onclick="addRMRowMO()" class="mt-3 text-[10px] font-black text-${stageColor}-600 hover:text-${stageColor}-800 bg-white border border-${stageColor}-200 px-4 py-2 rounded-lg shadow-sm transition-all active:scale-95">
                     <i class="fas fa-plus mr-1"></i>Tambah Bahan Lagi
                 </button>
                 <select id="mo_rm_opts" class="hidden">${rmOpts}</select>
@@ -777,8 +779,8 @@ window.startMO = () => {
     let isValid = stage && date && productId && moNumber;
     let errorMsg = 'Lengkapi tahap, tanggal, dan pilih produk';
 
-    // Machine is required for non-mixing and non-packing stages if visible
-    if (stage !== 'MIXING' && stage !== 'PACKING' && !machineId) {
+    // Machine is required for non-mixing/non-oven-basah and non-packing stages if visible
+    if (stage !== 'MIXING' && stage !== 'OVEN_BASAH' && stage !== 'PACKING' && !machineId) {
         isValid = false;
         errorMsg = 'Silakan pilih mesin/oven yang digunakan';
     }
@@ -803,7 +805,7 @@ window.startMO = () => {
 
     const validationErrors = [];
 
-    if (stage === 'MIXING') {
+    if (stage === 'MIXING' || stage === 'OVEN_BASAH') {
         const rmRows = document.querySelectorAll('#mo_rm_list .flex');
         const inputItems = [];
         let totalInput = 0;
@@ -828,15 +830,7 @@ window.startMO = () => {
         }
 
         if (validationErrors.length > 0) {
-            const errorHtml = `<div class="text-left text-xs bg-red-50 p-3 rounded-lg border border-red-200 text-red-700 mt-2">
-                <p class="font-bold mb-1 underline">STOK TIDAK CUKUP:</p>
-                <ul class="list-disc list-inside space-y-1">
-                    ${validationErrors.map(e => `<li>${e}</li>`).join('')}
-                </ul>
-                <p class="mt-2 italic opacity-75">* Silakan hubungi PUD atau lakukan mutasi stok terlebih dahulu.</p>
-            </div>`;
             showToast("Stok tidak memadai untuk memulai produksi!", 'error');
-            // We can even show a more detailed modal here if needed, but toast + return is minimum
             console.error("Stock Validation Failed:", validationErrors);
             return;
         }
@@ -909,10 +903,10 @@ window.openCompleteMOModal = (id) => {
         const matRows = (mo.inputItems || []).map(m => `
             <div class="flex items-center gap-3 bg-slate-50 p-2 rounded-lg border border-slate-100">
                 <div class="flex-1 text-xs font-bold text-slate-700">${m.itemName}</div>
-                <div class="w-24 text-right text-[9px] text-slate-400 italic">Resep: ${prodFmt(m.qty)} ${m.unit || ''}</div>
+                <div class="w-auto text-right text-[9px] text-slate-400 italic">Resep: ${prodFmt(m.qty)}</div>
                 <div class="flex items-center gap-1 bg-white px-2 py-1 rounded border border-slate-200 shadow-sm focus-within:border-blue-400 trasition-all">
-                    <input type="text" inputmode="decimal" class="mo_final_rm_actual w-24 bg-transparent border-0 text-sm font-black text-blue-600 text-right focus:ring-0 outline-none" data-item-id="${m.inventoryItemId}" data-item-name="${m.itemName}" data-item-unit="${m.unit}" value="${formatNumber(m.qty)}">
-                    <span class="text-[9px] font-black text-slate-400 uppercase tracking-tighter">Kg</span>
+                    <input type="text" inputmode="decimal" oninput="formatNumericInput(this)" class="mo_final_rm_actual w-20 bg-transparent border-0 text-sm font-black text-blue-600 text-right focus:ring-0 outline-none" data-item-id="${m.inventoryItemId}" data-item-name="${m.itemName}" data-item-unit="${m.unit}" value="${prodFmt(m.qty)}">
+                    <span class="text-[9px] font-black text-slate-400 uppercase tracking-tighter">${m.unit || 'Kg'}</span>
                 </div>
             </div>
         `).join('');
@@ -940,7 +934,55 @@ window.openCompleteMOModal = (id) => {
                     </div>
                 </div>
             </div>`;
-    } else if (mo.stage === 'OVEN_BASAH' || mo.stage === 'OVEN_KERING' || mo.stage === 'PACKING') {
+    } else if (mo.stage === 'OVEN_BASAH') {
+        // OVEN_BASAH uses same BOM-based material list as MIXING
+        const ovenBasahOutputItem = (() => {
+            const items2 = db.read('inventoryItems') || [];
+            let item2 = items2.find(i => i.itemName === 'Oven Basah' && i.category === 'OVEN_BASAH_STOCK');
+            if (!item2) {
+                const itemCode2 = db.generateItemCode('OVEN_BASAH_STOCK');
+                item2 = db.insert('inventoryItems', { itemCode: itemCode2, itemName: 'Oven Basah', category: 'OVEN_BASAH_STOCK', unit: 'SAK', minStock: 0, purchasePrice: 0, status: 'ACTIVE' });
+            }
+            return item2;
+        })();
+
+        const matRowsOB = (mo.inputItems || []).map(m => `
+            <div class="flex items-center gap-3 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                <div class="flex-1 text-xs font-bold text-slate-700">${m.itemName}</div>
+                <div class="w-auto text-right text-[9px] text-slate-400 italic">Resep: ${prodFmt(m.qty)}</div>
+                <div class="flex items-center gap-1 bg-white px-2 py-1 rounded border border-slate-200 shadow-sm focus-within:border-orange-400 transition-all">
+                    <input type="text" inputmode="decimal" oninput="formatNumericInput(this)" class="mo_final_rm_actual w-20 bg-transparent border-0 text-sm font-black text-orange-600 text-right focus:ring-0 outline-none" data-item-id="${m.inventoryItemId}" data-item-name="${m.itemName}" data-item-unit="${m.unit}" value="${prodFmt(m.qty)}">
+                    <span class="text-[9px] font-black text-slate-400 uppercase tracking-tighter">${m.unit || 'Kg'}</span>
+                </div>
+            </div>
+        `).join('');
+
+        dynamicBody = `
+            <div class="bg-orange-50/50 border-2 border-orange-100 rounded-xl p-4 mb-4">
+                <h4 class="text-xs font-black text-orange-800 mb-3 uppercase tracking-widest flex items-center gap-2">
+                    <i class="fas fa-clipboard-check"></i> Realisasi Pemakaian Bahan Oven Basah
+                </h4>
+                <div class="space-y-2">${matRowsOB}</div>
+            </div>
+
+            <div class="bg-white border-2 border-slate-100 p-4 rounded-xl shadow-sm">
+                <h4 class="text-xs font-black text-slate-800 mb-3 uppercase tracking-widest flex items-center gap-2">
+                    <i class="fas fa-boxes text-orange-500"></i> Input Hasil Oven Basah
+                </h4>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Jumlah Karung <span class="text-red-500">*</span></label>
+                        <input type="text" id="mo_final_output_sacks" inputmode="numeric" oninput="formatNumericInput(this)" class="w-full border-2 border-slate-300 rounded-lg px-3 py-2 text-xl font-black text-slate-700 bg-slate-50 focus:bg-white focus:border-orange-500 outline-none transition-all placeholder:text-slate-200" placeholder="0">
+                    </div>
+                    <div>
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Masuk ke Stok</p>
+                        <p class="text-sm font-black text-slate-800 mt-2">${ovenBasahOutputItem.itemName}</p>
+                        <input type="hidden" id="mo_final_output_item" value="${ovenBasahOutputItem.id}">
+                    </div>
+                </div>
+            </div>`;
+
+    } else if (mo.stage === 'OVEN_KERING' || mo.stage === 'PACKING') {
         const stageInfo = PROD_STAGES.find(s => s.key === mo.stage);
         const nextLabel = prodStageLabel(mo.stage);
         const inputItem = db.findById('inventoryItems', mo.inputItemId);
@@ -1152,12 +1194,13 @@ window.finalizeMO = (id) => {
         status: 'DONE', 
         completedAt: new Date().toISOString(),
         notes: (mo.notes || '') + (document.getElementById('mo_final_notes')?.value ? '\n[FINISH]: ' + document.getElementById('mo_final_notes').value : ''),
-        wasteQty: mo.stage === 'MIXING' ? 0 : (parseFormattedNum(document.getElementById('mo_final_waste')?.value) || 0),
-        qcStatus: mo.stage === 'MIXING' ? 'PASSED' : (document.getElementById('mo_final_qc')?.value || 'PASSED')
+        wasteQty: (mo.stage === 'MIXING' || mo.stage === 'OVEN_BASAH') ? 0 : (parseFormattedNum(document.getElementById('mo_final_waste')?.value) || 0),
+        qcStatus: (mo.stage === 'MIXING' || mo.stage === 'OVEN_BASAH') ? 'PASSED' : (document.getElementById('mo_final_qc')?.value || 'PASSED')
     };
 
-    // Deduct inputs at completion (as per user request: reference-only at start)
-    if (mo.stage === 'MIXING') {
+    if (mo.stage === 'MIXING' || mo.stage === 'OVEN_BASAH') {
+        const outputLocation = mo.stage === 'OVEN_BASAH' ? 'OVEN_BASAH' : 'MIXING';
+        const stageLabelLog = mo.stage === 'OVEN_BASAH' ? 'Oven Basah' : 'Mixing';
         const actualRows = document.querySelectorAll('.mo_final_rm_actual');
         const updatedInputItems = [];
         let totalInputActual = 0;
@@ -1177,7 +1220,7 @@ window.finalizeMO = (id) => {
         });
 
         if (errors.length > 0) {
-            showToast("Stok Bahan tidak cukup untuk menyelesaikan Mixing: " + errors.join("; "), 'error');
+            showToast(`Stok Bahan tidak cukup untuk menyelesaikan ${stageLabelLog}: ` + errors.join("; "), 'error');
             return;
         }
 
@@ -1188,27 +1231,26 @@ window.finalizeMO = (id) => {
             const qtyActual = parseFormattedNum(row.value);
 
             if (itemId && qtyActual > 0) {
-                db.addInventoryTransaction(itemId, 'OUT', qtyActual, 'PRODUCTION_OUT', null, `FINISH Mixing MO ${mo.moNumber}: Consumed for ${mo.productName}`, 'Admin', 'WHS');
+                db.addInventoryTransaction(itemId, 'OUT', qtyActual, 'PRODUCTION_OUT', null, `FINISH ${stageLabelLog} MO ${mo.moNumber}: Consumed for ${mo.productName}`, 'Admin', 'WHS');
                 updatedInputItems.push({ inventoryItemId: itemId, itemName, qty: qtyActual, unit: itemUnit });
                 totalInputActual += qtyActual;
             }
         });
 
         updates.inputItems = updatedInputItems;
-        updates.inputQty = totalInputActual; // Update with actual total
+        updates.inputQty = totalInputActual;
 
         const sacks = parseFormattedNum(document.getElementById('mo_final_output_sacks')?.value);
         const outputItemId = document.getElementById('mo_final_output_item')?.value;
 
-        if (sacks <= 0) { showToast('Masukkan jumlah karung hasil mixing', 'error'); return; }
+        if (sacks <= 0) { showToast(`Masukkan jumlah karung hasil ${stageLabelLog}`, 'error'); return; }
         if (!outputItemId) { showToast('Pilih item stok tujuan', 'error'); return; }
 
-        updates.outputQty = sacks; // Primary quantity is now sack count as per user request
+        updates.outputQty = sacks;
         updates.outputSacks = sacks;
         updates.outputItemId = outputItemId;
         
-        // In to MIXING location
-        db.addInventoryTransaction(outputItemId, 'IN', updates.outputQty, 'PRODUCTION_IN', null, `FINISH Mixing MO ${mo.moNumber}: ${mo.productName}`, 'Admin', 'MIXING');
+        db.addInventoryTransaction(outputItemId, 'IN', updates.outputQty, 'PRODUCTION_IN', null, `FINISH ${stageLabelLog} MO ${mo.moNumber}: ${mo.productName}`, 'Admin', outputLocation);
 
     } else {
         const inputQtyActual = parseFormattedNum(document.getElementById('mo_final_input_actual')?.value);
@@ -1369,7 +1411,7 @@ window.viewProductionMO = (id) => {
             ${mo.shrinkagePct > 0 ? `<div><span class="text-gray-400">Penyusutan:</span> <strong class="text-orange-600">${mo.shrinkagePct}%</strong></div>` : ''}
         </div>
         ${detailRows ? `<div class="bg-gray-50 p-4 rounded-xl border border-gray-100">${detailRows}</div>` : ''}
-        ${mo.notes ? `<div class="bg-blue-50 p-3 rounded-lg text-xs text-blue-700"><i class="fas fa-info-circle mr-1"></i>${mo.notes}</div>` : ''}
+        ${mo.notes ? `<div class="bg-blue-50 p-3 rounded-lg text-xs text-blue-700 whitespace-pre-wrap flex items-start gap-2"><i class="fas fa-info-circle mt-0.5"></i><div>${mo.notes}</div></div>` : ''}
     </div>`;
     showModal(`Detail MO - ${mo.moNumber}`, body, `<button onclick="closeModal()" class="btn-secondary">Tutup</button>`);
 };

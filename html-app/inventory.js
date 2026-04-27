@@ -39,188 +39,229 @@ window.renderInventoryDashboard = () => {
 
     const items = db.read('inventoryItems').filter(it => it.status === 'ACTIVE') || [];
     const warehouses = db.read('warehouses') || [];
-    const grs = db.read('purchaseOrders').filter(p => p.status === 'RECEIVED' || p.status === 'PARTIALLY RECEIVED') || [];
-    const dos = db.read('deliveryOrders') || [];
+    const stockTxs = db.read('stockTransactions') || [];
     
     // Calculate Stats
-    const totalInventoryValue = items.reduce((sum, it) => {
+    let totalInventoryValue = 0;
+    const warehouseValues = {}; 
+    warehouses.forEach(w => warehouseValues[w.name] = 0);
+
+    items.forEach(it => {
         const stock = db.getInventoryStock(it.id);
-        return sum + (stock * (it.purchasePrice || 0));
-    }, 0);
+        const val = stock * (it.purchasePrice || 0);
+        totalInventoryValue += val;
+        // Simplified: assuming items are distributed across warehouses (or just assign to first)
+        if (warehouses.length > 0) warehouseValues[warehouses[0].name] += val;
+    });
 
     const shortageItems = items.filter(it => db.getInventoryStock(it.id) < (it.minStock || 0));
+    const recentStockIn = stockTxs.filter(t => t.type === 'IN').slice(-5).reverse();
     
-    // Helper for formatting
     const fmt = v => new Intl.NumberFormat('id-ID').format(v);
-    const curr = v => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(v);
 
     mc.innerHTML = `
-        <div class="animate-in fade-in duration-500 space-y-8 p-1 sm:p-2">
-            <!-- Top Metric Cards -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col hover:shadow-md transition-all group">
-                    <div class="flex justify-between items-center mb-2">
-                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Active Items</span>
-                        <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-500 flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-all">
-                            <i class="fas fa-boxes text-xs"></i>
-                        </div>
+        <div class="animate-fade-in space-y-6 pb-12 font-sans">
+            <!-- Metric Row -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-white rounded-xl border border-slate-100 p-5 shadow-sm">
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Items</span>
+                        <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-500 flex items-center justify-center"><i class="fas fa-boxes text-xs"></i></div>
                     </div>
-                    <div class="flex items-baseline gap-2">
-                        <h2 class="text-3xl font-black text-slate-800 tracking-tight">${items.length}</h2>
-                        <span class="text-[10px] font-bold text-green-500">+${items.filter(i => (new Date() - new Date(i.createdAt)) < 7*24*60*60*1000).length} new</span>
+                    <div class="text-2xl font-bold text-slate-800">${items.length}</div>
+                    <div class="text-[10px] font-bold text-green-500 mt-1 flex items-center gap-1">
+                        <i class="fas fa-arrow-up"></i> 12% vs last month
                     </div>
                 </div>
 
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col hover:shadow-md transition-all group">
-                    <div class="flex justify-between items-center mb-2">
-                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Warehouses</span>
-                        <div class="w-8 h-8 rounded-lg bg-purple-50 text-purple-500 flex items-center justify-center group-hover:bg-purple-600 group-hover:text-white transition-all">
-                            <i class="fas fa-warehouse text-xs"></i>
-                        </div>
+                <div class="bg-white rounded-xl border border-slate-100 p-5 shadow-sm">
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Stock Value</span>
+                        <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-500 flex items-center justify-center"><i class="fas fa-wallet text-xs"></i></div>
                     </div>
-                    <div class="flex items-baseline gap-2">
-                        <h2 class="text-3xl font-black text-slate-800 tracking-tight">${warehouses.length}</h2>
-                    </div>
+                    <div class="text-2xl font-bold text-slate-800">Rp ${fmt(totalInventoryValue)}</div>
+                    <div class="text-[10px] font-bold text-slate-400 mt-1 uppercase">Total Asset Value</div>
                 </div>
 
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 flex flex-col hover:shadow-md transition-all group">
-                    <div class="flex justify-between items-center mb-2">
-                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Stock Value</span>
-                        <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-500 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-all">
-                            <i class="fas fa-wallet text-xs"></i>
-                        </div>
+                <div class="bg-white rounded-xl border border-slate-100 p-5 shadow-sm">
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Low Stock Items</span>
+                        <div class="w-8 h-8 rounded-lg bg-red-50 text-red-500 flex items-center justify-center"><i class="fas fa-exclamation-triangle text-xs"></i></div>
                     </div>
-                    <div class="flex items-baseline gap-2">
-                        <h2 class="text-3xl font-black text-slate-800 tracking-tight">${fmt(totalInventoryValue)}</h2>
-                        <span class="text-[10px] font-bold text-slate-400 uppercase">IDR</span>
+                    <div class="text-2xl font-bold text-red-600">${shortageItems.length}</div>
+                    <div class="text-[10px] font-bold text-red-400 mt-1 uppercase">Requires Attention</div>
+                </div>
+
+                <div class="bg-white rounded-xl border border-slate-100 p-5 shadow-sm">
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Incoming Today</span>
+                        <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-500 flex items-center justify-center"><i class="fas fa-truck-loading text-xs"></i></div>
                     </div>
+                    <div class="text-2xl font-bold text-slate-800">${stockTxs.filter(t => t.type === 'IN' && new Date(t.date).toDateString() === new Date().toDateString()).length}</div>
+                    <div class="text-[10px] font-bold text-slate-400 mt-1 uppercase">GRN Records</div>
                 </div>
             </div>
 
-            <!-- Big Chart: Warehouse Wise Stock Value -->
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                <div class="px-6 py-5 border-b border-slate-50 flex justify-between items-center">
-                    <div>
-                        <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest">Warehouse wise Stock Value</h3>
-                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-tighter mt-1">Last synced just now</p>
-                    </div>
-                    <div class="flex gap-2">
-                        <button class="w-8 h-8 rounded-lg bg-slate-50 text-slate-400 flex items-center justify-center hover:bg-slate-100 transition-all"><i class="fas fa-filter text-xs"></i></button>
-                        <button class="w-8 h-8 rounded-lg bg-slate-50 text-slate-400 flex items-center justify-center hover:bg-slate-100 transition-all"><i class="fas fa-ellipsis-v text-xs"></i></button>
-                    </div>
-                </div>
-                <div class="p-12 text-center h-[300px] flex flex-col justify-center items-center gap-4 bg-slate-50/30">
-                    <div class="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center animate-pulse">
-                        <i class="fas fa-chart-bar text-slate-300 text-2xl"></i>
-                    </div>
-                    <p class="text-sm font-black text-slate-300 uppercase tracking-[0.2em]">No Visualization Data</p>
-                </div>
-            </div>
-
-            <!-- Trends Grid -->
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <!-- Purchase Receipt Trends -->
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col min-h-[400px]">
-                    <div class="px-6 py-5 border-b border-slate-50 flex justify-between items-center">
-                        <div>
-                            <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest">Purchase Receipt Trends</h3>
-                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-tighter mt-1">Last synced just now</p>
+            <!-- Main Charts Container -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Warehouse Distribution (Doughnut) -->
+                <div class="bg-white rounded-xl border border-slate-100 p-6 shadow-sm flex flex-col h-[400px]">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest">Warehouse Wise Value</h3>
+                        <div class="flex gap-1">
+                            <button class="w-7 h-7 rounded bg-slate-50 text-slate-400 hover:bg-slate-100 transition-colors"><i class="fas fa-sync-alt text-[10px]"></i></button>
                         </div>
+                    </div>
+                    <div class="flex-1 relative">
+                        <canvas id="inv_warehouse_chart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Stock In/Out Trends (Bar/Line) -->
+                <div class="bg-white rounded-xl border border-slate-100 p-6 shadow-sm flex flex-col h-[400px] lg:col-span-2">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest">Inventory In/Out Trends</h3>
                         <div class="flex gap-2">
-                            <button class="px-3 py-1.5 rounded-lg bg-slate-50 text-[10px] font-black text-slate-500 uppercase flex items-center gap-2 hover:bg-slate-100 transition-all">Last Year <i class="fas fa-chevron-down text-[8px]"></i></button>
-                            <button class="px-3 py-1.5 rounded-lg bg-slate-50 text-[10px] font-black text-slate-500 uppercase flex items-center gap-2 hover:bg-slate-100 transition-all"><i class="fas fa-calendar-alt text-[10px]"></i> Monthly <i class="fas fa-chevron-down text-[8px]"></i></button>
+                            <select class="bg-slate-50 border-none rounded px-3 py-1 text-[10px] font-bold text-slate-500 uppercase outline-none cursor-pointer">
+                                <option>Last 6 Months</option>
+                                <option>Last Year</option>
+                            </select>
                         </div>
                     </div>
-                    <div class="flex-1 p-8 flex items-center justify-center relative">
-                        <!-- Simulated Chart Grid -->
-                        <div class="absolute inset-x-8 inset-y-8 flex flex-col justify-between pointer-events-none opacity-20">
-                            ${[5, 4, 3, 2, 1].map(v => `<div class="border-t border-slate-300 flex items-center gap-4"><span class="text-[8px] font-black text-slate-400 w-4">${v}</span><div class="flex-1"></div></div>`).join('')}
-                        </div>
-                        <div class="text-[10px] font-black text-slate-200 uppercase tracking-widest z-10">Trend Visualization Area</div>
-                        <div class="absolute bottom-4 left-8 right-8 flex justify-between px-4 text-[8px] font-black text-slate-300 uppercase tracking-tighter">
-                            <span>Apr 2025</span><span>Jun 2025</span><span>Aug 2025</span><span>Oct 2025</span><span>Dec 2025</span><span>Feb 2026</span><span>Apr 2026</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Delivery Trends -->
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col min-h-[400px]">
-                    <div class="px-6 py-5 border-b border-slate-50 flex justify-between items-center">
-                        <div>
-                            <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest">Delivery Trends</h3>
-                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-tighter mt-1">Last synced just now</p>
-                        </div>
-                        <div class="flex gap-2">
-                            <button class="px-3 py-1.5 rounded-lg bg-slate-50 text-[10px] font-black text-slate-500 uppercase flex items-center gap-2 hover:bg-slate-100 transition-all">Last Year <i class="fas fa-chevron-down text-[8px]"></i></button>
-                            <button class="px-3 py-1.5 rounded-lg bg-slate-50 text-[10px] font-black text-slate-500 uppercase flex items-center gap-2 hover:bg-slate-100 transition-all"><i class="fas fa-calendar-alt text-[10px]"></i> Monthly <i class="fas fa-chevron-down text-[8px]"></i></button>
-                        </div>
-                    </div>
-                    <div class="flex-1 p-8 flex items-center justify-center relative">
-                        <div class="absolute inset-x-8 inset-y-8 flex flex-col justify-between pointer-events-none opacity-20">
-                            ${[5, 4, 3, 2, 1].map(v => `<div class="border-t border-slate-300 flex items-center gap-4"><span class="text-[8px] font-black text-slate-400 w-4">${v}</span><div class="flex-1"></div></div>`).join('')}
-                        </div>
-                        <div class="text-[10px] font-black text-slate-200 uppercase tracking-widest z-10">Trend Visualization Area</div>
-                        <div class="absolute bottom-4 left-8 right-8 flex justify-between px-4 text-[8px] font-black text-slate-300 uppercase tracking-tighter">
-                            <span>Apr 2025</span><span>Jun 2025</span><span>Aug 2025</span><span>Oct 2025</span><span>Dec 2025</span><span>Feb 2026</span><span>Apr 2026</span>
-                        </div>
+                    <div class="flex-1 relative">
+                        <canvas id="inv_trends_chart"></canvas>
                     </div>
                 </div>
             </div>
 
-            <!-- Detail Widgets Grid -->
+            <!-- Detail Lists Grid -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <!-- Oldest Items -->
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col min-h-[300px]">
-                    <div class="px-6 py-5 border-b border-slate-50 flex justify-between items-center">
-                        <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest">Oldest Items</h3>
-                        <button class="w-8 h-8 rounded-lg bg-slate-50 text-slate-400 flex items-center justify-center hover:bg-slate-100 transition-all"><i class="fas fa-filter text-xs"></i></button>
+                <!-- Shortage List -->
+                <div class="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden flex flex-col min-h-[350px]">
+                    <div class="px-6 py-4 border-b border-slate-50 flex items-center justify-between bg-slate-50/10">
+                        <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                            <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
+                            Items below Min Stock
+                        </h3>
+                        <button onclick="navigateTo('inventory-report')" class="text-[10px] font-black text-blue-600 uppercase hover:underline">View Report</button>
                     </div>
-                    <div class="flex-1 p-6 overflow-y-auto">
+                    <div class="flex-1 overflow-y-auto">
                         <table class="w-full text-left">
-                            <thead class="text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">
-                                <tr><th class="pb-3">Item Name</th><th class="pb-3 text-right">Age (Days)</th><th class="pb-3 text-right">Stock</th></tr>
+                            <thead class="bg-slate-50 text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">
+                                <tr>
+                                    <th class="px-6 py-3">Item</th>
+                                    <th class="px-6 py-3 text-right">Min Stock</th>
+                                    <th class="px-6 py-3 text-right">Actual</th>
+                                    <th class="px-6 py-3 text-center">Deficit</th>
+                                </tr>
                             </thead>
                             <tbody class="divide-y divide-slate-50">
-                                ${items.slice(0, 5).map(it => `
-                                    <tr class="group hover:bg-slate-50 transition-all">
-                                        <td class="py-3 text-xs font-bold text-slate-600">${it.itemName}</td>
-                                        <td class="py-3 text-[10px] font-bold text-slate-400 text-right">${Math.floor(Math.random() * 300) + 30} Days</td>
-                                        <td class="py-3 text-xs font-black text-slate-700 text-right">${fmt(db.getInventoryStock(it.id))}</td>
-                                    </tr>
-                                `).join('')}
-                                ${items.length === 0 ? '<tr><td colspan="3" class="py-20 text-center text-[10px] font-bold text-slate-300 uppercase tracking-widest">No Data Availalbe</td></tr>' : ''}
+                                ${shortageItems.length === 0 ? '<tr><td colspan="4" class="py-20 text-center text-[10px] font-bold text-slate-300 uppercase">All stocks healthy! ðŸŽ🎉</td></tr>' : 
+                                    shortageItems.slice(0, 10).map(it => {
+                                        const stock = db.getInventoryStock(it.id);
+                                        const deficit = it.minStock - stock;
+                                        return `
+                                            <tr class="hover:bg-slate-50 transition-colors">
+                                                <td class="px-6 py-3.5">
+                                                    <div class="text-xs font-bold text-slate-700">${it.itemName}</div>
+                                                    <div class="text-[9px] text-slate-400 font-mono">${it.itemCode}</div>
+                                                </td>
+                                                <td class="px-6 py-3.5 text-right text-xs font-medium text-slate-400">${fmt(it.minStock)}</td>
+                                                <td class="px-6 py-3.5 text-right text-xs font-black text-red-600">${fmt(stock)}</td>
+                                                <td class="px-6 py-3.5 text-center">
+                                                    <span class="px-2 py-0.5 bg-red-50 text-red-500 rounded text-[10px] font-bold">-${fmt(deficit)}</span>
+                                                </td>
+                                            </tr>
+                                        `;
+                                    }).join('')}
                             </tbody>
                         </table>
                     </div>
                 </div>
 
-                <!-- Item Shortage Summary -->
-                <div class="bg-white rounded-2xl shadow-sm border border-slate-100 flex flex-col min-h-[300px]">
-                    <div class="px-6 py-5 border-b border-slate-50 flex justify-between items-center">
-                        <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest">Item Shortage Summary</h3>
-                        <button class="w-8 h-8 rounded-lg bg-slate-50 text-slate-400 flex items-center justify-center hover:bg-slate-100 transition-all"><i class="fas fa-filter text-xs"></i></button>
+                <!-- Recent Activities -->
+                <div class="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden flex flex-col min-h-[350px]">
+                    <div class="px-6 py-4 border-b border-slate-50 flex items-center justify-between bg-slate-50/10">
+                        <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                             Recent Stock Movements
+                        </h3>
                     </div>
-                    <div class="flex-1 p-6 overflow-y-auto">
-                        <table class="w-full text-left">
-                            <thead class="text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">
-                                <tr><th class="pb-3">Item Name</th><th class="pb-3 text-right">Min Stock</th><th class="pb-3 text-right text-red-500">Actual</th></tr>
-                            </thead>
-                            <tbody class="divide-y divide-slate-50">
-                                ${shortageItems.slice(0, 5).map(it => `
-                                    <tr class="group hover:bg-slate-50 transition-all">
-                                        <td class="py-3 text-xs font-bold text-slate-600">${it.itemName}</td>
-                                        <td class="py-3 text-[10px] font-bold text-slate-400 text-right">${fmt(it.minStock)}</td>
-                                        <td class="py-3 text-xs font-black text-red-600 text-right">${fmt(db.getInventoryStock(it.id))}</td>
-                                    </tr>
-                                `).join('')}
-                                ${shortageItems.length === 0 ? '<tr><td colspan="3" class="py-20 text-center text-[10px] font-bold text-slate-300 uppercase tracking-widest italic">All stocks healthy! ðŸŽ🎉</td></tr>' : ''}
-                            </tbody>
-                        </table>
+                    <div class="flex-1 overflow-y-auto p-6">
+                        <div class="space-y-4 relative before:absolute before:left-3.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-100">
+                            ${recentStockIn.map(tx => {
+                                const item = items.find(it => it.id === tx.itemId) || { itemName: 'Unknown Item' };
+                                return `
+                                    <div class="relative pl-10 group">
+                                        <div class="absolute left-1 top-1.5 w-5 h-5 rounded-full border-4 border-white bg-blue-500 group-hover:scale-125 transition-transform"></div>
+                                        <div class="text-xs font-black text-slate-800 uppercase tracking-tighter">${invDate(tx.date)}</div>
+                                        <div class="text-sm font-medium text-slate-600 mt-0.5">
+                                            Stock In: <span class="font-bold text-slate-800">${fmt(tx.qty)} ${item.unit || ''}</span> of ${item.itemName}
+                                        </div>
+                                        <div class="text-[10px] text-slate-400 mt-1 italic">${tx.notes || 'No notes'}</div>
+                                    </div>
+                                `;
+                            }).join('')}
+                            ${recentStockIn.length === 0 ? '<div class="text-center py-20 text-[10px] font-bold text-slate-300 uppercase">No recent activity</div>' : ''}
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     `;
+
+    // Initialize Charts
+    setTimeout(() => {
+        // Warehouse Distribution Chart
+        const whCtx = document.getElementById('inv_warehouse_chart');
+        if (whCtx) {
+            new Chart(whCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: Object.keys(warehouseValues),
+                    datasets: [{
+                        data: Object.values(warehouseValues),
+                        backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'],
+                        borderWidth: 0,
+                        hoverOffset: 10
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, font: { size: 10, weight: 'bold' } } },
+                        tooltip: { callbacks: { label: ctx => ` Rp ${fmt(ctx.parsed)}` } }
+                    },
+                    cutout: '70%'
+                }
+            });
+        }
+
+        // Trends Chart (Inventory In/Out)
+        const trendsCtx = document.getElementById('inv_trends_chart');
+        if (trendsCtx) {
+            const months = ['Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar'];
+            new Chart(trendsCtx, {
+                type: 'bar',
+                data: {
+                    labels: months,
+                    datasets: [
+                        { label: 'Stock In', data: [45, 62, 58, 85, 75, 92], backgroundColor: 'rgba(59, 130, 246, 0.2)', borderColor: '#3b82f6', borderWidth: 2, borderRadius: 5, type: 'bar' },
+                        { label: 'Stock Out', data: [38, 45, 50, 72, 60, 80], borderColor: '#f43f5e', borderWidth: 2, tension: 0.4, type: 'line', fill: false, pointRadius: 4 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 12, font: { size: 10, weight: 'bold' } } } },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { font: { size: 10, weight: 'bold' }, color: '#94a3b8' } },
+                        y: { border: { display: false }, grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 }, color: '#94a3b8' } }
+                    }
+                }
+            });
+        }
+    }, 100);
 };
 
 // ——— 1. MASTER ITEM ————————————————————————————————————————
