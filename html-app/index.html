@@ -175,9 +175,11 @@
                             <i class="fas fa-chevron-down text-[10px] opacity-70 transition-transform duration-200" id="purchase-reports-dropdown-icon"></i>
                         </button>
                         <div id="purchase-reports-dropdown" class="hidden flex-col pl-9 space-y-1 mt-1 transition-all">
-                            <a href="#" data-view="supplier-payments" class="nav-btn block w-full py-1.5 text-[13px] text-slate-600 hover:text-slate-900 rounded-md transition-colors sidebar-label">Supplier Payments</a>
-                            <a href="#" data-view="purchase-reports" class="nav-btn block w-full py-1.5 text-[13px] text-slate-600 hover:text-slate-900 rounded-md transition-colors sidebar-label">Purchasing Reports</a>
+                            <a href="#" data-view="purchase-report-analytics" class="nav-btn block w-full py-1.5 text-[13px] text-slate-600 hover:text-slate-900 rounded-md transition-colors sidebar-label">Purchasing Analytics</a>
                             <a href="#" data-view="master-suppliers" class="nav-btn block w-full py-1.5 text-[13px] text-slate-600 hover:text-slate-900 rounded-md transition-colors sidebar-label">Supplier Addresses &amp; Contacts</a>
+                            <a href="#" data-view="purchase-report-trends" class="nav-btn block w-full py-1.5 text-[13px] text-slate-600 hover:text-slate-900 rounded-md transition-colors sidebar-label">Purchase Invoice Trends</a>
+                            <a href="#" data-view="purchase-rfq-trends" class="nav-btn block w-full py-1.5 text-[13px] text-slate-600 hover:text-slate-900 rounded-md transition-colors sidebar-label">Request For Quotation Trends</a>
+                            <a href="#" data-view="purchase-order-trends" class="nav-btn block w-full py-1.5 text-[13px] text-slate-600 hover:text-slate-900 rounded-md transition-colors sidebar-label">Purchase Orders Trends</a>
                         </div>
                     </div>
                 </div>
@@ -218,13 +220,6 @@
                             class="fas fa-shipping-fast text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         <span class="sidebar-label">Pengiriman (DO)</span>
                     </a>
-                    <a href="#" data-view="inventory-monthly-report"
-                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
-                        <div class="active-indicator"></div>
-                        <i
-                            class="fas fa-calendar-alt text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
-                        <span class="sidebar-label">Mutasi Stok Bulanan</span>
-                    </a>
                     <a href="#" data-view="sales-returns"
                         class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
@@ -246,13 +241,20 @@
                             class="fas fa-exclamation-triangle text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         <span class="sidebar-label">Judgment</span>
                     </a>
-                    <a href="#" data-view="sales-return-reports"
-                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
-                        <div class="active-indicator"></div>
-                        <i
-                            class="fas fa-file-invoice text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
-                        <span class="sidebar-label">Laporan Retur</span>
-                    </a>
+                    <div class="nav-dropdown-wrapper">
+                        <button type="button" onclick="document.getElementById('inventory-reports-dropdown').classList.toggle('hidden'); document.getElementById('inventory-reports-dropdown-icon').classList.toggle('rotate-180');"
+                            class="w-full flex items-center justify-between px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group transition-colors">
+                            <div class="flex items-center">
+                                <i class="fas fa-table text-[12px] w-4 mr-2 opacity-70 group-hover:opacity-100 transition-opacity text-slate-500"></i>
+                                <span class="sidebar-label">Reports</span>
+                            </div>
+                            <i class="fas fa-chevron-down text-[10px] opacity-70 transition-transform duration-200" id="inventory-reports-dropdown-icon"></i>
+                        </button>
+                        <div id="inventory-reports-dropdown" class="hidden flex-col pl-9 space-y-1 mt-1 transition-all">
+                            <a href="#" data-view="inventory-monthly-report" class="nav-btn block w-full py-1.5 text-[13px] text-slate-600 hover:text-slate-900 rounded-md transition-colors sidebar-label">Mutasi Stok Bulanan</a>
+                            <a href="#" data-view="sales-return-reports" class="nav-btn block w-full py-1.5 text-[13px] text-slate-600 hover:text-slate-900 rounded-md transition-colors sidebar-label">Laporan Retur</a>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -270,20 +272,6 @@
                             class="fas fa-terminal text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         <span class="sidebar-label">Production Dashboard</span>
                     </a>
-                    <a href="#" data-view="production-bom"
-                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
-                        <div class="active-indicator"></div>
-                        <i
-                            class="fas fa-list-ul text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
-                        <span class="sidebar-label">Bill Of Material ( BOM )</span>
-                    </a>
-                    <a href="#" data-view="master-machines"
-                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
-                        <div class="active-indicator"></div>
-                        <i
-                            class="fas fa-cogs text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
-                        <span class="sidebar-label">Machine Master</span>
-                    </a>
                     <a href="#" data-view="production-mo"
                         class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
@@ -291,34 +279,38 @@
                             class="fas fa-tasks text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         <span class="sidebar-label">Manufacturing Order ( MO )</span>
                     </a>
-                    <a href="#" data-view="production-stock-master"
-                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
-                        <div class="active-indicator"></div>
-                        <i
-                            class="fas fa-boxes text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
-                        <span class="sidebar-label">Stock Master</span>
-                    </a>
-                    <a href="#" data-view="production-wip-stock"
-                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
-                        <div class="active-indicator"></div>
-                        <i
-                            class="fas fa-boxes-stacked text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
-                        <span class="sidebar-label">WIP & History Stock</span>
-                    </a>
-                    <a href="#" data-view="inventory-shrinkage"
-                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
-                        <div class="active-indicator"></div>
-                        <i
-                            class="fas fa-percentage text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
-                        <span class="sidebar-label">Shrinkage Report</span>
-                    </a>
-                    <a href="#" data-view="production-reports"
-                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
-                        <div class="active-indicator"></div>
-                        <i
-                            class="fas fa-file-contract text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
-                        <span class="sidebar-label">Production Reports</span>
-                    </a>
+
+                    <div class="nav-dropdown-wrapper">
+                        <button type="button" onclick="document.getElementById('production-master-dropdown').classList.toggle('hidden'); document.getElementById('production-master-dropdown-icon').classList.toggle('rotate-180');"
+                            class="w-full flex items-center justify-between px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group transition-colors">
+                            <div class="flex items-center">
+                                <i class="fas fa-database text-[12px] w-4 mr-2 opacity-70 group-hover:opacity-100 transition-opacity text-slate-500"></i>
+                                <span class="sidebar-label font-medium">Master Data</span>
+                            </div>
+                            <i class="fas fa-chevron-down text-[10px] opacity-70 transition-transform duration-200" id="production-master-dropdown-icon"></i>
+                        </button>
+                        <div id="production-master-dropdown" class="hidden flex-col pl-9 space-y-1 mt-1 transition-all">
+                            <a href="#" data-view="production-bom" class="nav-btn block w-full py-1.5 text-[13px] text-slate-600 hover:text-slate-900 rounded-md transition-colors sidebar-label">Bill Of Material ( BOM )</a>
+                            <a href="#" data-view="master-machines" class="nav-btn block w-full py-1.5 text-[13px] text-slate-600 hover:text-slate-900 rounded-md transition-colors sidebar-label">Machine Master</a>
+                            <a href="#" data-view="production-stock-master" class="nav-btn block w-full py-1.5 text-[13px] text-slate-600 hover:text-slate-900 rounded-md transition-colors sidebar-label">Stock Master</a>
+                        </div>
+                    </div>
+
+                    <div class="nav-dropdown-wrapper">
+                        <button type="button" onclick="document.getElementById('production-reports-dropdown').classList.toggle('hidden'); document.getElementById('production-reports-dropdown-icon').classList.toggle('rotate-180');"
+                            class="w-full flex items-center justify-between px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group transition-colors">
+                            <div class="flex items-center">
+                                <i class="fas fa-file-invoice text-[12px] w-4 mr-2 opacity-70 group-hover:opacity-100 transition-opacity text-slate-500"></i>
+                                <span class="sidebar-label font-medium">Reports</span>
+                            </div>
+                            <i class="fas fa-chevron-down text-[10px] opacity-70 transition-transform duration-200" id="production-reports-dropdown-icon"></i>
+                        </button>
+                        <div id="production-reports-dropdown" class="hidden flex-col pl-9 space-y-1 mt-1 transition-all">
+                            <a href="#" data-view="production-wip-stock" class="nav-btn block w-full py-1.5 text-[13px] text-slate-600 hover:text-slate-900 rounded-md transition-colors sidebar-label">Mutasi Stock Bulanan</a>
+                            <a href="#" data-view="inventory-shrinkage" class="nav-btn block w-full py-1.5 text-[13px] text-slate-600 hover:text-slate-900 rounded-md transition-colors sidebar-label">Laporan Penyusutan</a>
+                            <a href="#" data-view="production-reports" class="nav-btn block w-full py-1.5 text-[13px] text-slate-600 hover:text-slate-900 rounded-md transition-colors sidebar-label">Production Reports</a>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -600,13 +592,14 @@
     <script src="db.js"></script>
     <script src="data.js"></script>
     <script src="export.js"></script>
-    <script src="inventory.js"></script>
-    <script src="production.js"></script>
+    <script src="inventory.js?v=3"></script>
+    <script src="production.js?v=3"></script>
     <script src="finance.js"></script>
     <script src="sales_return.js"></script>
     <script src="delivery_order.js"></script>
     <script src="settings.js"></script>
-    <script src="app.js?v=2"></script>
+    <script src="purchase_reports.js"></script>
+    <script src="app.js?v=3"></script>
     <script>
         // ── Populate sidebar with session user ─────────────────────
         (function () {

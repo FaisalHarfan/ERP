@@ -61,6 +61,11 @@ window._uiState = {
 
 // --- Navigation History ---
 window._navigationHistory = [];
+window.pushCurrentToHistory = () => {
+    if (window._currentView && (!window._navigationHistory.length || window._navigationHistory[window._navigationHistory.length - 1] !== window._currentView)) {
+        window._navigationHistory.push(window._currentView);
+    }
+};
 
 window.toggleSOFilter = () => { window._uiState.soFilterOpen = !window._uiState.soFilterOpen; renderSalesOrders(); };
 window.toggleSIFilter = () => { window._uiState.siFilterOpen = !window._uiState.siFilterOpen; renderSalesInvoices(); };
@@ -89,46 +94,54 @@ window.activeDepartment = null; // Track current active department for sidebar f
 
 const BREADCRUMB_MAP = {
     'launcher': [],
-    'dashboard': ['Dashboard Overview'],
-    'sales-dashboard': ['Sales', 'Sales Dashboard'],
-    'sales-quotations': ['Sales', 'Quotations'],
-    'sales-orders': ['Sales', 'Sales Orders'],
-    'sales-invoices': ['Sales', 'Sales Invoices'],
-    'sales-delivery-orders': ['Sales', 'Delivery Orders'],
-    'sales-reports': ['Sales', 'Reports'],
-    'sales-report-analytics': ['Sales', 'Reports', 'Sales Analytics'],
-    'sales-report-address': ['Sales', 'Reports', 'Customer Addresses & Contacts'],
-    'sales-report-trends': ['Sales', 'Reports', 'Sales Invoice Trends'],
-    'sales-quotation-trends': ['Sales', 'Reports', 'Quotations Trends'],
-    'sales-order-trends': ['Sales', 'Reports', 'Sales Orders Trends'],
-    'sales-customers': ['Sales', 'Customers'],
-    'sales-returns': ['Sales', 'Sales Returns'],
-    'product-exchanges': ['Sales', 'Product Exchanges'],
-    'purchase-dashboard': ['Purchasing', 'Dashboard'],
-    'purchase-rfqs': ['Purchasing', 'Request For Quotation'],
-    'purchase-orders': ['Purchasing', 'Purchase Orders'],
-    'purchase-invoices': ['Purchasing', 'Purchase Invoice'],
-    'purchase-receiving': ['Purchasing', 'Purchase Received'],
-    'purchase-reports': ['Purchasing', 'Reports'],
-    'master-suppliers': ['Purchasing', 'Supplier Addresses & Contacts'],
-    'inventory-dashboard': ['Stock', 'Dashboard'],
-    'inventory-master': ['Stock', 'Master Items'],
-    'inventory-logs': ['Stock', 'Daily Logs'],
-    'inventory-judgment': ['Stock', 'Judgment'],
-    'inventory-shrinkage': ['Stock', 'Shrinkage'],
-    'inventory-transfer': ['Stock', 'Stock Transfer'],
-    'production-dashboard': ['Production', 'Dashboard'],
-    'production-mo': ['Production', 'Manufacturing Orders'],
-    'production-stock': ['Production', 'Stock Master'],
+    'dashboard': ['Dashboard'],
+    'sales-dashboard': ['Penjualan', 'Dashboard'],
+    'sales-quotations': ['Penjualan', 'Quotations'],
+    'sales-orders': ['Penjualan', 'Sales Orders'],
+    'sales-invoices': ['Penjualan', 'Sales Invoices'],
+    'sales-delivery-orders': ['Penjualan', 'Delivery Orders'],
+    'sales-reports': ['Penjualan', 'Reports'],
+    'sales-report-analytics': ['Penjualan', 'Reports', 'Sales Analytics'],
+    'sales-report-address': ['Penjualan', 'Reports', 'Customer Addresses & Contacts'],
+    'sales-report-trends': ['Penjualan', 'Reports', 'Sales Invoice Trends'],
+    'sales-quotation-trends': ['Penjualan', 'Reports', 'Quotations Trends'],
+    'sales-order-trends': ['Penjualan', 'Reports', 'Sales Orders Trends'],
+    'sales-customers': ['Penjualan', 'Customers'],
+    'sales-returns': ['Penjualan', 'Sales Returns'],
+    'product-exchanges': ['Penjualan', 'Product Exchanges'],
+    'purchase-dashboard': ['Pembelian', 'Dashboard'],
+    'purchase-rfqs': ['Pembelian', 'Request For Quotation'],
+    'purchase-orders': ['Pembelian', 'Purchase Orders'],
+    'purchase-invoices': ['Pembelian', 'Purchase Invoice'],
+    'purchase-receiving': ['Pembelian', 'Purchase Received'],
+    'purchase-reports': ['Pembelian', 'Reports'],
+    'purchase-report-analytics': ['Pembelian', 'Reports', 'Purchasing Analytics'],
+    'master-suppliers': ['Pembelian', 'Reports', 'Supplier Addresses & Contacts'],
+    'purchase-report-trends': ['Pembelian', 'Reports', 'Purchase Invoice Trends'],
+    'purchase-rfq-trends': ['Pembelian', 'Reports', 'Request For Quotation Trends'],
+    'purchase-order-trends': ['Pembelian', 'Reports', 'Purchase Orders Trends'],
+    'inventory-dashboard': ['Logistik', 'Dashboard'],
+    'inventory-master': ['Logistik', 'Master Items'],
+    'inventory-logs': ['Logistik', 'Daily Logs'],
+    'inventory-judgment': ['Logistik', 'Judgment'],
+    'inventory-shrinkage': ['Produksi', 'Reports', 'Laporan Penyusutan'],
+    'inventory-transfer': ['Logistik', 'Stock Transfer'],
+    'production-dashboard': ['Produksi', 'Dashboard'],
+    'production-mo': ['Produksi', 'Manufacturing Orders'],
+    'production-wip-stock': ['Produksi', 'Reports', 'Mutasi Stock Bulanan'],
+    'production-stock': ['Produksi', 'Master', 'Stock Master'],
+    'production-bom': ['Produksi', 'Master', 'BOM'],
+    'master-machines': ['Produksi', 'Master', 'Machine Master'],
+    'production-reports': ['Produksi', 'Reports', 'Production Reports'],
     'finance-dashboard': ['Finance', 'Dashboard'],
     'finance-ar': ['Finance', 'Accounts Receivable'],
     'finance-ap': ['Finance', 'Accounts Payable'],
     'finance-journal': ['Finance', 'General Ledger'],
     'finance-coa': ['Finance', 'Chart of Accounts'],
-    'settings-dashboard': ['Settings', 'Overview'],
-    'settings-users': ['Settings', 'Users'],
-    'settings-roles': ['Settings', 'Roles'],
-    'settings-company': ['Settings', 'Company Profile']
+    'settings-dashboard': ['Pengaturan', 'Overview'],
+    'settings-users': ['Pengaturan', 'Users'],
+    'settings-roles': ['Pengaturan', 'Roles'],
+    'settings-company': ['Pengaturan', 'Company Profile']
 };
 
 window.renderBreadcrumb = (pathItems = [], badge = null) => {
@@ -210,6 +223,10 @@ const views = {
     'purchase-invoices': renderPurchaseInvoices,
     'supplier-payments': renderSupplierPayments,
     'purchase-reports': renderPurchaseReports,
+    'purchase-report-analytics': () => window.renderPurchaseAnalytics(),
+    'purchase-report-trends': () => window.renderPurchaseInvoiceTrends(),
+    'purchase-rfq-trends': () => window.renderPurchaseRFQTrends(),
+    'purchase-order-trends': () => window.renderPurchaseOrderTrends(),
     'purchase-receiving': renderPurchaseReceiving,
     'purchase-receiving-history': () => { window.activeGRTab = 'history'; renderPurchaseReceiving(); },
     // Sales Module
@@ -233,6 +250,7 @@ const views = {
     'production-dashboard': renderProductionBoard,
     'production-bom': window.renderBOMManagement,
     'production-mo': window.renderProductionMO,
+    'production-shift-report': () => window.renderProductionShiftReport(),
     'production-wip-stock': window.renderProductionWIPStock,
     'production-reports': window.renderProductionReports,
     'production-stock-master': window.renderProductionStockMaster,
@@ -276,7 +294,7 @@ const MODULE_VIEW_MAP = {
     'master-products': 'logistik', 'stock-card': 'logistik',
     'inventory-dashboard': 'logistik', 'inventory-master': 'logistik', 'inventory-po-receipt': 'logistik', 'inventory-delivery': 'logistik', 'inventory-monthly-report': 'logistik', 'inventory-shrinkage': 'logistik', 'inventory-judgment': 'logistik',
     'inventory-card': 'logistik', 'inventory-shrinkage': 'produksi', 'inventory-monthly-report': 'logistik', 'inventory-conversion': 'logistik',
-    'production-dashboard': 'produksi', 'production-bom': 'produksi', 'production-mo': 'produksi', 'production-wip-stock': 'produksi', 'production-reports': 'produksi', 'production-stock-master': 'produksi', 'master-machines': 'produksi',
+    'production-dashboard': 'produksi', 'production-bom': 'produksi', 'production-mo': 'produksi', 'production-shift-report': 'produksi', 'production-wip-stock': 'produksi', 'production-reports': 'produksi', 'production-stock-master': 'produksi', 'master-machines': 'produksi',
     'sales-returns': 'logistik', 'sales-exchanges': 'logistik', 'sales-return-reports': 'logistik',
     'finance-dashboard': 'finance', 'finance-accounts': 'finance',
     'finance-ar': 'finance',
@@ -498,8 +516,11 @@ function navigateTo(viewId, isBack = false) {
 
     // Track history
     if (!isBack) {
-        // Don't push if it's the same as current
-        if (window._currentView && window._currentView !== viewId) {
+        // Loop protection: if we go back to a view already in history, truncate
+        const existingIdx = window._navigationHistory.indexOf(viewId);
+        if (existingIdx !== -1) {
+            window._navigationHistory = window._navigationHistory.slice(0, existingIdx);
+        } else if (window._currentView && window._currentView !== viewId) {
             window._navigationHistory.push(window._currentView);
         }
     }
@@ -2077,16 +2098,28 @@ window.openCustomerModal = (id = null, afterView = null) => {
                     <i class="fas fa-chevron-down text-[10px] text-slate-400 group-hover:text-slate-600 transition-colors"></i>
                 </h4>
                 <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                    <div class="flex space-x-2 mb-3">
-                        <select id="cust_cp_item" class="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all">
-                            <option value="">-- Pilih Produk (Finished Goods) --</option>
-                            ${(() => {
-                                const items = db.read('inventoryItems').filter(i => i.category === 'FINISHED_GOODS' && i.status !== 'INACTIVE');
-                                return items.length ? items.map(i => `<option value="${i.id}" data-name="${i.itemName}">${i.itemCode} - ${i.itemName}</option>`).join('') : '<option disabled>Belum ada produk</option>';
-                            })()}
-                        </select>
-                        <input type="number" id="cust_cp_price" placeholder="Harga Spesial (Rp)" min="0" class="w-48 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all">
-                        <button type="button" onclick="addCustomerProduct()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm"><i class="fas fa-plus"></i></button>
+                    <div class="flex gap-2 mb-4">
+                        <div class="flex-1 relative">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Pilih Produk</label>
+                            <div id="cust_cp_trigger" onclick="openProductSearch('cust_cp', 'FINISHED_GOODS')" class="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs text-slate-400 cursor-pointer hover:bg-slate-50 transition-all flex justify-between items-center group h-[38px]">
+                                <span id="cust_cp_label" class="truncate pr-2">-- Cari Kode atau Nama Produk --</span>
+                                <i class="fas fa-chevron-down text-[10px] text-slate-300 group-hover:text-slate-400 transition-colors"></i>
+                            </div>
+                            <input type="hidden" id="cust_cp_item">
+                            <div id="cust_cp_results_container" class="absolute z-[100] top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-[0_15px_40px_rgba(0,0,0,0.12)] hidden border border-slate-100 overflow-hidden min-w-[320px]">
+                                <div class="p-3 border-b border-slate-50">
+                                    <div class="relative">
+                                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+                                        <input type="text" id="cust_cp_search_input" placeholder="Ketik kode atau nama..." class="w-full bg-slate-50 border border-blue-100 rounded-lg pl-9 pr-3 py-2 text-xs focus:border-blue-400 outline-none transition-all font-medium">
+                                    </div>
+                                </div>
+                                <div id="cust_cp_results" class="max-h-[300px] overflow-y-auto custom-scrollbar"></div>
+                            </div>
+                        </div>
+                        <div class="flex items-end gap-2">
+                            <input type="number" id="cust_cp_price" placeholder="Harga (Rp)" min="0" class="w-40 bg-white border border-slate-200 rounded-xl px-4 h-[38px] text-xs focus:ring-2 focus:ring-blue-500/20 outline-none transition-all font-bold">
+                            <button type="button" onclick="addCustomerProduct()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 h-[38px] rounded-xl text-sm font-medium transition-colors shadow-sm flex items-center justify-center"><i class="fas fa-plus"></i></button>
+                        </div>
                     </div>
                     <table class="w-full text-sm text-left">
                         <thead class="text-slate-500 border-b border-slate-200">
@@ -2129,26 +2162,27 @@ window.refreshCustomerProductsTable = () => {
 };
 
 window.addCustomerProduct = () => {
-    const sel = document.getElementById('cust_cp_item');
-    const priceVal = document.getElementById('cust_cp_price').value;
+    const itemId = document.getElementById('cust_cp_item').value;
+    const priceInput = document.getElementById('cust_cp_price');
+    const searchInput = document.getElementById('cust_cp_item_search');
+    const price = parseFloat(priceInput.value) || 0;
     
-    if (!sel.value) { showToast('Pilih produk', 'error'); return; }
-    if (!priceVal) { showToast('Masukkan harga', 'error'); return; }
+    if (!itemId) { showToast('Pilih produk', 'error'); return; }
 
-    const itemId = sel.value;
-    const opt = sel.options[sel.selectedIndex];
-    const itemName = opt.dataset.name;
-    const price = parseFloat(priceVal);
+    const item = db.findById('inventoryItems', itemId);
+    if (!item) return;
 
     const exists = window.tempCustomerProducts.findIndex(p => p.itemId === itemId);
-    if (exists >= 0) {
-        window.tempCustomerProducts[exists].price = price;
+    if (exists < 0) {
+        window.tempCustomerProducts.push({ itemId, itemName: item.itemName, price });
     } else {
-        window.tempCustomerProducts.push({ itemId, itemName, price });
+        window.tempCustomerProducts[exists].price = price;
     }
     
+    // Clear inputs
     document.getElementById('cust_cp_item').value = '';
-    document.getElementById('cust_cp_price').value = '';
+    searchInput.value = '';
+    priceInput.value = '';
     refreshCustomerProductsTable();
 };
 
@@ -2294,23 +2328,40 @@ function toRomanPurch(num) {
     return roman;
 }
 
-function generatePurchaseOrderNumber(isTax = false) {
+function generatePurchaseOrderNumber(isTax = false, customDate = null) {
     const pos = db.read('purchaseOrders') || [];
-    const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
+    const date = customDate ? new Date(customDate) : new Date();
+    const month = date.getMonth() + 1;
+    const year = date.getFullYear();
     const romanMonth = toRomanPurch(month);
-
-    const sameMonthPOs = pos.filter(p => {
-        const pDate = new Date(p.date || p.createdAt);
-        return pDate.getMonth() + 1 === month && pDate.getFullYear() === year;
-    });
-
-    const nextSeq = sameMonthPOs.length + 1;
-    const seqStr = String(nextSeq).padStart(3, '0');
     const type = isTax ? 'A' : 'B';
 
-    return `PO-${type}-${seqStr}/${romanMonth}/${year}`;
+    // Find the max sequence number for this specific type, month, and year
+    let maxSeq = 0;
+    pos.forEach(p => {
+        if (!p.poNumber) return;
+        const pDate = new Date(p.date || p.createdAt);
+        // We only care about same month/year
+        if (pDate.getMonth() + 1 === month && pDate.getFullYear() === year) {
+            const parts = p.poNumber.split('-');
+            if (parts.length >= 3 && parts[1] === type) {
+                const suffixPart = parts[2].split('/')[0];
+                const seq = parseInt(suffixPart);
+                if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+            }
+        }
+    });
+
+    let nextSeq = maxSeq + 1;
+    let finalNumber = `PO-${type}-${String(nextSeq).padStart(3, '0')}/${romanMonth}/${year}`;
+
+    // Ultimate uniqueness safety check
+    while (pos.some(p => p.poNumber === finalNumber)) {
+        nextSeq++;
+        finalNumber = `PO-${type}-${String(nextSeq).padStart(3, '0')}/${romanMonth}/${year}`;
+    }
+
+    return finalNumber;
 }
 
 window.updatePODueDate = () => {
@@ -2334,135 +2385,318 @@ window.updatePODueDate = () => {
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ MASTER SUPPLIERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderMasterSuppliers() {
     const canEdit = getModulePermission('pembelian').edit;
-    document.getElementById('pageTitle').innerText = 'Supplier';
+    renderBreadcrumb(['Purchasing', 'Reports', 'Supplier Addresses & Contacts']);
+    document.getElementById('pageTitle').innerText = 'Supplier Addresses & Contacts';
     const mainContent = document.getElementById('main-content');
-    const suppliers = db.read('suppliers');
 
-    let rows = suppliers.map(s => `
-        <tr class="border-b border-gray-100 hover:bg-gray-50">
-            <td class="py-3 px-4 text-sm font-medium text-gray-800">${s.name}</td>
-            <td class="py-3 px-4 text-sm text-gray-600">${s.pic || '-'}</td>
-            <td class="py-3 px-4 text-sm text-gray-600">${s.phone || '-'}</td>
-            <td class="py-3 px-4 text-sm text-gray-600 whitespace-pre-wrap">${s.address || '-'}</td>
-            <td class="py-3 px-4 text-sm text-right">
-                ${canEdit ? `
-                <button onclick="openSupplierModal('${s.id}')" class="text-blue-500 hover:text-blue-700 mr-2"><i class="fas fa-edit"></i></button>
-                <button onclick="deleteSupplier('${s.id}')" class="text-red-500 hover:text-red-700"><i class="fas fa-trash"></i></button>
-                ` : '<span class="text-gray-400 text-[10px] italic">No Access</span>'}
-            </td>
-        </tr>`).join('');
-    if (!rows) rows = `<tr><td colspan="5" class="py-4 text-center text-gray-500">Belum ada supplier</td></tr>`;
+    const suppliers = db.read('suppliers') || [];
 
     mainContent.innerHTML = `
-        <div class="bg-white rounded-lg shadow-sm border border-gray-100">
-            <div class="flex justify-between items-center p-4 sm:p-6 border-b border-gray-100">
-                <h2 class="text-lg font-semibold text-gray-800">Daftar Supplier</h2>
-                <button onclick="openSupplierModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium">
-                    <i class="fas fa-plus mr-2"></i>Tambah Supplier
-                </button>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="bg-gray-50 border-b border-gray-200">
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Nama</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">PIC</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Telepon</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Alamat</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Aksi</th>
-                        </tr>
-                    </thead>
-                    <tbody>${rows}</tbody>
-                </table>
-            </div>
-        </div>`;
-}
+        <div class="space-y-4">
+            <!-- Structured Filter Bar -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+                <div class="flex flex-wrap items-center gap-4">
+                    <!-- Search Input -->
+                    <div class="flex-1 min-w-[250px] relative group">
+                        <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors"></i>
+                        <input type="text" id="sup_search" onkeyup="filterSupplierList()" placeholder="Search Supplier Name, PIC, Phone..." 
+                            class="w-full pl-12 pr-4 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-semibold text-slate-700 placeholder:text-slate-300 focus:bg-white focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all">
+                    </div>
 
-window.openSupplierModal = (id = null) => {
-    const s = id ? db.findById('suppliers', id) : { name: '', phone: '', email: '', address: '', pic: '', region: '', city: '', category: '', paymentTerm: '', commonProducts: [] };
-    const body = `<div class="space-y-4">
-        <div><label class="block text-sm font-medium text-gray-700 mb-1">Nama Supplier / PT <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-            <input id="sup_name" value="${s.name}" class="w-full border border-gray-300 rounded px-3 py-2 font-bold focus:ring-1 focus:ring-blue-500 outline-none"></div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Nama PIC <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-                <input id="sup_pic" value="${s.pic || ''}" placeholder="Person In Charge" class="w-full border border-gray-300 rounded px-3 py-2 focus:ring-1 focus:ring-blue-500 outline-none"></div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Telepon <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-                <input id="sup_phone" value="${s.phone || ''}" class="w-full border border-gray-300 rounded px-3 py-2 focus:ring-1 focus:ring-blue-500 outline-none"></div>
-        </div>
-        <div><label class="block text-sm font-medium text-gray-700 mb-1">Email <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-            <input id="sup_email" value="${s.email || ''}" class="w-full border border-gray-300 rounded px-3 py-2 focus:ring-1 focus:ring-blue-500 outline-none"></div>
-        <div><label class="block text-sm font-medium text-gray-700 mb-1">Alamat Lengkap <span class="text-red-500 text-xs font-normal italic">(Wajib)</span></label>
-            <textarea id="sup_address" class="w-full border border-gray-300 rounded px-3 py-2 h-20 focus:ring-1 focus:ring-blue-500 outline-none">${s.address || ''}</textarea></div>
-
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4 pt-4 border-t border-slate-100">
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Kategori Default Pembelian</label>
-                <select id="sup_category" class="w-full border border-gray-300 rounded px-3 py-2 focus:ring-1 focus:ring-blue-500 outline-none bg-slate-50">
-                    <option value="">-- Pilih Default Kategori --</option>
-                    <option value="Bahan Baku" ${s.category === 'Bahan Baku' ? 'selected' : ''}>Bahan Baku</option>
-                    <option value="Packaging" ${s.category === 'Packaging' ? 'selected' : ''}>Packaging</option>
-                    <option value="Perlengkapan" ${s.category === 'Perlengkapan' ? 'selected' : ''}>Perlengkapan</option>
-                    <option value="Service" ${s.category === 'Service' ? 'selected' : ''}>Service</option>
-                    <option value="Sparepart" ${s.category === 'Sparepart' ? 'selected' : ''}>Sparepart</option>
-                    <option value="Aktiva ( tetap )" ${s.category === 'Aktiva ( tetap )' ? 'selected' : ''}>Aktiva ( tetap )</option>
-                    <option value="Gas" ${s.category === 'Gas' ? 'selected' : ''}>Gas</option>
-                </select>
-            </div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Term Pembayaran Default</label>
-                <select id="sup_payment_term" class="w-full border border-gray-300 rounded px-3 py-2 focus:ring-1 focus:ring-blue-500 outline-none bg-slate-50">
-                    <option value="" ${!s.paymentTerm ? 'selected' : ''}>-- Pilih Term --</option>
-                    <option value="Cash" ${s.paymentTerm === 'Cash' ? 'selected' : ''}>Cash</option>
-                    <option value="COD" ${s.paymentTerm === 'COD' ? 'selected' : ''}>COD</option>
-                    <option value="7 S/d 10 Hari" ${s.paymentTerm === '7 S/d 10 Hari' ? 'selected' : ''}>7 S/d 10 Hari</option>
-                    <option value="30 Hari" ${s.paymentTerm === '30 Hari' ? 'selected' : ''}>30 Hari</option>
-                    <option value="45 Hari" ${s.paymentTerm === '45 Hari' ? 'selected' : ''}>45 Hari</option>
-                    <option value="60 Hari" ${s.paymentTerm === '60 Hari' ? 'selected' : ''}>60 Hari</option>
-                </select>
-            </div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Pajak (PPN %)</label>
-                <select id="sup_ppn" class="w-full border border-gray-300 rounded px-3 py-2 focus:ring-1 focus:ring-blue-500 outline-none bg-slate-50">
-                    <option value="0" ${s.ppn == 0 ? 'selected' : ''}>0% (Tanpa Pajak)</option>
-                    <option value="11" ${(s.ppn == 11 || s.ppn === undefined) ? 'selected' : ''}>11% (PPN)</option>
-                </select>
-            </div>
-        </div>
-
-        <div class="pt-4 mt-2 border-t border-slate-100">
-            <h4 class="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
-                <i class="fas fa-boxes text-blue-500"></i> Master Produk / Barang Supplier
-            </h4>
-            <div class="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-                <p class="text-[10px] text-blue-700 mb-3 italic">* Produk yang ditambahkan di sini akan otomatis dimuat saat membuat PO atau RFQ untuk supplier ini.</p>
-                <div class="flex space-x-2 mb-3">
-                    <select id="sup_cp_item" class="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none">
-                        <option value="">-- Pilih Barang dari Gudang --</option>
-                        ${(() => {
-                            const items = db.read('inventoryItems').filter(i => i.status !== 'INACTIVE' && i.category !== 'FINISHED_GOODS');
-                            return items.length ? items.map(i => `<option value="${i.id}" data-name="${i.itemName}" data-unit="${i.unit || 'PCS'}">${i.itemCode} - ${i.itemName}</option>`).join('') : '<option disabled>Belum ada Material</option>';
-                        })()}
-                    </select>
-                    <button type="button" onclick="addSupplierProduct()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 sm:px-4 py-2 rounded-lg text-sm font-medium"><i class="fas fa-plus"></i></button>
+                    <!-- Actions -->
+                    <div class="flex gap-3 ml-auto">
+                        <button onclick="renderSupplierForm()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl transition-all text-sm font-bold shadow-lg shadow-indigo-500/20 flex items-center gap-2">
+                            <i class="fas fa-plus"></i> New Supplier
+                        </button>
+                        <button onclick="exportSupplierCsv()" class="bg-white border border-slate-200 text-slate-600 px-5 py-2.5 rounded-xl hover:bg-slate-50 transition-all text-sm font-bold">
+                            <i class="fas fa-download mr-2"></i> Export
+                        </button>
+                    </div>
                 </div>
+            </div>
+
+            <!-- Supplier Table Card -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
                 <div class="overflow-x-auto">
-                    <table class="w-full text-sm text-left">
-                        <thead class="text-slate-500 border-b border-slate-200">
+                    <table class="w-full text-left" id="supplier_table">
+                        <thead class="bg-slate-50/50 border-b border-slate-100">
                             <tr>
-                                <th class="pb-2 font-medium">Barang</th>
-                                <th class="pb-2 font-medium">Satuan</th>
-                                <th class="w-10"></th>
+                                <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Supplier Information</th>
+                                <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Contact Details</th>
+                                <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Category / Terms</th>
+                                <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Address</th>
+                                <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
                             </tr>
                         </thead>
-                        <tbody id="sup_cp_list"></tbody>
+                        <tbody id="supplier_table_body" class="divide-y divide-slate-50">
+                            ${renderSupplierRows(suppliers)}
+                        </tbody>
                     </table>
+                </div>
+                <div id="supplier_empty_state" class="hidden py-20 flex flex-col items-center justify-center text-center">
+                    <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-300 mb-4 text-2xl">
+                        <i class="fas fa-truck-loading"></i>
+                    </div>
+                    <p class="text-sm font-medium text-slate-500">No suppliers found matching your filters.</p>
                 </div>
             </div>
         </div>
-    </div>`;
-    const footer = `
-        <button onclick="saveSupplier('${id || ''}')" class="w-full sm:w-auto inline-flex justify-center rounded-md bg-blue-600 px-4 py-2 text-white text-sm font-medium hover:bg-blue-700 sm:ml-3">Simpan</button>
-        <button onclick="closeModal()" class="mt-3 sm:mt-0 w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 px-4 py-2 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50 sm:ml-3">Batal</button>`;
+    `;
+}
+
+function renderSupplierRows(suppliers) {
+    const canEdit = getModulePermission('pembelian').edit;
+    if (suppliers.length === 0) return '';
+    
+    return suppliers.map(s => `
+        <tr class="hover:bg-slate-50/80 transition-colors group">
+            <td class="py-4 px-5">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs font-bold shrink-0">
+                        ${s.name.substring(0,2).toUpperCase()}
+                    </div>
+                    <div>
+                        <div class="text-sm font-bold text-slate-800">${s.name}</div>
+                        <div class="text-[11px] text-slate-400 font-medium">${s.id}</div>
+                    </div>
+                </div>
+            </td>
+            <td class="py-4 px-5">
+                <div class="text-sm text-slate-700 font-medium">${s.pic || '-'}</div>
+                <div class="text-[12px] text-slate-500">${s.email || '-'}</div>
+                <div class="text-[12px] text-slate-500">${s.phone || '-'}</div>
+            </td>
+            <td class="py-4 px-5">
+                <div class="text-sm text-slate-700 font-semibold">${s.category || 'General'}</div>
+                <div class="text-xs text-slate-500">${s.paymentTerm || '-'}</div>
+            </td>
+            <td class="py-4 px-5">
+                <div class="text-xs text-slate-600 max-w-[250px] line-clamp-2">${s.address || '-'}</div>
+            </td>
+            <td class="py-4 px-5 text-right">
+                <div class="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onclick="renderSupplierForm('${s.id}')" class="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-all" title="Edit"><i class="fas fa-edit text-xs"></i></button>
+                    <button onclick="deleteSupplier('${s.id}')" class="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-600 transition-all" title="Delete"><i class="fas fa-trash text-xs"></i></button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+window.filterSupplierList = () => {
+    const search = document.getElementById('sup_search')?.value.toLowerCase() || '';
+    const suppliers = db.read('suppliers') || [];
+    
+    const filtered = suppliers.filter(s => {
+        const matchesSearch = !search || 
+            s.name.toLowerCase().includes(search) || 
+            (s.pic && s.pic.toLowerCase().includes(search)) || 
+            (s.phone && s.phone.includes(search)) ||
+            (s.email && s.email.toLowerCase().includes(search));
+        return matchesSearch;
+    });
+    
+    const tbody = document.getElementById('supplier_table_body');
+    const emptyState = document.getElementById('supplier_empty_state');
+    
+    if (tbody) {
+        tbody.innerHTML = renderSupplierRows(filtered);
+        if (filtered.length === 0) {
+            emptyState?.classList.remove('hidden');
+        } else {
+            emptyState?.classList.add('hidden');
+        }
+    }
+};
+
+window.exportSupplierCsv = () => {
+    const suppliers = db.read('suppliers') || [];
+    let csv = 'ID,Name,PIC,Phone,Email,Category,Terms,Address\n';
+    suppliers.forEach(s => {
+        csv += `"${s.id}","${s.name}","${s.pic}","${s.phone}","${s.email}","${s.category}","${s.paymentTerm}","${s.address.replace(/"/g, '""')}"\n`;
+    });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'suppliers_master.csv';
+    a.click();
+};
+
+
+window.renderSupplierForm = (id = null) => {
+    const s = id ? db.findById('suppliers', id) : { name: '', phone: '', email: '', address: '', pic: '', region: '', city: '', category: '', paymentTerm: '', commonProducts: [] };
+    
+    renderBreadcrumb(['Purchasing', 'Reports', 'Supplier Addresses & Contacts', id ? 'Edit Supplier' : 'Tambah Supplier']);
+    document.getElementById('pageTitle').innerText = id ? 'Edit Supplier' : 'Tambah Supplier';
+    const mainContent = document.getElementById('main-content');
+
+    mainContent.innerHTML = `
+        <div class="w-full space-y-6 animate-fade-in pb-20">
+            <!-- Header Section -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <div class="flex items-center gap-4">
+                        <div class="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
+                            <i class="fas fa-truck-loading text-xl"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-xl font-bold text-slate-800">${id ? 'Edit Data Supplier' : 'Tambah Supplier Baru'}</h2>
+                            <p class="text-xs text-slate-500">Lengkapi informasi detail supplier di bawah ini.</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-3">
+                        <button onclick="renderMasterSuppliers()" class="px-6 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all">Batal</button>
+                        <button onclick="saveSupplier('${id || ''}')" class="px-8 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20">Simpan Supplier</button>
+                    </div>
+                </div>
+
+                <div class="space-y-4 font-sans">
+                    <!-- Top Level -->
+                    <div class="grid grid-cols-1 gap-6">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-600 mb-1">Supplier / Company Name <span class="text-red-400">*</span></label>
+                            <input type="text" id="sup_name" value="${s.name}" class="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-300 outline-none transition-all font-bold">
+                        </div>
+                    </div>
+
+                    <!-- Contact Section -->
+                    <div class="pt-5 mt-2 border-t border-slate-100">
+                        <h4 class="text-sm font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                            <i class="fas fa-address-book text-indigo-400 text-xs"></i>
+                            <span>Primary Contact Details</span>
+                        </h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-600 mb-1">PIC (Person In Charge) <span class="text-red-400">*</span></label>
+                                <input type="text" id="sup_pic" value="${s.pic || ''}" placeholder="Nama PIC" class="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-600 mb-1">Email Address <span class="text-red-400">*</span></label>
+                                <input type="email" id="sup_email" value="${s.email || ''}" placeholder="email@supplier.com" class="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-600 mb-1">Phone Number <span class="text-red-400">*</span></label>
+                                <input type="text" id="sup_phone" value="${s.phone || ''}" placeholder="0812..." class="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Address Section -->
+                    <div class="pt-5 mt-2 border-t border-slate-100">
+                        <h4 class="text-sm font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                            <i class="fas fa-map-marker-alt text-indigo-400 text-xs"></i>
+                            <span>Address Details</span>
+                        </h4>
+                        <div class="grid grid-cols-1 gap-5">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-600 mb-1">Full Address <span class="text-red-400">*</span></label>
+                                <textarea id="sup_address" class="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 h-24 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all resize-none">${s.address || ''}</textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Purchasing & Tax Section -->
+                    <div class="pt-5 mt-2 border-t border-slate-100">
+                        <h4 class="text-sm font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                            <i class="fas fa-file-invoice-dollar text-indigo-400 text-xs"></i>
+                            <span>Purchasing & Tax Details</span>
+                        </h4>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-5">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-600 mb-1">Default Category</label>
+                                <select id="sup_category" class="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none cursor-pointer transition-all">
+                                    <option value="">-- Pilih Kategori --</option>
+                                    <option value="Bahan Baku" ${s.category === 'Bahan Baku' ? 'selected' : ''}>Bahan Baku</option>
+                                    <option value="Packaging" ${s.category === 'Packaging' ? 'selected' : ''}>Packaging</option>
+                                    <option value="Perlengkapan" ${s.category === 'Perlengkapan' ? 'selected' : ''}>Perlengkapan</option>
+                                    <option value="Service" ${s.category === 'Service' ? 'selected' : ''}>Service</option>
+                                    <option value="Sparepart" ${s.category === 'Sparepart' ? 'selected' : ''}>Sparepart</option>
+                                    <option value="Aktiva ( tetap )" ${s.category === 'Aktiva ( tetap )' ? 'selected' : ''}>Aktiva ( tetap )</option>
+                                    <option value="Gas" ${s.category === 'Gas' ? 'selected' : ''}>Gas</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-600 mb-1">Default Payment Term</label>
+                                <select id="sup_payment_term" class="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none cursor-pointer transition-all">
+                                    <option value="" ${!s.paymentTerm ? 'selected' : ''}>-- Pilih Term --</option>
+                                    <option value="Cash" ${s.paymentTerm === 'Cash' ? 'selected' : ''}>Cash</option>
+                                    <option value="COD" ${s.paymentTerm === 'COD' ? 'selected' : ''}>COD</option>
+                                    <option value="7 S/d 10 Hari" ${s.paymentTerm === '7 S/d 10 Hari' ? 'selected' : ''}>7 S/d 10 Hari</option>
+                                    <option value="30 Hari" ${s.paymentTerm === '30 Hari' ? 'selected' : ''}>30 Hari</option>
+                                    <option value="45 Hari" ${s.paymentTerm === '45 Hari' ? 'selected' : ''}>45 Hari</option>
+                                    <option value="60 Hari" ${s.paymentTerm === '60 Hari' ? 'selected' : ''}>60 Hari</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-600 mb-1">Pajak (PPN %)</label>
+                                <select id="sup_ppn" class="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none cursor-pointer transition-all">
+                                    <option value="0" ${s.ppn == 0 ? 'selected' : ''}>0% (Tanpa Pajak)</option>
+                                    <option value="11" ${(s.ppn == 11 || s.ppn === undefined) ? 'selected' : ''}>11% (PPN)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Master Produk Section -->
+                    <div class="pt-5 mt-2 border-t border-slate-100">
+                        <h4 class="text-sm font-semibold text-slate-800 mb-4 flex items-center gap-2">
+                            <i class="fas fa-cubes text-indigo-400 text-xs"></i>
+                            <span>Master Produk / Barang Supplier</span>
+                        </h4>
+                        <div class="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                            <p class="text-[11px] text-indigo-600 mb-4 italic opacity-75 font-medium flex items-center gap-2">
+                                <i class="fas fa-info-circle"></i>
+                                Produk yang ditambahkan di sini akan otomatis dimuat saat membuat PO atau RFQ untuk supplier ini.
+                            </p>
+                            <div class="flex flex-wrap md:flex-nowrap gap-4 mb-6">
+                                <div class="flex-1 min-w-[300px] relative">
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Pilih Material / Barang</label>
+                                    <div id="sup_cp_trigger" onclick="openProductSearch('sup_cp', ['RAW_MATERIAL', 'OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK', 'WIP'])" class="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-400 cursor-pointer hover:bg-slate-50 hover:border-indigo-200 transition-all flex justify-between items-center group min-h-[46px]">
+                                        <span id="sup_cp_label" class="truncate pr-2">-- Cari Kode atau Nama Produk --</span>
+                                        <i class="fas fa-chevron-down text-[10px] text-slate-300 group-hover:text-indigo-400 transition-colors"></i>
+                                    </div>
+                                    <input type="hidden" id="sup_cp_item">
+                                    <div id="sup_cp_results_container" class="absolute z-[100] top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] hidden border border-slate-100 overflow-hidden min-w-[350px]">
+                                        <div class="p-4 border-b border-slate-50">
+                                            <div class="relative">
+                                                <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 text-sm"></i>
+                                                <input type="text" id="sup_cp_search_input" placeholder="Ketik kode atau nama..." class="w-full bg-slate-50 border border-slate-100 rounded-xl pl-11 pr-4 py-2.5 text-sm focus:border-indigo-400 outline-none transition-all font-medium">
+                                            </div>
+                                        </div>
+                                        <div id="sup_cp_results" class="max-h-[350px] overflow-y-auto custom-scrollbar"></div>
+                                    </div>
+                                </div>
+                                <div class="flex items-end">
+                                    <button type="button" onclick="addSupplierProduct()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-6 h-[46px] rounded-xl text-sm font-bold transition-all shadow-md shadow-indigo-500/10 flex items-center justify-center gap-2">
+                                        <i class="fas fa-plus"></i> Tambah
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full text-left">
+                                    <thead class="text-slate-400 text-[10px] font-black uppercase tracking-widest border-b border-slate-200">
+                                        <tr>
+                                            <th class="pb-3 px-3">Barang / Material</th>
+                                            <th class="pb-3 px-3">Satuan</th>
+                                            <th class="pb-3 px-3 text-right">Aksi</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="sup_cp_list" class="divide-y divide-slate-100"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Bottom Actions -->
+                <div class="mt-10 pt-8 border-t border-slate-100 flex justify-end gap-3">
+                    <button onclick="renderMasterSuppliers()" class="px-8 py-3 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all">Batalkan Perubahan</button>
+                    <button onclick="saveSupplier('${id || ''}')" class="px-12 py-3 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/25">Simpan Data Supplier</button>
+                </div>
+            </div>
+        </div>`;
     
     window.tempSupplierProducts = s.commonProducts ? JSON.parse(JSON.stringify(s.commonProducts)) : [];
-    showModal(id ? 'Edit Supplier' : 'Tambah Supplier', body, footer, 'xl');
     refreshSupplierProductsTable();
 };
 
@@ -2470,35 +2704,40 @@ window.refreshSupplierProductsTable = () => {
     const list = document.getElementById('sup_cp_list');
     if (!list) return;
     if (window.tempSupplierProducts.length === 0) {
-        list.innerHTML = '<tr><td colspan="4" class="py-4 text-center text-gray-400 text-xs">Belum ada barang yang didaftarkan</td></tr>';
+        list.innerHTML = '<tr><td colspan="3" class="py-6 text-center text-slate-400 text-[11px] font-medium italic">Belum ada barang yang didaftarkan untuk supplier ini</td></tr>';
         return;
     }
     list.innerHTML = window.tempSupplierProducts.map((p, idx) => `
-        <tr class="border-b border-slate-100/50">
-            <td class="py-2 px-2 text-gray-800 font-medium">${p.itemName}</td>
-            <td class="py-2 px-2 text-gray-600 text-xs">${p.unit || 'PCS'}</td>
-            <td class="py-2 px-2 text-right"><button type="button" onclick="removeSupplierProduct(${idx})" class="text-red-500 hover:text-red-700"><i class="fas fa-times"></i></button></td>
+        <tr class="hover:bg-slate-50 transition-colors group">
+            <td class="py-3 px-2 text-sm font-bold text-slate-700">${p.itemName}</td>
+            <td class="py-3 px-2 text-xs font-semibold text-slate-500">${p.unit || 'PCS'}</td>
+            <td class="py-3 px-2 text-right">
+                <button type="button" onclick="removeSupplierProduct(${idx})" class="w-8 h-8 rounded-lg bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition-all">
+                    <i class="fas fa-times text-xs"></i>
+                </button>
+            </td>
         </tr>
     `).join('');
 };
 
 window.addSupplierProduct = () => {
-    const sel = document.getElementById('sup_cp_item');
-    if (!sel.value) { showToast('Pilih material/barang', 'error'); return; }
+    const itemId = document.getElementById('sup_cp_item').value;
+    const searchInput = document.getElementById('sup_cp_item_search');
+    
+    if (!itemId) { showToast('Pilih material/barang', 'error'); return; }
 
-    const itemId = sel.value;
-    const opt = sel.options[sel.selectedIndex];
-    const itemName = opt.dataset.name;
-    const unit = opt.dataset.unit;
+    const item = db.findById('inventoryItems', itemId);
+    if (!item) return;
 
     const exists = window.tempSupplierProducts.findIndex(p => p.itemId === itemId);
     if (exists < 0) {
-        window.tempSupplierProducts.push({ itemId, itemName, unit });
+        window.tempSupplierProducts.push({ itemId, itemName: item.itemName, unit: item.unit || 'PCS' });
     } else {
         showToast('Bahan sudah ditambahkan', 'info');
     }
     
-    sel.value = '';
+    document.getElementById('sup_cp_item').value = '';
+    searchInput.value = '';
     refreshSupplierProductsTable();
 };
 
@@ -2619,7 +2858,122 @@ window.saveSupplier = (id) => {
     };
     if (id) { db.update('suppliers', id, data); showToast('Supplier diperbarui'); }
     else { db.insert('suppliers', data); showToast('Supplier ditambahkan'); }
-    closeModal(); renderMasterSuppliers();
+    renderMasterSuppliers();
+};
+
+// --- PRODUCT AUTOCOMPLETE COMPONENT (MATCHING IMAGE 7) ---
+window.openProductSearch = (prefix, categoryFilter) => {
+    const container = document.getElementById(`${prefix}_results_container`);
+    const searchInput = document.getElementById(`${prefix}_search_input`);
+    const results = document.getElementById(`${prefix}_results`);
+
+    // Toggle container
+    container.classList.toggle('hidden');
+    if (!container.classList.contains('hidden')) {
+        searchInput.value = '';
+        searchInput.focus();
+        renderProductSearchResults('', results, categoryFilter, prefix);
+    }
+
+    // Listener for input
+    if (!searchInput.dataset.hasListener) {
+        searchInput.addEventListener('input', (e) => {
+            renderProductSearchResults(e.target.value.trim(), results, categoryFilter, prefix);
+        });
+        searchInput.dataset.hasListener = 'true';
+    }
+
+    // Close on click outside
+    const clickOutside = (e) => {
+        const trigger = document.getElementById(`${prefix}_trigger`);
+        if (!container.contains(e.target) && !trigger.contains(e.target)) {
+            container.classList.add('hidden');
+            document.removeEventListener('mousedown', clickOutside);
+        }
+    };
+    document.addEventListener('mousedown', clickOutside);
+};
+
+function renderProductSearchResults(query, container, categoryFilter, prefix) {
+    const items = db.read('inventoryItems').filter(i => i.status !== 'INACTIVE');
+    const filtered = items.filter(i => {
+        const matchesQuery = !query || i.itemName.toLowerCase().includes(query.toLowerCase()) || i.itemCode.toLowerCase().includes(query.toLowerCase());
+        const matchesCategory = !categoryFilter || (Array.isArray(categoryFilter) ? categoryFilter.includes(i.category) : i.category === categoryFilter);
+        return matchesQuery && matchesCategory;
+    }).slice(0, 5);
+
+    if (filtered.length === 0) {
+        container.innerHTML = `
+            <div class="p-8 text-center bg-slate-50/30">
+                <div class="w-12 h-12 bg-white rounded-2xl shadow-sm flex items-center justify-center mx-auto mb-3 border border-slate-100">
+                    <i class="fas fa-box-open text-slate-200"></i>
+                </div>
+                <p class="text-xs text-slate-400 font-bold uppercase tracking-widest">No products found</p>
+            </div>
+            ${renderAutocompleteFooter()}
+        `;
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="p-2 space-y-1">
+            ${filtered.map(item => {
+                const stock = db.getInventoryStock(item.id);
+                const price = item.purchasePrice || item.sellingPrice || 0;
+                return `
+                <div onclick="selectProductResult('${prefix}', '${item.id}', '${item.itemName}', '${item.unit || 'PCS'}')" 
+                     class="p-4 rounded-2xl hover:bg-indigo-50/50 cursor-pointer transition-all group border border-transparent hover:border-indigo-100 flex justify-between items-center">
+                    <div>
+                        <div class="text-[13px] font-black text-slate-800 group-hover:text-indigo-600 transition-colors">${item.itemName}</div>
+                        <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-0.5">${item.itemCode}</div>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-[10px] font-black text-blue-600 uppercase tracking-tighter">STOCK: ${formatNumber(stock)}</div>
+                        <div class="text-[11px] font-bold text-slate-400 mt-0.5">Rp ${formatNumber(price)}</div>
+                    </div>
+                </div>
+                `;
+            }).join('')}
+        </div>
+        ${renderAutocompleteFooter()}
+    `;
+}
+
+function renderAutocompleteFooter() {
+    return `
+        <div class="border-t border-slate-100 p-3 bg-slate-50/30">
+            <button type="button" onclick="renderInventoryItemForm()" class="w-full text-left px-4 py-3 rounded-2xl hover:bg-white hover:shadow-sm transition-all flex items-center gap-4 group">
+                <div class="w-10 h-10 rounded-xl bg-white border border-slate-200 text-slate-400 flex items-center justify-center group-hover:border-blue-200 group-hover:text-blue-500 transition-all shadow-sm"><i class="fas fa-plus text-xs"></i></div>
+                <span class="text-[11px] font-black text-slate-500 uppercase tracking-widest group-hover:text-slate-800 transition-colors">Create a New Product</span>
+            </button>
+            <button type="button" onclick="navigateTo('inventory-master')" class="w-full text-left px-4 py-3 rounded-2xl hover:bg-white hover:shadow-sm transition-all flex items-center gap-4 group mt-1">
+                <div class="w-10 h-10 rounded-xl bg-white border border-slate-200 text-slate-400 flex items-center justify-center group-hover:border-indigo-200 group-hover:text-indigo-500 transition-all shadow-sm"><i class="fas fa-search text-xs"></i></div>
+                <span class="text-[11px] font-black text-slate-500 uppercase tracking-widest group-hover:text-slate-800 transition-colors">Advanced Search</span>
+            </button>
+        </div>
+    `;
+}
+
+window.selectProductResult = (prefix, id, name, unit) => {
+    const hiddenInput = document.getElementById(`${prefix}_item`);
+    const label = document.getElementById(`${prefix}_label`);
+    const unitDisplay = document.getElementById(`${prefix}_unit_display`);
+    
+    if (hiddenInput) hiddenInput.value = id;
+    if (label) {
+        label.innerText = name;
+        label.classList.remove('text-slate-400');
+        label.classList.add('text-slate-800', 'font-black');
+    }
+    if (unitDisplay) unitDisplay.value = unit;
+
+    // Trigger any onchange listeners if needed
+    if (hiddenInput) {
+        const event = new Event('change', { bubbles: true });
+        hiddenInput.dispatchEvent(event);
+    }
+
+    document.getElementById(`${prefix}_results_container`).classList.add('hidden');
 };
 
 window.deleteSupplier = (id) => {
@@ -2668,8 +3022,8 @@ window.navigateToSupplierPage = () => {
     closeModal();
     navigateTo('master-suppliers');
     setTimeout(() => {
-        if (typeof openSupplierModal === 'function') {
-            openSupplierModal();
+        if (typeof renderSupplierForm === 'function') {
+            renderSupplierForm();
         }
     }, 300);
 };
@@ -2727,12 +3081,12 @@ window.openPOForm = (fromPrId = null, fromRfqId = null) => {
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">No. Purchase Order <span class="text-red-400">*</span></label>
                                 <div class="flex">
-                                    <select id="po_tax_type" onchange="document.getElementById('po_number').value=generatePurchaseOrderNumber(this.value==='A')"
+                                    <select id="po_tax_type" onchange="document.getElementById('po_number').value=generatePurchaseOrderNumber(this.value==='A', document.getElementById('po_date').value)"
                                         class="border-none rounded-l-xl px-3 py-3 bg-slate-200 text-xs font-black text-slate-600 outline-none cursor-pointer">
                                         <option value="B">NT</option>
                                         <option value="A">TAX</option>
                                     </select>
-                                    <input id="po_number" value="${generatePurchaseOrderNumber(false)}"
+                                    <input id="po_number" value="${generatePurchaseOrderNumber(false, todayStr)}"
                                         class="flex-1 border-none rounded-r-xl px-4 py-3 bg-slate-100/80 font-bold font-mono text-slate-800 outline-none" readonly>
                                 </div>
                             </div>
@@ -2793,7 +3147,8 @@ window.openPOForm = (fromPrId = null, fromRfqId = null) => {
                             </div>
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Tanggal PO <span class="text-red-400">*</span></label>
-                                <input type="date" id="po_date" value="${todayStr}" onchange="updatePODueDate()"
+                                <input type="date" id="po_date" value="${todayStr}" 
+                                    onchange="updatePODueDate(); if(!window._editingPOId) document.getElementById('po_number').value = generatePurchaseOrderNumber(document.getElementById('po_tax_type').value==='A', this.value)"
                                     class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 outline-none">
                             </div>
                             <div>
@@ -3096,16 +3451,30 @@ window.generateNPBNumber = () => {
 
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const year = String(d.getFullYear());
+    const monthYearStr = `${month}${year}`;
 
-    const sameMonthNPBs = allReceipts.filter(r => {
-        if (!r.npbNumber || !r.npbNumber.startsWith('NPB-')) return false;
+    let maxSeq = 0;
+    allReceipts.forEach(r => {
+        if (!r.npbNumber || !r.npbNumber.startsWith('NPB-')) return;
         const parts = r.npbNumber.split('-');
-        return parts.length >= 2 && parts[1].slice(2) === `${month}${year}`;
+        if (parts.length < 3) return;
+        
+        // parts[1] is DDMMYYYY. slice(2) is MMYYYY
+        if (parts[1].slice(2) === monthYearStr) {
+            const seq = parseInt(parts[2]);
+            if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+        }
     });
 
-    const nextSeq = sameMonthNPBs.length + 1;
-    const seqStr = String(nextSeq).padStart(3, '0');
-    return `NPB-${dateStr}-${seqStr}`;
+    let nextSeq = maxSeq + 1;
+    let finalNumber = `NPB-${dateStr}-${String(nextSeq).padStart(3, '0')}`;
+    
+    while (allReceipts.some(r => r.npbNumber === finalNumber)) {
+        nextSeq++;
+        finalNumber = `NPB-${dateStr}-${String(nextSeq).padStart(3, '0')}`;
+    }
+
+    return finalNumber;
 };
 
 window.receiveGoodsPO = (id) => {
@@ -3188,9 +3557,6 @@ window.receiveGoodsPO = (id) => {
         <div class="animate-in fade-in slide-in-from-bottom-2 duration-400 -m-6 h-[calc(100vh-64px)] flex flex-col overflow-hidden bg-slate-50/50">
             <div class="sticky top-0 z-40 bg-white border-b border-slate-100 px-8 py-4 flex justify-between items-center shrink-0 shadow-sm">
                 <div class="flex items-center gap-4">
-                    <button onclick="closeGRForm()" class="w-8 h-8 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-500 transition-colors">
-                        <i class="fas fa-arrow-left"></i>
-                    </button>
                     <h2 class="text-lg font-black text-slate-800 tracking-tight">Terima Barang - <span class="text-blue-600">${po.poNumber}</span></h2>
                 </div>
                 <div class="flex items-center gap-3">
@@ -3507,76 +3873,7 @@ window.viewPO = (id) => {
 };
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ PURCHASE INVOICES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function renderPurchaseInvoices() {
-    document.getElementById('pageTitle').innerText = 'Supplier Invoice';
-    const mainContent = document.getElementById('main-content');
-    const invoices = db.read('purchaseInvoices').sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    const suppliers = db.read('suppliers');
-    const supPayments = db.read('supplierPayments');
 
-    let rows = invoices.map(inv => {
-        const sup = suppliers.find(s => s.id === inv.supplierId) || { name: '-' };
-        const paid = supPayments.filter(p => p.invoiceId === inv.id).reduce((s, p) => s + parseFloat(p.amount), 0);
-        const balance = inv.totalAmount - paid;
-        let attachmentHtml = '';
-        if (inv.attachment) {
-            attachmentHtml = `
-                <div class="flex items-center gap-1">
-                    <button onclick="viewPurchaseInvoice('${inv.id}')" class="text-blue-600 hover:text-blue-800" title="Lihat Lampiran">
-                        <i class="fas fa-paperclip"></i>
-                    </button>
-                    <button onclick="removeInvoiceAttachment('${inv.id}')" class="text-red-400 hover:text-red-600 text-[10px]" title="Hapus Lampiran">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>`;
-        } else {
-            attachmentHtml = `
-                <button onclick="triggerInvoiceUpload('${inv.id}')" class="text-gray-400 hover:text-primary transition-colors" title="Unggah Tagihan">
-                    <i class="fas fa-upload"></i>
-                </button>`;
-        }
-
-        let actions = `<button onclick="viewPurchaseInvoice('${inv.id}')" class="text-gray-500 hover:text-gray-700 mr-2" title="Detail"><i class="fas fa-eye"></i></button>`;
-        return `<tr class="border-b border-gray-100 hover:bg-gray-50">
-            <td class="py-3 px-4 text-sm font-medium text-blue-600">${inv.invoiceNumber}</td>
-            <td class="py-3 px-4 text-sm text-gray-600">${formatDate(inv.date).slice(0, 11)}</td>
-            <td class="py-3 px-4 text-sm font-semibold text-red-600">${inv.dueDate ? formatDate(inv.dueDate).slice(0, 11) : '-'}</td>
-            <td class="py-3 px-4 text-sm text-gray-800">${sup.name}</td>
-            <td class="py-3 px-4 text-sm text-gray-800 text-right">${formatCurrency(inv.totalAmount)}</td>
-            <td class="py-3 px-4 text-sm text-red-600 text-right font-medium">${formatCurrency(balance)}</td>
-            <td class="py-3 px-4 text-sm">${statusBadgePurch(inv.status)}</td>
-            <td class="py-3 px-4 text-sm text-center">${attachmentHtml}</td>
-            <td class="py-3 px-4 text-sm text-right">${actions}</td>
-        </tr>`;
-    }).join('');
-    if (!rows) rows = `<tr><td colspan="8" class="py-4 text-center text-gray-500">Belum ada Supplier Invoice</td></tr>`;
-
-    mainContent.innerHTML = `
-        <div class="bg-white rounded-lg shadow-sm border border-gray-100">
-            <div class="flex justify-between items-center p-4 sm:p-6 border-b border-gray-100">
-                <h2 class="text-lg font-semibold text-gray-800">Supplier Invoice List</h2>
-                <button onclick="openPurchaseOrderSelectionForInvoice()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2">
-                    <i class="fas fa-plus"></i> Create Invoice
-                </button>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead><tr class="bg-gray-50 border-b border-gray-200">
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Inv. Number</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Date</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-red-600">Due Date</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Supplier</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Total</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Balance</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Status</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-center">Attach</th>
-                        <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Action</th>
-                    </tr></thead>
-                    <tbody>${rows}</tbody>
-                </table>
-            </div>
-        </div>`;
-}
 
 window.createPurchaseInvoice = (poId) => {
     openPurchaseInvoiceForm(poId);
@@ -4687,7 +4984,7 @@ function renderMasterProducts() {
             <td class="py-4 px-4 text-sm text-right">
                 ${canEdit ? `
                 <div class="flex justify-end gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onclick="openInventoryItemModal('${p.id}')" class="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-all" title="Edit"><i class="fas fa-edit"></i></button>
+                    <button onclick="renderInventoryItemForm('${p.id}')" class="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-all" title="Edit"><i class="fas fa-edit"></i></button>
                     <button onclick="deleteInventoryItem('${p.id}')" class="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Delete"><i class="fas fa-trash-alt"></i></button>
                 </div>
                 ` : '<span class="text-slate-300 text-[10px] font-bold uppercase italic">No Access</span>'}
@@ -4706,7 +5003,7 @@ function renderMasterProducts() {
                 <h2 class="text-lg font-semibold text-gray-800">Daftar Produk</h2>
                 <div class="flex gap-2">
                     ${canEdit ? `
-                    <button onclick="openInventoryItemModal()" class="bg-blue-600 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95">
+                    <button onclick="renderInventoryItemForm()" class="bg-blue-600 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95">
                         <i class="fas fa-plus mr-2"></i>Tambah Produk
                     </button>
                     ` : `
@@ -5721,7 +6018,10 @@ function renderPurchaseInvoices() {
                 </td>
                 <td class="py-4 px-6 text-right whitespace-nowrap">
                     <div class="flex items-center justify-end gap-1">
-                        ${inv.attachment ? `<i class="fas fa-paperclip text-slate-300 text-xs" title="Memiliki Lampiran"></i>` : ''}
+                        ${inv.attachment ? `
+                        <button onclick="viewPurchaseInvoice('${inv.id}')" class="text-blue-500 hover:text-blue-700 p-2 rounded-lg hover:bg-blue-50 transition-colors" title="Lihat Lampiran">
+                            <i class="fas fa-paperclip"></i>
+                        </button>` : ''}
                         <button onclick="viewPurchaseInvoice('${inv.id}')" class="text-slate-400 hover:text-blue-600 transition-colors p-2 rounded-lg hover:bg-slate-50" title="Detail Tagihan">
                             <i class="fas fa-eye text-lg"></i>
                         </button>
@@ -6107,26 +6407,39 @@ window.resetQTFilter = () => {
 };
 
 // --- Sales Quotations Helper Functions ---
-function generateQTNumber() {
+function generateQTNumber(customDate = null) {
     const qts = db.read('salesQuotations') || [];
-    const now = new Date();
-    const day = String(now.getDate()).padStart(2, '0');
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const year = now.getFullYear();
+    const date = customDate ? new Date(customDate) : new Date();
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
     const dateStr = `${day}${month}${year}`;
+    const monthYearStr = `${month}${year}`;
 
-    // Filter QT based on same month and year
-    const sameMonthQTs = qts.filter(q => {
-        if (!q.qtNumber.startsWith('QT-')) return false;
+    // Find the max sequence number for this specific month/year across all days
+    let maxSeq = 0;
+    qts.forEach(q => {
+        if (!q.qtNumber || !q.qtNumber.startsWith('QT-')) return;
         const parts = q.qtNumber.split('-');
-        if (parts.length < 2) return false;
-        const qDate = parts[1]; // DDMMYYYY
-        return qDate.slice(2) === `${month}${year}`;
+        if (parts.length < 3) return;
+        
+        // parts[1] is DDMMYYYY. slice(2) is MMYYYY
+        if (parts[1].slice(2) === monthYearStr) {
+            const seq = parseInt(parts[2]);
+            if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+        }
     });
 
-    const nextSeq = sameMonthQTs.length + 1;
-    const seqStr = String(nextSeq).padStart(3, '0');
-    return `QT-${dateStr}-${seqStr}`;
+    let nextSeq = maxSeq + 1;
+    let finalNumber = `QT-${dateStr}-${String(nextSeq).padStart(3, '0')}`;
+    
+    // Safety check: ensure absolute uniqueness
+    while (qts.some(q => q.qtNumber === finalNumber)) {
+        nextSeq++;
+        finalNumber = `QT-${dateStr}-${String(nextSeq).padStart(3, '0')}`;
+    }
+
+    return finalNumber;
 }
 
 window.openQTModal = (qtId = null) => {
@@ -6220,6 +6533,7 @@ window.openQTModal = (qtId = null) => {
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Date <span class="text-red-400">*</span></label>
                                 <input type="date" id="qt_date" value="${qt ? qt.date.split('T')[0] : new Date().toISOString().split('T')[0]}" 
+                                    onchange="if(!window._editingQTId) document.getElementById('qt_number').value = generateQTNumber(this.value)"
                                     class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/10 outline-none transition-all">
                             </div>
                             <div>
@@ -6550,7 +6864,13 @@ function renderPurchaseRFQs() {
     const suppliers = db.read('suppliers');
     const supOptions = suppliers.map(s => `<option value="${s.id}" ${filters.supplier === s.id ? 'selected' : ''}>${s.name}</option>`).join('');
 
-    let rfqs = db.read('purchaseRFQs').sort((a, b) => new Date(b.date) - new Date(a.date));
+    const statusWeight = { 'DRAFT': 0, 'SENT': 1, 'CONFIRMED': 2, 'PO_CREATED': 3, 'CANCELLED': 4 };
+    let rfqs = db.read('purchaseRFQs').sort((a, b) => {
+        const weightA = statusWeight[a.status] !== undefined ? statusWeight[a.status] : 99;
+        const weightB = statusWeight[b.status] !== undefined ? statusWeight[b.status] : 99;
+        if (weightA !== weightB) return weightA - weightB;
+        return new Date(b.date) - new Date(a.date);
+    });
 
     // Apply Filters
     if (filters.start) {
@@ -6622,7 +6942,7 @@ function renderPurchaseRFQs() {
                 </td>
                 <td class="py-4 px-6 text-center">
                     <span class="px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest shadow-sm border border-black/5 ${statusColor}">
-                        ${rfq.status}
+                        ${rfq.status === 'PO_CREATED' ? 'PO Created' : rfq.status}
                     </span>
                 </td>
                 <td class="py-4 px-6 text-right whitespace-nowrap">
@@ -6773,23 +7093,39 @@ window.resetRFQHeaderDateFilter = () => {
     renderPurchaseRFQs();
 };
 
-function generatePurchaseRFQNumber() {
+function generatePurchaseRFQNumber(customDate = null) {
     const rfqs = db.read('purchaseRFQs') || [];
-    const now = new Date();
-    const day = String(now.getDate()).padStart(2, '0');
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const year = now.getFullYear();
+    const date = customDate ? new Date(customDate) : new Date();
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
     const dateStr = `${day}${month}${year}`;
+    const monthYearStr = `${month}${year}`;
 
-    const sameMonthRFQs = rfqs.filter(r => {
-        if (!r.rfqNumber.startsWith('RFQ-')) return false;
+    // Find the max sequence number for this specific month/year across all days
+    let maxSeq = 0;
+    rfqs.forEach(r => {
+        if (!r.rfqNumber || !r.rfqNumber.startsWith('RFQ-')) return;
         const parts = r.rfqNumber.split('-');
-        return parts.length >= 2 && parts[1].slice(2) === `${month}${year}`;
+        if (parts.length < 3) return;
+        
+        // parts[1] is DDMMYYYY. slice(2) is MMYYYY
+        if (parts[1].slice(2) === monthYearStr) {
+            const seq = parseInt(parts[2]);
+            if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+        }
     });
 
-    const nextSeq = sameMonthRFQs.length + 1;
-    const seqStr = String(nextSeq).padStart(3, '0');
-    return `RFQ-${dateStr}-${seqStr}`;
+    let nextSeq = maxSeq + 1;
+    let finalNumber = `RFQ-${dateStr}-${String(nextSeq).padStart(3, '0')}`;
+    
+    // Safety check: ensure absolute uniqueness in case of manual edits or deletions
+    while (rfqs.some(r => r.rfqNumber === finalNumber)) {
+        nextSeq++;
+        finalNumber = `RFQ-${dateStr}-${String(nextSeq).padStart(3, '0')}`;
+    }
+
+    return finalNumber;
 }
 
 window.onRFQCategoryChange = () => {
@@ -6823,7 +7159,7 @@ window.openRFQForm = (rfqId = null) => {
     const suppliers = db.read('suppliers');
     const supOpts = suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
     const todayStr = rfq ? rfq.date.split('T')[0] : new Date().toISOString().split('T')[0];
-    const rfqNumberStr = rfq ? rfq.rfqNumber : generatePurchaseRFQNumber();
+    const rfqNumberStr = rfq ? rfq.rfqNumber : generatePurchaseRFQNumber(todayStr);
 
     formView.innerHTML = `
         <div class="animate-in fade-in slide-in-from-bottom-2 duration-400 -m-4 sm:-m-6 h-[calc(100vh-64px)] flex flex-col overflow-hidden bg-white">
@@ -6891,6 +7227,7 @@ window.openRFQForm = (rfqId = null) => {
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Tanggal RFQ <span class="text-red-400">*</span></label>
                                 <input type="date" id="rfq_date" value="${todayStr}"
+                                    onchange="if(!window._editingRFQId) document.getElementById('rfq_number').value = generatePurchaseRFQNumber(this.value)"
                                     class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 outline-none">
                             </div>
                             <div>
@@ -7218,7 +7555,7 @@ window.viewPurchaseRFQ = (id) => {
                         <table class="text-sm">
                             <tr><td class="text-gray-500 pr-4">Tanggal:</td><td class="font-bold text-gray-800">${formatDate(rfq.date).slice(0, 11)}</td></tr>
                             <tr><td class="text-gray-500 pr-4">Kategori:</td><td class="font-bold text-gray-800">${rfq.category || '-'}</td></tr>
-                            <tr><td class="text-gray-500 pr-4">Status:</td><td><span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 uppercase">${rfq.status}</span></td></tr>
+                            <tr><td class="text-gray-500 pr-4">Status:</td><td><span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700 uppercase">${rfq.status === 'PO_CREATED' ? 'PO Created' : rfq.status}</span></td></tr>
                         </table>
                     </div>
                 </div>
@@ -8003,21 +8340,39 @@ function romanize(num) {
     return roman[num] || "";
 }
 
-function generateSONumber(isTax) {
+function generateSONumber(isTax, customDate = null) {
     const sos = db.read('salesOrders') || [];
-    const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
+    const date = customDate ? new Date(customDate) : new Date();
+    const month = date.getMonth() + 1;
+    const year = date.getFullYear();
     const romanMonth = romanize(month);
-    const sameMonthSOs = sos.filter(s => {
-        if (!s.soNumber) return false;
-        const mainParts = s.soNumber.split('/');
-        return mainParts[1] === romanMonth && mainParts[2] === String(year);
-    });
-    const nextSeq = sameMonthSOs.length + 1;
-    const seqStr = String(nextSeq).padStart(3, '0');
     const type = isTax ? 'A' : 'B';
-    return `SO-${type}-${seqStr}/${romanMonth}/${year}`;
+
+    let maxSeq = 0;
+    sos.forEach(s => {
+        if (!s.soNumber) return;
+        const mainParts = s.soNumber.split('/');
+        if (mainParts.length < 3) return;
+        
+        // Check if month and year match (romanMonth and year string)
+        if (mainParts[1] === romanMonth && mainParts[2] === String(year)) {
+            const prefixParts = mainParts[0].split('-');
+            if (prefixParts.length >= 3 && prefixParts[1] === type) {
+                const seq = parseInt(prefixParts[2]);
+                if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+            }
+        }
+    });
+
+    let nextSeq = maxSeq + 1;
+    let finalNumber = `SO-${type}-${String(nextSeq).padStart(3, '0')}/${romanMonth}/${year}`;
+    
+    while (sos.some(s => s.soNumber === finalNumber)) {
+        nextSeq++;
+        finalNumber = `SO-${type}-${String(nextSeq).padStart(3, '0')}/${romanMonth}/${year}`;
+    }
+
+    return finalNumber;
 }
 
 window.openSOModal = (qtToConvert = null) => {
@@ -8091,7 +8446,7 @@ window.openSOModal = (qtToConvert = null) => {
                                         <option value="true">TAX</option>
                                         <option value="false">NT</option>
                                      </select>
-                                     <input type="text" id="so_number" value="${generateSONumber(true)}" 
+                                     <input type="text" id="so_number" value="${generateSONumber(true, new Date().toISOString().split('T')[0])}" 
                                         class="w-full border-none rounded-r-xl px-4 py-3 bg-slate-50 font-bold text-slate-400 outline-none" readonly>
                                 </div>
                             </div>
@@ -8134,6 +8489,7 @@ window.openSOModal = (qtToConvert = null) => {
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Tanggal Sales Order <span class="text-red-400">*</span></label>
                                 <input type="date" id="so_date" value="${new Date().toISOString().split('T')[0]}" 
+                                    onchange="if(!window._editingSOId) document.getElementById('so_number').value = generateSONumber(document.getElementById('so_is_tax').value==='true', this.value)"
                                     class="w-full border-none rounded-xl px-4 py-3 bg-slate-100 font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/10 outline-none transition-all">
                             </div>
                             <div>
@@ -9086,26 +9442,38 @@ window.viewSO = (id) => {
 };
 
 // --- Create Invoice Logic ---
-window.generateInvoiceNumber = (isTax) => {
+window.generateInvoiceNumber = (isTax, customDate = null) => {
     const invoices = db.read('salesInvoices') || [];
-    const now = new Date();
-    const month = now.getMonth() + 1;
-    const year = now.getFullYear();
+    const date = customDate ? new Date(customDate) : new Date();
+    const month = date.getMonth() + 1;
+    const year = date.getFullYear();
     const romanMonth = romanize(month);
+    const type = isTax ? 'A' : 'B';
 
-    const sameMonthInvs = invoices.filter(inv => {
-        if (!inv.invoiceNumber) return false;
+    let maxSeq = 0;
+    invoices.forEach(inv => {
+        if (!inv.invoiceNumber) return;
         const parts = inv.invoiceNumber.split('/');
-        if (parts.length < 3) return false;
-        const romanPart = parts[1];
-        const yearPartStr = parts[2];
-        return romanPart === romanMonth && yearPartStr === String(year);
+        if (parts.length < 3) return;
+        
+        if (parts[1] === romanMonth && parts[2] === String(year)) {
+            const prefixParts = parts[0].split('-');
+            if (prefixParts.length >= 3 && prefixParts[1] === type) {
+                const seq = parseInt(prefixParts[2]);
+                if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+            }
+        }
     });
 
-    const nextSeq = sameMonthInvs.length + 1;
-    const seqStr = String(nextSeq).padStart(3, '0');
-    const type = isTax ? 'A' : 'B';
-    return `INV-${type}-${seqStr}/${romanMonth}/${year}`;
+    let nextSeq = maxSeq + 1;
+    let finalNumber = `INV-${type}-${String(nextSeq).padStart(3, '0')}/${romanMonth}/${year}`;
+    
+    while (invoices.some(inv => inv.invoiceNumber === finalNumber)) {
+        nextSeq++;
+        finalNumber = `INV-${type}-${String(nextSeq).padStart(3, '0')}/${romanMonth}/${year}`;
+    }
+
+    return finalNumber;
 };
 
 window.openInvoiceModal = (soId = null, customerId = null) => {
@@ -9258,7 +9626,9 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
                             </div>
                             <div class="space-y-3">
                                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Tanggal <span class="text-red-400">*</span></label>
-                                <input type="date" id="inv_date" value="${new Date().toISOString().split('T')[0]}" onchange="updateInvDueDate()" class="w-full px-4 py-3.5 bg-slate-100/80 border-2 border-transparent rounded-xl font-bold text-slate-800 focus:bg-white focus:border-blue-500 focus:ring-0 outline-none transition-all text-xs cursor-pointer">
+                                <input type="date" id="inv_date" value="${new Date().toISOString().split('T')[0]}" 
+                                    onchange="updateInvDueDate(); if(!window._editingInvId) document.getElementById('inv_number').value = generateInvoiceNumber(document.getElementById('inv_tax_rate').value==='11', this.value)" 
+                                    class="w-full px-4 py-3.5 bg-slate-100/80 border-2 border-transparent rounded-xl font-bold text-slate-800 focus:bg-white focus:border-blue-500 focus:ring-0 outline-none transition-all text-xs cursor-pointer">
                             </div>
                             <div class="space-y-3">
                                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Term</label>
@@ -9275,7 +9645,7 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
                             </div>
                             <div class="space-y-3">
                                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Pajak (PPN%)</label>
-                                <select id="inv_tax_rate" onchange="refreshInvoiceCalculation()" class="w-full px-4 py-3.5 bg-slate-100/80 border-2 border-transparent rounded-xl font-bold text-slate-800 focus:bg-white focus:border-blue-500 outline-none transition-all cursor-pointer text-xs">
+                                <select id="inv_tax_rate" onchange="refreshInvoiceCalculation(); if(!window._editingInvId) document.getElementById('inv_number').value = generateInvoiceNumber(this.value==='11', document.getElementById('inv_date').value)" class="w-full px-4 py-3.5 bg-slate-100/80 border-2 border-transparent rounded-xl font-bold text-slate-800 focus:bg-white focus:border-blue-500 outline-none transition-all cursor-pointer text-xs">
                                     <option value="0" ${defaultTaxRate === 0 ? 'selected' : ''}>0% (Non-PPN)</option>
                                     <option value="11" ${defaultTaxRate > 0 ? 'selected' : ''}>11% (PPN)</option>
                                 </select>

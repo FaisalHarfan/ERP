@@ -267,7 +267,7 @@ window.resetSalesDOHeaderDateFilter = function() {
 // BLANK DELIVERY ORDER
 // ==========================================
 window.openBlankDeliveryModal = function () {
-    const products = (db.read('inventoryItems') || []).filter(p => !['RAW_MATERIAL', 'MIXING_STOCK'].includes(p.category));
+    const products = (db.read('inventoryItems') || []).filter(p => !['RAW_MATERIAL'].includes(p.category));
     const productOptions = products.map(p => `<option value="${p.itemName}" data-unit="${p.unit || ''}">${p.itemCode || ''}</option>`).join('');
 
     const body = `

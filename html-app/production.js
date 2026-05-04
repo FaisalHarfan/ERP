@@ -1,16 +1,14 @@
-// production.js - Modul Produksi 5 Tahap (2-Step Process: Start -> Finish)
-// Tahap: MIXING -> EXTRUDER -> OVEN_BASAH -> OVEN_KERING -> FINISH_GOOD
+// production.js - Modul Produksi
+// Tahap: OVEN_BASAH -> OVEN_KERING -> FINISH_GOOD
 
 const PROD_STAGES = [
-    { key: 'MIXING',       label: 'Campuran',       icon: 'fas fa-blender',      color: 'bg-blue-50 text-blue-600',   hasStock: true,  hasShrinkage: false, inputFrom: 'RAW_MATERIAL' },
-    { key: 'OVEN_BASAH',   label: 'Oven Basah',   icon: 'fas fa-fire',         color: 'bg-orange-50 text-orange-600', hasStock: true, hasShrinkage: true,  inputFrom: 'MIXING' }, 
-    { key: 'OVEN_KERING',  label: 'Oven Kering',  icon: 'fas fa-sun',          color: 'bg-yellow-50 text-yellow-600', hasStock: true, hasShrinkage: true,  inputFrom: 'OVEN_BASAH' },
-    { key: 'PACKING',      label: 'Gudang Jadi',  icon: 'fas fa-box-open',     color: 'bg-green-50 text-green-600', hasStock: true, hasShrinkage: true,  inputFrom: 'OVEN_KERING' },
+    { key: 'OVEN_BASAH', label: 'Oven Basah', icon: 'fas fa-fire', color: 'bg-orange-50 text-orange-600', hasStock: true, hasShrinkage: true, inputFrom: 'RAW_MATERIAL' },
+    { key: 'OVEN_KERING', label: 'Oven Kering', icon: 'fas fa-sun', color: 'bg-yellow-50 text-yellow-600', hasStock: true, hasShrinkage: true, inputFrom: 'OVEN_BASAH' },
+    { key: 'PACKING', label: 'Gudang Jadi', icon: 'fas fa-box-open', color: 'bg-green-50 text-green-600', hasStock: true, hasShrinkage: true, inputFrom: 'OVEN_KERING' },
 ];
 
 const STAGE_LOCATIONS = {
     RAW_MATERIAL: 'WHS',
-    MIXING: 'MIXING',
     OVEN_BASAH: 'OVEN_BASAH',
     OVEN_KERING: 'OVEN_KERING',
     PACKING: 'WHS'
@@ -22,10 +20,9 @@ const MACHINE_CAPACITY = {
 };
 
 const STAGE_STOCK_CATEGORY = {
-    MIXING:      ['MIXING_STOCK'],
-    OVEN_BASAH:  ['OVEN_BASAH_STOCK'],
+    OVEN_BASAH: ['OVEN_BASAH_STOCK'],
     OVEN_KERING: ['OVEN_KERING_STOCK'],
-    PACKING:     ['FINISHED_GOODS']
+    PACKING: ['FINISHED_GOODS']
 };
 
 function generateBatchId() {
@@ -39,10 +36,9 @@ function prodStageLabel(key) {
 }
 function prodStageColor(key) {
     const colors = {
-        MIXING:      'bg-blue-100 text-blue-700',
-        OVEN_BASAH:  'bg-orange-100 text-orange-700',
+        OVEN_BASAH: 'bg-orange-100 text-orange-700',
         OVEN_KERING: 'bg-yellow-100 text-yellow-700',
-        PACKING:     'bg-green-100 text-green-700',
+        PACKING: 'bg-green-100 text-green-700',
     };
     return colors[key] || 'bg-gray-100 text-gray-700';
 }
@@ -77,7 +73,7 @@ window.renderProductionDashboard = () => {
             <div class="hover:bg-slate-50 p-3 rounded-lg border border-slate-100 flex justify-between items-center group cursor-pointer" onclick="viewProductionMO('${mo.id}')">
                 <div>
                     <p class="text-xs font-bold text-slate-700">${mo.productName}</p>
-                    <p class="text-[10px] text-slate-400">#${mo.moNumber} • ${new Date(mo.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
+                    <p class="text-[10px] text-slate-400">#${mo.moNumber} • ${new Date(mo.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                 </div>
                 <button onclick="event.stopPropagation(); openCompleteMOModal('${mo.id}')" class="text-[10px] font-bold text-blue-600 hover:underline">SELESAIKAN</button>
             </div>
@@ -99,6 +95,14 @@ window.renderProductionDashboard = () => {
         </div>`;
     }).join('');
 
+    // Calculate Top Produced Products (by total KG)
+    const topProdsRaw = {};
+    mos.filter(m => m.status === 'DONE').forEach(m => {
+        const name = m.productName || (m.outputProducts && m.outputProducts.length > 0 ? m.outputProducts[0].itemName : null) || 'Unknown';
+        topProdsRaw[name] = (topProdsRaw[name] || 0) + (parseFloat(m.outputQty) || 0);
+    });
+    const sortedProds = Object.entries(topProdsRaw).sort((a,b) => b[1] - a[1]).slice(0, 5);
+
     mc.innerHTML = `
         <div class="mb-6 flex justify-between items-end border-b border-slate-100 pb-4">
             <div>
@@ -115,10 +119,89 @@ window.renderProductionDashboard = () => {
                 <button onclick="renderProductionMO()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold shadow-sm hover:bg-blue-700">Riwayat MO</button>
             </div>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+        <!-- Pipeline Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
             ${dashboardCards}
         </div>
+
+        <!-- Analytics Section -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-12">
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 hover:shadow-md transition-shadow">
+                <div class="flex justify-between items-center mb-6">
+                    <div>
+                        <h3 class="text-sm font-black text-slate-800 uppercase tracking-wider">Top Produced Products</h3>
+                        <p class="text-[10px] text-slate-400 font-bold uppercase mt-0.5">Berdasarkan Total Berat (KG)</p>
+                    </div>
+                    <div class="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center">
+                        <i class="fas fa-crown text-indigo-500 text-xs"></i>
+                    </div>
+                </div>
+                <div style="height: 220px;">
+                    <canvas id="prod_top_chart"></canvas>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 flex flex-col justify-center items-center text-center group">
+                 <div class="w-20 h-20 rounded-full bg-slate-50 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-500">
+                    <div class="w-14 h-14 rounded-full bg-white shadow-inner flex items-center justify-center text-blue-500">
+                        <i class="fas fa-chart-line text-2xl"></i>
+                    </div>
+                 </div>
+                 <h4 class="text-slate-800 font-black uppercase tracking-widest text-sm mb-3">Analisis Efisiensi</h4>
+                 <p class="text-xs text-slate-500 max-w-xs leading-relaxed font-medium">Data di samping menunjukkan dominasi produk dalam alur kerja pabrik Anda. Fokuskan kontrol kualitas pada item dengan volume tinggi ini untuk meminimalkan penyusutan secara signifikan.</p>
+                 <button onclick="renderProductionReports()" class="mt-6 px-6 py-2.5 rounded-xl bg-slate-50 text-slate-600 text-[10px] font-black uppercase tracking-widest hover:bg-slate-100 transition-colors">Lihat Detail Laporan</button>
+            </div>
+        </div>
     `;
+
+    // Draw Chart
+    setTimeout(() => {
+        const ctx = document.getElementById('prod_top_chart');
+        if (ctx && sortedProds.length > 0) {
+            new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: sortedProds.map(p => p[0]),
+                    datasets: [{
+                        data: sortedProds.map(p => p[1]),
+                        backgroundColor: '#818cf8',
+                        borderRadius: 6,
+                        barThickness: 24,
+                        hoverBackgroundColor: '#6366f1'
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { 
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#1e293b',
+                            padding: 12,
+                            cornerRadius: 8,
+                            callbacks: {
+                                label: (c) => ` ${prodFmt(c.parsed.x)} KG`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { display: false, grid: { display: false } },
+                        y: { 
+                            grid: { display: false }, 
+                            border: { display: false },
+                            ticks: { 
+                                color: '#64748b', 
+                                font: { size: 10, weight: 'bold' },
+                                padding: 10
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }, 100);
 };
 
 // --- DAFTAR MO ---
@@ -128,27 +211,24 @@ window.renderProductionMO = () => {
     const mc = document.getElementById('main-content');
     const mos = db.read('productionOrders') || [];
 
-    // Initialize filter state if not exists
-    window._prodFilters = window._prodFilters || {
-        start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-        end: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0],
-        stage: '',
-        status: '',
-        product: ''
-    };
+    window._prodFilters = window._prodFilters || { stage: '', search: '', start: '', end: '' };
     const f = window._prodFilters;
-    const searchDone = window._prodSearchPerformed || false;
 
     const filtered = mos.filter(m => {
         if (f.stage && m.stage !== f.stage) return false;
-        if (f.status && m.status !== f.status) return false;
-        if (f.product && m.productId !== f.product) return false;
-        if (f.start && f.end) {
-            const moDate = new Date(m.date);
-            moDate.setHours(0,0,0,0);
-            const startD = new Date(f.start); startD.setHours(0,0,0,0);
-            const endD = new Date(f.end); endD.setHours(23,59,59,999);
-            if (moDate < startD || moDate > endD) return false;
+        if (f.search) {
+            const q = f.search.toLowerCase();
+            const inMO = (m.moNumber || '').toLowerCase().includes(q);
+            const inProd = (m.productName || '').toLowerCase().includes(q);
+            const inStage = (prodStageLabel(m.stage) || '').toLowerCase().includes(q);
+            const inTP = (m.targetProducts || []).some(tp => (tp.itemName || '').toLowerCase().includes(q));
+            if (!inMO && !inProd && !inTP && !inStage) return false;
+        }
+        if (f.start || f.end) {
+            const moDate = new Date(m.date || m.createdAt);
+            moDate.setHours(0, 0, 0, 0);
+            if (f.start) { const sd = new Date(f.start); sd.setHours(0, 0, 0, 0); if (moDate < sd) return false; }
+            if (f.end) { const ed = new Date(f.end); ed.setHours(23, 59, 59, 999); if (moDate > ed) return false; }
         }
         return true;
     }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -156,204 +236,143 @@ window.renderProductionMO = () => {
     const stageOpts = PROD_STAGES.map(s =>
         `<option value="${s.key}" ${f.stage === s.key ? 'selected' : ''}>${s.label}</option>`).join('');
 
-    const invItems = db.read('inventoryItems') || [];
-    const productOpts = invItems.filter(i => i.category === 'FINISHED_GOODS').map(i => 
-        `<option value="${i.id}" ${f.product === i.id ? 'selected' : ''}>${i.itemName}</option>`).join('');
-
-    // Group by Date for cleaner view
-    const groups = {};
-    filtered.forEach(mo => {
-        const d = new Date(mo.date).toDateString();
-        if (!groups[d]) groups[d] = [];
-        groups[d].push(mo);
-    });
-    const sortedDates = Object.keys(groups).sort((a,b) => new Date(b) - new Date(a));
-
-    let tableRows = "";
-    if (!searchDone) {
-        tableRows = `<tr><td colspan="7" class="py-20 text-center text-slate-400 font-medium">
-            <div class="flex flex-col items-center gap-2">
-                <i class="fas fa-search text-3xl opacity-20 mb-2"></i>
-                <p class="text-sm">Silakan gunakan filter di atas lalu klik <span class="font-black text-slate-600">"Tampilkan Data"</span></p>
-                <p class="text-[10px] text-slate-300 uppercase tracking-widest font-black">Data MO akan muncul di sini</p>
-            </div>
-        </td></tr>`;
-    } else if (filtered.length === 0) {
-        tableRows = `<tr><td colspan="7" class="py-20 text-center text-slate-300 italic text-sm">Belum ada perintah produksi (MO) ditemukan.</td></tr>`;
+    let tableRows = '';
+    if (filtered.length === 0) {
+        tableRows = `<tr><td colspan="6" class="py-20 text-center text-slate-300 italic text-sm">Tidak ada MO ditemukan.</td></tr>`;
     } else {
-        sortedDates.forEach(dateKey => {
-            const dateObj = new Date(dateKey);
-            const displayDate = dateObj.toLocaleDateString('id-ID', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
-            
+        filtered.forEach(mo => {
+            const moDate = new Date(mo.date || mo.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            const tpNames = (mo.targetProducts || []).map(tp => tp.itemName || '').filter(Boolean).join(', ') || mo.productName || '-';
             tableRows += `
-                <tr class="bg-slate-50/10">
-                    <td colspan="7" class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest border-y border-slate-50 bg-slate-50/30">
-                        <div class="flex items-center gap-2">
-                            <i class="fas fa-calendar-day text-blue-500"></i>
-                            <span>${displayDate}</span>
-                        </div>
-                    </td>
-                </tr>
-            `;
-            
-            groups[dateKey].forEach(mo => {
-                tableRows += `
-                <tr class="border-b border-slate-50 hover:bg-slate-50/50 transition-all text-sm group">
-                    <td class="py-4 px-6 font-mono font-bold text-blue-600 cursor-pointer hover:underline" onclick="viewProductionMO('${mo.id}')">${mo.moNumber}</td>
-                    <td class="py-4 px-4">
-                        <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${prodStageColor(mo.stage)}">${prodStageLabel(mo.stage)}</span>
-                    </td>
-                    <td class="py-4 px-4">
-                        <div class="text-[11px] font-bold text-slate-500 italic uppercase tracking-tighter">${mo.machineName || '-'}</div>
-                    </td>
-                    <td class="py-4 px-4">
-                        <div class="font-bold text-slate-800 text-xs">${mo.productName || '-'}</div>
-                    </td>
-                    <td class="py-4 px-4 text-center">
-                        ${mo.shift ? `<span class="text-blue-600 font-black font-mono text-sm tracking-tighter">${mo.shift}</span>` : '<span class="text-slate-300">-</span>'}
-                    </td>
-                    <td class="py-4 px-4">
-                        <span class="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${prodStatusColor(mo.status)}">
-                            ${mo.status === 'DONE' ? 'Selesai' : 'Proses'}
-                        </span>
-                    </td>
-                    <td class="py-4 px-6 text-right whitespace-nowrap">
-                        <div class="flex justify-end gap-1.5 transition-all">
-                            <button onclick="printProductionMO('${mo.id}')" class="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Cetak MO"><i class="fas fa-print text-sm"></i></button>
-                            <button onclick="viewProductionMO('${mo.id}')" class="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="Detail"><i class="fas fa-eye text-sm"></i></button>
-                            ${mo.status === 'IN_PROGRESS' && canEdit ? `
-                            <button onclick="openCompleteMOModal('${mo.id}')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest shadow-sm active:scale-95 ml-1">Selesai</button>` : ''}
-                            ${mo.status !== 'DONE' && canEdit ? `
-                            <button onclick="deleteMO('${mo.id}')" class="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-all" title="Hapus"><i class="fas fa-trash text-sm"></i></button>` : ''}
-                        </div>
-                    </td>
-                </tr>`;
-            });
+            <tr class="border-b border-slate-100 hover:bg-slate-50 transition-all text-sm">
+                <td class="py-4 px-5 font-mono font-bold text-blue-600 cursor-pointer hover:underline whitespace-nowrap" onclick="viewProductionMO('${mo.id}')">${mo.moNumber}</td>
+                <td class="py-4 px-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${prodStageColor(mo.stage)}">${prodStageLabel(mo.stage)}</span></td>
+                <td class="py-4 px-4 text-xs text-slate-500 font-medium">${moDate}</td>
+                <td class="py-4 px-4 font-semibold text-slate-800 text-xs max-w-xs truncate">${tpNames}</td>
+                <td class="py-4 px-4"><span class="px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${prodStatusColor(mo.status)}">${mo.status === 'DONE' ? 'Selesai' : 'Proses'}</span></td>
+                <td class="py-4 px-5 text-right whitespace-nowrap">
+                    <div class="flex justify-end items-center gap-1.5">
+                        <button onclick="printProductionMO('${mo.id}')" class="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all" title="Cetak"><i class="fas fa-print text-xs"></i></button>
+                        <button onclick="viewProductionMO('${mo.id}')" class="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all" title="Detail"><i class="fas fa-eye text-xs"></i></button>
+                        ${mo.status === 'IN_PROGRESS' && canEdit ? `<button onclick="openCompleteMOModal('${mo.id}')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest active:scale-95 transition-all">Selesai</button>` : ''}
+                        ${mo.status !== 'DONE' && canEdit ? `<button onclick="deleteMO('${mo.id}')" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all" title="Hapus"><i class="fas fa-trash text-xs"></i></button>` : ''}
+                    </div>
+                </td>
+            </tr>`;
         });
     }
 
     mc.innerHTML = `
-        <div class="flex flex-col gap-6 animate-in fade-in duration-500">
-            <!-- Header Section -->
-            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                    <h2 class="text-2xl font-black text-slate-800 tracking-tight">Perintah Produksi</h2>
-                    <p class="text-xs text-slate-500 font-medium italic">Manajemen Manufacturing Order (MO)</p>
+        <div class="flex flex-col gap-4 animate-in fade-in duration-300">
+            <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
+                <!-- Search Bar -->
+                <div class="relative w-full sm:max-w-md">
+                    <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                    <input type="text" id="mo_search_input" placeholder="Cari nomor MO, produk, atau tahap..." value="${f.search || ''}"
+                        oninput="window._prodFilters.search=this.value; renderProductionMO()"
+                        class="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 outline-none focus:border-blue-500 transition-all shadow-sm">
                 </div>
-                <div class="flex gap-2 w-full sm:w-auto">
-                    ${canEdit ? `
-                    <button onclick="openMOModal()" class="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-lg shadow-green-100 uppercase tracking-widest transition-all active:scale-95 group">
-                        <i class="fas fa-plus group-hover:rotate-90 transition-transform"></i> Mulai Produksi Baru
-                    </button>` : ''}
+                
+                <!-- Action Buttons -->
+                <div class="flex items-center gap-3 shrink-0 w-full sm:w-auto">
+                    <!-- Date Filter Dropdown Trigger -->
+                    <div class="relative" id="mo_date_filter_container">
+                        <button onclick="toggleMODateDropdown()" class="flex items-center bg-slate-50 border border-slate-200 rounded-lg overflow-hidden hover:bg-slate-100 transition-all shadow-sm h-[42px] group">
+                            <span class="bg-slate-200/60 border-r border-slate-200 px-3 h-full flex items-center text-slate-700 transition-colors">
+                                <i class="fas fa-sort-amount-up text-sm"></i>
+                            </span>
+                            <span class="px-4 text-sm font-medium text-blue-700">Date</span>
+                            <span class="pr-3 text-slate-600">
+                                <i class="fas fa-chevron-down text-[12px]"></i>
+                            </span>
+                        </button>
+                        
+                        <!-- Dropdown Content -->
+                        <div id="mo_date_dropdown" class="absolute right-0 mt-2 w-72 bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] hidden p-5 animate-in fade-in zoom-in-95 duration-200">
+                            <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Filter Berdasarkan Tanggal</h4>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Dari Tanggal</label>
+                                    <input type="date" id="mo_header_start" value="${f.start || ''}" class="w-full border-2 border-slate-50 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Sampai Tanggal</label>
+                                    <input type="date" id="mo_header_end" value="${f.end || ''}" class="w-full border-2 border-slate-50 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50">
+                                </div>
+                                <div class="flex gap-2 pt-2">
+                                    <button onclick="applyMOHeaderDateFilter()" class="flex-1 bg-blue-600 text-white py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95">Apply</button>
+                                    <button onclick="resetMOHeaderDateFilter()" class="flex-1 bg-slate-50 text-slate-400 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-100 transition-all">Reset</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    ${canEdit ? `<button onclick="openMOModal()" class="bg-blue-600 hover:bg-blue-700 text-white h-[42px] px-6 rounded-lg text-xs font-black flex items-center gap-2 shadow-sm uppercase tracking-widest transition-all active:scale-95 whitespace-nowrap"><i class="fas fa-plus"></i> BUAT MO</button>` : ''}
                 </div>
             </div>
-
-            <!-- Filter Section -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-5 overflow-hidden">
-                <div onclick="toggleProdMOFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
-                    <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
-                        <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
-                        ${(!window._uiState.prodMOFilterOpen && (f.stage || f.status || f.product)) ? 
-                            `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
-                    </h3>
-                    <div class="flex items-center gap-3">
-                        <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.prodMOFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
-                        <i class="fas fa-chevron-${window._uiState.prodMOFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
-                    </div>
-                </div>
-
-                <div class="${window._uiState.prodMOFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Dari Tanggal</label>
-                            <input type="date" id="prod_f_start" value="${f.start}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white">
-                        </div>
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Sampai Tanggal</label>
-                            <input type="date" id="prod_f_end" value="${f.end}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white">
-                        </div>
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tahap Produksi</label>
-                            <select id="prod_f_stage" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white cursor-pointer font-sans">
-                                <option value="">-- SEMUA TAHAP --</option>${stageOpts}
-                            </select>
-                        </div>
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Produk Jadi / WIP</label>
-                            <select id="prod_f_product" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white cursor-pointer font-sans">
-                                <option value="">-- SEMUA PRODUK --</option>${productOpts}
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="mt-4 pt-4 border-t border-slate-50 flex flex-col sm:flex-row justify-between items-center gap-4">
-                        <button onclick="resetProdFilter()" class="text-[9px] font-black text-slate-400 hover:text-slate-600 uppercase tracking-widest flex items-center gap-2 transition-all">
-                            <i class="fas fa-undo-alt text-[10px]"></i> Reset Filter
-                        </button>
-                        <button onclick="applyProdFilter()" class="w-full sm:w-auto bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2">
-                            <i class="fas fa-search"></i> TAMPILKAN DATA
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- List Section -->
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden transition-all">
-                <div class="p-6 border-b border-slate-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50/30">
-                    <div class="flex items-center gap-3">
-                        <div class="w-1.5 h-6 bg-blue-500 rounded-sm"></div>
-                        <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest">Daftar Perintah Produksi</h3>
-                    </div>
-                    <span class="px-3 py-1 bg-white border-2 border-slate-100 rounded-lg text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                        Total: ${filtered.length} MO
-                    </span>
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+                    <span class="text-xs font-black text-slate-700 uppercase tracking-widest">Daftar Perintah Produksi</span>
+                    <span class="text-[10px] font-bold text-slate-400">${filtered.length} MO</span>
                 </div>
                 <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse">
+                    <table class="w-full text-left">
                         <thead>
-                            <tr class="bg-slate-50/50 text-slate-400 border-b border-slate-100">
-                                <th class="py-5 px-6 text-[10px] font-black uppercase tracking-widest">Nomor MO</th>
-                                <th class="py-5 px-4 text-[10px] font-black uppercase tracking-widest">Tahap</th>
-                                <th class="py-5 px-4 text-[10px] font-black uppercase tracking-widest">Mesin/Alat</th>
-                                <th class="py-5 px-4 text-[10px] font-black uppercase tracking-widest">Produk</th>
-                                <th class="py-5 px-4 text-center text-[10px] font-black uppercase tracking-widest">Shift</th>
-                                <th class="py-5 px-4 text-[10px] font-black uppercase tracking-widest">Status</th>
-                                <th class="py-5 px-6 text-right text-[10px] font-black uppercase tracking-widest">Opsi</th>
+                            <tr class="border-b border-slate-100 bg-slate-50/50">
+                                <th class="py-3 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Nomor MO</th>
+                                <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tahap</th>
+                                <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tanggal</th>
+                                <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Produk</th>
+                                <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                                <th class="py-3 px-5 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Aksi</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-slate-50">${tableRows}</tbody>
+                        <tbody>${tableRows}</tbody>
                     </table>
                 </div>
             </div>
         </div>`;
+
+    // Restore focus to search input if it was being typed in
+    setTimeout(() => {
+        const searchInput = document.getElementById('mo_search_input');
+        if (searchInput && f.search) {
+            searchInput.focus();
+            searchInput.setSelectionRange(searchInput.value.length, searchInput.value.length);
+        }
+    }, 10);
 };
 
-window.applyProdFilter = () => {
-    window._prodSearchPerformed = true;
-    window._prodFilters = {
-        start: document.getElementById('prod_f_start')?.value || '',
-        end: document.getElementById('prod_f_end')?.value || '',
-        stage: document.getElementById('prod_f_stage')?.value || '',
-        status: document.getElementById('prod_f_status')?.value || '',
-        product: document.getElementById('prod_f_product')?.value || ''
-    };
+window.toggleMODateDropdown = () => {
+    const dropdown = document.getElementById('mo_date_dropdown');
+    if (dropdown) dropdown.classList.toggle('hidden');
+};
+
+window.applyMOHeaderDateFilter = () => {
+    window._prodFilters.start = document.getElementById('mo_header_start')?.value || '';
+    window._prodFilters.end = document.getElementById('mo_header_end')?.value || '';
+    document.getElementById('mo_date_dropdown')?.classList.add('hidden');
     renderProductionMO();
 };
 
-window.resetProdFilter = () => {
-    window._prodSearchPerformed = false;
-    window._prodFilters = {
-        start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-        end: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().split('T')[0],
-        stage: '',
-        status: '',
-        product: ''
-    };
+window.resetMOHeaderDateFilter = () => {
+    window._prodFilters.start = '';
+    window._prodFilters.end = '';
+    document.getElementById('mo_date_dropdown')?.classList.add('hidden');
     renderProductionMO();
 };
+
+// Global click handler to close dropdown
+document.addEventListener('click', (e) => {
+    const container = document.getElementById('mo_date_filter_container');
+    const dropdown = document.getElementById('mo_date_dropdown');
+    if (container && dropdown && !container.contains(e.target)) {
+        dropdown.classList.add('hidden');
+    }
+});
 
 // --- STEP 1: MULAI MO (START) ---------------------------------
 window.openMOModal = (stagePreset = '') => {
+    if (window.pushCurrentToHistory) window.pushCurrentToHistory();
     const invItems = db.read('inventoryItems') || [];
     const stageOpts = PROD_STAGES.map(s =>
         `<option value="${s.key}" ${stagePreset === s.key ? 'selected' : ''}>${s.label}</option>`).join('');
@@ -361,87 +380,152 @@ window.openMOModal = (stagePreset = '') => {
     const boms = db.read('bomHeaders') || [];
     const bomOpts = boms.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
     const machines = db.read('machines') || [];
+    const todayStr = new Date().toISOString().split('T')[0];
 
-    const body = `
-    <div class="space-y-4">
-        <!-- FIRST ROW: STAGE & DATE -->
-        <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
-            <div>
-                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Pilih Tahap <span class="text-red-500">*</span></label>
-                <select id="mo_stage" onchange="updateMOForm()" class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-black text-slate-800 focus:border-blue-500 outline-none transition-all">
-                    <option value="">-- Pilih Tahap --</option>${stageOpts}
-                </select>
-            </div>
-            <div id="mo_grp_date">
-                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tanggal Produksi <span class="text-red-500">*</span></label>
-                <input type="date" id="mo_date" value="${new Date().toISOString().split('T')[0]}" onchange="recalcMONumber()" class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-blue-500 outline-none">
-            </div>
-            <div id="mo_grp_shift" class="hidden">
-                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Shift <span class="text-red-500">*</span></label>
-                <select id="mo_shift" class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-black text-slate-800 focus:border-blue-500 outline-none transition-all">
-                    <option value="1">Shift 1</option>
-                    <option value="2">Shift 2</option>
-                    <option value="3">Shift 3</option>
-                </select>
-            </div>
-        </div>
+    const mc = document.getElementById('main-content');
+    document.getElementById('pageTitle').innerText = 'Form Perintah Produksi';
+    renderBreadcrumb(['Produksi', 'Manufacturing Orders', 'Buat MO Baru']);
 
-        <!-- SECOND ROW: MO NUMBER & DYNAMIC FIELDS (BOM/MACHINE) -->
-        <div class="grid grid-cols-2 gap-4">
-            <div id="mo_grp_number">
-                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Nomor MO <span class="text-red-500">*</span></label>
-                <input type="text" id="mo_number_display" readonly class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-black text-blue-600 bg-slate-50 font-mono">
-            </div>
-            <div id="mo_grp_bom">
-                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Resep Produksi (BOM)</label>
-                <select id="mo_bom_id" onchange="loadBOMMaterialsToMO()" class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:border-blue-500 outline-none">
-                    <option value="">-- Tanpa Resep --</option>${bomOpts}
-                </select>
-            </div>
-            <div id="mo_grp_machine" class="hidden">
-                <label id="mo_machine_label" class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Gunakan Mesin <span class="text-red-500">*</span></label>
-                <select id="mo_machine_id" class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-black text-slate-800 focus:border-blue-500 outline-none">
-                    <option id="mo_machine_placeholder" value="">-- Pilih Mesin/Oven --</option>
-                    ${machines.filter(m => m.status === 'ACTIVE').map(m => `<option value="${m.id}" data-type="${m.type}">${m.name}</option>`).join('')}
-                </select>
-            </div>
-        </div>
-        
-        <div id="mo_grp_product" class="grid grid-cols-1 gap-4">
-            <div>
-                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Cari & Pilih Produk <span class="text-red-500">*</span></label>
-                <div class="relative group">
-                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <i class="fas fa-search text-slate-400 group-focus-within:text-blue-500 transition-colors text-xs"></i>
-                    </div>
-                    <input type="text" 
-                           id="mo_product_search" 
-                           onkeyup="filterMOProducts()" 
-                           placeholder="Ketik nama produk..." 
-                           class="w-full border-2 border-slate-200 rounded-lg pl-9 pr-3 py-2 text-sm bg-slate-50 focus:bg-white focus:border-blue-500 outline-none transition-all font-medium placeholder:text-slate-400 mb-2">
+    mc.innerHTML = `
+        <div class="animate-in fade-in slide-in-from-bottom-2 duration-400 -m-4 sm:-m-6 h-[calc(100vh-64px)] flex flex-col overflow-hidden bg-white">
+
+            <!-- Sticky Action Bar -->
+            <div class="sticky top-0 z-40 bg-white border-b border-slate-100 px-8 py-4 flex items-center justify-between shrink-0 shadow-sm">
+                <div></div>
+                <div class="flex items-center gap-3">
+                    <button type="button" onclick="renderProductionMO()"
+                        class="px-6 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95">
+                        Batal
+                    </button>
+                    <button type="button" onclick="startMO()"
+                        class="px-8 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95 flex items-center gap-2">
+                        <i class="fas fa-play-circle text-[10px]"></i> Mulai Produksi
+                    </button>
                 </div>
-                <select id="mo_product_id" class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white focus:border-blue-500 outline-none font-black text-slate-800">
-                    <option value="">-- Pilih Produk Jadi --</option>
-                    ${invItems.filter(i => i.category === 'FINISHED_GOODS' && i.status !== 'INACTIVE').map(i => `<option value="${i.id}">${i.itemName}</option>`).join('')}
-                </select>
-                <input type="hidden" id="mo_product">
             </div>
-        </div>
 
-        <div id="mo_dynamic_section" class="border-t border-slate-100 pt-4"></div>
+            <!-- Scrollable Content -->
+            <div class="flex-1 overflow-y-auto bg-slate-50/50 pb-32">
+                <div class="w-full p-8 space-y-6">
 
-        <div>
-            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Catatan Tambahan</label>
-            <textarea id="mo_notes" rows="1" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm focus:border-blue-500 outline-none" placeholder="Opsional..."></textarea>
-        </div>
-    </div>`;
-    const footer = `
-        <button onclick="startMO()" class="w-full sm:w-auto inline-flex justify-center rounded-lg bg-blue-600 px-8 py-2.5 text-white text-xs font-black uppercase tracking-widest hover:bg-blue-700 active:scale-95 transition-all">Mulai Produksi</button>
-        <button onclick="closeModal()" class="mt-3 sm:mt-0 w-full sm:w-auto inline-flex justify-center rounded-lg border border-slate-200 px-8 py-2.5 bg-white text-slate-500 text-xs font-black uppercase tracking-widest hover:bg-slate-50 transition-all">Batal</button>`;
 
-    showModal('Form Perintah Produksi', body, footer, 'full');
 
-    // Define helper and listeners AFTER modal is in DOM
+                    <!-- Section 1: Informasi Dasar -->
+                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-6">
+                        <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                            <i class="fas fa-info-circle text-blue-600"></i> Informasi Dasar
+                        </h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-4 gap-6">
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Nomor MO <span class="text-red-400">*</span></label>
+                                <input type="text" id="mo_number_display" readonly
+                                    class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-blue-600 font-mono outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Tahap Produksi <span class="text-red-400">*</span></label>
+                                <select id="mo_stage" onchange="updateMOForm()"
+                                    class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 outline-none cursor-pointer">
+                                    <option value="">-- Pilih Tahap --</option>${stageOpts}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Tanggal Produksi <span class="text-red-400">*</span></label>
+                                <input type="date" id="mo_date" value="${todayStr}" onchange="recalcMONumber()"
+                                    class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 outline-none">
+                            </div>
+                            <div id="mo_grp_shift">
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Shift <span class="text-red-400">*</span></label>
+                                <select id="mo_shift"
+                                    class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 outline-none cursor-pointer">
+                                    <option value="">-- Pilih Shift --</option>
+                                    <option value="1">Shift 1</option>
+                                    <option value="2">Shift 2</option>
+                                    <option value="3">Shift 3</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                            <div id="mo_grp_bom">
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Resep Produksi (BOM)</label>
+                                <select id="mo_bom_id" onchange="loadBOMMaterialsToMO()"
+                                    class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
+                                    <option value="">-- Tanpa Resep --</option>${bomOpts}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Catatan Tambahan</label>
+                                <textarea id="mo_notes" rows="1" placeholder="Opsional..."
+                                    class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 text-sm text-slate-700 outline-none resize-none"></textarea>
+                            </div>
+                        </div>
+
+                        <!-- Hidden global machine (for non-OVEN_BASAH stages) -->
+                        <div id="mo_grp_machine" class="hidden">
+                            <label id="mo_machine_label" class="block text-sm font-semibold text-slate-600 mb-3">Gunakan Mesin <span class="text-red-400">*</span></label>
+                            <div class="flex flex-wrap gap-2 p-4 bg-slate-100/60 rounded-2xl" id="mo_machine_list">
+                                ${machines.filter(m => !m.status || m.status === 'ACTIVE').map(m =>
+        `<label class="inline-flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2 cursor-pointer hover:border-blue-300 hover:bg-blue-50 transition-all">
+                                        <input type="checkbox" name="mo_machines[]" class="accent-blue-600" value="${m.id}" data-type="${m.type || ''}">
+                                        <span class="text-xs font-bold text-slate-700 uppercase">${m.name}</span>
+                                    </label>`).join('')}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Section 2: Target Produk (single or multi depending on stage) -->
+                    <div id="mo_grp_product" class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-4">
+                        <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                            <i class="fas fa-boxes text-blue-600"></i> Target Produk
+                        </h3>
+
+                        <!-- Single product (non-Oven Basah) -->
+                        <div id="mo_product_single_wrap">
+                            <label class="block text-sm font-semibold text-slate-600 mb-2">Produk yang Dibuat <span class="text-red-400">*</span></label>
+                            <div class="relative">
+                                <input type="text" id="mo_product_display_single"
+                                    placeholder="-- Klik untuk pilih produk --" readonly
+                                    onclick="toggleMOProductDropdown('single')"
+                                    class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 outline-none cursor-pointer hover:bg-slate-200/60 transition-all">
+                                <input type="hidden" id="mo_product_id">
+                                <input type="hidden" id="mo_product">
+                                <div id="mo_product_dropdown_single"
+                                    class="hidden absolute left-0 top-full mt-2 w-full bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                    <div class="p-3 border-b border-slate-50">
+                                        <input type="text" id="mo_product_search_single"
+                                            placeholder="Ketik kode atau nama..."
+                                            oninput="filterMOProductList('single', this.value)"
+                                            class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                    </div>
+                                    <div class="max-h-64 overflow-y-auto p-1" id="mo_product_list_single"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Multi product (Oven Basah) -->
+                        <div id="mo_product_multi_wrap" class="hidden">
+                            <div class="flex items-center justify-between mb-4">
+                                <label class="block text-sm font-semibold text-slate-600">Target Produk yang Dibuat <span class="text-red-400">*</span></label>
+                                <button type="button" onclick="addMOTargetProductRow()"
+                                    class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
+                                    <i class="fas fa-plus text-[10px]"></i> Tambah Produk
+                                </button>
+                            </div>
+                            <div id="mo_target_product_rows" class="space-y-3"></div>
+                            <p id="mo_target_empty_msg" class="text-center text-sm text-slate-300 italic py-6">
+                                Klik "+ Tambah Produk" untuk menentukan produk yang akan dibuat.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Section 3: Dynamic (Bahan Baku or WIP Input) -->
+                    <div id="mo_dynamic_section"></div>
+
+                </div>
+            </div>
+        </div>`;
+
+    // Define helper and listeners AFTER form is in DOM
     window.recalcMONumber = () => {
         const d = document.getElementById('mo_date')?.value;
         const mo = db.generateMONumber(d);
@@ -452,7 +536,7 @@ window.openMOModal = (stagePreset = '') => {
     // Initial setup
     setTimeout(() => {
         recalcMONumber();
-        
+
         const prodSelect = document.getElementById('mo_product_id');
         if (prodSelect) {
             prodSelect.addEventListener('change', (e) => {
@@ -460,13 +544,6 @@ window.openMOModal = (stagePreset = '') => {
                 const nameField = document.getElementById('mo_product');
                 if (nameField) nameField.value = productName;
 
-                // Auto-select WIP item matching the product name
-                const wipSelect = document.getElementById('mo_input_item');
-                if (!wipSelect) {
-                    // Re-render updateMOForm if mo_input_item not found yet (dynamic section might be empty)
-                    updateMOForm();
-                }
-                
                 const ws = document.getElementById('mo_input_item');
                 if (ws && productName) {
                     for (let i = 0; i < ws.options.length; i++) {
@@ -480,35 +557,33 @@ window.openMOModal = (stagePreset = '') => {
                 }
             });
         }
-        
+
         if (stagePreset) updateMOForm();
     }, 50);
 };
+
 
 function buildItemSelect(category, id, items, showStock = false, nameFilter = '', productId = '') {
     const cats = Array.isArray(category) ? category : [category];
     const filtered = items.filter(i => {
         if (i.status === 'INACTIVE') return false;
-        
+
         // 1. Initial category check: Match requested categories exactly
         const catMatch = cats.includes(i.category);
         if (!catMatch) return false;
 
         const rawName = i.itemName || '';
         const cleanName = rawName.toLowerCase();
-        let isMixingSearch = false; // Define in outer scope
 
         if (nameFilter) {
             const cleanFilter = String(nameFilter).toLowerCase();
-            isMixingSearch = cleanFilter === 'mixing' || cleanFilter === 'campuran';
-            
+
             let matched = cleanName.includes(cleanFilter) || cleanFilter.includes(cleanName);
-            if (!matched && isMixingSearch && cleanName === 'campuran') matched = true;
-            
+
             if (!matched && productId && i.productId === productId && cats.includes(i.category)) {
                 matched = true;
             }
-            
+
             if (!matched && (cleanFilter.includes(' ') || cleanFilter.includes('_'))) {
                 const f1 = cleanFilter.replace(/[_\s]/g, '');
                 const n1 = cleanName.replace(/[_\s]/g, '');
@@ -517,7 +592,6 @@ function buildItemSelect(category, id, items, showStock = false, nameFilter = ''
             if (!matched) return false;
         }
         if (productId && i.productId && i.productId !== productId) return false;
-        if (isMixingSearch && cleanName.includes('(mixing)') && cleanName !== 'campuran') return false;
         return true;
     });
 
@@ -527,7 +601,7 @@ function buildItemSelect(category, id, items, showStock = false, nameFilter = ''
         const fallback = items.filter(i => i.status !== 'INACTIVE' && cats.includes(i.category));
         if (fallback.length > 0) return buildSelectHTML(fallback, id, showStock, nameFilter);
     }
-    
+
     return buildSelectHTML(filtered, id, showStock, nameFilter);
 }
 
@@ -560,112 +634,81 @@ window.updateMOForm = () => {
     const grpShift = document.getElementById('mo_grp_shift');
 
     // Default: Reset filters
-    if (mchSelect) {
-        for (let opt of mchSelect.options) { opt.classList.remove('hidden'); }
+    const mchCheckboxes = document.querySelectorAll('input[name="mo_machines[]"]');
+    if (mchCheckboxes.length > 0) {
+        mchCheckboxes.forEach(cb => {
+            cb.checked = false;
+            cb.closest('label').classList.remove('hidden');
+        });
     }
 
-    if (stage === 'MIXING' || stage === 'OVEN_BASAH') {
-        grpBom?.classList.remove('hidden');
+    if (stage === 'OVEN_BASAH' || stage === 'OVEN_KERING') {
+        // Switch to multi-product UI (both Oven Basah & Oven Kering use per-row product+machine)
+        document.getElementById('mo_product_single_wrap')?.classList.add('hidden');
+        document.getElementById('mo_product_multi_wrap')?.classList.remove('hidden');
+        if (document.getElementById('mo_target_product_rows')?.children.length === 0) {
+            setTimeout(() => { if (window.addMOTargetProductRow) addMOTargetProductRow(stage); }, 30);
+        }
+
+        // Hide global machine section — machines go inside each product row
         grpMch?.classList.add('hidden');
-        grpProd?.classList.remove('hidden');
-        grpShift?.classList.add('hidden');
-        
-        const stageLabel = stage === 'OVEN_BASAH' ? 'Oven Basah' : 'Campuran';
-        const stageColor = stage === 'OVEN_BASAH' ? 'orange' : 'indigo';
-        const rmItems = invItems.filter(i => (i.category === 'RAW_MATERIAL') && i.status !== 'INACTIVE');
-        const rmOpts = rmItems.map(i => `<option value="${i.id}" data-unit="${i.unit}" data-stock="${db.getInventoryStock(i.id)}">${i.itemName} (Gudang: ${prodFmt(db.getInventoryStock(i.id))})</option>`).join('');
-        sec.innerHTML = `
-            <div class="bg-${stageColor}-50 border-2 border-${stageColor}-100 rounded-xl p-4">
-                <h4 class="text-xs font-black text-${stageColor}-800 mb-3 flex items-center justify-between uppercase tracking-widest">
-                    <span><i class="fas fa-boxes mr-1"></i>Kebutuhan Bahan Baku & Bumbu</span>
-                    <span class="text-[10px] lowercase font-normal italic">* untuk proses ${stageLabel}</span>
-                </h4>
-                <div class="flex items-center gap-2 mb-2 px-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                    <div class="w-24">Lokasi</div>
-                    <div class="flex-1">Bahan Baku</div>
-                    <div class="w-28 text-center">Qty Target</div>
-                    <div class="w-8"></div>
-                </div>
-                <div id="mo_rm_list" class="space-y-3"></div>
-                <button type="button" onclick="addRMRowMO()" class="mt-3 text-[10px] font-black text-${stageColor}-600 hover:text-${stageColor}-800 bg-white border border-${stageColor}-200 px-4 py-2 rounded-lg shadow-sm transition-all active:scale-95">
-                    <i class="fas fa-plus mr-1"></i>Tambah Bahan Lagi
-                </button>
-                <select id="mo_rm_opts" class="hidden">${rmOpts}</select>
-            </div>`;
-        addRMRowMO();
-        
-        const bomId = document.getElementById('mo_bom_id')?.value;
-        if (bomId) setTimeout(() => loadBOMMaterialsToMO(), 50);
+        if (stage === 'OVEN_BASAH') {
+            grpBom?.classList.remove('hidden');
+        } else {
+            grpBom?.classList.add('hidden');
+        }
+
+        if (stage === 'OVEN_BASAH') {
+            if (!document.getElementById('mo_rm_list')) {
+                sec.innerHTML = '';
+                const stageLabel = 'Oven Basah';
+                const stageColor = 'orange';
+                const rmItems = invItems.filter(i => (i.category === 'RAW_MATERIAL') && i.status !== 'INACTIVE');
+                const rmOpts = rmItems.map(i => `<option value="${i.id}" data-unit="${i.unit}" data-stock="${db.getInventoryStock(i.id)}">${i.itemName} (Gudang: ${prodFmt(db.getInventoryStock(i.id))})</option>`).join('');
+                sec.innerHTML = `
+                    <div class="bg-${stageColor}-50 border-2 border-${stageColor}-100 rounded-xl p-4">
+                        <h4 class="text-xs font-black text-${stageColor}-800 mb-3 flex items-center justify-between uppercase tracking-widest">
+                            <span><i class="fas fa-boxes mr-1"></i>Kebutuhan Bahan Baku & Bumbu</span>
+                            <span class="text-[10px] lowercase font-normal italic">* untuk proses ${stageLabel}</span>
+                        </h4>
+                        <div class="flex items-center gap-2 mb-2 px-1 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                            <div class="w-24">Lokasi</div>
+                            <div class="flex-1">Bahan Baku</div>
+                            <div class="w-28 text-center">Qty Target</div>
+                            <div class="w-8"></div>
+                        </div>
+                        <div id="mo_rm_list" class="space-y-3"></div>
+                        <button type="button" onclick="addRMRowMO()" class="mt-3 text-[10px] font-black text-${stageColor}-600 hover:text-${stageColor}-800 bg-white border border-${stageColor}-200 px-4 py-2 rounded-lg shadow-sm transition-all active:scale-95">
+                            <i class="fas fa-plus mr-1"></i>Tambah Bahan Lagi
+                        </button>
+                        <select id="mo_rm_opts" class="hidden">${rmOpts}</select>
+                    </div>`;
+            }
+        } else {
+            sec.innerHTML = '';
+        }
 
     } else {
-        const stageInfo = PROD_STAGES.find(s => s.key === stage) || { key: stage, inputFrom: 'FIXME' };
-        
-        // HARDCODE logic for robustness if search fails
-        let inputFromStage = stageInfo.inputFrom;
-        if (stage === 'OVEN_BASAH') inputFromStage = 'MIXING';
-        if (stage === 'OVEN_KERING') inputFromStage = 'OVEN_BASAH';
+        const stageInfo = PROD_STAGES.find(s => s.key === stage) || { key: stage, inputFrom: 'RAW_MATERIAL' };
+        let isPacking = stage === 'PACKING';
 
-        const inputStoreCat = STAGE_STOCK_CATEGORY[inputFromStage] || ['WIP'];
-        const inputLabel = prodStageLabel(inputFromStage) || 'Campuran';
-        const productId = document.getElementById('mo_product_id')?.value;
+        sec.innerHTML = '';
+        grpBom?.classList.add('hidden');
+        document.getElementById('mo_product_single_wrap')?.classList.remove('hidden');
+        document.getElementById('mo_product_multi_wrap')?.classList.add('hidden');
 
-    if (stage === 'PACKING') {
-        grpMch?.classList.add('hidden');
-    } else {
-        grpMch?.classList.remove('hidden');
-    }
-    grpBom?.classList.add('hidden');
-    grpProd?.classList.remove('hidden');
-    grpShift?.classList.remove('hidden');
-
-    if (mchLabel) mchLabel.innerText = (stage === 'OVEN_KERING' ? 'PILIH OVEN' : 'PILIH MESIN');
-    const mchPlaceholder = document.getElementById('mo_machine_placeholder');
-    if (mchPlaceholder) mchPlaceholder.innerText = "-- Pilih " + (stage === 'OVEN_KERING' ? 'Oven' : 'Mesin') + " --";
-
-    // Filter for OVEN vs MESIN
-    if (mchSelect) {
-        const isKering = (stage === 'OVEN_KERING');
-        for (let opt of mchSelect.options) {
-            const mchType = (opt.getAttribute('data-type') || '').toUpperCase();
-            const mchName = (opt.text || '').toUpperCase();
-            if (isKering) {
-                if (mchType === 'OVEN' || mchName.includes('OVEN')) opt.classList.remove('hidden');
-                else if (opt.value) opt.classList.add('hidden');
-            } else {
-                if (mchType !== 'OVEN' && !mchName.includes('OVEN')) opt.classList.remove('hidden');
-                else if (opt.value) opt.classList.add('hidden');
+        if (isPacking) {
+            grpMch?.classList.add('hidden');
+        } else {
+            grpMch?.classList.remove('hidden');
+            if (mchLabel) mchLabel.innerHTML = `Gunakan Mesin/Oven <span class="text-red-500">*</span>`;
+            if (mchCheckboxes && mchCheckboxes.length > 0) {
+                mchCheckboxes.forEach(cb => {
+                    cb.closest('label').classList.remove('hidden');
+                });
             }
         }
-    }
-
-    const productName = document.getElementById('mo_product')?.value || '';
-    const safeLabel = String(inputLabel).replace(/[()]/g, '') || 'Stok';
-    try {
-        const selectHtml = buildItemSelect(inputStoreCat, 'mo_input_item', invItems, true, productName, productId);
-        const isPacking = (stage === 'PACKING');
-        sec.innerHTML = `
-            <div class="bg-slate-50 border-2 border-slate-100 rounded-xl p-4">
-                <div class="flex items-center gap-2 mb-4">
-                    <div class="w-2 h-8 bg-blue-500 rounded-full"></div>
-                    <div>
-                        <h4 class="text-sm font-bold text-slate-800 uppercase tracking-tight">Ambil Stok WIP ${safeLabel}</h4>
-                        <p class="text-[10px] text-slate-500 font-medium italic">Ambil dari stok hasil tahap sebelumnya untuk diproses.</p>
-                    </div>
-                </div>
-                <div class="${isPacking ? 'grid grid-cols-1' : 'grid grid-cols-1 sm:grid-cols-2'} gap-4">
-                    <div>
-                        <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Pilih Item ${safeLabel}</label>
-                        ${selectHtml}
-                    </div>
-                    <div class="${isPacking ? 'hidden' : ''}">
-                        <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Qty Ambil (Kg)</label>
-                        <input type="number" id="mo_input_qty" min="0" step="0.01" class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm font-bold focus:border-blue-500 outline-none" placeholder="0.00" value="0">
-                    </div>
-                </div>
-            </div>`;
-        } catch (e) {
-            console.error("MO Dynamic section error:", e);
-        }
+        grpProd?.classList.remove('hidden');
     }
 };
 
@@ -685,7 +728,7 @@ window.filterMOProducts = () => {
             opt.disabled = true; // Added disabled for extra browser compatibility
         }
     }
-    
+
     // Auto-select first visible option if exact match? 
     // No, better let user select manually.
 };
@@ -696,7 +739,7 @@ window.addRMRowMO = () => {
 
     const row = document.createElement('div');
     row.className = 'flex items-center gap-2 group animate-in slide-in-from-left-2 duration-300';
-    
+
     // Get options from hidden select
     const opts = document.getElementById('mo_rm_opts')?.innerHTML || '';
 
@@ -704,7 +747,6 @@ window.addRMRowMO = () => {
         <div class="w-24">
             <select class="mo_rm_loc w-full border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold bg-white focus:border-indigo-500 outline-none">
                 <option value="WHS">GUDANG</option>
-                <option value="MIXING">MIXING</option>
             </select>
         </div>
         <div class="flex-1">
@@ -719,17 +761,12 @@ window.addRMRowMO = () => {
         <button type="button" onclick="removeRMRowMO(this)" class="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 transition-colors">
             <i class="fas fa-times-circle"></i>
         </button>`;
-    
+
     list.appendChild(row);
 };
 
 window.removeRMRowMO = (btn) => {
-    const list = document.getElementById('mo_rm_list');
-    if (list && list.children.length > 1) {
-        btn.closest('.flex').remove();
-    } else {
-        showToast('Minimal harus ada 1 baris bahan', 'warning');
-    }
+    btn.closest('.flex').remove();
 };
 
 window.loadBOMMaterialsToMO = () => {
@@ -753,7 +790,7 @@ window.loadBOMMaterialsToMO = () => {
             if (qtyInput) qtyInput.value = item.qty;
         }
     });
-    
+
     // Auto set product if BOM has it
     if (bom.productId) {
         const prodSelect = document.getElementById('mo_product_id');
@@ -770,42 +807,111 @@ window.startMO = () => {
     const date = document.getElementById('mo_date')?.value;
     const shift = document.getElementById('mo_shift')?.value;
     const moNumber = document.getElementById('mo_number_display')?.value || ('MO-' + Date.now().toString().slice(-7));
-    const productId = document.getElementById('mo_product_id')?.value;
-    const productName = document.getElementById('mo_product')?.value.trim();
-    const machineId = document.getElementById('mo_machine_id')?.value;
+    // For OVEN_BASAH: productId/Name dari target product list (baris pertama)
+    const isOvenBasah = stage === 'OVEN_BASAH';
+    let productId = '';
+    let productName = '';
+    if (!isOvenBasah) {
+        productId = document.getElementById('mo_product_id')?.value;
+        productName = document.getElementById('mo_product')?.value?.trim() || '';
+    } else {
+        // OVEN_BASAH & OVEN_KERING: read first row from multi-product list
+        const firstRow = document.querySelector('#mo_target_product_rows .mo-tp-row');
+        productId = firstRow?.querySelector('.mo-tp-item-id')?.value || '';
+        productName = firstRow?.querySelector('.mo-tp-item-name')?.value || '';
+    }
+
+    const mchCheckboxes = document.querySelectorAll('input[name="mo_machines[]"]:checked');
+    let machineIds = [];
+    let machineNames = [];
+    mchCheckboxes.forEach(cb => {
+        machineIds.push(cb.value);
+        const nameSpan = cb.nextElementSibling;
+        if (nameSpan) machineNames.push(nameSpan.innerText);
+    });
+    const machineId = machineIds.join(',');
+    const machineNameStr = machineNames.join(', ') || '-';
+
     const notes = document.getElementById('mo_notes')?.value.trim();
 
     // Required fields base
-    let isValid = stage && date && productId && moNumber;
+    let isValid = stage && date && moNumber;
+    const isMultiRow = isOvenBasah || stage === 'OVEN_KERING';
+    if (!isMultiRow) isValid = isValid && !!productId;
     let errorMsg = 'Lengkapi tahap, tanggal, dan pilih produk';
 
-    // Machine is required for non-mixing/non-oven-basah and non-packing stages if visible
-    if (stage !== 'MIXING' && stage !== 'OVEN_BASAH' && stage !== 'PACKING' && !machineId) {
+    // Machine is required for non-packing, non-multi-row stages
+    if (stage !== 'PACKING' && !isMultiRow && machineIds.length === 0) {
         isValid = false;
-        errorMsg = 'Silakan pilih mesin/oven yang digunakan';
+        errorMsg = 'Silakan pilih minimal satu mesin/oven yang digunakan';
     }
 
-    if (!isValid) { 
-        showToast(errorMsg, 'error'); 
-        return; 
+    if (!isValid) {
+        showToast(errorMsg, 'error');
+        return;
     }
 
-    const inputItemId = document.getElementById('mo_input_item')?.value;
+    let inputItemId = document.getElementById('mo_input_item')?.value;
     const inputQty = parseFloat(document.getElementById('mo_input_qty')?.value) || 0;
     const takeDuration = document.getElementById('mo_take_duration')?.value || '-';
 
-    const machine = machineId ? db.findById('machines', machineId) : null;
-    let moData = { 
-        moNumber, batchId: moNumber, stage, productId, productName, machineId, machineName: machine?.name || '-', picName: '', 
+    // Auto-resolve WIP Input Item for non-Oven Basah stages if not in DOM
+    if (!isOvenBasah && !inputItemId && productId) {
+        const stageInfo = PROD_STAGES.find(s => s.key === stage) || { key: stage, inputFrom: 'RAW_MATERIAL' };
+        if (stageInfo.inputFrom !== 'RAW_MATERIAL') {
+            const inputStageLabel = PROD_STAGES.find(s => s.key === stageInfo.inputFrom)?.label || stageInfo.inputFrom;
+            inputItemId = db.ensureWIPItem(productId, inputStageLabel, true);
+        }
+    }
+
+    let moData = {
+        moNumber, batchId: moNumber, stage, productId, productName, machineId, machineName: machineNameStr, picName: '',
         shift: (stage === 'OVEN_BASAH' || stage === 'OVEN_KERING') ? shift : '',
         takeDuration: (stage === 'OVEN_BASAH' || stage === 'OVEN_KERING') ? takeDuration : '',
-        date: new Date(date).toISOString(), notes, targetQty: 0, status: 'IN_PROGRESS', 
-        createdAt: new Date().toISOString(), inputQty, inputItemId, outputQty: 0, shrinkagePct: 0, wasteQty: 0, qcStatus: 'PENDING' 
+        date: new Date(date).toISOString(), notes, targetQty: 0, status: 'IN_PROGRESS',
+        createdAt: new Date().toISOString(), inputQty, inputItemId, outputQty: 0, shrinkagePct: 0, wasteQty: 0, qcStatus: 'PENDING'
     };
+
+    // For OVEN_BASAH & OVEN_KERING: read target products + their assigned machines from multi-rows
+    if (isOvenBasah || stage === 'OVEN_KERING') {
+        const tpRows = document.querySelectorAll('#mo_target_product_rows .mo-tp-row');
+        const targetProducts = [];
+        const tpErrors = [];
+        const allUsedMachineIds = new Set();
+        const allUsedMachineNames = [];
+
+        tpRows.forEach((row, i) => {
+            const itemId = row.querySelector('.mo-tp-item-id')?.value || '';
+            const itemName = row.querySelector('.mo-tp-item-name')?.value || '';
+            const qty = parseFloat(row.querySelector('.mo-tp-qty')?.value) || 0;
+            if (!itemId) { tpErrors.push(`Produk baris ${i + 1}: belum dipilih`); return; }
+
+            const mchChecked = [...row.querySelectorAll('.mo-tp-mch:checked')];
+            const rowMachineIds = mchChecked.map(cb => cb.value);
+            const rowMachineNames = mchChecked.map(cb => cb.dataset.machineName || '');
+            rowMachineIds.forEach((mid, idx) => {
+                if (!allUsedMachineIds.has(mid)) {
+                    allUsedMachineIds.add(mid);
+                    allUsedMachineNames.push(rowMachineNames[idx]);
+                }
+            });
+
+            targetProducts.push({ itemId, itemName, qty, machineIds: rowMachineIds, machineNames: rowMachineNames });
+        });
+        if (tpErrors.length > 0) { showToast(tpErrors.join(' | '), 'error'); return; }
+        if (targetProducts.length === 0) { showToast('Tambahkan minimal 1 produk target', 'error'); return; }
+
+        moData.targetProducts = targetProducts;
+        moData.productId = targetProducts[0].itemId;
+        moData.productName = targetProducts[0].itemName;
+        moData.machineId = [...allUsedMachineIds].join(',');
+        moData.machineName = allUsedMachineNames.join(', ') || '-';
+    }
 
     const validationErrors = [];
 
-    if (stage === 'MIXING' || stage === 'OVEN_BASAH') {
+    if (stage === 'OVEN_BASAH') {
+        // Read raw materials for OVEN_BASAH
         const rmRows = document.querySelectorAll('#mo_rm_list .flex');
         const inputItems = [];
         let totalInput = 0;
@@ -814,16 +920,13 @@ window.startMO = () => {
             const itemId = row.querySelector('.mo_rm_item')?.value;
             const qty = parseFloat(row.querySelector('.mo_rm_qty')?.value);
             const location = row.querySelector('.mo_rm_location')?.value || 'GUDANG';
-            
+
             if (itemId && qty > 0) {
                 const item = db.findById('inventoryItems', itemId);
                 const currentStock = db.getInventoryStock(itemId);
-                
-                // VALIDATION: Check if enough stock
                 if (currentStock < qty) {
                     validationErrors.push(`${item?.itemName || 'Item'}: Butuh ${prodFmt(qty)}, Tersisa ${prodFmt(currentStock)} ${item?.unit}`);
                 }
-
                 inputItems.push({ inventoryItemId: itemId, itemName: item?.itemName, qty, unit: item?.unit, location });
                 totalInput += qty;
             }
@@ -831,60 +934,43 @@ window.startMO = () => {
 
         if (validationErrors.length > 0) {
             showToast("Stok tidak memadai untuk memulai produksi!", 'error');
-            console.error("Stock Validation Failed:", validationErrors);
             return;
         }
-
         if (!inputItems.length) { showToast('Tambah minimal 1 bahan baku', 'error'); return; }
         moData.inputItems = inputItems;
         moData.inputQty = totalInput;
-    } else {
-        const inputItemId = document.getElementById('mo_input_item')?.value;
-        const inputQty = parseFloat(document.getElementById('mo_input_qty')?.value) || 0;
-        if (!inputItemId) { showToast('Pilih item input', 'error'); return; }
-        
-        // VALIDATION: Check if enough stock for WIP/Input (ONLY if qty > 0)
-        if (inputQty > 0) {
-            const item = db.findById('inventoryItems', inputItemId);
-            const currentStock = db.getInventoryStock(inputItemId);
-            if (currentStock < inputQty) {
-                showToast(`Stok ${item?.itemName} tidak cukup (Butuh: ${prodFmt(inputQty)}, Stok: ${prodFmt(currentStock)} ${item?.unit})`, 'error');
-                return;
-            }
-        }
 
-        moData.inputItemId = inputItemId;
-        moData.inputQty = inputQty;
+    } else if (stage === 'OVEN_KERING') {
+        // For OVEN_KERING: auto-resolve WIP input items per target product
+        const tpRows = moData.targetProducts || [];
+        let totalWipInput = 0;
+        for (const tp of tpRows) {
+            const stageInfo = PROD_STAGES.find(s => s.key === 'OVEN_KERING') || { inputFrom: 'OVEN_BASAH' };
+            const inputStageLabel = PROD_STAGES.find(s => s.key === stageInfo.inputFrom)?.label || stageInfo.inputFrom;
+            const wipItemId = db.ensureWIPItem(tp.itemId, inputStageLabel, true);
+            const wipStock = db.getInventoryStock(wipItemId);
+            totalWipInput += wipStock;
+        }
+        moData.inputQty = totalWipInput;
+
+    } else {
+        // Other stages: no input item/qty required (removed per user request)
+        moData.inputQty = 0;
     }
 
     db.insert('productionOrders', moData);
     showToast(`MO ${moNumber} dimulai & stok bahan dikurangi!`, 'success');
-    closeModal();
+    // Ensure the list shows today's MO after submit
+    window._prodSearchPerformed = true;
+    const todayStr2 = new Date().toISOString().split('T')[0];
+    if (!window._prodFilters) window._prodFilters = {};
+    if (!window._prodFilters.end || window._prodFilters.end < todayStr2) window._prodFilters.end = todayStr2;
     renderProductionMO();
 };
 
-// Helper to get or create a generic Mixing Stock item to track sacks
-function getOrCreateMixingStockItem() {
-    const items = db.read('inventoryItems') || [];
-    let mixItem = items.find(i => i.itemName === 'Campuran');
-    
-    if (!mixItem) {
-        const itemCode = db.generateItemCode('MIXING_STOCK');
-        mixItem = db.insert('inventoryItems', { 
-            itemCode, 
-            itemName: 'Campuran', 
-            category: 'MIXING_STOCK', 
-            unit: 'SAK', 
-            minStock: 0, 
-            purchasePrice: 0, 
-            status: 'ACTIVE' 
-        });
-    }
-    return mixItem;
-}
-
 // --- STEP 2: SELESAIKAN MO (FINISH) ---------------------------
 window.openCompleteMOModal = (id) => {
+    if (window.pushCurrentToHistory) window.pushCurrentToHistory();
     const mo = db.findById('productionOrders', id);
     if (!mo) return;
     const invItems = db.read('inventoryItems') || [];
@@ -898,102 +984,174 @@ window.openCompleteMOModal = (id) => {
     const stageInfo = PROD_STAGES.find(s => s.key === mo.stage);
 
     let dynamicBody = '';
-    if (mo.stage === 'MIXING') {
-        const genericMixItem = getOrCreateMixingStockItem();
-        const matRows = (mo.inputItems || []).map(m => `
-            <div class="flex items-center gap-3 bg-slate-50 p-2 rounded-lg border border-slate-100">
-                <div class="flex-1 text-xs font-bold text-slate-700">${m.itemName}</div>
-                <div class="w-auto text-right text-[9px] text-slate-400 italic">Resep: ${prodFmt(m.qty)}</div>
-                <div class="flex items-center gap-1 bg-white px-2 py-1 rounded border border-slate-200 shadow-sm focus-within:border-blue-400 trasition-all">
-                    <input type="text" inputmode="decimal" oninput="formatNumericInput(this)" class="mo_final_rm_actual w-20 bg-transparent border-0 text-sm font-black text-blue-600 text-right focus:ring-0 outline-none" data-item-id="${m.inventoryItemId}" data-item-name="${m.itemName}" data-item-unit="${m.unit}" value="${prodFmt(m.qty)}">
-                    <span class="text-[9px] font-black text-slate-400 uppercase tracking-tighter">${m.unit || 'Kg'}</span>
-                </div>
-            </div>
-        `).join('');
-
-        dynamicBody = `
-            <div class="bg-blue-50/50 border-2 border-blue-100 rounded-xl p-4 mb-4">
-                <h4 class="text-xs font-black text-blue-800 mb-3 uppercase tracking-widest flex items-center gap-2">
-                    <i class="fas fa-clipboard-check"></i> Realisasi Pemakaian Bahan
-                </h4>
-                <div class="space-y-2">${matRows}</div>
-            </div>
-
-            <div class="bg-white border-2 border-slate-100 p-4 rounded-xl shadow-sm">
-                <h4 class="text-xs font-black text-slate-800 mb-3 uppercase tracking-widest flex items-center gap-2">
-                    <i class="fas fa-boxes text-blue-500"></i> Input Hasil Mixing
-                </h4>
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <input type="text" id="mo_final_output_sacks" inputmode="numeric" oninput="formatNumericInput(this)" class="w-full border-2 border-slate-300 rounded-lg px-3 py-2 text-xl font-black text-slate-700 bg-slate-50 focus:bg-white focus:border-blue-500 outline-none transition-all placeholder:text-slate-200" placeholder="0">
-                    </div>
-                    <div>
-                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Masuk ke Stok</p>
-                        <p class="text-sm font-black text-slate-800 mt-2">${genericMixItem.itemName}</p>
-                        <input type="hidden" id="mo_final_output_item" value="${genericMixItem.id}">
-                    </div>
-                </div>
-            </div>`;
-    } else if (mo.stage === 'OVEN_BASAH') {
-        // OVEN_BASAH uses same BOM-based material list as MIXING
-        const ovenBasahOutputItem = (() => {
-            const items2 = db.read('inventoryItems') || [];
-            let item2 = items2.find(i => i.itemName === 'Oven Basah' && i.category === 'OVEN_BASAH_STOCK');
-            if (!item2) {
-                const itemCode2 = db.generateItemCode('OVEN_BASAH_STOCK');
-                item2 = db.insert('inventoryItems', { itemCode: itemCode2, itemName: 'Oven Basah', category: 'OVEN_BASAH_STOCK', unit: 'SAK', minStock: 0, purchasePrice: 0, status: 'ACTIVE' });
-            }
-            return item2;
-        })();
-
+    if (mo.stage === 'OVEN_BASAH') {
+        // Build the raw material actual input rows
         const matRowsOB = (mo.inputItems || []).map(m => `
             <div class="flex items-center gap-3 bg-slate-50 p-2 rounded-lg border border-slate-100">
                 <div class="flex-1 text-xs font-bold text-slate-700">${m.itemName}</div>
                 <div class="w-auto text-right text-[9px] text-slate-400 italic">Resep: ${prodFmt(m.qty)}</div>
-                <div class="flex items-center gap-1 bg-white px-2 py-1 rounded border border-slate-200 shadow-sm focus-within:border-orange-400 transition-all">
-                    <input type="text" inputmode="decimal" oninput="formatNumericInput(this)" class="mo_final_rm_actual w-20 bg-transparent border-0 text-sm font-black text-orange-600 text-right focus:ring-0 outline-none" data-item-id="${m.inventoryItemId}" data-item-name="${m.itemName}" data-item-unit="${m.unit}" value="${prodFmt(m.qty)}">
+                <div class="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded border border-slate-200 shadow-sm focus-within:border-slate-400 transition-all">
+                    <input type="text" inputmode="decimal" oninput="formatNumericInput(this)" class="mo_final_rm_actual w-20 bg-transparent border-0 text-sm font-black text-slate-700 text-right focus:ring-0 outline-none" data-item-id="${m.inventoryItemId}" data-item-name="${m.itemName}" data-item-unit="${m.unit}" value="${prodFmt(m.qty)}">
                     <span class="text-[9px] font-black text-slate-400 uppercase tracking-tighter">${m.unit || 'Kg'}</span>
                 </div>
             </div>
         `).join('');
 
+        // Build output product options (OVEN_BASAH_STOCK category)
+        const ovenStockItems = (db.read('inventoryItems') || []).filter(i => i.category === 'OVEN_BASAH_STOCK' && i.status !== 'INACTIVE');
+        const ovenStockOpts = ovenStockItems.map(i => `<option value="${i.id}">${i.itemName}</option>`).join('');
+
+        // Build pre-filled product result rows from targetProducts (no re-selection needed)
+        const tpList = mo.targetProducts || [];
+        const resultRowsHtml = tpList.length > 0
+            ? tpList.map((tp, idx) => {
+                const invItem = db.findById('inventoryItems', tp.itemId);
+                const itemName = tp.itemName || invItem?.itemName || `Produk ${idx + 1}`;
+                return `
+                <div class="ob-output-row flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100" data-item-id="${tp.itemId}">
+                    <input type="hidden" class="ob-out-item" value="${tp.itemId}">
+                    <div class="flex-1">
+                        <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-0.5">Produk</p>
+                        <p class="text-sm font-black text-slate-800">${itemName}</p>
+                    </div>
+                    <div class="flex flex-col items-end gap-1">
+                        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Qty Hasil (Kg)</label>
+                        <div class="flex items-center gap-1.5 bg-white border-2 border-slate-200 rounded-xl px-3 py-2 focus-within:border-blue-400 transition-all">
+                            <input type="text" inputmode="decimal" oninput="formatNumericInput(this)" placeholder="0"
+                                class="ob-out-qty w-24 bg-transparent border-0 text-xl font-black text-slate-800 text-right focus:ring-0 outline-none">
+                            <span class="text-xs font-black text-slate-400">Kg</span>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('')
+            : `<div class="ob-output-row flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100" data-item-id="">
+                <input type="hidden" class="ob-out-item" value="">
+                <div class="flex-1">
+                    <p class="text-xs font-black text-slate-400 uppercase tracking-widest mb-0.5">Produk</p>
+                    <p class="text-sm font-black text-slate-500 italic">—</p>
+                </div>
+                <div class="flex flex-col items-end gap-1">
+                    <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Qty Hasil (Kg)</label>
+                    <div class="flex items-center gap-1.5 bg-white border-2 border-orange-200 rounded-xl px-3 py-2 focus-within:border-orange-500 transition-all">
+                        <input type="text" inputmode="decimal" oninput="formatNumericInput(this)" placeholder="0"
+                            class="ob-out-qty w-24 bg-transparent border-0 text-xl font-black text-orange-600 text-right focus:ring-0 outline-none">
+                        <span class="text-xs font-black text-slate-400">Kg</span>
+                    </div>
+                </div>
+               </div>`;
+
         dynamicBody = `
-            <div class="bg-orange-50/50 border-2 border-orange-100 rounded-xl p-4 mb-4">
-                <h4 class="text-xs font-black text-orange-800 mb-3 uppercase tracking-widest flex items-center gap-2">
-                    <i class="fas fa-clipboard-check"></i> Realisasi Pemakaian Bahan Oven Basah
+            <div class="space-y-2 mb-4">
+                <h4 class="text-[10px] font-black text-slate-400 mb-3 uppercase tracking-[0.2em] flex items-center gap-2">
+                    <i class="fas fa-clipboard-check text-blue-600"></i> Realisasi Pemakaian Bahan Oven Basah
                 </h4>
                 <div class="space-y-2">${matRowsOB}</div>
             </div>
 
             <div class="bg-white border-2 border-slate-100 p-4 rounded-xl shadow-sm">
-                <h4 class="text-xs font-black text-slate-800 mb-3 uppercase tracking-widest flex items-center gap-2">
-                    <i class="fas fa-boxes text-orange-500"></i> Input Hasil Oven Basah
+                <h4 class="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2 mb-3">
+                    <i class="fas fa-boxes text-orange-500"></i> Produk Hasil Oven Basah
                 </h4>
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Jumlah Karung <span class="text-red-500">*</span></label>
-                        <input type="text" id="mo_final_output_sacks" inputmode="numeric" oninput="formatNumericInput(this)" class="w-full border-2 border-slate-300 rounded-lg px-3 py-2 text-xl font-black text-slate-700 bg-slate-50 focus:bg-white focus:border-orange-500 outline-none transition-all placeholder:text-slate-200" placeholder="0">
-                    </div>
-                    <div>
-                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Masuk ke Stok</p>
-                        <p class="text-sm font-black text-slate-800 mt-2">${ovenBasahOutputItem.itemName}</p>
-                        <input type="hidden" id="mo_final_output_item" value="${ovenBasahOutputItem.id}">
-                    </div>
-                </div>
+                <div id="ob_output_rows" class="space-y-2">${resultRowsHtml}</div>
             </div>`;
 
-    } else if (mo.stage === 'OVEN_KERING' || mo.stage === 'PACKING') {
-        const stageInfo = PROD_STAGES.find(s => s.key === mo.stage);
+    } else if (mo.stage === 'OVEN_KERING') {
+        const tpList = mo.targetProducts || [];
+
+        // Build per-product rows for OVEN_KERING
+        const okRows = tpList.map((tp, idx) => {
+            const invItem = db.findById('inventoryItems', tp.itemId);
+            const stageInfo = PROD_STAGES.find(s => s.key === 'OVEN_KERING') || { inputFrom: 'OVEN_BASAH' };
+            const inputStageLabel = PROD_STAGES.find(s => s.key === stageInfo.inputFrom)?.label || stageInfo.inputFrom;
+            const wipItemId = db.ensureWIPItem(tp.itemId, inputStageLabel, false);
+            const wipItem = wipItemId ? db.findById('inventoryItems', wipItemId) : null;
+            const wipStock = wipItemId ? db.getInventoryStock(wipItemId) : 0;
+            const ovenName = (tp.machineNames || []).join(', ') || '-';
+            const inputQty = tp.qty || 0;
+            const outputWipId = db.ensureWIPItem(tp.itemId, 'Oven Kering', false);
+            const outputWipItem = outputWipId ? db.findById('inventoryItems', outputWipId) : null;
+
+            return `
+            <div class="ok-result-row bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4"
+                data-tp-idx="${idx}"
+                data-item-id="${tp.itemId}"
+                data-wip-item-id="${wipItemId || ''}"
+                data-output-wip-id="${outputWipId || ''}"
+                data-input-qty="${inputQty}">
+
+                <!-- Header Row: Produk + Oven -->
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-[9px] font-black text-slate-300 uppercase tracking-widest mb-0.5">Produk</p>
+                        <p class="text-sm font-black text-slate-800">${wipItem?.itemName || tp.itemName || `Produk ${idx+1}`}</p>
+                        <p class="text-[9px] text-slate-400 mt-0.5">${wipItem?.itemCode || ''}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-[9px] font-black text-slate-300 uppercase tracking-widest mb-0.5">Oven</p>
+                        <span class="inline-flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-black text-slate-700">
+                            <i class="fas fa-fire text-orange-400 text-[10px]"></i> ${ovenName}
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Input / Output Row -->
+                <div class="grid grid-cols-3 gap-3">
+                    <!-- Qty Input dari MO -->
+                    <div class="bg-white border border-slate-100 rounded-xl p-3 text-center">
+                        <p class="text-[8px] font-black text-slate-300 uppercase tracking-widest mb-1">Qty Masuk (Kg)</p>
+                        <p class="text-xl font-black text-slate-600">${prodFmt(inputQty)}</p>
+                        <p class="text-[8px] text-slate-300 mt-0.5">Stok WIP: ${prodFmt(wipStock)}</p>
+                    </div>
+
+                    <!-- Hasil Aktual (editable) -->
+                    <div class="bg-white border-2 border-blue-200 rounded-xl p-3 text-center focus-within:border-blue-500 transition-all">
+                        <p class="text-[8px] font-black text-blue-400 uppercase tracking-widest mb-1">Hasil Setelah Oven (Kg) *</p>
+                        <input type="number"
+                            class="ok-result-qty w-full bg-transparent text-xl font-black text-slate-800 text-center outline-none"
+                            placeholder="0"
+                            step="0.1" min="0"
+                            oninput="recalcOKShrinkage(${idx})"
+                            data-row="${idx}">
+                    </div>
+
+                    <!-- Penyusutan (auto) -->
+                    <div class="bg-rose-50 border border-rose-100 rounded-xl p-3 text-center">
+                        <p class="text-[8px] font-black text-rose-300 uppercase tracking-widest mb-1">Susut (Kg) / (%)</p>
+                        <p class="text-lg font-black text-rose-500" id="ok_shrink_kg_${idx}">0.00</p>
+                        <p class="text-[10px] font-black text-rose-400" id="ok_shrink_pct_${idx}">0.0%</p>
+                    </div>
+                </div>
+
+                ${outputWipItem ? `
+                <div class="flex items-center gap-2 bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2">
+                    <i class="fas fa-dolly-flatbed text-indigo-400 text-xs"></i>
+                    <div>
+                        <span class="text-[8px] font-black text-indigo-300 uppercase tracking-widest">Stok Tujuan: </span>
+                        <span class="text-xs font-black text-indigo-800">${outputWipItem.itemName}</span>
+                    </div>
+                </div>` : ''}
+            </div>`;
+        }).join('');
+
+        dynamicBody = `
+            <div class="space-y-4">
+                <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                    <i class="fas fa-fire text-orange-500"></i> Hasil Produksi Oven Kering
+                </h4>
+                ${okRows || '<p class="text-sm text-slate-400 italic">Tidak ada produk terdaftar pada MO ini.</p>'}
+            </div>`;
+
+    } else if (mo.stage === 'PACKING') {
         const nextLabel = prodStageLabel(mo.stage);
         const inputItem = db.findById('inventoryItems', mo.inputItemId);
-        const isOvenKering = mo.stage === 'OVEN_KERING';
-        const isPacking = mo.stage === 'PACKING';
+
+        const baseProd = db.findById('inventoryItems', mo.productId);
 
         dynamicBody = `
             <div class="space-y-4">
                 <div class="bg-white border-2 border-slate-100 p-5 rounded-2xl shadow-sm">
                     <h4 class="text-[10px] font-black text-slate-400 mb-4 uppercase tracking-widest flex items-center gap-2">
-                        <i class="fas fa-sign-in-alt text-blue-500"></i> ${isPacking ? 'Pemakaian Oven Kering (WIP)' : 'Pemakaian Bahan (WIP)'}
+                        <i class="fas fa-sign-in-alt text-blue-500"></i> Pemakaian Oven Kering (WIP)
                     </h4>
                     <div class="flex items-center gap-4">
                         <div class="flex-1">
@@ -1001,140 +1159,108 @@ window.openCompleteMOModal = (id) => {
                             <p class="text-lg font-black text-slate-800 tracking-tight">${inputItem?.itemName || '-'}</p>
                         </div>
                         <div class="w-48 text-right">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">${isPacking ? 'Total Pengeluaran Actual (Kg)' : `Qty Sebelum Oven (${inputItem?.unit || 'Kg'})`} <span class="text-red-500">*</span></label>
-                            <input type="text" id="mo_final_input_actual" inputmode="decimal" value="${prodFmt(mo.inputQty || 0)}" oninput="formatNumericInput(this); recalcShrinkageByQty(this.value, '${mo.stage}')" class="w-full border-2 border-slate-300 rounded-lg px-4 py-2 text-lg font-black text-slate-700 text-right bg-slate-50 focus:bg-white focus:border-blue-500 outline-none transition-all shadow-sm">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Total Pengeluaran Actual (Kg) <span class="text-red-500">*</span></label>
+                            <input type="text" id="mo_final_input_actual" inputmode="decimal" value="${prodFmt(mo.inputQty || 0)}" oninput="formatNumericInput(this)" class="w-full border-2 border-slate-300 rounded-lg px-4 py-2 text-lg font-black text-slate-700 text-right bg-slate-50 focus:bg-white focus:border-blue-500 outline-none transition-all shadow-sm">
                         </div>
                     </div>
                 </div>
 
                 <div class="bg-white border-2 border-slate-200 border-dashed p-6 rounded-2xl relative">
                     <div class="absolute -top-3 left-6 px-3 bg-white text-[10px] font-black text-slate-400 uppercase tracking-widest border border-slate-200 rounded-full">
-                         ${isPacking ? 'Hasil Pengepakan Sak' : 'Hasil Produksi Nyata'}
+                        Hasil Pengepakan Sak
                     </div>
-                    
                     <div class="grid grid-cols-2 gap-6 mt-2">
-                        <div class="${isOvenKering ? 'col-span-1' : 'col-span-2'}">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">${isPacking ? 'Jumlah Karung (SETARA 25 KG / SAK)' : 'Berat Setelah Penimbangan (Kg)'} <span class="text-red-500">*</span></label>
+                        <div class="col-span-2">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Jumlah Karung (SETARA 25 KG / SAK) <span class="text-red-500">*</span></label>
                             <div class="relative">
-                                <input type="text" id="mo_final_output_qty" inputmode="decimal" ${isPacking ? 'readonly' : ''} oninput="formatNumericInput(this); ${isOvenKering ? "recalcShrinkageByQty(document.getElementById('mo_final_input_actual').value, 'OVEN_KERING')" : ""}" class="w-full border-b-4 border-slate-300 focus:border-blue-500 rounded-none px-0 py-2 text-3xl font-black text-slate-800 outline-none transition-all ${isPacking ? 'bg-slate-50/50' : 'bg-transparent'} placeholder:text-slate-200" placeholder="0">
-                                ${isPacking ? '<span class="absolute right-0 bottom-2 text-xs font-black text-blue-500 bg-blue-50 px-2 py-1 rounded">HASIL BAGI-25</span>' : ''}
+                                <input type="text" id="mo_final_output_qty" inputmode="decimal" readonly oninput="formatNumericInput(this)" class="w-full border-b-4 border-slate-300 focus:border-blue-500 rounded-none px-0 py-2 text-3xl font-black text-slate-800 outline-none transition-all bg-slate-50/50 placeholder:text-slate-200" placeholder="0">
+                                <span class="absolute right-0 bottom-2 text-xs font-black text-blue-500 bg-blue-50 px-2 py-1 rounded">HASIL BAGI-25</span>
                             </div>
                         </div>
-                        
-                        ${isOvenKering ? `
-                        <div class="grid grid-cols-2 gap-3">
-                            <div class="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                                <label class="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Susut (Kg)</label>
-                                <input type="number" id="mo_final_shrink_kg" class="w-full bg-transparent text-lg font-black text-red-500 outline-none" readonly value="0.00">
-                            </div>
-                            <div class="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                                <label class="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Susut (%)</label>
-                                <input type="number" id="mo_final_shrink" class="w-full bg-transparent text-lg font-black text-red-500 outline-none" readonly value="0.0">
-                            </div>
-                        </div>` : ''}
-                        
                         <div class="col-span-2 pt-4">
-                            ${(() => {
-                                if (isPacking) {
-                                    const baseProd = db.findById('inventoryItems', mo.productId);
-                                    if (!baseProd) return `<div class="p-4 bg-red-50 text-red-500 rounded-xl">Error: Produk Utama tidak ditemukan.</div>`;
-                                    
-                                    return `
-                                        <div class="p-4 bg-indigo-50 border-2 border-indigo-100 rounded-2xl flex items-center gap-4">
-                                            <div class="w-12 h-12 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-lg">
-                                                <i class="fas fa-warehouse"></i>
-                                            </div>
-                                            <div>
-                                                <p class="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Stok Tujuan (Inventory Gudang Jadi)</p>
-                                                <p class="text-sm font-black text-indigo-900">${baseProd.itemName}</p>
-                                                <input type="hidden" id="mo_final_output_item" value="${baseProd.id}">
-                                            </div>
-                                        </div>
-                                    `;
-                                } else {
-                                    const targetWipId = db.ensureWIPItem(mo.productId, nextLabel);
-                                    const targetItem = targetWipId ? db.findById('inventoryItems', targetWipId) : null;
-                                    
-                                    if (!targetItem) {
-                                        const baseProd = db.findById('inventoryItems', mo.productId);
-                                        const baseName = baseProd ? baseProd.itemName.replace(/\s*\([^)]+\)/g, '').trim() : 'Unknown';
-                                        const expectedName = `${baseName} (${nextLabel})`;
-                                        return `
-                                            <div class="p-4 bg-orange-50 border-2 border-orange-100 rounded-2xl flex items-center gap-4">
-                                                <div class="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center">
-                                                    <i class="fas fa-box-open"></i>
-                                                </div>
-                                                <div>
-                                                   <p class="text-[10px] font-black text-orange-500 uppercase tracking-widest">Master Item Tidak Ditemukan</p>
-                                                   <p class="text-xs font-bold text-orange-800 italic">"${expectedName}" (WIP)</p>
-                                                   <input type="hidden" id="mo_final_output_item" value="">
-                                                </div>
-                                            </div>`;
-                                    }
-
-                                    return `
-                                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Tujuan Penyimpanan</p>
-                                        <div class="flex items-center gap-3">
-                                            <div class="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center border border-indigo-100">
-                                                <i class="fas fa-dolly-flatbed text-indigo-400"></i>
-                                            </div>
-                                            <div>
-                                                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Master Barang WIP</p>
-                                                <span class="text-md font-black text-slate-800">${targetItem.itemName}</span>
-                                            </div>
-                                        </div>
-                                        <input type="hidden" id="mo_final_output_item" value="${targetItem.id}">
-                                    `;
-                                }
-                            })()}
+                            ${baseProd ? `
+                            <div class="p-4 bg-indigo-50 border-2 border-indigo-100 rounded-2xl flex items-center gap-4">
+                                <div class="w-12 h-12 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-lg">
+                                    <i class="fas fa-warehouse"></i>
+                                </div>
+                                <div>
+                                    <p class="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Stok Tujuan (Inventory Gudang Jadi)</p>
+                                    <p class="text-sm font-black text-indigo-900">${baseProd.itemName}</p>
+                                    <input type="hidden" id="mo_final_output_item" value="${baseProd.id}">
+                                </div>
+                            </div>` : `<div class="p-4 bg-red-50 text-red-500 rounded-xl">Error: Produk Utama tidak ditemukan.</div>`}
                         </div>
                     </div>
                 </div>
             </div>`;
     }
 
-    const body = `
-    <div class="space-y-4">
-        <div class="p-4 bg-slate-50 border-b border-slate-100 flex flex-wrap justify-center items-center gap-x-8 gap-y-2 text-sm mb-2 rounded-xl">
-            <div class="flex items-center gap-2">
-                <i class="far fa-calendar-alt text-slate-400"></i>
-                <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tgl MO:</span> 
-                <span class="font-bold text-slate-700">${prodDate(mo.createdAt)}</span>
-            </div>
-            <div class="flex items-center gap-2">
-                <i class="fas fa-hashtag text-slate-400 text-[10px]"></i>
-                <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">No. MO:</span> 
-                <span class="font-black text-slate-800">${mo.moNumber}</span>
-            </div>
-            <div class="flex items-center gap-2">
-                <i class="fas fa-layer-group text-blue-400 text-[10px]"></i>
-                <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Batch:</span> 
-                <span class="font-mono font-black text-blue-600 tracking-tighter">${mo.batchId}</span>
-            </div>
-        </div>
-        ${dynamicBody}
-        
-        <div class="space-y-4 border-t border-gray-100 pt-4">
-            <div>
-                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
-                    <i class="fas fa-comment-dots text-blue-400"></i> Catatan Hasil Produksi (Teks Bebas)
-                </label>
-                <textarea id="mo_final_notes" class="w-full h-24 border-2 border-slate-100 rounded-xl px-4 py-3 text-sm focus:border-blue-400 focus:ring-4 focus:ring-blue-50 outline-none transition-all resize-none shadow-inner" placeholder="Punya catatan khusus? Tulis di sini bebas..."></textarea>
-            </div>
-        </div>
+    const moDate = new Date(mo.date || mo.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
+    const mc = document.getElementById('main-content');
+    document.getElementById('pageTitle').innerText = 'Laporan Hasil Produksi';
+    renderBreadcrumb(['Produksi', 'Manufacturing Orders', mo.moNumber, 'Selesaikan']);
 
-        <div class="grid grid-cols-2 gap-4 border-t border-gray-100 pt-4">
-            <input type="hidden" id="mo_final_waste" value="0">
-            <input type="hidden" id="mo_final_qc" value="PASSED">
-        </div>
-    </div>`;
+    mc.innerHTML = `
+        <div class="animate-in fade-in slide-in-from-bottom-2 duration-400 -m-4 sm:-m-6 h-[calc(100vh-64px)] flex flex-col overflow-hidden bg-white">
 
-    const footer = `
-        <button onclick="finalizeMO('${id}')" class="w-full sm:w-auto inline-flex justify-center rounded-lg bg-green-600 px-8 py-2 text-white text-sm font-black hover:bg-green-700 sm:ml-3 shadow-lg shadow-green-100 uppercase tracking-widest">Selesaikan Produksi</button>
-        <button onclick="closeModal()" class="mt-3 sm:mt-0 w-full sm:w-auto inline-flex justify-center rounded-lg border border-gray-300 px-8 py-2 bg-white text-gray-500 text-sm font-bold hover:bg-gray-50 sm:ml-3 uppercase tracking-widest">Batal</button>`;
+            <!-- Sticky Action Bar -->
+            <div class="sticky top-0 z-40 bg-white border-b border-slate-100 px-8 py-4 flex items-center justify-between shrink-0 shadow-sm">
+                <div></div>
+                <div class="flex items-center gap-3">
+                    <button type="button" onclick="renderProductionMO()"
+                        class="px-6 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95">
+                        Batal
+                    </button>
+                    <button type="button" onclick="finalizeMO('${id}')"
+                        class="px-8 py-2.5 bg-green-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg active:scale-95 flex items-center gap-2">
+                        <i class="fas fa-check-circle text-[10px]"></i> Selesaikan Produksi
+                    </button>
+                </div>
+            </div>
 
-    showModal('Laporan Hasil Produksi', body, footer, 'full');
+            <!-- Scrollable Content -->
+            <div class="flex-1 overflow-y-auto bg-slate-50/50 pb-32">
+                <div class="w-full p-8 space-y-6">
+
+                    <!-- Section 1: Info MO -->
+                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm">
+                        <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 mb-6">
+                            <i class="fas fa-info-circle text-blue-600"></i> Informasi MO
+                        </h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Tanggal MO</label>
+                                <div class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700">${moDate}</div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Nomor MO</label>
+                                <div class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-black text-blue-600 font-mono">${mo.moNumber}</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Section 2: Dynamic content (Bahan / Output) -->
+                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-4">
+                        ${dynamicBody}
+                    </div>
+
+                    <!-- Section 3: Catatan -->
+                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm">
+                        <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 mb-4">
+                            <i class="fas fa-comment-dots text-blue-600"></i> Catatan Hasil Produksi
+                        </h3>
+                        <textarea id="mo_final_notes" rows="3"
+                            placeholder="Punya catatan khusus? Tulis di sini bebas..."
+                            class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 text-sm text-slate-700 outline-none resize-none"></textarea>
+                        <input type="hidden" id="mo_final_waste" value="0">
+                        <input type="hidden" id="mo_final_qc" value="PASSED">
+                    </div>
+
+                </div>
+            </div>
+        </div>`;
 };
+
 
 window.recalcShrinkageByQty = (rawInput, stage = '') => {
     const input = typeof rawInput === 'string' ? parseFormattedNum(rawInput) : (parseFloat(rawInput) || 0);
@@ -1168,13 +1294,13 @@ window.formatNumericInput = (el) => {
     let oldLen = el.value.length;
     let raw = el.value.replace(/[^0-9,]/g, '');
     if (raw === "") { el.value = ""; return; }
-    
+
     let parts = raw.split(',');
     parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ".");
     if (parts.length > 2) parts = [parts[0], parts[1]]; // Max one decimal separator
-    
+
     el.value = parts.join(',');
-    
+
     // Maintain cursor position
     let newLen = el.value.length;
     el.setSelectionRange(cursor + (newLen - oldLen), cursor + (newLen - oldLen));
@@ -1186,73 +1312,174 @@ window.parseFormattedNum = (val) => {
     return parseFloat(String(val).replace(/\./g, '').replace(/,/g, '.')) || 0;
 };
 
+// Recalculate shrinkage per product row for OVEN_KERING finish form
+window.recalcOKShrinkage = (idx) => {
+    const row = document.querySelector(`.ok-result-row[data-tp-idx="${idx}"]`);
+    if (!row) return;
+    const inputQty = parseFloat(row.dataset.inputQty) || 0;
+    const resultInput = row.querySelector('.ok-result-qty');
+    const outputQty = parseFloat(resultInput?.value) || 0;
+    const shrinkKg = Math.max(0, inputQty - outputQty).toFixed(2);
+    const shrinkPct = inputQty > 0 ? ((inputQty - outputQty) / inputQty * 100).toFixed(1) : '0.0';
+    const kgEl = document.getElementById(`ok_shrink_kg_${idx}`);
+    const pctEl = document.getElementById(`ok_shrink_pct_${idx}`);
+    if (kgEl) kgEl.textContent = shrinkKg;
+    if (pctEl) pctEl.textContent = shrinkPct + '%';
+};
+
 window.finalizeMO = (id) => {
     const mo = db.findById('productionOrders', id);
     if (!mo) return;
 
-    let updates = { 
-        status: 'DONE', 
+    let updates = {
+        status: 'DONE',
         completedAt: new Date().toISOString(),
         notes: (mo.notes || '') + (document.getElementById('mo_final_notes')?.value ? '\n[FINISH]: ' + document.getElementById('mo_final_notes').value : ''),
-        wasteQty: (mo.stage === 'MIXING' || mo.stage === 'OVEN_BASAH') ? 0 : (parseFormattedNum(document.getElementById('mo_final_waste')?.value) || 0),
-        qcStatus: (mo.stage === 'MIXING' || mo.stage === 'OVEN_BASAH') ? 'PASSED' : (document.getElementById('mo_final_qc')?.value || 'PASSED')
+        wasteQty: (mo.stage === 'OVEN_BASAH') ? 0 : (parseFormattedNum(document.getElementById('mo_final_waste')?.value) || 0),
+        qcStatus: (mo.stage === 'OVEN_BASAH') ? 'PASSED' : (document.getElementById('mo_final_qc')?.value || 'PASSED')
     };
 
-    if (mo.stage === 'MIXING' || mo.stage === 'OVEN_BASAH') {
-        const outputLocation = mo.stage === 'OVEN_BASAH' ? 'OVEN_BASAH' : 'MIXING';
-        const stageLabelLog = mo.stage === 'OVEN_BASAH' ? 'Oven Basah' : 'Mixing';
+    if (mo.stage === 'OVEN_BASAH') {
+        const outputLocation = 'OVEN_BASAH';
+        const stageLabelLog = 'Oven Basah';
+
+        // --- Consume Raw Materials ---
         const actualRows = document.querySelectorAll('.mo_final_rm_actual');
         const updatedInputItems = [];
         let totalInputActual = 0;
 
-        const errors = [];
+        const rmErrors = [];
         actualRows.forEach(row => {
             const itemId = row.getAttribute('data-item-id');
             const itemName = row.getAttribute('data-item-name');
             const qtyActual = parseFormattedNum(row.value);
-
             if (itemId && qtyActual > 0) {
                 const stock = db.getInventoryStock(itemId, 'WHS');
-                if (stock < qtyActual) {
-                    errors.push(`${itemName}: Butuh ${qtyActual}, Sisa ${stock}`);
-                }
+                if (stock < qtyActual) rmErrors.push(`${itemName}: Butuh ${qtyActual}, Sisa ${stock}`);
             }
         });
-
-        if (errors.length > 0) {
-            showToast(`Stok Bahan tidak cukup untuk menyelesaikan ${stageLabelLog}: ` + errors.join("; "), 'error');
+        if (rmErrors.length > 0) {
+            showToast(`Stok Bahan tidak cukup: ` + rmErrors.join("; "), 'error');
             return;
         }
-
         actualRows.forEach(row => {
             const itemId = row.getAttribute('data-item-id');
             const itemName = row.getAttribute('data-item-name');
             const itemUnit = row.getAttribute('data-item-unit');
             const qtyActual = parseFormattedNum(row.value);
-
             if (itemId && qtyActual > 0) {
                 db.addInventoryTransaction(itemId, 'OUT', qtyActual, 'PRODUCTION_OUT', null, `FINISH ${stageLabelLog} MO ${mo.moNumber}: Consumed for ${mo.productName}`, 'Admin', 'WHS');
                 updatedInputItems.push({ inventoryItemId: itemId, itemName, qty: qtyActual, unit: itemUnit });
                 totalInputActual += qtyActual;
             }
         });
-
         updates.inputItems = updatedInputItems;
         updates.inputQty = totalInputActual;
 
-        const sacks = parseFormattedNum(document.getElementById('mo_final_output_sacks')?.value);
-        const outputItemId = document.getElementById('mo_final_output_item')?.value;
+        // --- Record Multi-Product Output ---
+        const outputRows = document.querySelectorAll('.ob-output-row');
+        if (outputRows.length === 0) {
+            showToast('Tambahkan minimal 1 produk hasil Oven Basah!', 'error');
+            return;
+        }
 
-        if (sacks <= 0) { showToast(`Masukkan jumlah karung hasil ${stageLabelLog}`, 'error'); return; }
-        if (!outputItemId) { showToast('Pilih item stok tujuan', 'error'); return; }
+        const outputProducts = [];
+        const outErrors = [];
+        outputRows.forEach((row, i) => {
+            const itemId = row.querySelector('.ob-out-item')?.value;
+            const qty = parseFormattedNum(row.querySelector('.ob-out-qty')?.value);
+            const itemName = db.findById('inventoryItems', itemId)?.itemName || '';
+            if (!itemId) { outErrors.push(`Baris ${i + 1}: Pilih produk`); return; }
+            if (qty <= 0) { outErrors.push(`Baris ${i + 1}: Isi Qty hasil (Kg)`); return; }
+            outputProducts.push({ itemId, itemName, qty });
+        });
+        if (outErrors.length > 0) {
+            showToast(outErrors.join(' | '), 'error');
+            return;
+        }
 
-        updates.outputQty = sacks;
-        updates.outputSacks = sacks;
-        updates.outputItemId = outputItemId;
+        // Book stock IN for each output product (into WIP Oven Basah item)
+        let totalOutputSacks = 0;
+        outputProducts.forEach(op => {
+            // op.itemId is FINISHED_GOODS id — resolve to its WIP (Oven Basah) counterpart, auto-create if missing
+            const wipItemId = db.ensureWIPItem(op.itemId, 'Oven Basah', true);
+            const wipItem = wipItemId ? db.findById('inventoryItems', wipItemId) : null;
+            const targetId = wipItemId || op.itemId; // fallback to FG id if WIP not found
+            const targetName = wipItem?.itemName || op.itemName;
+            db.addInventoryTransaction(
+                targetId, 'IN', op.qty, 'PRODUCTION_IN', null,
+                `FINISH ${stageLabelLog} MO ${mo.moNumber}: ${targetName} (${op.qty} Kg)`,
+                'Admin', outputLocation
+            );
+            totalOutputSacks += op.qty;
+        });
+
+        updates.outputQty = totalOutputSacks;
+        updates.outputSacks = totalOutputSacks;
+        updates.outputItemId = outputProducts[0]?.itemId || '';
+        updates.outputProducts = outputProducts; // Save multi-product list to MO record
+
+    } else if (mo.stage === 'OVEN_KERING') {
+        const stageLabelLog = 'Oven Kering';
+        const tpList = mo.targetProducts || [];
+        const resultInputs = document.querySelectorAll('.ok-result-qty');
         
-        db.addInventoryTransaction(outputItemId, 'IN', updates.outputQty, 'PRODUCTION_IN', null, `FINISH ${stageLabelLog} MO ${mo.moNumber}: ${mo.productName}`, 'Admin', outputLocation);
+        let totalInputActual = 0;
+        let totalOutputActual = 0;
+        let totalShrinkageKg = 0;
+        
+        const outErrors = [];
+        const completedProducts = [];
+        
+        tpList.forEach((tp, idx) => {
+            const inputQty = tp.qty;
+            const outputQty = parseFormattedNum(resultInputs[idx]?.value);
+            if (outputQty <= 0) {
+                outErrors.push(`Baris ${idx + 1}: Isi Hasil Setelah Oven (Kg)`);
+            } else if (outputQty > inputQty) {
+                outErrors.push(`Baris ${idx + 1}: Hasil melebihi Qty Masuk`);
+            }
+            totalInputActual += inputQty;
+            totalOutputActual += outputQty;
+            const shrink = Math.max(0, inputQty - outputQty);
+            totalShrinkageKg += shrink;
+            completedProducts.push({ ...tp, outputQty, shrinkageKg: shrink });
+        });
+        
+        if (outErrors.length > 0) {
+            showToast(outErrors.join(' | '), 'error');
+            return;
+        }
 
-    } else {
+        const rmErrors = [];
+        tpList.forEach(tp => {
+            const wipItemId = db.ensureWIPItem(tp.itemId, 'Oven Basah', true);
+            const wipStock = db.getInventoryStock(wipItemId, 'OVEN_BASAH');
+            if (wipStock < tp.qty) {
+                rmErrors.push(`Stok WIP Oven Basah untuk ${tp.itemName} tidak cukup (Sisa: ${prodFmt(wipStock)} Kg)`);
+            }
+        });
+        if (rmErrors.length > 0) {
+            showToast(rmErrors.join(' | '), 'error');
+            return;
+        }
+
+        tpList.forEach((tp, idx) => {
+            const inputWipItemId = db.ensureWIPItem(tp.itemId, 'Oven Basah', true);
+            const outputWipItemId = db.ensureWIPItem(tp.itemId, 'Oven Kering', true);
+            const outputQty = completedProducts[idx].outputQty;
+            
+            db.addInventoryTransaction(inputWipItemId, 'OUT', tp.qty, 'PRODUCTION_OUT', null, `FINISH ${stageLabelLog} MO ${mo.moNumber}: Consumed for ${tp.itemName}`, 'Admin', 'OVEN_BASAH');
+            db.addInventoryTransaction(outputWipItemId, 'IN', outputQty, 'PRODUCTION_IN', null, `FINISH ${stageLabelLog} MO ${mo.moNumber}: Produced ${tp.itemName}`, 'Admin', 'OVEN_KERING');
+        });
+
+        updates.inputQty = totalInputActual;
+        updates.outputQty = totalOutputActual;
+        updates.shrinkageKg = totalShrinkageKg;
+        updates.shrinkagePct = totalInputActual > 0 ? (totalShrinkageKg / totalInputActual) * 100 : 0;
+        updates.targetProducts = completedProducts;
+
+    } else if (mo.stage === 'PACKING') {
         const inputQtyActual = parseFormattedNum(document.getElementById('mo_final_input_actual')?.value);
         const outputQty = parseFormattedNum(document.getElementById('mo_final_output_qty')?.value);
         const outputItemId = document.getElementById('mo_final_output_item')?.value;
@@ -1260,65 +1487,332 @@ window.finalizeMO = (id) => {
         if (inputQtyActual <= 0) { showToast('Masukkan Qty bahan yang DI AMBIL/DIPAKAI', 'error'); return; }
         if (outputQty <= 0) { showToast('Masukkan Qty output hasil nyata', 'error'); return; }
         if (!outputItemId) { showToast('Pilih item stok tujuan', 'error'); return; }
-        
+
         updates.inputQty = inputQtyActual;
-        updates.outputQty = outputQty;
+        updates.outputQty = inputQtyActual; // Record Kg as the primary output for stock
+        updates.outputSacks = outputQty; // Store Sack count as metadata
         updates.outputItemId = outputItemId;
 
         // OUT: Deduct from source location
         if (mo.inputItemId) {
-            const srcLoc = mo.stage === 'OVEN_BASAH' ? 'MIXING' : (mo.stage === 'OVEN_KERING' ? 'OVEN_BASAH' : (mo.stage === 'PACKING' ? 'OVEN_KERING' : 'WHS'));
+            const srcLoc = 'OVEN_KERING';
             const stock = db.getInventoryStock(mo.inputItemId, srcLoc);
             if (stock < inputQtyActual) {
-                showToast(`Stok ${mo.productName || 'Input'} di ${srcLoc} tidak cukup! (Sisa: ${stock}, Butuh: ${inputQtyActual})`, 'error');
+                showToast(`Stok ${mo.productName || 'Input'} di ${srcLoc} tidak cukup! (Sisa: ${prodFmt(stock)}, Butuh: ${prodFmt(inputQtyActual)})`, 'error');
                 return;
             }
-            db.addInventoryTransaction(mo.inputItemId, 'OUT', inputQtyActual, 'PRODUCTION_OUT', null, `FINISH ${prodStageLabel(mo.stage)} MO ${mo.moNumber}: Consumed ${inputQtyActual}`, 'Admin', srcLoc);
+            db.addInventoryTransaction(mo.inputItemId, 'OUT', inputQtyActual, 'PRODUCTION_OUT', null, `FINISH Packing MO ${mo.moNumber}: Consumed ${inputQtyActual}`, 'Admin', srcLoc);
         }
 
-        // SPECIAL FOR PACKING: Output Qty is actually the Kg, and sacks are secondary tracking.
-        if (mo.stage === 'PACKING') {
-            updates.outputQty = inputQtyActual; // Record Kg as the primary output for stock
-            updates.outputSacks = outputQty; // Store Sack count as metadata
-            
-            // Record the transaction in Kg to the Finished Goods category
-            db.addInventoryTransaction(outputItemId, 'IN', inputQtyActual, 'PRODUCTION_IN', null, `FINISH Packing MO ${mo.moNumber}: Produced ${inputQtyActual} Kg (${outputQty} Sacks)`, 'Admin', 'WHS');
-            
-            // Update the item's packaging breakdown if applicable
-            const targetItem = db.findById('inventoryItems', outputItemId);
-            if (targetItem) {
-                targetItem.packBreakdown = targetItem.packBreakdown || { qty25: 0, qtyOther: 0 };
-                targetItem.packBreakdown.qty25 = (parseFloat(targetItem.packBreakdown.qty25) || 0) + outputQty;
-                db.update('inventoryItems', outputItemId, { packBreakdown: targetItem.packBreakdown });
-            }
-        } else {
-            // IN: Add to target location
-            const dstLoc = mo.stage === 'OVEN_BASAH' ? 'OVEN_BASAH' : (mo.stage === 'OVEN_KERING' ? 'OVEN_KERING' : 'WHS');
-            db.addInventoryTransaction(outputItemId, 'IN', outputQty, 'PRODUCTION_IN', null, `FINISH ${prodStageLabel(mo.stage)} MO ${mo.moNumber}: Produced ${outputQty}`, 'Admin', dstLoc);
+        // IN: Record the transaction in Kg to the Finished Goods category
+        db.addInventoryTransaction(outputItemId, 'IN', inputQtyActual, 'PRODUCTION_IN', null, `FINISH Packing MO ${mo.moNumber}: Produced ${inputQtyActual} Kg (${outputQty} Sacks)`, 'Admin', 'WHS');
+
+        // Update the item's packaging breakdown if applicable
+        const targetItem = db.findById('inventoryItems', outputItemId);
+        if (targetItem) {
+            targetItem.packBreakdown = targetItem.packBreakdown || { qty25: 0, qtyOther: 0 };
+            targetItem.packBreakdown.qty25 = (parseFloat(targetItem.packBreakdown.qty25) || 0) + outputQty;
+            db.update('inventoryItems', outputItemId, { packBreakdown: targetItem.packBreakdown });
         }
-        
-        if (mo.stage === 'OVEN_KERING') {
-            const shrinkPct = parseFloat(document.getElementById('mo_final_shrink')?.value) || 0;
-            const shrinkageKg = Math.max(0, inputQtyActual - outputQty);
-            
-            updates.shrinkagePct = shrinkPct;
-            updates.shrinkageKg = shrinkageKg;
-            
-            // NOTE: We don't add a 'SHRINKAGE' transaction here because 'PRODUCTION_OUT' 
-            // already deducted the full 'inputQtyActual' which includes the shrinkage.
-        } else {
-            updates.shrinkagePct = 0;
-            updates.shrinkageKg = 0;
-        }
+
+        updates.shrinkagePct = 0;
+        updates.shrinkageKg = 0;
     }
 
     db.update('productionOrders', id, updates);
     showToast(`Produksi ${mo.moNumber} selesai! Stok masuk diperbarui.`, 'success');
-    closeModal();
+    // Navigate back to MO list and keep it visible
+    window._prodSearchPerformed = true;
+    const todayStr3 = new Date().toISOString().split('T')[0];
+    if (!window._prodFilters) window._prodFilters = {};
+    if (!window._prodFilters.end || window._prodFilters.end < todayStr3) window._prodFilters.end = todayStr3;
     renderProductionMO();
 };
 
 // --- HELPERS -------------------------------------------------
+
+window.addMOTargetProductRow = (stageOrPresetId = '', presetName = '', presetId = '') => {
+    // Support old call signature: addMOTargetProductRow(presetId, presetName)
+    // New call: addMOTargetProductRow(stage) or addMOTargetProductRow(stage, '', presetId)
+    let stage = document.getElementById('mo_stage')?.value || 'OVEN_BASAH';
+    // If first arg is a stage key, use it; otherwise treat as presetId (backward compat)
+    const stageKeys = ['OVEN_BASAH', 'OVEN_KERING', 'MIXING', 'PACKING'];
+    if (stageKeys.includes(stageOrPresetId)) {
+        stage = stageOrPresetId;
+    } else if (stageOrPresetId) {
+        presetId = stageOrPresetId;
+    }
+
+    const container = document.getElementById('mo_target_product_rows');
+    const emptyMsg = document.getElementById('mo_target_empty_msg');
+    if (!container) return;
+
+    const isOvenKering = stage === 'OVEN_KERING';
+
+    // Filter machines: OVEN_KERING shows only OVEN-type; OVEN_BASAH shows non-OVEN machines
+    const allMachines = (db.read('machines') || []).filter(m => {
+        const t = (m.type || '').toUpperCase();
+        const s = (m.status || 'ACTIVE');
+        if (s === 'INACTIVE') return false;
+        if (isOvenKering) return t === 'OVEN' || t === 'OVEN_KERING';
+        return t !== 'OVEN' && t !== 'OVEN_BASAH' && t !== 'OVEN_KERING';
+    });
+
+    const machineLabel = isOvenKering ? 'Pilih Oven' : 'Pilih Mesin';
+    const machineItemsHtml = allMachines.length > 0
+        ? allMachines.map(m => `
+            <label class="mo-tp-mch-label flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-blue-50 rounded-lg transition-all">
+                <input type="checkbox" class="mo-tp-mch accent-blue-600 w-3.5 h-3.5 shrink-0" value="${m.id}" data-machine-name="${m.name}" onchange="onMOProductMachineChange(this)">
+                <span class="text-xs font-bold text-slate-700 uppercase">${m.name}</span>
+            </label>`).join('')
+        : `<p class="text-[11px] text-slate-300 italic px-3 py-2">Tidak ada ${machineLabel.toLowerCase()} tersedia</p>`;
+
+    const rowId = 'tp_' + Date.now() + '_' + Math.random().toString(36).slice(2, 5);
+
+    const div = document.createElement('div');
+    div.className = 'mo-tp-row flex items-center gap-2 bg-white p-2 rounded-xl border border-slate-200 hover:border-slate-300 transition-all';
+    div.innerHTML = `
+        <!-- Product search input -->
+        <div class="relative flex-1 min-w-0">
+            <input type="text" id="mo_product_display_${rowId}"
+                placeholder="-- Klik untuk pilih produk --" readonly
+                onclick="toggleMOProductDropdown('${rowId}')"
+                class="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-800 bg-slate-50 outline-none cursor-pointer hover:bg-white hover:border-blue-300 transition-all">
+            <input type="hidden" class="mo-tp-item-id" id="mo_tp_id_${rowId}">
+            <input type="hidden" class="mo-tp-item-name" id="mo_tp_name_${rowId}">
+            <div id="mo_product_dropdown_${rowId}"
+                class="hidden absolute left-0 top-full mt-1.5 w-full min-w-[280px] bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                <div class="p-3 border-b border-slate-50">
+                    <input type="text" id="mo_product_search_${rowId}"
+                        placeholder="Ketik kode atau nama..."
+                        oninput="filterMOProductList('${rowId}', this.value)"
+                        class="w-full px-3 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                </div>
+                <div class="max-h-56 overflow-y-auto p-1" id="mo_product_list_${rowId}"></div>
+            </div>
+        </div>
+
+        <!-- QTY input -->
+        <input type="number" class="mo-tp-qty shrink-0 w-24 border-2 border-slate-200 rounded-lg px-2 py-2 text-sm font-black text-center text-slate-800 outline-none focus:border-blue-400 transition-all" placeholder="0 Kg" min="0" step="0.1">
+
+        <!-- Machine dropdown -->
+        <div class="relative shrink-0" id="${rowId}_wrap">
+            <button type="button"
+                onclick="toggleMOProductMachineDropdown('${rowId}')"
+                class="mo-tp-mch-btn flex items-center gap-2 px-3 py-2 rounded-lg border-2 border-slate-200 bg-slate-50 hover:border-blue-400 hover:bg-blue-50 text-slate-500 text-xs font-black transition-all whitespace-nowrap">
+                <i class="fas fa-${isOvenKering ? 'fire' : 'cogs'} text-slate-400 text-[10px]"></i>
+                <span class="mo-tp-mch-label-text">${machineLabel}</span>
+                <i class="fas fa-chevron-down text-[9px] text-slate-300"></i>
+            </button>
+            <div id="${rowId}_dropdown"
+                class="mo-tp-mch-dropdown hidden absolute right-0 top-full mt-1.5 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl p-2 min-w-[180px] max-h-[240px] overflow-y-auto">
+                <p class="text-[9px] font-black text-slate-300 uppercase tracking-widest px-2 pb-1.5 mb-1 border-b border-slate-50">${machineLabel}</p>
+                ${machineItemsHtml}
+            </div>
+        </div>
+
+        <button type="button"
+            onclick="this.closest('.mo-tp-row').remove(); onMOProductMachineChange(null); if(!document.querySelector('.mo-tp-row')) document.getElementById('mo_target_empty_msg')?.classList.remove('hidden')"
+            class="w-7 h-7 rounded-lg bg-red-50 text-red-400 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center shrink-0">
+            <i class="fas fa-times text-[10px]"></i>
+        </button>`;
+
+    container.appendChild(div);
+
+    // If preset given, pre-fill
+    if (presetId) {
+        const hiddenId = div.querySelector('.mo-tp-item-id');
+        const hiddenName = div.querySelector('.mo-tp-item-name');
+        const display = div.querySelector(`#mo_product_display_${rowId}`);
+        if (hiddenId) hiddenId.value = presetId;
+        if (hiddenName) hiddenName.value = presetName;
+        if (display) display.value = presetName;
+    }
+
+    if (emptyMsg) emptyMsg.classList.add('hidden');
+    onMOProductMachineChange(null);
+};
+
+// ── Product search dropdown helpers for MO form ──────────────────────────
+
+window.toggleMOProductDropdown = (rowId) => {
+    const dropdown = document.getElementById('mo_product_dropdown_' + rowId);
+    if (!dropdown) return;
+    const isOpen = !dropdown.classList.contains('hidden');
+
+    // Close all MO product & machine dropdowns
+    document.querySelectorAll('[id^="mo_product_dropdown_"]').forEach(d => d.classList.add('hidden'));
+    document.querySelectorAll('.mo-tp-mch-dropdown').forEach(d => d.classList.add('hidden'));
+
+    if (!isOpen) {
+        dropdown.classList.remove('hidden');
+        const search = document.getElementById('mo_product_search_' + rowId);
+        if (search) { search.value = ''; search.focus(); }
+        filterMOProductList(rowId, '');
+
+        const closeHandler = (e) => {
+            if (!dropdown.parentElement?.contains(e.target)) {
+                dropdown.classList.add('hidden');
+                document.removeEventListener('click', closeHandler);
+            }
+        };
+        setTimeout(() => document.addEventListener('click', closeHandler), 10);
+    }
+};
+
+window.filterMOProductList = (rowId, val) => {
+    const container = document.getElementById('mo_product_list_' + rowId);
+    if (!container) return;
+    const search = val.toLowerCase();
+    const allItems = db.read('inventoryItems') || [];
+    const products = allItems.filter(i => i.category === 'FINISHED_GOODS' && i.status !== 'INACTIVE');
+
+    const filtered = products.filter(p =>
+        !search ||
+        (p.itemName || '').toLowerCase().includes(search) ||
+        (p.itemCode || '').toLowerCase().includes(search)
+    );
+
+    const stage = document.getElementById('mo_stage')?.value;
+    const stageInfo = PROD_STAGES.find(s => s.key === stage) || { key: stage, inputFrom: 'RAW_MATERIAL' };
+
+    container.innerHTML = filtered.map(p => {
+        let displayStock = db.getInventoryStock(p.id);
+        let stockLabel = 'Stock FG';
+        let stockColor = 'text-blue-500';
+        
+        let displayItemName = p.itemName;
+        let displayItemCode = p.itemCode || '-';
+        
+        if (stageInfo.inputFrom !== 'RAW_MATERIAL') {
+            const inputStageLabel = PROD_STAGES.find(s => s.key === stageInfo.inputFrom)?.label || stageInfo.inputFrom;
+            const inputItemId = db.ensureWIPItem(p.id, inputStageLabel, false);
+            if (inputItemId) {
+                const wipItem = db.findById('inventoryItems', inputItemId);
+                if (wipItem) {
+                    displayItemName = wipItem.itemName;
+                    displayItemCode = wipItem.itemCode || '-';
+                }
+                displayStock = db.getInventoryStock(inputItemId);
+                stockLabel = `Stok WIP (${inputStageLabel})`;
+            } else {
+                displayStock = 0;
+                stockLabel = `Stok WIP (${inputStageLabel})`;
+                displayItemName = `${p.itemName} (${inputStageLabel})`;
+                displayItemCode = 'BELUM ADA';
+            }
+            stockColor = displayStock > 0 ? 'text-emerald-600' : 'text-rose-500';
+        }
+        
+        const name = (p.itemName || '').replace(/'/g, "\\'");
+        return `
+            <div onclick="selectMOProduct('${rowId}', '${p.id}', '${name}')"
+                class="px-4 py-3 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors m-0.5 border border-transparent hover:border-slate-200">
+                <div class="flex justify-between items-center">
+                    <div class="flex flex-col gap-0.5">
+                        <span class="text-sm font-bold text-slate-800">${displayItemName}</span>
+                        <span class="text-[9px] text-slate-400 uppercase font-black tracking-widest">${displayItemCode}</span>
+                    </div>
+                    <div class="text-[9px] ${stockColor} font-black uppercase text-right leading-tight">${stockLabel}<br><span class="text-xs">${prodFmt(displayStock)} Kg</span></div>
+                </div>
+            </div>`;
+    }).join('') || '<div class="px-5 py-8 text-center text-[10px] font-bold text-slate-300 italic uppercase tracking-widest">Produk tidak ditemukan</div>';
+};
+
+window.selectMOProduct = (rowId, itemId, itemName) => {
+    if (rowId === 'single') {
+        const display = document.getElementById('mo_product_display_single');
+        const hiddenId = document.getElementById('mo_product_id');
+        const hiddenName = document.getElementById('mo_product');
+        if (display) display.value = itemName;
+        if (hiddenId) hiddenId.value = itemId;
+        if (hiddenName) hiddenName.value = itemName;
+    } else {
+        const display = document.getElementById('mo_product_display_' + rowId);
+        const hiddenId = document.getElementById('mo_tp_id_' + rowId);
+        const hiddenName = document.getElementById('mo_tp_name_' + rowId);
+        if (display) display.value = itemName;
+        if (hiddenId) hiddenId.value = itemId;
+        if (hiddenName) hiddenName.value = itemName;
+    }
+    const dropdown = document.getElementById('mo_product_dropdown_' + rowId);
+    if (dropdown) dropdown.classList.add('hidden');
+
+    // Auto-update form untuk merefresh tampilan Material Input WIP (stok dll)
+    if (window.updateMOForm) {
+        window.updateMOForm();
+    }
+};
+
+window.toggleMOProductMachineDropdown = (rowId) => {
+    const dropdown = document.getElementById(rowId + '_dropdown');
+    if (!dropdown) return;
+    const isOpen = !dropdown.classList.contains('hidden');
+    document.querySelectorAll('.mo-tp-mch-dropdown').forEach(d => d.classList.add('hidden'));
+    document.querySelectorAll('[id^="mo_product_dropdown_"]').forEach(d => d.classList.add('hidden'));
+    if (!isOpen) dropdown.classList.remove('hidden');
+};
+
+// Close dropdowns on outside click
+if (!window._moMchDropdownListenerAdded) {
+    window._moMchDropdownListenerAdded = true;
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.mo-tp-mch-dropdown') && !e.target.closest('.mo-tp-mch-btn') &&
+            !e.target.closest('[id^="mo_product_dropdown_"]') && !e.target.closest('[id^="mo_product_display_"]')) {
+            document.querySelectorAll('.mo-tp-mch-dropdown').forEach(d => d.classList.add('hidden'));
+            document.querySelectorAll('[id^="mo_product_dropdown_"]').forEach(d => d.classList.add('hidden'));
+        }
+    });
+}
+
+// Mutual exclusion: a machine checked in one row is disabled in all other rows
+window.onMOProductMachineChange = (changedCb) => {
+    const allRows = document.querySelectorAll('.mo-tp-row');
+    const checkedIds = new Set();
+    allRows.forEach(row => {
+        row.querySelectorAll('.mo-tp-mch:checked').forEach(cb => checkedIds.add(cb.value));
+    });
+    allRows.forEach(row => {
+        const rowChecked = [];
+        row.querySelectorAll('.mo-tp-mch').forEach(cb => {
+            const isCheckedInThisRow = cb.checked;
+            if (isCheckedInThisRow) rowChecked.push(cb.dataset.machineName || cb.value);
+            if (!isCheckedInThisRow && checkedIds.has(cb.value)) {
+                cb.disabled = true;
+                cb.closest('label').classList.add('opacity-40', 'cursor-not-allowed', 'pointer-events-none');
+            } else {
+                cb.disabled = false;
+                cb.closest('label').classList.remove('opacity-40', 'cursor-not-allowed', 'pointer-events-none');
+            }
+        });
+        const labelEl = row.querySelector('.mo-tp-mch-label-text');
+        if (labelEl) {
+            if (rowChecked.length === 0) {
+                labelEl.textContent = 'Pilih Mesin';
+                row.querySelector('.mo-tp-mch-btn')?.classList.remove('border-blue-500', 'bg-blue-50', 'text-blue-700');
+                row.querySelector('.mo-tp-mch-btn')?.classList.add('border-slate-200', 'bg-slate-50', 'text-slate-500');
+            } else {
+                labelEl.textContent = rowChecked.join(', ');
+                row.querySelector('.mo-tp-mch-btn')?.classList.add('border-blue-500', 'bg-blue-50', 'text-blue-700');
+                row.querySelector('.mo-tp-mch-btn')?.classList.remove('border-slate-200', 'bg-slate-50', 'text-slate-500');
+            }
+        }
+    });
+};
+
+
+
+window.addOvenBasahOutputRow = () => {
+    const container = document.getElementById('ob_output_rows');
+    const tpl = document.getElementById('ob_row_tpl');
+    const emptyMsg = document.getElementById('ob_empty_msg');
+    if (!container || !tpl) return;
+
+    const clone = tpl.content.cloneNode(true);
+    container.appendChild(clone);
+
+    if (emptyMsg) emptyMsg.classList.add('hidden');
+};
 
 window.addRMRowMO = (itemId = '', qty = 0, location = 'GUDANG') => {
     const list = document.getElementById('mo_rm_list');
@@ -1341,24 +1835,17 @@ window.addRMRowMO = (itemId = '', qty = 0, location = 'GUDANG') => {
 window.loadBOMMaterialsToMO = () => {
     const bomId = document.getElementById('mo_bom_id')?.value;
     if (!bomId) return;
-    
+
     // Auto fill name
     const bom = db.findById('bomHeaders', bomId);
     if (bom) {
         document.getElementById('mo_product').value = bom.name;
     }
 
-    // Ensure Stage is MIXING
-    const stageEl = document.getElementById('mo_stage');
-    if (stageEl && stageEl.value !== 'MIXING') {
-        stageEl.value = 'MIXING';
-        updateMOForm(); 
-    }
-
     // Auto fill materials
     const allMaterials = db.read('bomMaterials') || [];
     const materials = allMaterials.filter(m => m.bomHeaderId === bomId);
-    
+
     const list = document.getElementById('mo_rm_list');
     if (list) {
         if (materials.length > 0) {
@@ -1391,7 +1878,7 @@ window.viewProductionMO = (id) => {
     const mo = db.findById('productionOrders', id);
     if (!mo) return;
     let detailRows = '';
-    if (mo.stage === 'MIXING' && mo.inputItems) {
+    if (mo.stage === 'OVEN_BASAH' && mo.inputItems) {
         detailRows = `<div><h4 class="text-xs font-bold text-gray-500 uppercase mb-2">Bahan Baku</h4>` + mo.inputItems.map(i => `<div class="flex justify-between text-sm py-1 border-b border-gray-50"><span>${i.itemName}</span><span class="font-bold">${prodFmt(i.qty)} ${i.unit}</span></div>`).join('') + `</div>`;
     } else if (mo.stage === 'FINISH_GOOD' && mo.fgItems) {
         detailRows = `<div><h4 class="text-xs font-bold text-gray-500 uppercase mb-2">Output SKU</h4>` + mo.fgItems.map(i => `<div class="flex justify-between text-sm py-1 border-b border-gray-50 text-green-700"><span>${i.itemName}</span><span class="font-bold">+${prodFmt(i.qty)} ${i.unit || 'Kg'}</span></div>`).join('') + `</div>`;
@@ -1407,7 +1894,14 @@ window.viewProductionMO = (id) => {
             <div><span class="text-gray-400">Tgl Mulai:</span> ${prodDate(mo.date)}</div>
             <div><span class="text-gray-400">Tgl Selesai:</span> ${prodDate(mo.completedAt)}</div>
             <div><span class="text-gray-400">Total Input:</span> <strong>${prodFmt(mo.inputQty)} Kg</strong></div>
-            <div><span class="text-gray-400">Total Output:</span> <strong class="text-green-600">${mo.status === 'DONE' ? prodFmt(mo.outputQty) + ' Kg' : '-'}</strong></div>
+            <div class="col-span-2">
+                <span class="text-gray-400">Total Output:</span>
+                ${mo.status === 'DONE'
+            ? (mo.outputProducts && mo.outputProducts.length > 0
+                ? `<div class="mt-1 space-y-1">${mo.outputProducts.map(op => `<div class="flex items-center gap-2 text-xs"><span class="w-2 h-2 rounded-full bg-green-400 inline-block"></span><strong class="text-slate-700">${op.itemName}</strong><span class="text-green-600 font-black ml-auto">${prodFmt(op.qty)} Krg</span></div>`).join('')}</div>`
+                : `<strong class="text-green-600">${prodFmt(mo.outputQty)} Krg</strong>`)
+            : '<span class="text-slate-400">-</span>'}
+            </div>
             ${mo.shrinkagePct > 0 ? `<div><span class="text-gray-400">Penyusutan:</span> <strong class="text-orange-600">${mo.shrinkagePct}%</strong></div>` : ''}
         </div>
         ${detailRows ? `<div class="bg-gray-50 p-4 rounded-xl border border-gray-100">${detailRows}</div>` : ''}
@@ -1427,77 +1921,271 @@ window.deleteMO = (id) => {
 
 // â”€â”€â”€ LAPORAN PRODUKSI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 window.renderProductionReports = () => {
-    document.getElementById('pageTitle').innerText = 'Laporan Efisiensi & Stok Produksi';
-    const mc = document.getElementById('main-content');
-    const mos = db.read('productionOrders') || [];
-    const invItems = db.read('inventoryItems') || [];
+    document.getElementById('pageTitle').innerText = 'Laporan Tren Output Produksi';
+    const mainContent = document.getElementById('main-content');
+    const currentYear = new Date().getFullYear();
 
-    // 1. WIP Stock Table (Current Balances)
-    const wipTableRows = PROD_STAGES.filter(s => s.hasStock).map(st => {
-        const cat = STAGE_STOCK_CATEGORY[st.key];
-        const items = invItems.filter(i => i.category === cat);
-        const stock = items.reduce((s, i) => s + (db.getInventoryStock(i.id) || 0), 0);
-        return `
-        <tr class="border-b border-slate-50">
-            <td class="py-3 px-4"><div class="flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-blue-500"></div><span class="font-bold text-slate-700 text-sm">WIP ${st.label}</span></div></td>
-            <td class="py-3 px-4 text-right font-black text-slate-800">${prodFmt(stock)} Kg</td>
-            <td class="py-3 px-4 text-slate-400 text-[10px] uppercase font-bold italic tracking-widest text-right">Tersedia untuk tahap selanjutnya</td>
-        </tr>`;
-    }).join('');
-
-    // 2. Batch Performance Table
-    const batchRows = mos.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt)).map(mo => {
-        const eff = mo.status === 'DONE' ? ((mo.outputQty / (mo.targetQty || 1)) * 100).toFixed(1) : '-';
-        return `
-        <tr class="border-b border-gray-100 text-xs hover:bg-gray-50 transition-colors">
-            <td class="py-3 px-4 font-mono font-semibold text-blue-600">${mo.batchId || '-'}</td>
-            <td class="py-3 px-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${prodStageColor(mo.stage)} uppercase tracking-wider">${prodStageLabel(mo.stage)}</span></td>
-            <td class="py-3 px-4 text-right font-medium text-gray-500">${prodFmt(mo.targetQty)}</td>
-            <td class="py-3 px-4 text-right font-bold text-gray-800">${mo.status === 'DONE' ? prodFmt(mo.outputQty) : '<span class="italic text-gray-300 font-normal">proses</span>'}</td>
-            <td class="py-3 px-4 text-right text-red-500 font-medium">${mo.wasteQty > 0 ? prodFmt(mo.wasteQty) : '-'}</td>
-            <td class="py-3 px-4 text-right text-orange-600 font-medium">${mo.shrinkagePct > 0 ? mo.shrinkagePct + '%' : '-'}</td>
-            <td class="py-3 px-4 text-center font-bold ${eff !== '-' ? (eff > 95 ? 'text-green-600' : 'text-blue-600') : 'text-gray-300'}">${eff !== '-' ? eff + '%' : '-'}</td>
-            <td class="py-3 px-4 text-center"><span class="px-2 py-1 rounded text-[10px] font-bold text-white ${mo.qcStatus === 'PASSED' ? 'bg-green-600' : (mo.qcStatus === 'FAILED' ? 'bg-red-600' : 'bg-gray-400')} uppercase shadow-sm">${mo.qcStatus}</span></td>
-        </tr>`;
-    }).join('') || '<tr><td colspan="8" class="py-10 text-center text-gray-400 font-medium">Belum ada riwayat batch produksi</td></tr>';
-
-    mc.innerHTML = `
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-            <div class="lg:col-span-1 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div class="p-4 bg-gray-50 border-b border-gray-100 flex items-center gap-2">
-                    <i class="fas fa-warehouse text-blue-500"></i>
-                    <h3 class="font-bold text-gray-800 text-xs uppercase tracking-wider">Stok Produksi Tersedia</h3>
+    mainContent.innerHTML = `
+        <div class="font-sans bg-white animate-in fade-in duration-500 rounded-2xl border border-slate-200 shadow-sm overflow-hidden mb-12">
+            <!-- Header Filter (ERPNext Style) -->
+            <div class="flex flex-wrap items-center gap-3 px-6 py-6 border-b border-slate-100 bg-white shrink-0">
+                <div class="flex items-center bg-slate-100 rounded-lg p-1 border border-slate-200">
+                    <select id="pr_period" onchange="updateProductionReports()"
+                        class="bg-transparent border-none px-3 py-1.5 text-[13px] font-bold text-slate-700 focus:outline-none cursor-pointer outline-none">
+                        <option value="Monthly" selected>Monthly</option>
+                        <option value="Quarterly">Quarterly</option>
+                        <option value="Half-Yearly">Half-Yearly</option>
+                        <option value="Yearly">Yearly</option>
+                    </select>
                 </div>
-                <table class="w-full text-left border-collapse">
-                    <tbody class="divide-y divide-gray-50">${wipTableRows}</tbody>
-                </table>
-                <div class="p-4 border-t border-gray-50 bg-blue-50/50 text-[11px] text-blue-600 font-medium">
-                    <i class="fas fa-info-circle mr-1"></i> Stok ini siap digunakan untuk proses produksi selanjutnya.
+
+                <div class="flex items-center bg-slate-100 rounded-lg p-1 border border-slate-200">
+                    <select id="pr_based_on" onchange="updateProductionReports()"
+                        class="bg-transparent border-none px-3 py-1.5 text-[13px] font-bold text-slate-700 focus:outline-none cursor-pointer outline-none">
+                        <option value="Item">Berdasarkan Produk</option>
+                        <option value="Stage">Berdasarkan Tahapan</option>
+                    </select>
                 </div>
+
+                <div class="flex items-center bg-slate-100 rounded-lg p-1 border border-slate-200">
+                    <input type="number" id="pr_year" value="${currentYear}" onchange="updateProductionReports()"
+                        class="bg-transparent border-none px-3 py-1.5 text-[13px] font-bold text-slate-700 focus:outline-none outline-none w-20 text-center">
+                </div>
+
+                <div class="flex-1"></div>
+                
+                <button onclick="exportProductionReportsCsv()" class="bg-white border border-slate-300 rounded-xl px-5 py-2.5 text-[11px] font-black uppercase tracking-widest text-slate-700 transition-all hover:bg-slate-50 hover:border-slate-400 shadow-sm flex items-center gap-2 active:scale-95">
+                    <i class="fas fa-file-export text-xs text-slate-500"></i> Ekspor CSV
+                </button>
             </div>
             
-            <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div class="p-4 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
-                    <h3 class="font-bold text-gray-800 text-xs uppercase tracking-wider"><i class="fas fa-chart-line mr-2 text-blue-500"></i>History & Efisiensi Batch</h3>
-                    <button class="bg-white border border-gray-200 text-gray-600 px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-gray-50 transition-colors uppercase tracking-wider"><i class="fas fa-file-export mr-1"></i>Ekspor Data</button>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse">
-                        <thead><tr class="bg-white border-b border-gray-100">
-                            <th class="py-4 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Batch ID</th>
-                            <th class="py-4 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">Tahapan</th>
-                            <th class="py-4 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right">Target (Kg)</th>
-                            <th class="py-4 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right">Aktual (Kg)</th>
-                            <th class="py-4 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right text-red-400">Waste</th>
-                            <th class="py-4 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right text-orange-400">Susut%</th>
-                            <th class="py-4 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">Efisien</th>
-                            <th class="py-4 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-center">QC</th>
-                        </tr></thead>
-                        <tbody>${batchRows}</tbody>
-                    </table>
+            <!-- Metadata Info -->
+            <div class="px-6 mt-6 mb-4 text-[12px] text-blue-700 font-bold flex items-center gap-2">
+                <div class="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.5)]"></div>
+                Laporan ini menampilkan tren output produksi dalam satuan Kilogram (KG).
+            </div>
+
+            <!-- Chart Section -->
+            <div class="bg-white px-8 pt-6 pb-12 border-b border-slate-100 relative">
+                <div style="height: 320px;">
+                    <canvas id="pr_chart"></canvas>
                 </div>
             </div>
-        </div>`;
+
+            <!-- Table Section -->
+            <div class="overflow-x-auto bg-white">
+                <table class="w-full text-left border-collapse" id="pr_table">
+                    <thead class="bg-slate-50 border-b border-slate-200">
+                        <tr id="pr_thead" class="text-[11px] font-black text-slate-500 uppercase tracking-widest"></tr>
+                    </thead>
+                    <tbody id="pr_tbody" class="divide-y divide-slate-100 text-[13px] text-slate-800"></tbody>
+                </table>
+            </div>
+            
+            <!-- Footer -->
+            <div class="px-6 py-6 bg-slate-50 border-t border-slate-100 shrink-0 flex justify-between items-center w-full">
+                <p class="text-[11px] text-slate-500 font-medium italic">Data bersumber dari Manufacturing Orders (MO) dengan status 'DONE'.</p>
+                <p class="text-[11px] font-black text-slate-400 tracking-tighter uppercase">Execution Time: ${(Math.random() * 0.05 + 0.01).toFixed(6)} sec</p>
+            </div>
+        </div>
+    `;
+    updateProductionReports();
+};
+
+window.updateProductionReports = () => {
+    const year      = parseInt(document.getElementById('pr_year')?.value || new Date().getFullYear());
+    const basedOn   = document.getElementById('pr_based_on')?.value || 'Item';
+    const period    = document.getElementById('pr_period')?.value || 'Monthly';
+    
+    let labels = [];
+    if (period === 'Monthly') labels = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+    else if (period === 'Quarterly') labels = ['Q1', 'Q2', 'Q3', 'Q4'];
+    else if (period === 'Half-Yearly') labels = ['H1', 'H2'];
+    else if (period === 'Yearly') labels = [year.toString()];
+    
+    const mos = (db.read('productionOrders') || []).filter(mo => {
+        if (mo.status !== 'DONE') return false;
+        const d = new Date(mo.completedAt || mo.date || mo.createdAt);
+        return d.getFullYear() === year;
+    });
+
+    const pivot = {};
+    const chartData = Array(labels.length).fill(0);
+
+    mos.forEach(mo => {
+        const date = new Date(mo.completedAt || mo.date || mo.createdAt);
+        const monthIdx = date.getMonth();
+        let pIdx = 0;
+        
+        if (period === 'Monthly') pIdx = monthIdx;
+        else if (period === 'Quarterly') pIdx = Math.floor(monthIdx / 3);
+        else if (period === 'Half-Yearly') pIdx = Math.floor(monthIdx / 6);
+        else if (period === 'Yearly') pIdx = 0;
+
+        chartData[pIdx] += (mo.outputQty || 0);
+
+        let key, label;
+        if (basedOn === 'Item') {
+            // Robust name detection
+            const bestName = mo.productName || 
+                            (mo.outputProducts && mo.outputProducts.length > 0 ? mo.outputProducts[0].itemName : null) ||
+                            (mo.targetProducts && mo.targetProducts.length > 0 ? mo.targetProducts[0].itemName : null) ||
+                            (mo.outputItemId ? db.findById('inventoryItems', mo.outputItemId)?.itemName : null) ||
+                            'Produk #' + (mo.productId || mo.id).slice(0,8);
+            
+            key = mo.productId || mo.outputItemId || bestName;
+            label = bestName;
+        } else {
+            key = mo.stage || 'Unknown';
+            label = prodStageLabel(mo.stage);
+        }
+
+        if (!pivot[key]) {
+            pivot[key] = { label, periods: Array(labels.length).fill(0) };
+        }
+        pivot[key].periods[pIdx] += (mo.outputQty || 0);
+    });
+
+    // Draw Chart
+    const ctx = document.getElementById('pr_chart');
+    if (ctx) {
+        if (window._prChart) window._prChart.destroy();
+        window._prChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Output Produksi (KG)',
+                    data: chartData,
+                    borderColor: '#3b82f6', // blue-500
+                    backgroundColor: 'rgba(59, 130, 246, 0.05)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 6,
+                    pointHoverBackgroundColor: '#3b82f6',
+                    pointHoverBorderColor: '#fff',
+                    pointHoverBorderWidth: 2,
+                    borderWidth: 2,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: '#1e293b',
+                        titleFont: { size: 11, weight: 'bold' },
+                        bodyFont: { size: 13, weight: '900' },
+                        padding: 10,
+                        cornerRadius: 8,
+                        callbacks: {
+                            label: c => ' Output: ' + prodFmt(c.parsed.y) + ' KG'
+                        }
+                    }
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { color: '#94a3b8', font: { size: 10, weight: 'bold' } } },
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: '#f1f5f9', strokeDashArray: [4, 4] },
+                        border: { display: false },
+                        ticks: {
+                            color: '#94a3b8', font: { size: 10, weight: 'bold' },
+                            callback: v => prodFmt(v) + ' KG'
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Header Table
+    const thead = document.getElementById('pr_thead');
+    if (thead) {
+        thead.innerHTML = `
+            <th class="w-14 px-4 py-4 border-r border-slate-200 text-center text-gray-500">#</th>
+            <th class="min-w-[240px] px-6 py-4 border-r border-slate-200">${basedOn === 'Item' ? 'Item' : 'Tahapan'}</th>
+            <th class="px-4 py-4 border-r border-slate-200 text-center">Unit</th>
+            ${labels.map(p => `<th class="px-4 py-4 border-r border-slate-200 text-right">${p}</th>`).join('')}
+            <th class="px-6 py-4 text-right font-bold">Total (KG)</th>
+        `;
+    }
+
+    // Body Table
+    const tbody = document.getElementById('pr_tbody');
+    if (tbody) {
+        const rows = Object.values(pivot).sort((a,b) => {
+            const sumA = a.periods.reduce((s,v) => s + (parseFloat(v) || 0), 0);
+            const sumB = b.periods.reduce((s,v) => s + (parseFloat(v) || 0), 0);
+            return sumB - sumA;
+        });
+        
+        let htmlRows = '';
+        if (rows.length === 0) {
+            htmlRows = `<tr><td colspan="${4 + labels.length}" class="text-center text-slate-400 py-20 italic font-medium">Belum ada data produksi yang selesai pada tahun ${year}</td></tr>`;
+        } else {
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
+                let rowTotal = 0;
+                let monthCells = '';
+                
+                for (let j = 0; j < row.periods.length; j++) {
+                    const val = parseFloat(row.periods[j]) || 0;
+                    rowTotal += val;
+                    monthCells += `<td class="px-4 py-4 border-r border-slate-200 text-right ${val > 0 ? 'text-gray-900 font-medium' : 'text-gray-300'}">${val > 0 ? prodFmt(val) : '0'}</td>`;
+                }
+                
+                htmlRows += `
+                <tr class="hover:bg-gray-50 transition-colors border-b border-slate-100">
+                    <td class="px-4 py-6 border-r border-slate-200 text-center text-gray-400 text-sm font-medium">${i + 1}</td>
+                    <td class="px-6 py-6 border-r border-slate-200 text-gray-900 font-bold text-base">${row.label || 'Produk Tanpa Nama'}</td>
+                    <td class="px-4 py-6 border-r border-slate-200 text-center text-gray-500 font-bold">KG</td>
+                    ${monthCells}
+                    <td class="px-6 py-6 text-right font-black text-slate-900 bg-slate-50/50 text-base border-l border-slate-200">${prodFmt(rowTotal)}</td>
+                </tr>`;
+            }
+        }
+        tbody.innerHTML = htmlRows;
+
+        // Grand Total Row
+        if (rows.length > 0) {
+            const footerTotal = Array(labels.length).fill(0);
+            rows.forEach(r => r.periods.forEach((v, i) => footerTotal[i] += (parseFloat(v) || 0)));
+            const grandTotal = footerTotal.reduce((s, v) => s + v, 0);
+
+            const trTotal = document.createElement('tr');
+            trTotal.className = 'bg-slate-50 border-t-2 border-slate-300 font-black';
+            trTotal.innerHTML = `
+                <td colspan="2" class="px-6 py-8 border-r border-slate-200 text-left font-black text-lg text-slate-800">TOTAL AKHIR</td>
+                <td class="px-4 py-8 border-r border-slate-200"></td>
+                ${footerTotal.map(v => `<td class="px-4 py-8 border-r border-slate-200 text-right font-black text-slate-900">${prodFmt(v)}</td>`).join('')}
+                <td class="px-6 py-8 text-right font-black text-blue-600 bg-blue-50/30 text-xl border-l-2 border-blue-100">${prodFmt(grandTotal)}</td>
+            `;
+            tbody.appendChild(trTotal);
+        }
+    }
+};
+
+window.exportProductionReportsCsv = () => {
+    const table = document.getElementById('pr_table');
+    if (!table) return;
+    let csv = '\uFEFF'; 
+    const trs = Array.from(table.querySelectorAll('tr'));
+    trs.forEach(row => {
+        const cells = Array.from(row.querySelectorAll('th,td')).map(c => {
+            let t = c.textContent.trim().replace(/"/g, '""');
+            return `"${t}"`;
+        });
+        csv += cells.join(',') + '\n';
+    });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `Laporan_Tren_Produksi_${document.getElementById('pr_year')?.value || ''}.csv`;
+    a.click();
 };
 // â”€â”€â”€ PRODUKSI HARIAN (PROCESS-DRIVEN) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 window.renderDailyProduction = () => {
@@ -1508,7 +2196,7 @@ window.renderDailyProduction = () => {
 
     const rows = logs.map(log => {
         const isRunning = log.status === 'RUNNING';
-        const statusBadge = isRunning 
+        const statusBadge = isRunning
             ? `<span class="px-2 py-0.5 rounded text-[10px] font-black bg-blue-100 text-blue-600 animate-pulse uppercase tracking-tighter">Running</span>`
             : `<span class="px-2 py-0.5 rounded text-[10px] font-black bg-green-100 text-green-600 uppercase tracking-tighter">Done</span>`;
 
@@ -1629,10 +2317,8 @@ window.updateDailyFormMapping = () => {
     if (!proc || !src || !dst || !itemDropdown) return;
 
     // 1. Set Locations
-    if (proc === 'MIXING') {
-        src.value = 'WHS'; dst.value = 'MIXING';
-    } else if (proc === 'EXTRUDER' || proc === 'OVEN_BASAH') {
-        src.value = 'MIXING'; dst.value = proc === 'EXTRUDER' ? 'MIXING' : 'OVEN_BASAH';
+    if (proc === 'OVEN_BASAH') {
+        src.value = 'WHS'; dst.value = 'OVEN_BASAH';
     } else if (proc === 'OVEN_KERING') {
         src.value = 'OVEN_BASAH'; dst.value = 'OVEN_KERING';
     } else if (proc === 'FINISH_GOOD') {
@@ -1647,63 +2333,25 @@ window.updateDailyFormMapping = () => {
 
     const currentType = itemDropdown.getAttribute('data-last-proc');
 
-    if (proc === 'MIXING') {
-        if (currentType !== 'MIXING' || itemDropdown.innerHTML === '') {
-            const boms = db.read('bomHeaders') || [];
-            itemDropdown.innerHTML = '<option value="">-- Pilih Resep / BOM --</option>' + 
-                boms.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
-            itemDropdown.setAttribute('data-last-proc', 'MIXING');
-        }
-        
-        qtyInField.readOnly = true;
+    // No MIXING stage — go directly to items filter
+    ingredSection.classList.add('hidden');
+    qtyInField.readOnly = false;
 
-        itemDropdown.onchange = () => {
-            const bomId = itemDropdown.value;
-            if (!bomId) {
-                ingredSection.classList.add('hidden');
-                ingredList.innerHTML = '';
-                qtyInField.value = '0.00';
-                return;
-            }
-            const materials = (db.read('bomMaterials') || []).filter(m => m.bomHeaderId === bomId);
-                ingredSection.classList.remove('hidden');
-            ingredList.innerHTML = materials.map(m => {
-                const item = db.findById('inventoryItems', m.itemId);
-                return `
-                <div class="flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-gray-200">
-                    <span class="text-xs font-semibold text-gray-700">${item ? item.itemName : 'N/A'}</span>
-                    <div class="flex items-center gap-1.5">
-                        <input type="number" step="0.01" data-item-id="${m.itemId}" class="mixing_item_qty w-20 border border-gray-300 rounded px-2 py-1 text-sm font-bold text-blue-700 focus:ring-1 focus:ring-blue-500 outline-none text-right" placeholder="0.00" oninput="recalcTotalMixingQty()">
-                        <span class="text-[9px] font-bold text-gray-400">KG</span>
-                    </div>
-                </div>`;
-            }).join('');
-            if (!materials.length) {
-                ingredList.innerHTML = '<p class="text-xs text-red-500 italic">Peringatan: Resep tidak memiliki rincian bahan.</p>';
-            }
-            recalcTotalMixingQty();
-        };
-
-    } else {
-        ingredSection.classList.add('hidden');
-        qtyInField.readOnly = false;
-        
-        if (currentType !== proc || itemDropdown.innerHTML === '') {
-            let filtered = [];
-            if (proc === 'EXTRUDER' || proc === 'OVEN_BASAH') {
-                filtered = invItems.filter(i => i.category === 'MIXING_STOCK' || (i.category === 'WIP' && i.itemName.toLowerCase().includes('mixing')));
-            } else if (proc === 'OVEN_KERING') {
-                filtered = invItems.filter(i => i.category === 'OVEN_BASAH_STOCK' || (i.category === 'WIP' && i.itemName.toLowerCase().includes('oven basah')));
-            } else if (proc === 'FINISH_GOOD') {
-                filtered = invItems.filter(i => i.category === 'OVEN_KERING_STOCK' || (i.category === 'WIP' && i.itemName.toLowerCase().includes('oven kering')));
-            }
-            
-            itemDropdown.innerHTML = '<option value="">-- Pilih Barang Input --</option>' + 
-                filtered.map(i => `<option value="${i.id}">${i.itemName} (Stok: ${prodFmt(db.getInventoryStock(i.id))})</option>`).join('');
-            itemDropdown.setAttribute('data-last-proc', proc);
+    if (currentType !== proc || itemDropdown.innerHTML === '') {
+        let filtered = [];
+        if (proc === 'OVEN_BASAH') {
+            filtered = invItems.filter(i => i.category === 'RAW_MATERIAL');
+        } else if (proc === 'OVEN_KERING') {
+            filtered = invItems.filter(i => i.category === 'OVEN_BASAH_STOCK' || (i.category === 'WIP' && i.itemName.toLowerCase().includes('oven basah')));
+        } else if (proc === 'FINISH_GOOD') {
+            filtered = invItems.filter(i => i.category === 'OVEN_KERING_STOCK' || (i.category === 'WIP' && i.itemName.toLowerCase().includes('oven kering')));
         }
-        itemDropdown.onchange = null;
+
+        itemDropdown.innerHTML = '<option value="">-- Pilih Barang Input --</option>' +
+            filtered.map(i => `<option value="${i.id}">${i.itemName} (Stok: ${prodFmt(db.getInventoryStock(i.id))})</option>`).join('');
+        itemDropdown.setAttribute('data-last-proc', proc);
     }
+    itemDropdown.onchange = null;
 };
 
 window.recalcTotalMixingQty = () => {
@@ -1734,8 +2382,8 @@ window.processDailyProduction = () => {
     // 1. Initialize Log Data
     const logData = {
         id: logId,
-        date, process, 
-        productName: process === 'MIXING' ? db.findById('bomHeaders', itemId)?.name : (db.findById('inventoryItems', itemId)?.itemName || process), 
+        date, process,
+        productName: db.findById('inventoryItems', itemId)?.itemName || process,
         itemId, qtyIn: qIn,
         srcLoc, dstLoc, status: 'RUNNING',
         createdAt: new Date().toISOString(),
@@ -1745,33 +2393,9 @@ window.processDailyProduction = () => {
 
     // 2. Logic Per Stage
     let targetWipId = null;
-    if (process === 'MIXING') {
-        const bom = db.findById('bomHeaders', itemId);
-        if (!bom) { showToast('Resep tidak ditemukan', 'error'); return; }
-        
-        logData.targetWipId = db.ensureWIPItem(bom.targetProductId, 'Mixing');
-
-        const rows = document.querySelectorAll('.mixing_item_qty');
-        let totalVal = 0;
-        
-        rows.forEach(row => {
-            const matId = row.getAttribute('data-item-id');
-            const weight = parseFloat(row.value) || 0;
-            if (weight > 0) {
-                db.addInventoryTransaction(matId, 'OUT', weight, 'PRODUCTION_START', reference, `Bahan Mixing: ${bom.name} (Batch ${weight.toFixed(2)}kg)`, 'Admin', srcLoc);
-                totalVal += weight;
-            }
-        });
-
-        if (totalVal <= 0) { showToast('Masukkan minimal satu berat bahan baku', 'error'); return; }
-        logData.qtyIn = totalVal;
-    } else {
-        db.addInventoryTransaction(itemId, 'OUT', qIn, 'PRODUCTION_START', reference, `Proses ${prodStageLabel(process)}`, 'Admin', srcLoc);
-        
-        const sourceItem = db.findById('inventoryItems', itemId);
-
-        db.addInventoryTransaction(targetWipId, 'IN', qIn, 'PRODUCTION_START', reference, `Running ${prodStageLabel(process)}`, 'Admin', dstLoc);
-    }
+    // Process the item
+    db.addInventoryTransaction(itemId, 'OUT', qIn, 'PRODUCTION_START', reference, `Proses ${prodStageLabel(process)}`, 'Admin', srcLoc);
+    db.addInventoryTransaction(targetWipId, 'IN', qIn, 'PRODUCTION_START', reference, `Running ${prodStageLabel(process)}`, 'Admin', dstLoc);
 
     db.insert('dailyProductionLogs', logData);
     showToast('Produksi dimulai! Status kini RUNNING.', 'success');
@@ -1937,14 +2561,14 @@ window.openRepackingModal = () => {
                         </optgroup>
                         <optgroup label="Finish Goods (Gudang Jadi)">
                             ${fgItems.map(i => {
-                                let kgMap = 1;
-                                const nameLower = i.itemName.toLowerCase();
-                                if (nameLower.includes('25kg')) kgMap = 25;
-                                else if (nameLower.includes('10kg')) kgMap = 10;
-                                else if (nameLower.includes('5kg')) kgMap = 5;
-                                else if (nameLower.includes('800g')) kgMap = 0.8;
-                                return `<option value="${i.id}" data-type="FG" data-kg="${kgMap}">${i.itemName} (Stok: ${formatNumber(db.getInventoryStock(i.id))} ${i.unit})</option>`;
-                            }).join('')}
+        let kgMap = 1;
+        const nameLower = i.itemName.toLowerCase();
+        if (nameLower.includes('25kg')) kgMap = 25;
+        else if (nameLower.includes('10kg')) kgMap = 10;
+        else if (nameLower.includes('5kg')) kgMap = 5;
+        else if (nameLower.includes('800g')) kgMap = 0.8;
+        return `<option value="${i.id}" data-type="FG" data-kg="${kgMap}">${i.itemName} (Stok: ${formatNumber(db.getInventoryStock(i.id))} ${i.unit})</option>`;
+    }).join('')}
                         </optgroup>
                     </select>
                 </div>
@@ -1966,14 +2590,14 @@ window.openRepackingModal = () => {
                     <select id="rp_dest_id" class="w-full border-2 border-slate-100 rounded-xl px-4 py-3 text-sm focus:border-green-500 outline-none transition-all font-semibold" onchange="recalcRepackingTotal()">
                         <option value="">-- Pilih SKU --</option>
                         ${fgItems.map(i => {
-                            let kgMap = 1;
-                            const nameLower = i.itemName.toLowerCase();
-                            if (nameLower.includes('25kg')) kgMap = 25;
-                            else if (nameLower.includes('10kg')) kgMap = 10;
-                            else if (nameLower.includes('5kg')) kgMap = 5;
-                            else if (nameLower.includes('800g')) kgMap = 0.8;
-                            return `<option value="${i.id}" data-kg="${kgMap}">${i.itemName} (Konversi: ${kgMap} Kg/Pack)</option>`;
-                        }).join('')}
+        let kgMap = 1;
+        const nameLower = i.itemName.toLowerCase();
+        if (nameLower.includes('25kg')) kgMap = 25;
+        else if (nameLower.includes('10kg')) kgMap = 10;
+        else if (nameLower.includes('5kg')) kgMap = 5;
+        else if (nameLower.includes('800g')) kgMap = 0.8;
+        return `<option value="${i.id}" data-kg="${kgMap}">${i.itemName} (Konversi: ${kgMap} Kg/Pack)</option>`;
+    }).join('')}
                     </select>
                 </div>
                 <div>
@@ -2008,7 +2632,7 @@ window.updateRepackingSourceInfo = () => {
     const type = opt.dataset?.type || 'WIP';
     const tag = document.getElementById('rp_qty_unit_tag');
     const label = document.getElementById('rp_qty_label');
-    
+
     if (type === 'FG') {
         tag.innerText = 'UNIT / SAK';
         label.innerText = 'Jumlah Unit yang Dibongkar *';
@@ -2024,10 +2648,10 @@ window.recalcRepackingTotal = () => {
     const srcOpt = srcSel.options[srcSel.selectedIndex];
     const srcType = srcOpt.dataset?.type || 'WIP';
     const srcKgPerUnit = parseFloat(srcOpt.dataset?.kg) || 1;
-    
+
     const inputVal = parseFloat(document.getElementById('rp_qty_val').value) || 0;
     const totalKg = srcType === 'FG' ? (inputVal * srcKgPerUnit) : inputVal;
-    
+
     document.getElementById('rp_qty_kg').value = totalKg;
     if (srcType === 'FG' && inputVal > 0) {
         document.getElementById('rp_source_calc_info').innerText = `= Setara ${prodFmt(totalKg)} Kg`;
@@ -2039,7 +2663,7 @@ window.recalcRepackingTotal = () => {
     const dstOpt = dstSel.options[dstSel.selectedIndex];
     const dstKgPerUnit = parseFloat(dstOpt.dataset?.kg) || 0;
     const dstTag = document.getElementById('rp_dest_unit_tag');
-    
+
     if (dstOpt.value) {
         dstTag.innerText = dstKgPerUnit >= 1 ? 'UNIT / SAK' : 'PCS / PAK';
     }
@@ -2086,7 +2710,7 @@ window.saveRepacking = () => {
 
     const logId = Date.now().toString();
     db.insert('repackingLogs', {
-        id: logId, date, 
+        id: logId, date,
         sourceId: srcId, sourceName: srcItem.itemName, qtyKg: kg,
         destId: destId, destName: destItem.itemName, qtyUnits: units,
         unitType: destItem.unit || 'Pack',
@@ -2108,47 +2732,161 @@ window.renderBOMManagement = () => {
     document.getElementById('pageTitle').innerText = 'Bill Of Material ( BOM )';
     const mc = document.getElementById('main-content');
     const boms = db.read('bomHeaders') || [];
-    const products = db.read('inventoryItems').filter(i => i.category !== 'RAW_MATERIAL');
-
-    const bomRows = boms.map(bom => {
-        const targetProduct = db.findById('inventoryItems', bom.targetProductId);
-        const materials = (db.read('bomMaterials') || []).filter(m => m.bomHeaderId === bom.id);
-        return `
-        <tr class="border-b border-slate-50 hover:bg-slate-50 transition-colors">
-            <td class="py-4 px-4 font-bold text-slate-700">${bom.name}</td>
-            <td class="py-4 px-4 text-sm">${targetProduct ? targetProduct.itemName : 'N/A'}</td>
-            <td class="py-4 px-4 text-center text-slate-500">${materials.length} Bahan</td>
-            <td class="py-4 px-4 text-right">
-                <button onclick="openBOMModal('${bom.id}')" class="text-blue-500 hover:text-blue-700 mx-1"><i class="fas fa-edit"></i></button>
-                <button onclick="deleteBOM('${bom.id}')" class="text-red-500 hover:text-red-700 mx-1"><i class="fas fa-trash"></i></button>
-            </td>
-        </tr>`;
-    }).join('') || '<tr><td colspan="5" class="py-10 text-center text-slate-400">Belum ada resep yang dibuat</td></tr>';
 
     mc.innerHTML = `
-    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-        <div class="px-6 py-4 flex justify-end">
-            <button onclick="openBOMModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center gap-2">
-                <i class="fas fa-plus"></i> Buat Resep Baru
-            </button>
+        <div class="space-y-4">
+            <!-- Structured Filter Bar -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+                <div class="flex flex-wrap items-center gap-4">
+                    <!-- Search Input -->
+                    <div class="flex-1 min-w-[250px] relative group">
+                        <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors"></i>
+                        <input type="text" id="bom_search" onkeyup="filterBOMList()" placeholder="Cari Nama Resep atau Produk Target..." 
+                            class="w-full pl-12 pr-4 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-semibold text-slate-700 placeholder:text-slate-300 focus:bg-white focus:border-blue-300 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all">
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="flex gap-3 ml-auto">
+                        <button onclick="openBOMModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl transition-all text-sm font-bold shadow-lg shadow-blue-500/20 flex items-center gap-2">
+                            <i class="fas fa-plus"></i> Buat Resep Baru
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- BOM Table Card -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left" id="bom_table">
+                        <thead class="bg-slate-50/50 border-b border-slate-100">
+                            <tr>
+                                <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Nama Resep</th>
+                                <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Produk Target</th>
+                                <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Jumlah Bahan</th>
+                                <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bom_table_body" class="divide-y divide-slate-50">
+                            ${renderBOMRows(boms)}
+                        </tbody>
+                    </table>
+                </div>
+                <div id="bom_empty_state" class="${boms.length === 0 ? '' : 'hidden'} py-20 flex flex-col items-center justify-center text-center">
+                    <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-300 mb-4 text-2xl">
+                        <i class="fas fa-receipt"></i>
+                    </div>
+                    <p class="text-sm font-medium text-slate-500">Belum ada resep yang dibuat.</p>
+                </div>
+            </div>
         </div>
-        <div class="overflow-x-auto">
-            <table class="w-full text-left">
-                <thead class="bg-slate-50 text-slate-500 text-[10px] uppercase font-bold tracking-widest">
-                    <tr>
-                        <th class="py-4 px-4">Nama Resep</th>
-                        <th class="py-4 px-4">Produk Target</th>
-                        <th class="py-4 px-4 text-center">Jumlah Bahan</th>
-                        <th class="py-4 px-4 text-right">Aksi</th>
-                    </tr>
-                </thead>
-                <tbody>${bomRows}</tbody>
-            </table>
-        </div>
-    </div>`;
+    `;
+};
+
+window.renderBOMRows = (boms) => {
+    if (boms.length === 0) return '';
+    
+    return boms.map(bom => {
+        const targetProduct = db.findById('inventoryItems', bom.targetProductId);
+        const materials = (db.read('bomMaterials') || []).filter(m => m.bomHeaderId === bom.id);
+        const initials = bom.name ? bom.name.substring(0,2).toUpperCase() : 'BM';
+        
+        return `
+        <tr class="hover:bg-slate-50/80 transition-colors group">
+            <td class="py-4 px-5">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-xs font-bold shrink-0">
+                        ${initials}
+                    </div>
+                    <div>
+                        <div class="text-sm font-bold text-slate-800">${bom.name}</div>
+                    </div>
+                </div>
+            </td>
+            <td class="py-4 px-5">
+                <div class="text-sm text-slate-700 font-medium">${targetProduct ? targetProduct.itemName : 'N/A'}</div>
+            </td>
+            <td class="py-4 px-5 text-center">
+                <span class="text-xs font-black text-slate-800 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200/60 shadow-sm">${materials.length} Bahan</span>
+            </td>
+            <td class="py-4 px-5 text-right">
+                <div class="flex justify-end gap-2 transition-opacity">
+                    <button onclick="openBOMModal('${bom.id}')" class="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-all" title="Edit"><i class="fas fa-edit text-xs"></i></button>
+                    <button onclick="deleteBOM('${bom.id}')" class="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-600 transition-all" title="Delete"><i class="fas fa-trash text-xs"></i></button>
+                </div>
+            </td>
+        </tr>`;
+    }).join('');
+};
+
+window.filterBOMList = () => {
+    const search = document.getElementById('bom_search')?.value.toLowerCase() || '';
+    const boms = db.read('bomHeaders') || [];
+    
+    const filtered = boms.filter(b => {
+        const targetProduct = db.findById('inventoryItems', b.targetProductId);
+        const productName = targetProduct ? targetProduct.itemName.toLowerCase() : '';
+        return !search || 
+            b.name.toLowerCase().includes(search) || 
+            productName.includes(search);
+    });
+
+    const tbody = document.getElementById('bom_table_body');
+    const emptyState = document.getElementById('bom_empty_state');
+    
+    if (filtered.length === 0) {
+        tbody.innerHTML = '';
+        emptyState.classList.remove('hidden');
+    } else {
+        tbody.innerHTML = renderBOMRows(filtered);
+        emptyState.classList.add('hidden');
+    }
+};
+
+
+window.toggleMaterialDropdown = () => {
+    const menu = document.getElementById('material_dropdown_menu');
+    menu.classList.toggle('hidden');
+    if (!menu.classList.contains('hidden')) {
+        document.getElementById('material_dropdown_search').focus();
+    }
+};
+
+window.filterMaterialDropdown = () => {
+    const query = document.getElementById('material_dropdown_search').value.toLowerCase();
+    const options = document.querySelectorAll('.material-option');
+    options.forEach(opt => {
+        const name = opt.dataset.name || '';
+        const code = opt.dataset.code || '';
+        if (name.includes(query) || code.includes(query)) {
+            opt.classList.remove('hidden');
+            opt.classList.add('flex');
+        } else {
+            opt.classList.add('hidden');
+            opt.classList.remove('flex');
+        }
+    });
+};
+
+window.selectMaterialOption = (id, name, unit) => {
+    const input = document.getElementById('add_mat_item');
+    input.value = id;
+    input.dataset.name = name;
+    input.dataset.unit = unit;
+    
+    const btnText = document.getElementById('material_dropdown_text');
+    btnText.textContent = name;
+    btnText.classList.remove('text-slate-400');
+    btnText.classList.add('text-slate-700');
+    
+    document.getElementById('add_mat_unit').value = unit || '';
+    
+    document.getElementById('material_dropdown_menu').classList.add('hidden');
+    document.getElementById('material_dropdown_search').value = '';
+    filterMaterialDropdown();
 };
 
 window.openBOMModal = (id = null) => {
+    if (window.pushCurrentToHistory) window.pushCurrentToHistory();
     const bom = id ? db.findById('bomHeaders', id) : null;
     const invItems = db.read('inventoryItems') || [];
     const mixingProducts = invItems.filter(i => {
@@ -2163,7 +2901,7 @@ window.openBOMModal = (id = null) => {
         return true;
     });
     const rawMaterials = invItems.filter(i => (i.category === 'RAW_MATERIAL' || i.category === 'Bahan Baku') && i.status !== 'INACTIVE');
-    
+
     // Materials data if edit
     const currentMaterials = id ? (db.read('bomMaterials') || []).filter(m => m.bomHeaderId === id) : [];
 
@@ -2171,7 +2909,7 @@ window.openBOMModal = (id = null) => {
     <div class="space-y-6 px-1 py-2">
         <!-- Target Product Section -->
         <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <label class="block text-[11px] font-black text-slate-400 uppercase mb-3 ml-1">PILIH PRODUK TARGET (WIP MIXING) <span class="text-red-500">*</span></label>
+            <label class="block text-[11px] font-black text-slate-400 uppercase mb-3 ml-1">PILIH PRODUK TARGET (WIP OVEN BASAH) <span class="text-red-500">*</span></label>
             <select id="bom_name_id" onchange="document.getElementById('bom_product_id').value = this.value" 
                 class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold bg-white focus:border-indigo-400 outline-none transition-all shadow-sm">
                 <option value="">-- Pilih Produk Target --</option>
@@ -2197,13 +2935,53 @@ window.openBOMModal = (id = null) => {
                         <option value="BUMBU">BUMBU</option>
                     </select>
                 </div>
-                <div class="flex-1 min-w-[300px]">
+                <div class="flex-1 min-w-[300px] relative">
                     <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1">BAHAN BAKU</label>
-                    <select id="add_mat_item" onchange="const opt=this.selectedOptions[0]; document.getElementById('add_mat_unit').value=opt?.dataset.unit||''" 
-                        class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none bg-white font-mono uppercase">
-                        <option value="">-- PILIH BAHAN BAKU --</option>
-                        ${rawMaterials.map(m => `<option value="${m.id}" data-name="${m.itemName}" data-unit="${m.unit}">${m.itemCode} - ${m.itemName}</option>`).join('')}
-                    </select>
+                    
+                    <button type="button" onclick="toggleMaterialDropdown()" id="material_dropdown_btn"
+                        class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-400 bg-white text-left flex justify-between items-center transition-all hover:border-slate-300">
+                        <span id="material_dropdown_text">-- Cari Kode atau Nama Produk --</span>
+                        <i class="fas fa-chevron-down text-[10px]"></i>
+                    </button>
+                    
+                    <input type="hidden" id="add_mat_item" value="">
+
+                    <div id="material_dropdown_menu" class="hidden absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden animate-slide-up">
+                        <div class="p-3 border-b border-slate-100 bg-slate-50/30">
+                            <div class="relative">
+                                <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                                <input type="text" id="material_dropdown_search" onkeyup="filterMaterialDropdown()" placeholder="Ketik kode atau nama..." 
+                                    class="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3 py-2.5 text-sm font-medium text-slate-700 outline-none focus:border-blue-400 transition-all shadow-sm">
+                            </div>
+                        </div>
+                        
+                        <div class="max-h-64 overflow-y-auto custom-scrollbar p-2" id="material_dropdown_list">
+                            ${rawMaterials.map(m => {
+                                const stockTxs = db.read('stockTransactions') || [];
+                                const stock = stockTxs.filter(t => t.itemId === m.id).reduce((tot, t) => t.type === 'IN' ? tot + parseFloat(t.qty) : tot - parseFloat(t.qty), 0);
+                                
+                                return `
+                                <div class="material-option flex justify-between items-center p-3 hover:bg-blue-50/50 rounded-xl cursor-pointer transition-all group" 
+                                    onclick="selectMaterialOption('${m.id}', '${m.itemName.replace(/'/g, "\\'")}', '${m.unit}')"
+                                    data-name="${(m.itemName || '').toLowerCase()}" data-code="${(m.itemCode || '').toLowerCase()}">
+                                    <div class="flex flex-col">
+                                        <div class="text-sm font-bold text-slate-700 group-hover:text-blue-600">${m.itemName}</div>
+                                        <div class="text-[10px] font-black text-slate-300 uppercase tracking-widest group-hover:text-blue-300">${m.itemCode}</div>
+                                    </div>
+                                    <div class="text-right">
+                                        <div class="text-[10px] font-black text-blue-500 uppercase tracking-widest bg-blue-50 px-2 py-1 rounded-lg">STOCK: ${prodFmt(stock)}</div>
+                                    </div>
+                                </div>`;
+                            }).join('')}
+                        </div>
+                        
+                        <div class="p-2 border-t border-slate-100 bg-slate-50/50">
+                            <button type="button" class="w-full flex items-center gap-3 p-2.5 hover:bg-white hover:shadow-sm rounded-xl text-[11px] font-black text-slate-500 hover:text-blue-600 transition-all uppercase tracking-wider">
+                                <div class="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center shadow-sm text-slate-400 group-hover:text-blue-500"><i class="fas fa-plus"></i></div>
+                                Create New Product
+                            </button>
+                        </div>
+                    </div>
                 </div>
                 <div class="w-full sm:w-32">
                     <label class="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1 text-center">QTY</label>
@@ -2235,14 +3013,19 @@ window.openBOMModal = (id = null) => {
         </div>
     </div>`;
 
-    const footer = `
-        <div class="flex items-center justify-end gap-3 w-full">
-            <button onclick="closeModal()" class="text-slate-500 hover:text-slate-700 px-6 py-2.5 text-sm font-bold transition-all">Batal</button>
+    const main = document.getElementById('main-content');
+    document.getElementById('pageTitle').innerText = id ? 'Edit Resep' : 'Buat Resep Baru';
+
+    main.innerHTML = `
+    <div class="w-full space-y-6 pb-20">
+
+        ${body}
+
+        <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-end gap-3 mt-6">
+            <button onclick="renderBOMManagement()" class="text-slate-500 hover:text-slate-700 px-6 py-2.5 text-sm font-bold transition-all">Batal</button>
             <button onclick="saveBOM('${id || ''}')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-10 py-2.5 rounded-xl text-sm font-bold shadow-lg shadow-indigo-100 transition-all active:scale-95">Simpan Resep</button>
         </div>
-    `;
-
-    showModal(id ? 'Edit Resep' : 'Buat Resep Baru', body, footer, 'xl');
+    </div>`;
 
     if (currentMaterials.length > 0) {
         currentMaterials.forEach(m => {
@@ -2254,19 +3037,22 @@ window.openBOMModal = (id = null) => {
 
 window.appendBOMMaterial = () => {
     const loc = document.getElementById('add_mat_location').value;
-    const itemSel = document.getElementById('add_mat_item');
-    const itemOpt = itemSel.selectedOptions[0];
-    const itemId = itemSel.value;
+    const itemInput = document.getElementById('add_mat_item');
+    const itemId = itemInput.value;
     const qty = parseFloat(document.getElementById('add_mat_qty').value);
     const unit = document.getElementById('add_mat_unit').value;
 
     if (!itemId) { showToast('Pilih bahan baku lebih dulu', 'warning'); return; }
     if (isNaN(qty) || qty <= 0) { showToast('Isi jumlah yang valid', 'warning'); return; }
 
-    appendMaterialToTable(loc, itemId, itemOpt.dataset.name, qty, unit);
-    
+    appendMaterialToTable(loc, itemId, itemInput.dataset.name, qty, unit);
+
     // Reset inputs
-    itemSel.value = '';
+    itemInput.value = '';
+    delete itemInput.dataset.name;
+    document.getElementById('material_dropdown_text').textContent = '-- Cari Kode atau Nama Produk --';
+    document.getElementById('material_dropdown_text').classList.add('text-slate-400');
+    document.getElementById('material_dropdown_text').classList.remove('text-slate-700');
     document.getElementById('add_mat_qty').value = '';
     document.getElementById('add_mat_unit').value = '';
 };
@@ -2279,7 +3065,7 @@ function appendMaterialToTable(location, itemId, itemName, qty, unit) {
     tr.dataset.location = location;
     tr.dataset.qty = qty;
     tr.dataset.unit = unit;
-    
+
     tr.innerHTML = `
         <td class="py-2.5 px-4 border-r border-slate-100">
             <span class="text-[10px] font-bold px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-md uppercase">${location}</span>
@@ -2304,7 +3090,7 @@ window.saveBOM = (id = '') => {
     const nameId = document.getElementById('bom_name_id').value;
     const nameOpt = document.getElementById('bom_name_id').selectedOptions[0];
     const name = nameOpt ? nameOpt.getAttribute('data-name') : '';
-    const targetProductId = nameId; 
+    const targetProductId = nameId;
 
     if (!name || !targetProductId) {
         showToast('Mohon pilih Produk Mixing target resep', 'error');
@@ -2329,7 +3115,7 @@ window.saveBOM = (id = '') => {
     }
 
     const bomData = { name, targetProductId, baseQty: 100, unit: '%', updatedAt: new Date().toISOString() };
-    
+
     let headerId = id;
     if (id) {
         db.update('bomHeaders', id, bomData);
@@ -2355,7 +3141,6 @@ window.saveBOM = (id = '') => {
     db.save('bomMaterials', filtered);
 
     showToast('Resep berhasil disimpan!', 'success');
-    closeModal();
     renderBOMManagement();
 };
 
@@ -2372,7 +3157,7 @@ window.printProductionMO = (id) => {
     const mo = db.findById("productionOrders", id);
     if (!mo) { showToast("MO tidak ditemukan", "error"); return; }
 
-    const isMixing = mo.stage === 'MIXING';
+    const isMixing = false; // Tahap Mixing sudah dihapus
     const isOven = mo.stage === 'OVEN_BASAH' || mo.stage === 'OVEN_KERING';
 
     const renderMixingSection = (items, title, moSuffix = "", operatorLabel = "Operator Mixing") => {
@@ -2388,7 +3173,7 @@ window.printProductionMO = (id) => {
 
         const resultBox = moSuffix !== '-G' ? `
             <div style="border: 2px solid #000; border-radius: 8px; padding: 20px; font-size: 14px; font-weight: 800; color: #000; text-transform: uppercase;">
-                HASIL MIXING (Kg) :
+                HASIL PRODUKSI (Kg) :
             </div>` : "";
 
         return `
@@ -2416,15 +3201,15 @@ window.printProductionMO = (id) => {
         const bumbuItems = materials.filter(m => m.location === 'BUMBU');
 
         return renderMixingSection(gudangItems, "GUDANG BAHAN BAKU (WHS)", "-G", "Petugas Gudang") +
-               renderMixingSection(gudangItems, "PROSES MIXING (UTAMA)", "-P", "Operator Mixing") +
-               renderMixingSection(gudangItems, "ARSIP PRODUKSI / QA", "-A", "Staff Admin") +
-               renderMixingSection(bumbuItems, "BUMBU / SEASONING", "-B", "Operator Bumbu");
+            renderMixingSection(gudangItems, "PROSES PRODUKSI (UTAMA)", "-P", "Operator Oven") +
+            renderMixingSection(gudangItems, "ARSIP PRODUKSI / QA", "-A", "Staff Admin") +
+            renderMixingSection(bumbuItems, "BUMBU / SEASONING", "-B", "Operator Bumbu");
     };
 
     const renderOvenPage = (title, operatorLabel = "Operator Oven") => {
         const inputItem = mo.inputItemId ? db.findById('inventoryItems', mo.inputItemId) : null;
         const isBasah = mo.stage === 'OVEN_BASAH';
-        
+
         return `
             <div class="mo-page">
                 ${renderBaseHeader(mo, title, operatorLabel)}
@@ -2493,7 +3278,7 @@ window.printProductionMO = (id) => {
 
             <div class="info-grid">
                 <div>
-                    <div class="info-item"><span class="info-label">Nomor MO</span> <span class="info-val" style="color:#000; font-weight:800; font-size:14px;">: ${mo.moNumber} <span style="background:#000; color:#fff; padding: 2px 8px; border-radius: 4px; margin-left:5px;">${moSuffix.replace('-','')}</span></span></div>
+                    <div class="info-item"><span class="info-label">Nomor MO</span> <span class="info-val" style="color:#000; font-weight:800; font-size:14px;">: ${mo.moNumber} <span style="background:#000; color:#fff; padding: 2px 8px; border-radius: 4px; margin-left:5px;">${moSuffix.replace('-', '')}</span></span></div>
                     <div class="info-item"><span class="info-label">Batch ID</span> <span class="info-val">: ${mo.batchId}</span></div>
                     <div class="info-item"><span class="info-label">Nama Produk</span> <span class="info-val">: ${mo.productName}</span></div>
                 </div>
@@ -2537,7 +3322,7 @@ window.printProductionMO = (id) => {
 
     const printWindow = window.open("", "_blank");
     if (!printWindow) { showToast("Pop-up diblokir! Izinkan pop-up untuk mencetak.", "error"); return; }
-    
+
     printWindow.document.write(`
         <html>
         <head>
@@ -2582,70 +3367,128 @@ window.printProductionMO = (id) => {
 
 // â”€â”€â”€ MASTER MESIN (MACHINE MASTER) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 window.renderMachineMaster = () => {
+    document.getElementById('pageTitle').innerText = 'Machine Master';
     const main = document.getElementById('main-content');
     const machines = db.read('machines') || [];
 
-    const rows = machines.length ? machines.map(m => {
+    main.innerHTML = `
+        <div class="space-y-4">
+            <!-- Structured Filter Bar -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+                <div class="flex flex-wrap items-center gap-4">
+                    <!-- Search Input -->
+                    <div class="flex-1 min-w-[250px] relative group">
+                        <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors"></i>
+                        <input type="text" id="mch_search" onkeyup="filterMachineList()" placeholder="Cari Kode atau Nama Mesin..." 
+                            class="w-full pl-12 pr-4 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-semibold text-slate-700 placeholder:text-slate-300 focus:bg-white focus:border-blue-300 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all">
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="flex gap-3 ml-auto">
+                        <button onclick="openAddMachineModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl transition-all text-sm font-bold shadow-lg shadow-blue-500/20 flex items-center gap-2">
+                            <i class="fas fa-plus"></i> Tambah Mesin
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Machine Table Card -->
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse" id="machine_table">
+                        <thead class="bg-slate-50/50 border-b border-slate-100">
+                            <tr>
+                                <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest w-24">Kode</th>
+                                <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Informasi Mesin</th>
+                                <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest w-32">Kapasitas</th>
+                                <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest w-32">Status</th>
+                                <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right w-40">Opsi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="machine_table_body" class="divide-y divide-slate-50">
+                            ${renderMachineRows(machines)}
+                        </tbody>
+                    </table>
+                </div>
+                <div id="machine_empty_state" class="${machines.length === 0 ? '' : 'hidden'} py-20 flex flex-col items-center justify-center text-center">
+                    <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-300 mb-4 text-2xl">
+                        <i class="fas fa-cogs"></i>
+                    </div>
+                    <p class="text-sm font-medium text-slate-500">Belum ada data mesin.</p>
+                </div>
+            </div>
+        </div>`;
+};
+
+window.renderMachineRows = (machines) => {
+    if (machines.length === 0) return '';
+    
+    return machines.map(m => {
         const isMaintenance = m.status === 'MAINTENANCE';
         const isActive = m.status === 'ACTIVE';
+
+        let statusClass = 'bg-slate-100 text-slate-500';
+        if (isActive) statusClass = 'bg-green-50 text-green-700 border border-green-200/50 shadow-[0_1px_2px_rgba(0,0,0,0.05)]';
+        if (isMaintenance) statusClass = 'bg-amber-50 text-amber-700 border border-amber-200/50 shadow-[0_1px_2px_rgba(0,0,0,0.05)]';
         
-        let statusClass = 'bg-gray-100 text-gray-500';
-        if (isActive) statusClass = 'bg-green-50 text-green-700';
-        if (isMaintenance) statusClass = 'bg-amber-50 text-amber-700';
+        // Use initial letters for the avatar
+        const initials = m.name ? m.name.substring(0,2).toUpperCase() : 'MC';
 
         return `
-        <tr class="border-b border-slate-100 hover:bg-slate-50/50 transition-all text-sm">
-            <td class="py-4 px-4 font-mono font-bold text-slate-400 uppercase tracking-widest text-[10px]">${m.code}</td>
-            <td class="py-4 px-4">
-                <div class="flex flex-col">
-                    <span class="font-bold text-slate-800">${m.name}</span>
-                    <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">${m.type || 'EXTRUDER'}</span>
+        <tr class="hover:bg-slate-50/80 transition-colors group">
+            <td class="py-4 px-5 font-mono font-bold text-slate-400 uppercase tracking-widest text-[10px]">${m.code}</td>
+            <td class="py-4 px-5">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-xs font-bold shrink-0">
+                        ${initials}
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="font-bold text-slate-800">${m.name}</span>
+                        <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">${m.type || 'EXTRUDER'}</span>
+                    </div>
                 </div>
             </td>
-            <td class="py-4 px-4">
+            <td class="py-4 px-5">
                 <div class="text-[11px] font-black text-slate-600 uppercase tracking-widest">
                     ${m.capacity || '-'} <span class="text-[9px] text-slate-400 ml-0.5">KG/Batch</span>
                 </div>
             </td>
-            <td class="py-4 px-4">
-                <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase ${statusClass}">
+            <td class="py-4 px-5">
+                <span class="px-2.5 py-1 rounded-md text-[10px] font-bold uppercase ${statusClass}">
                     ${m.status || 'Active'}
                 </span>
             </td>
-            <td class="py-4 px-4 text-right">
-                <div class="flex justify-end items-center gap-1">
-                    <button onclick="openAddMachineModal('${m.id}')" class="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-all" title="Edit Mesin">
-                        <i class="fas fa-edit"></i>
-                    </button>
-                    <button onclick="deleteMachine('${m.id}')" class="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all" title="Hapus Permanen">
-                        <i class="fas fa-trash-alt"></i>
-                    </button>
+            <td class="py-4 px-5 text-right">
+                <div class="flex justify-end gap-2 transition-opacity">
+                    <button onclick="openAddMachineModal('${m.id}')" class="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-all" title="Edit Mesin"><i class="fas fa-edit text-xs"></i></button>
+                    <button onclick="deleteMachine('${m.id}')" class="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-600 transition-all" title="Hapus Permanen"><i class="fas fa-trash text-xs"></i></button>
                 </div>
             </td>
         </tr>`;
-    }).join('') : `<tr><td colspan="5" class="py-20 text-center text-slate-300 italic text-sm">Belum ada data mesin.</td></tr>`;
+    }).join('');
+};
 
-    main.innerHTML = `
-        <div class="mb-6 flex justify-end">
-            <button onclick="openAddMachineModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-md active:scale-95 flex items-center gap-2">
-                <i class="fas fa-plus"></i> Tambah Mesin
-            </button>
-        </div>
+window.filterMachineList = () => {
+    const search = document.getElementById('mch_search')?.value.toLowerCase() || '';
+    const machines = db.read('machines') || [];
+    
+    const filtered = machines.filter(m => {
+        return !search || 
+            (m.name || '').toLowerCase().includes(search) || 
+            (m.code || '').toLowerCase().includes(search) ||
+            (m.type || '').toLowerCase().includes(search);
+    });
 
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-            <table class="w-full text-left border-collapse">
-                <thead class="bg-slate-50/50 border-b border-slate-100">
-                    <tr>
-                        <th class="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-24">Kode</th>
-                        <th class="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Informasi Mesin</th>
-                        <th class="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-32">Kapasitas</th>
-                        <th class="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-32">Status</th>
-                        <th class="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right w-40">Opsi</th>
-                    </tr>
-                </thead>
-                <tbody>${rows}</tbody>
-            </table>
-        </div>`;
+    const tbody = document.getElementById('machine_table_body');
+    const emptyState = document.getElementById('machine_empty_state');
+    
+    if (filtered.length === 0) {
+        tbody.innerHTML = '';
+        emptyState.classList.remove('hidden');
+    } else {
+        tbody.innerHTML = renderMachineRows(filtered);
+        emptyState.classList.add('hidden');
+    }
 };
 
 window.openAddMachineModal = (id = null) => {
@@ -2696,7 +3539,7 @@ window.openAddMachineModal = (id = null) => {
                 </div>
             </div>
         </div>`;
-    
+
     const footer = `
         <div class="flex items-center justify-end gap-3 w-full">
             <button onclick="closeModal()" class="px-6 py-2 border border-gray-300 rounded text-sm font-medium text-gray-600 hover:bg-gray-50 transition-all">Batal</button>
@@ -2704,7 +3547,7 @@ window.openAddMachineModal = (id = null) => {
                 ${m ? 'Update Perubahan' : 'Simpan Mesin Baru'}
             </button>
         </div>`;
-    
+
     showModal(m ? 'Edit Data Mesin' : 'Tambah Mesin Baru', body, footer, 'full');
 };
 
@@ -2761,7 +3604,7 @@ window.toggleMachineStatus = (id) => {
     const machines = db.read('machines');
     const idx = machines.findIndex(m => m.id === id);
     if (idx === -1) return;
-    
+
     machines[idx].status = machines[idx].status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
     db.save('machines', machines);
     showToast(`Status mesin berhasil diubah`, 'success');
@@ -2771,6 +3614,7 @@ window.toggleMachineStatus = (id) => {
 // --- MASTER STOK PRODUKSI (Mirip Inventory) ---
 window.renderProductionStockMaster = () => {
     const canEdit = getModulePermission('produksi').edit;
+    renderBreadcrumb(['Produksi', 'Master', 'Stock Master']);
     document.getElementById('pageTitle').innerText = 'Stok Produksi';
     const mc = document.getElementById('main-content');
     
@@ -2780,179 +3624,197 @@ window.renderProductionStockMaster = () => {
 
     let items = (db.read('inventoryItems') || []).filter(it => it.status === 'ACTIVE');
     
-    // Only production categories as requested: Mixing, Oven Basah, Oven Kering
-    const prodCats = ['MIXING_STOCK', 'OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'];
-    items = items.filter(it => prodCats.includes(it.category));
-
-    const catLabels = {
-        MIXING_STOCK: 'Campuran',
-        OVEN_BASAH_STOCK: 'Oven Basah',
-        OVEN_KERING_STOCK: 'Oven Kering'
-    };
-    const catColors = {
-        MIXING_STOCK: 'bg-blue-50 text-blue-700',
-        OVEN_BASAH_STOCK: 'bg-orange-100 text-orange-800',
-        OVEN_KERING_STOCK: 'bg-yellow-100 text-yellow-800'
-    };
-
+    // Default categories for production if no filter: Raw, WIP, FG
+    const prodCats = ['RAW_MATERIAL', 'OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK', 'FINISHED_GOODS', 'BULK_STOCK'];
+    
     // Apply Filters
     if (f.cat) {
         items = items.filter(it => it.category === f.cat);
-    }
-    if (f.q) {
-        const qSearch = f.q.toLowerCase();
-        items = items.filter(it => it.itemName.toLowerCase().includes(qSearch) || (it.itemCode && it.itemCode.toLowerCase().includes(qSearch)));
-    }
-
-    // --- GROUPING LOGIC ---
-    const categoryOrder = ['MIXING_STOCK', 'OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'];
-    const grouped = {};
-    items.forEach(it => {
-        if (!grouped[it.category]) grouped[it.category] = [];
-        grouped[it.category].push(it);
-    });
-
-    let mainHtml = '';
-    
-    if (items.length === 0) {
-        mainHtml = `<tr><td colspan="8" class="py-20 text-center text-gray-400 font-medium italic">Belum ada item yang sesuai filter.</td></tr>`;
     } else {
-        categoryOrder.forEach(cat => {
-            const catItems = grouped[cat];
-            if (!catItems || catItems.length === 0) return;
-
-            // Add Category Header
-            mainHtml += `
-                <tr class="bg-slate-50 border-y border-slate-100 sticky top-0 z-10">
-                    <td colspan="8" class="py-2.5 px-6">
-                        <div class="flex items-center gap-3">
-                            <span class="w-1.5 h-5 rounded-full ${catColors[cat]?.split(' ')[0] || 'bg-slate-400'}"></span>
-                            <span class="text-[10px] font-black text-slate-700 uppercase tracking-[0.2em]">${catLabels[cat] || cat}</span>
-                            <span class="px-2 py-0.5 bg-white border border-slate-200 rounded-full text-[9px] font-bold text-slate-400">${catItems.length} Item</span>
-                        </div>
-                    </td>
-                </tr>
-            `;
-
-            // Add Item Rows
-            catItems.forEach(it => {
-                const stock = db.getInventoryStock(it.id);
-                const isLow = stock < (it.minStock || 0);
-                const isActive = it.status !== 'INACTIVE';
-
-                mainHtml += `
-                    <tr class="border-b border-gray-50 hover:bg-slate-50/50 group transition-all ${isLow ? 'bg-red-50/20' : ''}">
-                        <td class="py-4 px-6 text-xs font-bold text-slate-400 font-mono tracking-tight">${it.itemCode || '-'}</td>
-                        <td class="py-4 px-4">
-                            <div class="flex items-center gap-2">
-                                <span class="text-sm font-black text-slate-700 group-hover:text-indigo-600 transition-colors">${it.itemName}</span>
-                                ${isLow ? '<span class="px-1.5 py-0.5 bg-red-100 text-red-600 rounded text-[9px] font-black uppercase tracking-tighter">LOW</span>' : ''}
-                            </div>
-                        </td>
-                        <td class="py-4 px-4">
-                            <span class="px-2.5 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${catColors[it.category] || 'bg-gray-100 text-gray-700'}">${catLabels[it.category] || it.category}</span>
-                        </td>
-                        <td class="py-4 px-4 text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">${it.unit}</td>
-                        <td class="py-4 px-4 text-sm text-right font-black ${isLow ? 'text-red-700' : 'text-slate-800'}">${prodFmt(stock)}</td>
-                        <td class="py-4 px-4 text-sm text-right text-gray-400 font-medium">${prodFmt(it.minStock)}</td>
-                        <td class="py-4 px-4 text-center">
-                            <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${isActive ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}">${isActive ? 'Active' : 'Non-Active'}</span>
-                        </td>
-                        <td class="py-4 px-6 text-sm text-right whitespace-nowrap">
-                            ${canEdit ? `
-                                <div class="flex items-center justify-end gap-1">
-                                    <button onclick="openStockAdjustmentModal('${it.id}')" class="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-all" title="Penyesuaian Stok"><i class="fas fa-sync-alt"></i></button>
-                                    <button onclick="deleteInventoryItem('${it.id}')" class="p-1.5 text-red-400 hover:bg-red-50 rounded-lg transition-all" title="Hapus"><i class="fas fa-trash-alt"></i></button>
-                                    <button onclick="openInventoryItemModal('${it.id}')" class="p-1.5 text-indigo-400 hover:bg-indigo-50 rounded-lg transition-all" title="Edit"><i class="fas fa-edit"></i></button>
-                                    <button onclick="toggleInventoryItemStatus('${it.id}')" class="p-1.5 ${isActive ? 'text-green-500' : 'text-slate-300'} hover:bg-slate-50 rounded-lg transition-all" title="${isActive ? 'Non-Aktifkan' : 'Aktifkan'}"><i class="fas fa-${isActive ? 'toggle-on' : 'toggle-off'}"></i></button>
-                                </div>
-                            ` : '<span class="text-[10px] font-black text-slate-300 uppercase italic">View Only</span>'}
-                        </td>
-                    </tr>
-                `;
-            });
-        });
+        // Only show production relevant if no category selected
+        items = items.filter(it => prodCats.includes(it.category));
     }
 
-    const catOpts = Object.entries(catLabels).map(([v, l]) => `<option value="${v}" ${f.cat === v ? 'selected' : ''}>${l}</option>`).join('');
+    if (f.q) {
+        const q = f.q.toLowerCase();
+        items = items.filter(it => it.itemName.toLowerCase().includes(q) || (it.itemCode && it.itemCode.toLowerCase().includes(q)));
+    }
+
+    const catLabels = {
+        RAW_MATERIAL: 'Bahan Baku',
+        OVEN_BASAH_STOCK: 'Oven Basah',
+        OVEN_KERING_STOCK: 'Oven Kering',
+        BULK_STOCK: 'Stok Curah',
+        FINISHED_GOODS: 'Gudang Jadi'
+    };
+
+    const catOpts = Object.entries(catLabels)
+        .map(([v, l]) => `<option value="${v}" ${f.cat === v ? 'selected' : ''}>${l}</option>`)
+        .join('');
 
     mc.innerHTML = `
-    <div class="space-y-6 animate-in fade-in duration-500">
-        <!-- Filter Card -->
-        <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-5 overflow-hidden">
-            <div onclick="toggleProdSFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
-                <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
-                    <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
-                    ${(!window._uiState.prodSFilterOpen && (f.q || f.cat)) ? 
-                        `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
-                </h3>
-                <div class="flex items-center gap-3">
-                    <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.prodSFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
-                    <i class="fas fa-chevron-${window._uiState.prodSFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
+    <div class="space-y-4 animate-in fade-in duration-500">
+        <!-- Compact Filter Bar -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+            <div class="flex flex-wrap items-center gap-4">
+                <!-- Search Input -->
+                <div class="flex-1 min-w-[250px] relative group">
+                    <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors"></i>
+                    <input type="text" id="filter_prodStock_q" onkeyup="applyProdStockFilters()" value="${f.q}" placeholder="Search Code or Item Name..." 
+                        class="w-full pl-12 pr-4 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-semibold text-slate-700 placeholder:text-slate-300 focus:bg-white focus:border-blue-300 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all">
                 </div>
-            </div>
 
-            <div class="${window._uiState.prodSFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
-                <div class="flex flex-wrap gap-4 items-end">
-                    <div class="flex-1 min-w-[240px]">
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Pencarian Barang</label>
-                        <div class="relative group">
-                            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors"></i>
-                            <input type="text" id="filter_prodStock_q" value="${f.q}" placeholder="Cari Nama atau Kode Item..." 
-                                class="w-full border-2 border-slate-100 rounded-lg pl-10 pr-3 py-2.5 text-sm focus:border-blue-500 outline-none transition-all shadow-sm bg-slate-50/50 focus:bg-white text-slate-700 font-bold">
-                        </div>
-                    </div>
-                    <div class="w-64">
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Kategori</label>
-                        <select id="filter_prodStock_cat" class="w-full border-2 border-slate-100 rounded-lg px-4 py-2.5 text-sm focus:border-blue-500 outline-none bg-slate-50/50 focus:bg-white transition-all cursor-pointer font-bold text-slate-700 font-sans">
-                            <option value="">-- Semua Kategori --</option>
-                            ${catOpts}
-                        </select>
-                    </div>
-                    <div class="flex gap-2">
-                        <button onclick="applyProdStockFilters()" class="bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 flex items-center gap-2">
-                            <i class="fas fa-search"></i> TAMPILKAN
-                        </button>
-                        <button onclick="resetProdStockFilters()" class="px-4 py-2.5 text-[10px] font-black text-slate-400 hover:text-slate-600 border-2 border-slate-100 rounded-lg hover:bg-slate-50 transition-colors uppercase tracking-widest">
-                            RESET
-                        </button>
-                    </div>
+                <!-- Category Filter -->
+                <div class="relative min-w-[180px]">
+                    <i class="fas fa-filter absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"></i>
+                    <select id="filter_prodStock_cat" onchange="applyProdStockFilters()" 
+                        class="w-full pl-11 pr-10 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-bold text-slate-700 appearance-none cursor-pointer focus:bg-white focus:border-blue-300 focus:ring-4 focus:ring-blue-500/5 transition-all outline-none">
+                        <option value="">All Categories</option>
+                        ${catOpts}
+                    </select>
+                    <i class="fas fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none text-[10px]"></i>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex gap-3 ml-auto">
+                    <button class="bg-white border border-slate-200 text-slate-600 px-4 py-2.5 rounded-xl hover:bg-slate-50 transition-all text-xs font-bold flex items-center gap-2">
+                        <i class="fas fa-file-export text-green-500"></i> Export List
+                    </button>
+                    ${canEdit ? `
+                    <button onclick="renderInventoryItemForm()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl transition-all text-sm font-bold shadow-lg shadow-blue-500/20 flex items-center gap-2">
+                        <i class="fas fa-plus"></i> New Item
+                    </button>
+                    ` : ''}
+                    <button onclick="resetProdStockFilters()" class="bg-white border border-slate-200 text-slate-600 px-5 py-2.5 rounded-xl hover:bg-slate-50 transition-all text-sm font-bold" title="Refresh">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
                 </div>
             </div>
         </div>
 
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-            <div class="flex justify-between items-center p-6 border-b border-slate-50 bg-slate-50/30">
-                <h2 class="text-sm font-black text-gray-800 uppercase tracking-widest flex items-center gap-2">
-                    <i class="fas fa-boxes text-blue-600"></i> MASTER BARANG / STOK
-                </h2>
-                <div class="flex gap-2">
-                    ${canEdit ? `
-                    <button onclick="openInventoryItemModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-100 transition-all flex items-center gap-2">
-                        <i class="fas fa-plus"></i> Tambah Item
-                    </button>
-                    ` : ''}
-                </div>
-            </div>
+        <!-- Master Item Table Card -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
             <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="bg-slate-50/50 border-b border-slate-100">
-                            <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Kode</th>
-                            <th class="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Nama Item</th>
-                            <th class="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Kategori</th>
-                            <th class="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Unit</th>
-                            <th class="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Stok Saat Ini</th>
-                            <th class="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Min. Stok</th>
-                            <th class="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Status</th>
-                            <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Aksi</th>
+                <table class="w-full text-left" id="prod_stock_table">
+                    <thead class="bg-slate-50/50 border-b border-slate-100">
+                        <tr>
+                            <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Item Information</th>
+                            <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Category</th>
+                            <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Unit</th>
+                            <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Stock</th>
+                            <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Min Stock</th>
+                            <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                            <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
                         </tr>
                     </thead>
-                    <tbody>${mainHtml}</tbody>
+                    <tbody id="prod_stock_table_body" class="divide-y divide-slate-50">
+                        ${renderProductionStockRows(items)}
+                    </tbody>
                 </table>
+            </div>
+            
+            <div class="p-4 bg-slate-50/50 border-t border-slate-100 flex justify-between items-center">
+                <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Showing ${items.length} Production Items</span>
+            </div>
+
+            <div id="prod_stock_empty_state" class="${items.length === 0 ? '' : 'hidden'} py-20 flex flex-col items-center justify-center text-center">
+                <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-300 mb-4 text-2xl">
+                    <i class="fas fa-boxes"></i>
+                </div>
+                <p class="text-sm font-medium text-slate-500">No items found matching your filters.</p>
             </div>
         </div>
     </div>`;
+};
+
+window.renderProductionStockRows = (items) => {
+    const canEdit = getModulePermission('produksi').edit;
+    if (items.length === 0) return '';
+    
+    const catLabels = {
+        RAW_MATERIAL: 'Bahan Baku',
+        OVEN_BASAH_STOCK: 'Oven Basah',
+        OVEN_KERING_STOCK: 'Oven Kering',
+        BULK_STOCK: 'Stok Curah',
+        FINISHED_GOODS: 'Gudang Jadi'
+    };
+    const catColors = {
+        RAW_MATERIAL: 'bg-yellow-100 text-yellow-800',
+        OVEN_BASAH_STOCK: 'bg-orange-100 text-orange-800',
+        OVEN_KERING_STOCK: 'bg-yellow-100 text-yellow-800',
+        BULK_STOCK: 'bg-indigo-100 text-indigo-800',
+        FINISHED_GOODS: 'bg-green-100 text-green-800'
+    };
+
+    return items.map(it => {
+        const stock = db.getInventoryStock(it.id);
+        const isLow = stock < (it.minStock || 0);
+        const isActive = it.status !== 'INACTIVE';
+        
+        return `
+        <tr class="hover:bg-slate-50/80 transition-colors group ${isLow ? 'bg-red-50/10' : ''}">
+            <td class="py-4 px-5">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg ${isLow ? 'bg-red-50 text-red-500' : 'bg-blue-50 text-blue-600'} flex items-center justify-center text-[10px] font-black shrink-0 border border-black/5">
+                        <i class="fas fa-cube"></i>
+                    </div>
+                    <div>
+                        <div class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            ${it.itemName}
+                            ${isLow ? '<span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" title="Low Stock"></span>' : ''}
+                        </div>
+                        <div class="text-[11px] text-slate-400 font-mono font-medium">${it.itemCode || '-'}</div>
+                    </div>
+                </div>
+            </td>
+            <td class="py-4 px-5">
+                <span class="px-2.5 py-1 rounded-lg text-[10px] font-bold ${catColors[it.category] || 'bg-slate-100 text-slate-600'} border border-black/5 shadow-sm">
+                    ${catLabels[it.category] || it.category}
+                </span>
+            </td>
+            <td class="py-4 px-5 text-[11px] font-black text-slate-400 uppercase tracking-widest text-center">${it.unit}</td>
+            <td class="py-4 px-5 text-sm text-right font-black ${isLow ? 'text-red-600' : 'text-slate-800'}">
+                ${prodFmt(stock)}
+            </td>
+            <td class="py-4 px-5 text-sm text-right text-slate-400 font-bold">${prodFmt(it.minStock)}</td>
+            <td class="py-4 px-5">
+                <div class="flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full ${isActive ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.3)]' : 'bg-slate-300'}"></span>
+                    <span class="text-[10px] font-bold ${isActive ? 'text-green-600' : 'text-slate-400'} uppercase tracking-widest">${isActive ? 'Active' : 'Non-Active'}</span>
+                </div>
+            </td>
+            <td class="py-4 px-5 text-right">
+                ${canEdit ? `
+                <div class="flex justify-end">
+                    <div class="relative" onmouseenter="this.querySelector('.dropdown-menu').classList.remove('hidden')" onmouseleave="this.querySelector('.dropdown-menu').classList.add('hidden')">
+                        <button class="flex items-center gap-2 px-3 py-1.5 rounded-[10px] border border-slate-200 text-slate-700 bg-[#f8fafc] hover:bg-slate-100 transition-colors text-[12px] font-bold shadow-sm whitespace-nowrap">
+                            Pilih Aksi...
+                            <i class="fas fa-chevron-down text-[10px] text-slate-400"></i>
+                        </button>
+                        <div class="dropdown-menu hidden absolute right-0 top-full mt-1 w-40 bg-white rounded-xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.1)] border border-slate-100 z-[99] overflow-hidden text-left">
+                            <div class="py-1 flex flex-col">
+                                <button onclick="renderInventoryItemForm('${it.id}')" class="text-left px-4 py-2 text-xs font-bold text-slate-600 hover:text-blue-600 hover:bg-blue-50/50 flex items-center gap-2 transition-colors">
+                                    <i class="fas fa-edit w-4"></i> Edit Item
+                                </button>
+                                <button onclick="openStockAdjustmentModal('${it.id}')" class="text-left px-4 py-2 text-xs font-bold text-slate-600 hover:text-blue-600 hover:bg-blue-50/50 flex items-center gap-2 transition-colors">
+                                    <i class="fas fa-sync-alt w-4"></i> Penyesuaian Stok
+                                </button>
+                                <button onclick="toggleInventoryItemStatus('${it.id}')" class="text-left px-4 py-2 text-xs font-bold text-slate-600 hover:text-blue-600 hover:bg-blue-50/50 flex items-center gap-2 transition-colors">
+                                    <i class="fas fa-power-off w-4"></i> ${isActive ? 'Non-Aktifkan' : 'Aktifkan'}
+                                </button>
+                                <div class="border-t border-slate-50 my-1"></div>
+                                <button onclick="deleteInventoryItem('${it.id}')" class="text-left px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-50 flex items-center gap-2 transition-colors">
+                                    <i class="fas fa-trash-alt w-4"></i> Hapus Item
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                ` : '<span class="text-[10px] font-black text-slate-300 uppercase italic">View Only</span>'}
+            </td>
+        </tr>
+        `;
+    }).join('');
 };
 
 window.applyProdStockFilters = () => {

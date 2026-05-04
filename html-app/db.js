@@ -143,20 +143,58 @@ const db = {
 
     // Auto-generate Item Code by category prefix 
     generateItemCode: (category) => {
-        const stageCats = ['MIXING_STOCK', 'OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK', 'WIP'];
+        const stageCats = ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK', 'WIP'];
         const prefix = category === 'RAW_MATERIAL' ? 'RM' : (category === 'FINISHED_GOODS' ? 'FG' : (stageCats.includes(category) ? 'WIP' : 'FG'));
-        const existing = db.read('inventoryItems').filter(i => i.itemCode && i.itemCode.startsWith(prefix));
-        const next = (existing.length + 1).toString().padStart(4, '0');
-        return `${prefix}-${next}`;
+        const existing = db.read('inventoryItems').filter(i => i.itemCode && i.itemCode.startsWith(`${prefix}-`));
+        
+        let maxSeq = 0;
+        existing.forEach(item => {
+            const parts = item.itemCode.split('-');
+            if (parts.length >= 2) {
+                const seq = parseInt(parts[1]);
+                if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+            }
+        });
+
+        const next = (maxSeq + 1).toString().padStart(4, '0');
+        let finalCode = `${prefix}-${next}`;
+        
+        // Safety check
+        while (db.read('inventoryItems').some(i => i.itemCode === finalCode)) {
+            maxSeq++;
+            finalCode = `${prefix}-${(maxSeq + 1).toString().padStart(4, '0')}`;
+        }
+        
+        return finalCode;
     },
 
     // Auto-generate Transaction Number
     generateTxNo: (type) => {
         const prefix = type === 'IN' ? 'SI' : 'SO';
         const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-        const existing = db.read('stockTransactions').filter(t => t.txNo && t.txNo.startsWith(`${prefix}-${dateStr}`));
-        const seq = (existing.length + 1).toString().padStart(3, '0');
-        return `${prefix}-${dateStr}-${seq}`;
+        const transactions = db.read('stockTransactions');
+        const searchPrefix = `${prefix}-${dateStr}-`;
+        
+        let maxSeq = 0;
+        transactions.forEach(t => {
+            if (t.txNo && t.txNo.startsWith(searchPrefix)) {
+                const parts = t.txNo.split('-');
+                if (parts.length >= 3) {
+                    const seq = parseInt(parts[2]);
+                    if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+                }
+            }
+        });
+
+        const nextSeq = maxSeq + 1;
+        let finalNo = `${prefix}-${dateStr}-${nextSeq.toString().padStart(3, '0')}`;
+        
+        while (transactions.some(t => t.txNo === finalNo)) {
+            maxSeq++;
+            finalNo = `${prefix}-${dateStr}-${(maxSeq + 1).toString().padStart(3, '0')}`;
+        }
+        
+        return finalNo;
     },
 
     // Get current inventory stock for an inventoryItem at a specific location
@@ -167,8 +205,7 @@ const db = {
             
             let tLoc = t.location;
             if (tLoc === 'WHS' || !tLoc) {
-                if (item && item.category === 'MIXING_STOCK') tLoc = 'MIXING';
-                else if (item && item.category === 'OVEN_BASAH_STOCK') tLoc = 'OVEN_BASAH';
+                if (item && item.category === 'OVEN_BASAH_STOCK') tLoc = 'OVEN_BASAH';
                 else if (item && item.category === 'OVEN_KERING_STOCK') tLoc = 'OVEN_KERING';
                 else tLoc = 'WHS';
             }
@@ -196,8 +233,7 @@ const db = {
 
         let finalLoc = location;
         if (!finalLoc || finalLoc === 'WHS') {
-            if (item.category === 'MIXING_STOCK') finalLoc = 'MIXING';
-            else if (item.category === 'OVEN_BASAH_STOCK') finalLoc = 'OVEN_BASAH';
+            if (item.category === 'OVEN_BASAH_STOCK') finalLoc = 'OVEN_BASAH';
             else if (item.category === 'OVEN_KERING_STOCK') finalLoc = 'OVEN_KERING';
             else finalLoc = 'WHS';
         }
@@ -214,7 +250,7 @@ const db = {
             referenceId,
             notes,
             createdBy,
-            location: finalLoc        // 'WHS', 'MIXING', 'OVEN_BASAH', 'OVEN_KERING'
+            location: finalLoc        // 'WHS', 'OVEN_BASAH', 'OVEN_KERING'
         });
 
         return tx;
@@ -229,22 +265,72 @@ const db = {
 
     generateMachineCode: () => {
         const machines = db.read('machines') || [];
-        return 'MCH-' + (machines.length + 1).toString().padStart(3, '0');
+        let maxSeq = 0;
+        machines.forEach(m => {
+            if (m.code && m.code.startsWith('MCH-')) {
+                const seq = parseInt(m.code.split('-')[1]);
+                if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+            }
+        });
+        
+        const next = (maxSeq + 1).toString().padStart(3, '0');
+        let finalCode = `MCH-${next}`;
+        
+        while (machines.some(m => m.code === finalCode)) {
+            maxSeq++;
+            finalCode = `MCH-${(maxSeq + 1).toString().padStart(3, '0')}`;
+        }
+        
+        return finalCode;
     },
 
     generateMONumber: (dateStr) => {
         if (!dateStr) dateStr = new Date().toISOString().split('T')[0];
         const pureDate = dateStr.replace(/-/g, ''); // YYYYMMDD
         const orders = db.read('productionOrders') || [];
-        const sameDay = orders.filter(o => o.date && o.date.startsWith(dateStr));
-        const nextNum = (sameDay.length + 1).toString().padStart(3, '0');
-        return `MO-${pureDate}-${nextNum}`;
+        const searchPrefix = `MO-${pureDate}-`;
+        
+        let maxSeq = 0;
+        orders.forEach(o => {
+            if (o.moNumber && o.moNumber.startsWith(searchPrefix)) {
+                const parts = o.moNumber.split('-');
+                if (parts.length >= 3) {
+                    const seq = parseInt(parts[2]);
+                    if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+                }
+            }
+        });
+
+        const nextSeq = maxSeq + 1;
+        let finalNo = `MO-${pureDate}-${nextSeq.toString().padStart(3, '0')}`;
+        
+        while (orders.some(o => o.moNumber === finalNo)) {
+            maxSeq++;
+            finalNo = `MO-${pureDate}-${(maxSeq + 1).toString().padStart(3, '0')}`;
+        }
+        
+        return finalNo;
     },
 
     generateBOMCode: () => {
-        const existing = db.read('bomHeaders');
-        const next = (existing.length + 1).toString().padStart(4, '0');
-        return `BOM-${next}`;
+        const existing = db.read('bomHeaders') || [];
+        let maxSeq = 0;
+        existing.forEach(b => {
+            if (b.bomCode && b.bomCode.startsWith('BOM-')) {
+                const seq = parseInt(b.bomCode.split('-')[1]);
+                if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+            }
+        });
+        
+        const next = (maxSeq + 1).toString().padStart(4, '0');
+        let finalCode = `BOM-${next}`;
+        
+        while (existing.some(b => b.bomCode === finalCode)) {
+            maxSeq++;
+            finalCode = `BOM-${(maxSeq + 1).toString().padStart(4, '0')}`;
+        }
+        
+        return finalCode;
     },
 
     // Sum qty produced from all daily logs for a given MO
@@ -261,27 +347,8 @@ const db = {
     },
 
     // ─── PRODUCTION LINE (STREAMLINED) HELPERS ────────────────
-    ensureWIPItem: (productId, stageLabel) => {
+    ensureWIPItem: (productId, stageLabel, autoCreate = false) => {
         const items = db.read('inventoryItems');
-        const isMixing = stageLabel.toLowerCase().includes('mixing');
-        
-        // If Mixing, always use the unified 'Campuran' item (tracks sacks)
-        if (isMixing) {
-            let joint = items.find(i => i.itemName === 'Campuran' || i.itemName === 'Stock Mixing');
-            if (joint) return joint.id;
-            
-            // Create if missing
-            const newItem = db.insert('inventoryItems', {
-                itemCode: 'MIX-STK-GEN',
-                itemName: 'Campuran',
-                category: 'MIXING_STOCK',
-                unit: 'SAK',
-                minStock: 0,
-                status: 'ACTIVE',
-                createdAt: new Date().toISOString()
-            });
-            return newItem.id;
-        }
 
         const product = db.findById('inventoryItems', productId);
         if (!product) return null;
@@ -296,25 +363,37 @@ const db = {
         let category = 'WIP';
         if (labelLower.includes('oven basah')) category = 'OVEN_BASAH_STOCK';
         if (labelLower.includes('oven kering')) category = 'OVEN_KERING_STOCK';
-        if (labelLower.includes('mixing')) category = 'MIXING_STOCK';
 
         // Target Name: Sanitize by removing any existing stage suffix first
-        const baseName = product.itemName.replace(/\s*\([^)]+\)/g, '').trim();
+        const baseName = (product.itemName || '').replace(/\s*\([^)]+\)/g, '').trim();
         const targetName = `${baseName} (${stageLabel})`;
 
         // 1. SEARCH BY NAME & CATEGORY (Matches manual items created by user)
-        const existingByName = items.find(i => 
-            i.category === category && 
-            (i.itemName.toLowerCase() === targetName.toLowerCase() || i.itemName.toLowerCase() === `${baseName.toLowerCase()} (${labelLower})`)
-        );
+        const existingByName = items.find(i => {
+            if (i.category !== category || !i.itemName) return false;
+            const iNameLower = i.itemName.toLowerCase();
+            return iNameLower === targetName.toLowerCase() || iNameLower === `${baseName.toLowerCase()} (${labelLower})`;
+        });
         if (existingByName) return existingByName.id;
 
         // 2. SEARCH BY AUTO-GEN CODE (Old logic fallback)
-        const wipCode = `${product.itemCode}-WIP-${stageLabel.toUpperCase().replace(/\s+/g, '')}`;
-        const existingByCode = items.find(i => i.itemCode === wipCode);
+        const wipCode = `${product.itemCode || ''}-WIP-${stageLabel.toUpperCase().replace(/\s+/g, '')}`;
+        const existingByCode = items.find(i => i.itemCode && i.itemCode === wipCode);
         if (existingByCode) return existingByCode.id;
 
-        // 3. Return null if nothing found (Prevent auto-creation as per user request)
+        // 3. Auto-create if requested
+        if (autoCreate) {
+            const newItem = db.insert('inventoryItems', {
+                itemCode: db.generateItemCode(category),
+                itemName: targetName,
+                category,
+                unit: product.unit || 'Kg',
+                status: 'ACTIVE',
+                description: `WIP item auto-created for ${product.itemName} - ${stageLabel}`
+            });
+            return newItem.id;
+        }
+
         return null;
     },
 
@@ -330,7 +409,7 @@ const db = {
         const prevQty = batch.currentQty;
         let newQty = prevQty;
 
-        const stageLabels = { 'MIXING': 'Mixing', 'OVEN_BASAH': 'Oven Basah', 'OVEN_KERING': 'Oven Kering' };
+        const stageLabels = { 'OVEN_BASAH': 'Oven Basah', 'OVEN_KERING': 'Oven Kering' };
 
         if (nextStage === 'OVEN_BASAH') {
             newQty = parseFloat(data.qty) || prevQty;
@@ -384,9 +463,29 @@ const db = {
         };
         const prefix = prefixMap[type] || 'JRN';
         const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-        const existing = db.read('journalEntries').filter(t => t.journalNo && t.journalNo.startsWith(`${prefix}-${dateStr}`));
-        const seq = (existing.length + 1).toString().padStart(3, '0');
-        return `${prefix}-${dateStr}-${seq}`;
+        const searchPrefix = `${prefix}-${dateStr}-`;
+        const existing = db.read('journalEntries');
+        
+        let maxSeq = 0;
+        existing.forEach(t => {
+            if (t.journalNo && t.journalNo.startsWith(searchPrefix)) {
+                const parts = t.journalNo.split('-');
+                if (parts.length >= 3) {
+                    const seq = parseInt(parts[2]);
+                    if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+                }
+            }
+        });
+
+        const nextSeq = maxSeq + 1;
+        let finalNo = `${prefix}-${dateStr}-${nextSeq.toString().padStart(3, '0')}`;
+        
+        while (existing.some(t => t.journalNo === finalNo)) {
+            maxSeq++;
+            finalNo = `${prefix}-${dateStr}-${(maxSeq + 1).toString().padStart(3, '0')}`;
+        }
+        
+        return finalNo;
     },
 
     addJournalEntry: ({ date, journalNo, description, items, referenceType = '', referenceId = '', departmentId = '' }) => {
@@ -512,7 +611,7 @@ const mchs = db.read('machines');
 let mchChanged = false;
 mchs.forEach(m => {
     const isOven = m.name.toLowerCase().includes('oven');
-    const correctType = isOven ? 'OVEN' : 'MIXING';
+    const correctType = isOven ? 'OVEN' : 'MACHINE';
     if (m.type !== correctType) {
         m.type = correctType;
         mchChanged = true;

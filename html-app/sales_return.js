@@ -38,182 +38,194 @@ function srGenerateNumber(prefix) {
 window.renderSalesReturns = function () {
     document.getElementById('pageTitle').innerText = 'Retur Penjualan';
     const mc = document.getElementById('main-content');
-    
-    // Initialize & Persist Filters
-    window._srFilters = window._srFilters || { start: '', end: '', customerId: '', status: '', condition: '' };
-    const f = window._srFilters;
     const perm = getModulePermission('penjualan');
+    
+    if (!window._srActiveTab) window._srActiveTab = 'pending';
+    if (!window._srFilters) window._srFilters = { start: '', end: '', search: '' };
+    const filters = window._srFilters;
 
     let returns = db.read('salesReturns') || [];
 
-    // Apply Filters
-    if (f.start) {
-        const startDate = new Date(f.start);
-        startDate.setHours(0,0,0,0);
-        returns = returns.filter(r => new Date(r.date) >= startDate);
+    if (filters.search) {
+        const s = filters.search.toLowerCase();
+        returns = returns.filter(r => 
+            r.returnNumber?.toLowerCase().includes(s) || 
+            db.findById('customers', r.customerId)?.name?.toLowerCase().includes(s) || 
+            r.productName?.toLowerCase().includes(s)
+        );
     }
-    if (f.end) {
-        const endDate = new Date(f.end);
-        endDate.setHours(23,59,59,999);
-        returns = returns.filter(r => new Date(r.date) <= endDate);
+    if (filters.start) {
+        const dd = new Date(filters.start); dd.setHours(0,0,0,0);
+        returns = returns.filter(q => new Date(q.date) >= dd);
     }
-    if (f.customerId) {
-        returns = returns.filter(r => r.customerId === f.customerId);
-    }
-    if (f.status) {
-        returns = returns.filter(r => r.status === f.status);
-    }
-    if (f.condition) {
-        returns = returns.filter(r => r.condition === f.condition);
+    if (filters.end) {
+        const dd = new Date(filters.end); dd.setHours(23,59,59,999);
+        returns = returns.filter(q => new Date(q.date) <= dd);
     }
 
     returns.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    // Options for Filters
-    const customers = db.read('customers') || [];
-    const custOpts = customers.map(c => `<option value="${c.id}" ${f.customerId === c.id ? 'selected' : ''}>${c.name}</option>`).join('');
-    const statusOpts = [
-        ['REQUESTED', 'Diminta'], ['APPROVED', 'Disetujui'], ['GOODS_RECEIVED', 'Barang Diterima'], 
-        ['REFUNDED', 'Refund'], ['COMPLETED', 'Selesai'], ['REJECTED', 'Ditolak']
-    ].map(([v, l]) => `<option value="${v}" ${f.status === v ? 'selected' : ''}>${l}</option>`).join('');
+    // 'pending' = REQUESTED, APPROVED, GOODS_RECEIVED
+    // 'history' = REFUNDED, COMPLETED, REJECTED
+    let filteredReturns = window._srActiveTab === 'pending'
+        ? returns.filter(r => ['REQUESTED', 'APPROVED', 'GOODS_RECEIVED'].includes(r.status))
+        : returns.filter(r => ['REFUNDED', 'COMPLETED', 'REJECTED'].includes(r.status));
 
-    mc.innerHTML = `
-        <div class="space-y-4">
-            <!-- Collapsible Filter Section -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-5 sticky top-0 z-30 transition-all">
-                <div onclick="toggleSRETFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none backdrop-blur-md bg-white/90 rounded-xl">
-                    <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
-                        <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
-                        ${(!window._uiState.sretFilterOpen && (f.start || f.end || f.customerId || f.status || f.condition)) ? 
-                            `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
-                    </h3>
-                    <div class="flex items-center gap-3">
-                        <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.sretFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
-                        <i class="fas fa-chevron-${window._uiState.sretFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
-                    </div>
-                </div>
-
-                <div class="${window._uiState.sretFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Dari Tanggal</label>
-                            <input type="date" id="sr_filter_start" value="${f.start}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white">
-                        </div>
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Sampai Tanggal</label>
-                            <input type="date" id="sr_filter_end" value="${f.end}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white">
-                        </div>
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nama Pelanggan</label>
-                            <select id="sr_filter_customer" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white cursor-pointer font-sans">
-                                <option value="">-- Semua Pelanggan --</option>${custOpts}
-                            </select>
-                        </div>
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Status Progres</label>
-                            <select id="sr_filter_status" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white cursor-pointer font-sans">
-                                <option value="">-- Semua --</option>${statusOpts}
-                            </select>
-                        </div>
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Kondisi</label>
-                            <select id="sr_filter_condition" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white cursor-pointer font-sans">
-                                <option value="">-- Semua --</option>
-                                <option value="Good" ${f.condition === 'Good' ? 'selected' : ''}>Bagus</option>
-                                <option value="Damaged" ${f.condition === 'Damaged' ? 'selected' : ''}>Rusak</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="mt-4 pt-4 border-t border-slate-50 flex flex-col sm:flex-row justify-between items-center gap-4">
-                        <button onclick="resetSRFilters()" class="text-[9px] font-black text-slate-400 hover:text-slate-600 uppercase tracking-widest flex items-center gap-2 transition-all">
-                            <i class="fas fa-undo-alt text-[10px]"></i> Reset Filter
-                        </button>
-                        <button onclick="updateSRFilters()" class="w-full sm:w-auto bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2">
-                            <i class="fas fa-search"></i> TAMPILKAN DATA
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Content Header -->
-            <div class="flex flex-wrap justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100 gap-3">
-                <div>
-                    <h3 class="text-lg font-black text-gray-800 uppercase tracking-tight">Riwayat Retur Penjualan</h3>
-                </div>
-                ${perm.edit ? `<button onclick="openSalesReturnModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm flex items-center gap-2"><i class="fas fa-plus"></i> Buat Retur Baru</button>` : ''}
-            </div>
-
-            <!-- Table -->
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <table class="w-full text-left border-collapse">
-                    <thead class="bg-gray-50 text-slate-500 text-[10px] font-black uppercase tracking-widest sticky top-[55px] z-20 shadow-sm ${window._uiState.sretFilterOpen ? 'hidden' : ''}">
-                        <tr>
-                            <th class="px-4 py-3 border-b border-gray-100">No. Retur</th>
-                            <th class="px-4 py-3 border-b border-gray-100">Tanggal</th>
-                            <th class="px-4 py-3 border-b border-gray-100">Pelanggan</th>
-                            <th class="px-4 py-3 border-b border-gray-100">Produk</th>
-                            <th class="px-4 py-3 border-b border-gray-100 text-right">Qty</th>
-                            <th class="px-4 py-3 border-b border-gray-100">Kondisi</th>
-                            <th class="px-4 py-3 border-b border-gray-100">Status</th>
-                            <th class="px-4 py-3 border-b border-gray-100 text-right">Aksi</th>
-                        </tr>
-                    </thead>
-                    <tbody class="text-sm divide-y divide-gray-100">
-                        ${returns.length === 0 ? '<tr><td colspan="8" class="px-6 py-12 text-center text-gray-400 italic">Belum ada data retur sesuai filter.</td></tr>' : ''}
-                        ${returns.map(r => {
+    const rows = filteredReturns.map(r => {
         const customer = db.findById('customers', r.customerId);
+        
         let actions = '';
         if (perm.edit) {
             if (r.status === 'REQUESTED') {
-                actions += `<button onclick="approveReturn('${r.id}', true)" class="text-green-600 hover:text-green-800 mr-2 font-bold text-xs border border-green-200 bg-green-50 px-2 py-1 rounded" title="Setujui">Setujui</button>`;
-                actions += `<button onclick="approveReturn('${r.id}', false)" class="text-red-500 hover:text-red-700 font-bold text-xs border border-red-200 bg-red-50 px-2 py-1 rounded" title="Tolak">Tolak</button>`;
+                actions += `<option value="approve">Setujui</option>`;
+                actions += `<option value="reject">Tolak</option>`;
             }
             if (r.status === 'APPROVED') {
-                actions += `<button onclick="receiveReturnGoods('${r.id}')" class="text-indigo-600 hover:text-indigo-800 font-bold text-xs border border-indigo-200 bg-indigo-50 px-2 py-1 rounded">Terima Barang</button>`;
+                actions += `<option value="receive">Terima Barang</option>`;
             }
             if (r.status === 'GOODS_RECEIVED') {
-                actions += `<button onclick="processReturnRefund('${r.id}')" class="text-purple-600 hover:text-purple-800 font-bold text-xs border border-purple-200 bg-purple-50 px-2 py-1 rounded">Proses Refund</button>`;
+                actions += `<option value="refund">Proses Refund</option>`;
             }
         }
+        
+        const actionHtml = actions ? `
+            <div class="inline-block relative w-full md:w-[130px]">
+                <select class="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none transition-all shadow-sm" onchange="handleSRAction(this, '${r.id}')">
+                    <option value="" disabled selected>Pilih Aksi...</option>
+                    ${actions}
+                </select>
+                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
+                    <i class="fas fa-chevron-down text-[10px]"></i>
+                </div>
+            </div>
+        ` : '<span class="text-slate-300 font-bold text-xs">-</span>';
+
         return `
-                                <tr class="hover:bg-gray-50/50 transition-colors">
-                                    <td class="px-4 py-3 font-bold text-blue-600">${r.returnNumber}</td>
-                                    <td class="px-4 py-3 text-gray-600">${srDate(r.date)}</td>
-                                    <td class="px-4 py-3 text-gray-800"><strong>${customer?.name || 'N/A'}</strong></td>
-                                    <td class="px-4 py-3 text-gray-700">${r.productName}</td>
-                                    <td class="px-4 py-3 text-right font-bold">${r.qtyReturned}</td>
-                                    <td class="px-4 py-3 text-gray-500 text-xs">${db.findById('inventoryItems', r.productId)?.unit || '-'}</td>
-                                    <td class="px-4 py-3">
-                                        ${r.condition === 'Good'
-                ? '<span class="px-2 py-1 bg-green-50 text-green-700 rounded text-[10px] font-bold uppercase ring-1 ring-green-200">Bagus</span>'
-                : '<span class="px-2 py-1 bg-red-50 text-red-700 rounded text-[10px] font-bold uppercase ring-1 ring-red-200">Rusak</span>'}
-                                    </td>
-                                    <td class="px-4 py-3">${srStatusBadge(r.status)}</td>
-                                    <td class="px-4 py-3 text-right space-x-2 whitespace-nowrap">${actions || '<span class="text-gray-300">-</span>'}</td>
-                                </tr>
-                            `;
-    }).join('')}
-                    </tbody>
-                </table>
+            <tr class="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group">
+                <td class="px-6 py-4">
+                    <div class="text-sm font-black text-slate-900 mb-1 uppercase tracking-tight">${customer?.name || '-'}</div>
+                    <div class="text-[10px] font-black text-blue-600 tracking-[0.1em] uppercase shadow-sm inline-block px-1.5 py-0.5 bg-blue-50 rounded">${r.soNumber || '-'}</div>
+                </td>
+                <td class="px-6 py-4">
+                    <div class="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">Tanggal Retur</div>
+                    <div class="text-xs font-bold text-slate-700">${srDate(r.date)}</div>
+                </td>
+                <td class="px-6 py-4">
+                    <div class="text-sm font-bold text-slate-800">${r.productName}</div>
+                    <div class="text-[10px] text-slate-400 font-black uppercase tracking-widest mt-1">
+                        Qty: ${r.qtyReturned} ${db.findById('inventoryItems', r.productId)?.unit || ''} &bull; 
+                        <span class="${r.condition === 'Good' ? 'text-green-600' : 'text-red-500'}">${r.condition === 'Good' ? 'BAGUS' : 'RUSAK'}</span>
+                    </div>
+                </td>
+                <td class="px-6 py-4 text-center">${srStatusBadge(r.status)}</td>
+                <td class="px-6 py-4 text-right">${actionHtml}</td>
+            </tr>
+        `;
+    }).join('');
+
+    mc.innerHTML = `
+        <div class="animate-in fade-in duration-500 space-y-5">
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+                <div class="p-6 md:p-8 bg-gradient-to-br from-slate-50 to-white border-b border-slate-100 flex flex-wrap lg:flex-nowrap items-center justify-between gap-6">
+                    <div class="flex-1 min-w-[300px] relative">
+                        <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                        <input type="text" id="sr_header_search" onkeyup="if(event.key==='Enter') filterSRTable()" value="${filters.search || ''}" placeholder="Cari Pelanggan, No. Retur, atau Produk..." 
+                            class="w-full pl-12 pr-4 py-3 bg-white border-2 border-slate-100 rounded-2xl text-sm font-bold text-slate-600 focus:border-blue-500 outline-none transition-all shadow-sm">
+                    </div>
+                    
+                    <div class="flex items-center gap-3">
+                         <div class="relative group" id="sr_date_filter_container">
+                            <button onclick="toggleSRDateDropdown()" class="flex items-center bg-white border-2 border-slate-100 rounded-2xl overflow-hidden hover:border-blue-300 transition-all shadow-sm h-[48px] group">
+                                <span class="bg-slate-50 px-4 h-full flex items-center text-slate-500 group-hover:bg-slate-100 transition-colors">
+                                    <i class="fas fa-calendar-alt text-xs"></i>
+                                </span>
+                                <span class="px-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Date Range</span>
+                                <span class="pr-3 text-slate-400 group-hover:text-blue-500 transition-colors"><i class="fas fa-chevron-down text-[10px]"></i></span>
+                            </button>
+                            
+                            <div id="sr_date_dropdown" class="absolute right-0 mt-3 w-72 bg-white border border-slate-100 rounded-3xl shadow-2xl z-[200] hidden p-6 animate-in zoom-in-95 duration-200">
+                                <h4 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                                    <span class="w-1.5 h-1.5 bg-blue-600 rounded-full"></span> PERIODE RETUR
+                                </h4>
+                                <div class="space-y-4">
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Dari Tanggal</label>
+                                        <input type="date" id="sr_header_start" value="${filters.start}" class="w-full border-2 border-slate-50 rounded-xl px-4 py-2 text-xs font-black text-slate-700 bg-slate-50/50 focus:bg-white focus:border-blue-500 outline-none transition-all">
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Sampai Tanggal</label>
+                                        <input type="date" id="sr_header_end" value="${filters.end}" class="w-full border-2 border-slate-50 rounded-xl px-4 py-2 text-xs font-black text-slate-700 bg-slate-50/50 focus:bg-white focus:border-blue-500 outline-none transition-all">
+                                    </div>
+                                    <div class="flex gap-2 pt-2">
+                                        <button onclick="applySRHeaderDateFilter()" class="flex-1 bg-blue-600 text-white py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-slate-900 transition-all shadow-md active:scale-95">Filter</button>
+                                        <button onclick="resetSRHeaderDateFilter()" class="flex-1 bg-slate-50 text-slate-400 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-slate-100 transition-all">Reset</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        ${perm.edit ? `<button onclick="openSalesReturnModal()" class="h-[48px] px-6 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-lg shadow-blue-500/30 transition-all flex items-center gap-2 active:scale-95"><i class="fas fa-plus"></i> Buat</button>` : ''}
+
+                        <div class="flex bg-slate-100 p-1.5 rounded-2xl shadow-inner ml-2">
+                            <button onclick="window._srActiveTab='pending'; renderSalesReturns()" 
+                                class="px-6 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${window._srActiveTab === 'pending' ? 'bg-white text-blue-600 shadow-md transform scale-105 z-10' : 'text-slate-400 hover:text-slate-600'}">
+                                Antrean
+                            </button>
+                            <button onclick="window._srActiveTab='history'; renderSalesReturns()" 
+                                class="px-6 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${window._srActiveTab === 'history' ? 'bg-white text-blue-600 shadow-md transform scale-105 z-10' : 'text-slate-400 hover:text-slate-600'}">
+                                Riwayat
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto min-h-[400px]">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50/30 text-slate-500 font-black uppercase text-[10px] tracking-[0.2em] border-b border-slate-100">
+                                <th class="px-6 py-5">Tujuan / Ref Order</th>
+                                <th class="px-6 py-5">Logistics Info</th>
+                                <th class="px-6 py-5">Produk</th>
+                                <th class="px-6 py-5 text-center">Status Barang</th>
+                                <th class="px-6 py-5 text-right w-[180px]">Navigasi</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50">
+                            ${rows || `<tr><td colspan="5" class="py-40 text-center text-slate-300 font-bold uppercase tracking-widest">Data tidak ditemukan.</td></tr>`}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     `;
 };
 
-window.updateSRFilters = function() {
-    window._srFilters = {
-        start: document.getElementById('sr_filter_start').value,
-        end: document.getElementById('sr_filter_end').value,
-        customerId: document.getElementById('sr_filter_customer').value,
-        status: document.getElementById('sr_filter_status').value,
-        condition: document.getElementById('sr_filter_condition').value
-    };
+window.handleSRAction = function(select, id) {
+    const action = select.value;
+    if (!action) return;
+    if (action === 'approve') approveReturn(id, true);
+    else if (action === 'reject') approveReturn(id, false);
+    else if (action === 'receive') receiveReturnGoods(id);
+    else if (action === 'refund') processReturnRefund(id);
+    select.value = '';
+};
+
+window.filterSRTable = () => {
+    window._srFilters.search = document.getElementById('sr_header_search').value;
     renderSalesReturns();
 };
 
-window.resetSRFilters = function() {
-    window._srFilters = { start: '', end: '', customerId: '', status: '', condition: '' };
+window.toggleSRDateDropdown = () => document.getElementById('sr_date_dropdown').classList.toggle('hidden');
+
+window.applySRHeaderDateFilter = () => {
+    window._srFilters.start = document.getElementById('sr_header_start').value;
+    window._srFilters.end = document.getElementById('sr_header_end').value;
+    renderSalesReturns();
+};
+
+window.resetSRHeaderDateFilter = () => {
+    window._srFilters.start = '';
+    window._srFilters.end = '';
     renderSalesReturns();
 };
 
@@ -452,171 +464,202 @@ window.processReturnRefund = function (id) {
 window.renderProductExchanges = function () {
     document.getElementById('pageTitle').innerText = 'Tukar Guling Produk';
     const mc = document.getElementById('main-content');
-    
-    // Initialize & Persist Filters
-    window._exFilters = window._exFilters || { start: '', end: '', customerId: '', status: '' };
-    const f = window._exFilters;
     const perm = getModulePermission('penjualan');
+    
+    if (!window._exActiveTab) window._exActiveTab = 'pending';
+    if (!window._exFilters) window._exFilters = { start: '', end: '', search: '' };
+    const filters = window._exFilters;
 
     let exchanges = db.read('productExchanges') || [];
 
-    // Apply Filters
-    if (f.start) {
-        const startDate = new Date(f.start);
-        startDate.setHours(0,0,0,0);
-        exchanges = exchanges.filter(ex => new Date(ex.date) >= startDate);
+    if (filters.search) {
+        const s = filters.search.toLowerCase();
+        exchanges = exchanges.filter(ex => 
+            ex.exchangeNumber?.toLowerCase().includes(s) || 
+            db.findById('customers', ex.customerId)?.name?.toLowerCase().includes(s) || 
+            ex.returnedProductName?.toLowerCase().includes(s)
+        );
     }
-    if (f.end) {
-        const endDate = new Date(f.end);
-        endDate.setHours(23,59,59,999);
-        exchanges = exchanges.filter(ex => new Date(ex.date) <= endDate);
+    if (filters.start) {
+        const dd = new Date(filters.start); dd.setHours(0,0,0,0);
+        exchanges = exchanges.filter(ex => new Date(ex.date) >= dd);
     }
-    if (f.customerId) {
-        exchanges = exchanges.filter(ex => ex.customerId === f.customerId);
-    }
-    if (f.status) {
-        exchanges = exchanges.filter(ex => ex.status === f.status);
+    if (filters.end) {
+        const dd = new Date(filters.end); dd.setHours(23,59,59,999);
+        exchanges = exchanges.filter(ex => new Date(ex.date) <= dd);
     }
 
     exchanges.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    // Options for Filters
-    const customers = db.read('customers') || [];
-    const custOpts = customers.map(c => `<option value="${c.id}" ${f.customerId === c.id ? 'selected' : ''}>${c.name}</option>`).join('');
-    const statusOpts = [
-        ['REQUESTED', 'Diminta'], ['APPROVED', 'Disetujui'], ['RETURN_RECEIVED', 'Retur Diterima'], 
-        ['REPLACEMENT_SENT', 'Pengganti Dikirim'], ['COMPLETED', 'Selesai'], ['REJECTED', 'Ditolak']
-    ].map(([v, l]) => `<option value="${v}" ${f.status === v ? 'selected' : ''}>${l}</option>`).join('');
+    // 'pending' = REQUESTED, APPROVED, RETURN_RECEIVED
+    // 'history' = REPLACEMENT_SENT, COMPLETED, REJECTED
+    let filteredExchanges = window._exActiveTab === 'pending'
+        ? exchanges.filter(ex => ['REQUESTED', 'APPROVED', 'RETURN_RECEIVED'].includes(ex.status))
+        : exchanges.filter(ex => ['REPLACEMENT_SENT', 'COMPLETED', 'REJECTED'].includes(ex.status));
 
-    mc.innerHTML = `
-        <div class="space-y-4">
-            <!-- Collapsible Filter Section -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-5 sticky top-0 z-30 transition-all">
-                <div onclick="toggleSEXCHFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none backdrop-blur-md bg-white/90 rounded-xl">
-                    <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
-                        <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
-                        ${(!window._uiState.sexchFilterOpen && (f.start || f.end || f.customerId || f.status)) ? 
-                            `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
-                    </h3>
-                    <div class="flex items-center gap-3">
-                        <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.sexchFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
-                        <i class="fas fa-chevron-${window._uiState.sexchFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
-                    </div>
-                </div>
-
-                <div class="${window._uiState.sexchFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Dari Tanggal</label>
-                            <input type="date" id="ex_filter_start" value="${f.start}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white">
-                        </div>
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Sampai Tanggal</label>
-                            <input type="date" id="ex_filter_end" value="${f.end}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white">
-                        </div>
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nama Pelanggan</label>
-                            <select id="ex_filter_customer" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white cursor-pointer font-sans">
-                                <option value="">-- Semua Pelanggan --</option>${custOpts}
-                            </select>
-                        </div>
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Status Penukaran</label>
-                            <select id="ex_filter_status" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white cursor-pointer font-sans">
-                                <option value="">-- Semua Status --</option>${statusOpts}
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="mt-4 pt-4 border-t border-slate-50 flex flex-col sm:flex-row justify-between items-center gap-4">
-                        <button onclick="resetEXFilters()" class="text-[9px] font-black text-slate-400 hover:text-slate-600 uppercase tracking-widest flex items-center gap-2 transition-all">
-                            <i class="fas fa-undo-alt text-[10px]"></i> Reset Filter
-                        </button>
-                        <button onclick="updateEXFilters()" class="w-full sm:w-auto bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2">
-                            <i class="fas fa-search"></i> TAMPILKAN DATA
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Content Header -->
-            <div class="flex flex-wrap justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-gray-100 gap-3">
-                <div>
-                    <h3 class="text-lg font-black text-gray-800 uppercase tracking-tight">Riwayat Tukar Guling Produk</h3>
-                </div>
-                ${perm.edit ? `<button onclick="openExchangeModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm flex items-center gap-2"><i class="fas fa-exchange-alt"></i> Buat Tukar Guling</button>` : ''}
-            </div>
-
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <table class="w-full text-left border-collapse">
-                    <thead class="bg-gray-50 text-slate-500 text-[10px] font-black uppercase tracking-widest sticky top-[55px] z-20 shadow-sm ${window._uiState.sexchFilterOpen ? 'hidden' : ''}">
-                        <tr>
-                            <th class="px-4 py-3 border-b border-gray-100">No. Exchange</th>
-                            <th class="px-4 py-3 border-b border-gray-100">Tanggal</th>
-                            <th class="px-4 py-3 border-b border-gray-100">Pelanggan</th>
-                            <th class="px-4 py-3 border-b border-gray-100">Produk Lama -> Baru</th>
-                            <th class="px-4 py-3 border-b border-gray-100 text-right">Selisih Harga</th>
-                            <th class="px-4 py-3 border-b border-gray-100">Status</th>
-                            <th class="px-4 py-3 border-b border-gray-100 text-right">Aksi</th>
-                        </tr>
-                    </thead>
-                    <tbody class="text-sm divide-y divide-gray-100">
-                        ${exchanges.length === 0 ? '<tr><td colspan="7" class="px-6 py-12 text-center text-gray-400 italic">Belum ada data tukar guling sesuai filter.</td></tr>' : ''}
-                        ${exchanges.map(ex => {
+    const rows = filteredExchanges.map(ex => {
         const customer = db.findById('customers', ex.customerId);
+        
         let actions = '';
         if (perm.edit) {
             if (ex.status === 'REQUESTED') {
-                actions += `<button onclick="approveExchange('${ex.id}', true)" class="text-green-600 hover:text-green-800 font-bold text-xs border border-green-200 bg-green-50 px-2 py-1 rounded mr-1">Setujui</button>`;
-                actions += `<button onclick="approveExchange('${ex.id}', false)" class="text-red-500 font-bold text-xs border border-red-200 bg-red-50 px-2 py-1 rounded">Tolak</button>`;
+                actions += `<option value="approve">Setujui</option>`;
+                actions += `<option value="reject">Tolak</option>`;
             }
             if (ex.status === 'APPROVED') {
-                actions += `<button onclick="receiveExchangeReturn('${ex.id}')" class="text-indigo-600 font-bold text-xs border border-indigo-200 bg-indigo-50 px-2 py-1 rounded">Terima Retur</button>`;
+                actions += `<option value="receive">Terima Retur</option>`;
             }
             if (ex.status === 'RETURN_RECEIVED') {
-                actions += `<button onclick="shipExchangeReplacement('${ex.id}')" class="text-purple-600 font-bold text-xs border border-purple-200 bg-purple-50 px-2 py-1 rounded">Kirim Pengganti</button>`;
+                actions += `<option value="ship">Kirim Pengganti</option>`;
             }
         }
+        
+        const actionHtml = actions ? `
+            <div class="inline-block relative w-full md:w-[130px]">
+                <select class="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none transition-all shadow-sm" onchange="handleEXAction(this, '${ex.id}')">
+                    <option value="" disabled selected>Pilih Aksi...</option>
+                    ${actions}
+                </select>
+                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
+                    <i class="fas fa-chevron-down text-[10px]"></i>
+                </div>
+            </div>
+        ` : '<span class="text-slate-300 font-bold text-xs">-</span>';
+
         const diff = ex.priceDifference || 0;
-        const diffDisplay = diff === 0 ? '<span class="text-gray-400">-</span>' :
-            diff > 0 ? `<span class="text-green-600 font-bold">+${srFmt(diff)}</span>` :
-                `<span class="text-red-600 font-bold">${srFmt(diff)}</span>`;
+        const diffDisplay = diff === 0 
+            ? '<span class="text-slate-400 font-bold">Rp 0</span>' : diff > 0 
+            ? `<span class="text-green-600 font-black">+${srFmt(diff)}</span>` 
+            : `<span class="text-red-600 font-black">${srFmt(diff)}</span>`;
 
         return `
-                                <tr class="hover:bg-gray-50/50 transition-colors">
-                                    <td class="px-4 py-3 font-bold text-blue-600">${ex.exchangeNumber}</td>
-                                    <td class="px-4 py-3 text-gray-600">${srDate(ex.date)}</td>
-                                    <td class="px-4 py-3 text-gray-800"><strong>${customer?.name || 'N/A'}</strong></td>
-                                    <td class="px-4 py-3 text-gray-700 text-sm">
-                                        <span class="text-red-500 font-medium">${ex.returnedProductName}</span>
-                                        <i class="fas fa-arrow-right text-gray-400 mx-1 text-[10px]"></i>
-                                        <span class="text-green-600 font-medium">${ex.replacementProductName}</span>
-                                    </td>
-                                    <td class="px-4 py-3 text-right">${diffDisplay}</td>
-                                    <td class="px-4 py-3">${srStatusBadge(ex.status)}</td>
-                                    <td class="px-4 py-3 text-right whitespace-nowrap">${actions || '<span class="text-gray-300">-</span>'}</td>
-                                </tr>
-                            `;
-    }).join('')}
-                    </tbody>
-                </table>
+            <tr class="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group">
+                <td class="px-6 py-4">
+                    <div class="text-sm font-black text-slate-900 mb-1 uppercase tracking-tight">${customer?.name || '-'}</div>
+                    <div class="text-[10px] font-black text-blue-600 tracking-[0.1em] uppercase shadow-sm inline-block px-1.5 py-0.5 bg-blue-50 rounded">${ex.soNumber || '-'}</div>
+                </td>
+                <td class="px-6 py-4">
+                    <div class="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">Tanggal Exchange</div>
+                    <div class="text-xs font-bold text-slate-700">${srDate(ex.date)}</div>
+                </td>
+                <td class="px-6 py-4">
+                    <div class="text-sm font-bold text-red-600 flex items-center gap-2 uppercase tracking-tight"><i class="fas fa-arrow-left text-[10px]"></i> ${ex.returnedProductName} <span class="text-[10px] bg-slate-100 px-1 rounded text-slate-500">x${ex.returnedQty}</span></div>
+                    <div class="text-sm font-bold text-green-600 flex items-center gap-2 mt-1 uppercase tracking-tight"><i class="fas fa-arrow-right text-[10px]"></i> ${ex.replacementProductName} <span class="text-[10px] bg-slate-100 px-1 rounded text-slate-500">x${ex.replacementQty}</span></div>
+                </td>
+                <td class="px-6 py-4 text-center">
+                    <div class="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">Selisih Harga</div>
+                    ${diffDisplay}
+                </td>
+                <td class="px-6 py-4 text-center">${srStatusBadge(ex.status)}</td>
+                <td class="px-6 py-4 text-right">${actionHtml}</td>
+            </tr>
+        `;
+    }).join('');
+
+    mc.innerHTML = `
+        <div class="animate-in fade-in duration-500 space-y-5">
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+                <div class="p-6 md:p-8 bg-gradient-to-br from-slate-50 to-white border-b border-slate-100 flex flex-wrap lg:flex-nowrap items-center justify-between gap-6">
+                    <div class="flex-1 min-w-[300px] relative">
+                        <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                        <input type="text" id="ex_header_search" onkeyup="if(event.key==='Enter') filterEXTable()" value="${filters.search || ''}" placeholder="Cari Pelanggan, No. Exchange, atau Produk..." 
+                            class="w-full pl-12 pr-4 py-3 bg-white border-2 border-slate-100 rounded-2xl text-sm font-bold text-slate-600 focus:border-blue-500 outline-none transition-all shadow-sm">
+                    </div>
+                    
+                    <div class="flex items-center gap-3">
+                         <div class="relative group" id="ex_date_filter_container">
+                            <button onclick="toggleEXDateDropdown()" class="flex items-center bg-white border-2 border-slate-100 rounded-2xl overflow-hidden hover:border-blue-300 transition-all shadow-sm h-[48px] group">
+                                <span class="bg-slate-50 px-4 h-full flex items-center text-slate-500 group-hover:bg-slate-100 transition-colors">
+                                    <i class="fas fa-calendar-alt text-xs"></i>
+                                </span>
+                                <span class="px-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Date Range</span>
+                                <span class="pr-3 text-slate-400 group-hover:text-blue-500 transition-colors"><i class="fas fa-chevron-down text-[10px]"></i></span>
+                            </button>
+                            
+                            <div id="ex_date_dropdown" class="absolute right-0 mt-3 w-72 bg-white border border-slate-100 rounded-3xl shadow-2xl z-[200] hidden p-6 animate-in zoom-in-95 duration-200">
+                                <h4 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                                    <span class="w-1.5 h-1.5 bg-blue-600 rounded-full"></span> PERIODE TUKAR GULING
+                                </h4>
+                                <div class="space-y-4">
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Dari Tanggal</label>
+                                        <input type="date" id="ex_header_start" value="${filters.start}" class="w-full border-2 border-slate-50 rounded-xl px-4 py-2 text-xs font-black text-slate-700 bg-slate-50/50 focus:bg-white focus:border-blue-500 outline-none transition-all">
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label class="block text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Sampai Tanggal</label>
+                                        <input type="date" id="ex_header_end" value="${filters.end}" class="w-full border-2 border-slate-50 rounded-xl px-4 py-2 text-xs font-black text-slate-700 bg-slate-50/50 focus:bg-white focus:border-blue-500 outline-none transition-all">
+                                    </div>
+                                    <div class="flex gap-2 pt-2">
+                                        <button onclick="applyEXHeaderDateFilter()" class="flex-1 bg-blue-600 text-white py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-slate-900 transition-all shadow-md active:scale-95">Filter</button>
+                                        <button onclick="resetEXHeaderDateFilter()" class="flex-1 bg-slate-50 text-slate-400 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-slate-100 transition-all">Reset</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        ${perm.edit ? `<button onclick="openExchangeModal()" class="h-[48px] px-6 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-[11px] font-black uppercase tracking-widest shadow-lg shadow-blue-500/30 transition-all flex items-center gap-2 active:scale-95"><i class="fas fa-plus"></i> Buat</button>` : ''}
+
+                        <div class="flex bg-slate-100 p-1.5 rounded-2xl shadow-inner ml-2">
+                            <button onclick="window._exActiveTab='pending'; renderProductExchanges()" 
+                                class="px-6 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${window._exActiveTab === 'pending' ? 'bg-white text-blue-600 shadow-md transform scale-105 z-10' : 'text-slate-400 hover:text-slate-600'}">
+                                Antrean
+                            </button>
+                            <button onclick="window._exActiveTab='history'; renderProductExchanges()" 
+                                class="px-6 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${window._exActiveTab === 'history' ? 'bg-white text-blue-600 shadow-md transform scale-105 z-10' : 'text-slate-400 hover:text-slate-600'}">
+                                Riwayat
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="overflow-x-auto min-h-[400px]">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50/30 text-slate-500 font-black uppercase text-[10px] tracking-[0.2em] border-b border-slate-100">
+                                <th class="px-6 py-5">Tujuan / Ref Order</th>
+                                <th class="px-6 py-5">Logistics Info</th>
+                                <th class="px-6 py-5">Barang (Lama -> Baru)</th>
+                                <th class="px-6 py-5 text-center">Selisih</th>
+                                <th class="px-6 py-5 text-center">Status Barang</th>
+                                <th class="px-6 py-5 text-right w-[180px]">Navigasi</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50">
+                            ${rows || `<tr><td colspan="6" class="py-40 text-center text-slate-300 font-bold uppercase tracking-widest">Data tidak ditemukan.</td></tr>`}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     `;
 };
 
-window.updateEXFilters = function() {
-    window._exFilters = {
-        start: document.getElementById('ex_filter_start').value,
-        end: document.getElementById('ex_filter_end').value,
-        customerId: document.getElementById('ex_filter_customer').value,
-        status: document.getElementById('ex_filter_status').value
-    };
+window.handleEXAction = function(select, id) {
+    const action = select.value;
+    if (!action) return;
+    if (action === 'approve') approveExchange(id, true);
+    else if (action === 'reject') approveExchange(id, false);
+    else if (action === 'receive') receiveExchangeReturn(id);
+    else if (action === 'ship') shipExchangeReplacement(id);
+    select.value = '';
+};
+
+window.filterEXTable = () => {
+    window._exFilters.search = document.getElementById('ex_header_search').value;
     renderProductExchanges();
 };
 
-window.resetEXFilters = function() {
-    window._exFilters = { start: '', end: '', customerId: '', status: '' };
+window.toggleEXDateDropdown = () => document.getElementById('ex_date_dropdown').classList.toggle('hidden');
+
+window.applyEXHeaderDateFilter = () => {
+    window._exFilters.start = document.getElementById('ex_header_start').value;
+    window._exFilters.end = document.getElementById('ex_header_end').value;
+    renderProductExchanges();
+};
+
+window.resetEXHeaderDateFilter = () => {
+    window._exFilters.start = '';
+    window._exFilters.end = '';
     renderProductExchanges();
 };
 

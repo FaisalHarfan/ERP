@@ -3,7 +3,6 @@
 // â”€â”€â”€ HELPERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const CATEGORY_LABELS = {
     RAW_MATERIAL: 'Bahan Baku',
-    MIXING_STOCK: 'Campuran',
     OVEN_BASAH_STOCK: 'Oven basah',
     OVEN_KERING_STOCK: 'Oven Kering',
     BULK_STOCK: 'Stok Curah (KG)',
@@ -11,7 +10,6 @@ const CATEGORY_LABELS = {
 };
 const CATEGORY_COLORS = {
     RAW_MATERIAL: 'bg-yellow-100 text-yellow-800',
-    MIXING_STOCK: 'bg-blue-50 text-blue-700',
     OVEN_BASAH_STOCK: 'bg-orange-100 text-orange-800',
     OVEN_KERING_STOCK: 'bg-yellow-100 text-yellow-800',
     BULK_STOCK: 'bg-indigo-100 text-indigo-800',
@@ -37,236 +35,252 @@ window.renderInventoryDashboard = () => {
     document.getElementById('pageTitle').innerText = 'Dashboard Logistik';
     const mc = document.getElementById('main-content');
 
-    const items = db.read('inventoryItems').filter(it => it.status === 'ACTIVE') || [];
+    const items = (db.read('inventoryItems') || []).filter(it => it.status === 'ACTIVE');
     const warehouses = db.read('warehouses') || [];
     const stockTxs = db.read('stockTransactions') || [];
     
     // Calculate Stats
     let totalInventoryValue = 0;
     const warehouseValues = {}; 
-    warehouses.forEach(w => warehouseValues[w.name] = 0);
+    const locations = ['WHS', 'OVEN_BASAH', 'OVEN_KERING'];
+    locations.forEach(loc => warehouseValues[loc] = 0);
 
     items.forEach(it => {
-        const stock = db.getInventoryStock(it.id);
-        const val = stock * (it.purchasePrice || 0);
-        totalInventoryValue += val;
-        // Simplified: assuming items are distributed across warehouses (or just assign to first)
-        if (warehouses.length > 0) warehouseValues[warehouses[0].name] += val;
+        locations.forEach(loc => {
+            const stock = db.getInventoryStock(it.id, loc);
+            const val = stock * (it.purchasePrice || 0);
+            totalInventoryValue += val;
+            warehouseValues[loc] += val;
+        });
     });
 
     const shortageItems = items.filter(it => db.getInventoryStock(it.id) < (it.minStock || 0));
-    const recentStockIn = stockTxs.filter(t => t.type === 'IN').slice(-5).reverse();
     
     const fmt = v => new Intl.NumberFormat('id-ID').format(v);
 
+    const frappeCard = (title, value) => `
+        <div class="bg-white rounded-xl border border-gray-100 p-5 flex flex-col justify-between shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] h-[104px]">
+            <div class="flex justify-between items-start mb-2">
+                <span class="text-sm font-medium text-gray-500 hover:text-gray-700 cursor-pointer">${title}</span>
+                <span class="text-gray-300 hover:text-gray-500 cursor-pointer text-lg leading-none">...</span>
+            </div>
+            <div class="text-[26px] font-semibold text-gray-800 tracking-tight leading-none">${value}</div>
+        </div>`;
+
+    const chartPanel = (title, subtitle, id, heightClass = 'h-64', hasFilters = false, extraBody = '') => `
+        <div class="bg-white rounded-xl border border-gray-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] p-5 flex flex-col">
+            <div class="flex justify-between items-start mb-6">
+                <div>
+                    <h3 class="text-[15px] font-semibold text-gray-800">${title}</h3>
+                    ${subtitle ? `<p class="text-[12px] text-gray-500 mt-1">${subtitle}</p>` : ''}
+                </div>
+                <div class="flex gap-2 items-center">
+                    <button class="w-7 h-7 rounded bg-gray-50 text-gray-500 hover:bg-gray-100 flex items-center justify-center transition-colors"><i class="fas fa-filter text-[10px]"></i></button>
+                    ${hasFilters ? `
+                    <button class="px-2 h-7 rounded bg-gray-50 text-gray-600 hover:bg-gray-100 flex items-center justify-center transition-colors text-[11px] font-medium gap-1">
+                        Last Year <i class="fas fa-chevron-down text-[8px] text-gray-400"></i>
+                    </button>
+                    <button class="px-2 h-7 rounded bg-gray-50 text-gray-600 hover:bg-gray-100 flex items-center justify-center transition-colors text-[11px] font-medium gap-1">
+                        <i class="far fa-calendar text-[10px] text-gray-500"></i> Monthly <i class="fas fa-chevron-down text-[8px] text-gray-400"></i>
+                    </button>
+                    ` : ''}
+                    <button class="w-7 h-7 rounded bg-gray-50 text-gray-500 hover:bg-gray-100 flex items-center justify-center transition-colors"><span class="leading-none pb-2 font-bold tracking-widest text-[10px]">...</span></button>
+                </div>
+            </div>
+            ${id ? `<div class="relative w-full ${heightClass} flex-1"><canvas id="${id}"></canvas></div>` : ``}
+            ${extraBody}
+        </div>`;
+
+    const noDataPanel = (title) => chartPanel(title, null, null, '', false, '<div class="bg-[#f8f9fa] flex items-center justify-center w-full h-48 rounded-lg"><span class="text-sm text-gray-400">No Data</span></div>');
+
     mc.innerHTML = `
-        <div class="animate-fade-in space-y-6 pb-12 font-sans">
-            <!-- Metric Row -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <div class="bg-white rounded-xl border border-slate-100 p-5 shadow-sm">
-                    <div class="flex justify-between items-start mb-2">
-                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Items</span>
-                        <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-500 flex items-center justify-center"><i class="fas fa-boxes text-xs"></i></div>
-                    </div>
-                    <div class="text-2xl font-bold text-slate-800">${items.length}</div>
-                    <div class="text-[10px] font-bold text-green-500 mt-1 flex items-center gap-1">
-                        <i class="fas fa-arrow-up"></i> 12% vs last month
-                    </div>
-                </div>
-
-                <div class="bg-white rounded-xl border border-slate-100 p-5 shadow-sm">
-                    <div class="flex justify-between items-start mb-2">
-                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Stock Value</span>
-                        <div class="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-500 flex items-center justify-center"><i class="fas fa-wallet text-xs"></i></div>
-                    </div>
-                    <div class="text-2xl font-bold text-slate-800">Rp ${fmt(totalInventoryValue)}</div>
-                    <div class="text-[10px] font-bold text-slate-400 mt-1 uppercase">Total Asset Value</div>
-                </div>
-
-                <div class="bg-white rounded-xl border border-slate-100 p-5 shadow-sm">
-                    <div class="flex justify-between items-start mb-2">
-                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Low Stock Items</span>
-                        <div class="w-8 h-8 rounded-lg bg-red-50 text-red-500 flex items-center justify-center"><i class="fas fa-exclamation-triangle text-xs"></i></div>
-                    </div>
-                    <div class="text-2xl font-bold text-red-600">${shortageItems.length}</div>
-                    <div class="text-[10px] font-bold text-red-400 mt-1 uppercase">Requires Attention</div>
-                </div>
-
-                <div class="bg-white rounded-xl border border-slate-100 p-5 shadow-sm">
-                    <div class="flex justify-between items-start mb-2">
-                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Incoming Today</span>
-                        <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-500 flex items-center justify-center"><i class="fas fa-truck-loading text-xs"></i></div>
-                    </div>
-                    <div class="text-2xl font-bold text-slate-800">${stockTxs.filter(t => t.type === 'IN' && new Date(t.date).toDateString() === new Date().toDateString()).length}</div>
-                    <div class="text-[10px] font-bold text-slate-400 mt-1 uppercase">GRN Records</div>
-                </div>
+        <div class="max-w-full mx-auto space-y-4 animate-fade-in pb-12 font-sans pt-2">
+            <!-- KPI Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                ${frappeCard('Total Active Items', items.length)}
+                ${frappeCard('Total Warehouses / Locations', locations.length)}
+                ${frappeCard('Total Stock Value', fmt(totalInventoryValue))}
             </div>
 
-            <!-- Main Charts Container -->
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <!-- Warehouse Distribution (Doughnut) -->
-                <div class="bg-white rounded-xl border border-slate-100 p-6 shadow-sm flex flex-col h-[400px]">
-                    <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest">Warehouse Wise Value</h3>
-                        <div class="flex gap-1">
-                            <button class="w-7 h-7 rounded bg-slate-50 text-slate-400 hover:bg-slate-100 transition-colors"><i class="fas fa-sync-alt text-[10px]"></i></button>
-                        </div>
-                    </div>
-                    <div class="flex-1 relative">
-                        <canvas id="inv_warehouse_chart"></canvas>
-                    </div>
-                </div>
+            <!-- Chart 1 -->
+            ${chartPanel('Warehouse wise Stock Value', 'Last synced just now', 'chartWhValue', 'h-[320px]', true)}
 
-                <!-- Stock In/Out Trends (Bar/Line) -->
-                <div class="bg-white rounded-xl border border-slate-100 p-6 shadow-sm flex flex-col h-[400px] lg:col-span-2">
-                    <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest">Inventory In/Out Trends</h3>
-                        <div class="flex gap-2">
-                            <select class="bg-slate-50 border-none rounded px-3 py-1 text-[10px] font-bold text-slate-500 uppercase outline-none cursor-pointer">
-                                <option>Last 6 Months</option>
-                                <option>Last Year</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="flex-1 relative">
-                        <canvas id="inv_trends_chart"></canvas>
-                    </div>
-                </div>
+            <!-- Chart Row 2 -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                ${chartPanel('Purchase Receipt Trends', 'Last synced just now', 'chartPurchaseTrends', 'h-[250px]', true)}
+                ${chartPanel('Delivery Trends', 'Last synced just now', 'chartDeliveryTrends', 'h-[250px]', true)}
             </div>
 
-            <!-- Detail Lists Grid -->
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <!-- Shortage List -->
-                <div class="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden flex flex-col min-h-[350px]">
-                    <div class="px-6 py-4 border-b border-slate-50 flex items-center justify-between bg-slate-50/10">
-                        <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                            <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
-                            Items below Min Stock
-                        </h3>
-                        <button onclick="navigateTo('inventory-report')" class="text-[10px] font-black text-blue-600 uppercase hover:underline">View Report</button>
+            <!-- Chart Row 3 -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                ${noDataPanel('Oldest Items')}
+                <div class="bg-white rounded-xl border border-gray-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] p-5 flex flex-col h-[330px]">
+                    <div class="flex justify-between items-start mb-6">
+                        <div>
+                            <h3 class="text-[15px] font-semibold text-gray-800">Item Shortage Summary</h3>
+                        </div>
+                        <div class="flex gap-2 items-center">
+                            <button class="w-7 h-7 rounded bg-gray-50 text-gray-500 hover:bg-gray-100 flex items-center justify-center transition-colors"><i class="fas fa-filter text-[10px]"></i></button>
+                            <button class="w-7 h-7 rounded bg-gray-50 text-gray-500 hover:bg-gray-100 flex items-center justify-center transition-colors"><span class="leading-none pb-2 font-bold tracking-widest text-[10px]">...</span></button>
+                        </div>
                     </div>
                     <div class="flex-1 overflow-y-auto">
+                        ${shortageItems.length === 0 ? '<div class="bg-[#f8f9fa] flex items-center justify-center w-full h-48 rounded-lg"><span class="text-sm text-gray-400">No Data</span></div>' : `
                         <table class="w-full text-left">
-                            <thead class="bg-slate-50 text-[8px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">
+                            <thead class="text-xs text-gray-500 border-b border-gray-100">
                                 <tr>
-                                    <th class="px-6 py-3">Item</th>
-                                    <th class="px-6 py-3 text-right">Min Stock</th>
-                                    <th class="px-6 py-3 text-right">Actual</th>
-                                    <th class="px-6 py-3 text-center">Deficit</th>
+                                    <th class="px-2 py-2 font-medium">Item Name</th>
+                                    <th class="px-2 py-2 font-medium text-right">Actual</th>
+                                    <th class="px-2 py-2 font-medium text-right">Min</th>
                                 </tr>
                             </thead>
-                            <tbody class="divide-y divide-slate-50">
-                                ${shortageItems.length === 0 ? '<tr><td colspan="4" class="py-20 text-center text-[10px] font-bold text-slate-300 uppercase">All stocks healthy! ðŸŽ🎉</td></tr>' : 
-                                    shortageItems.slice(0, 10).map(it => {
-                                        const stock = db.getInventoryStock(it.id);
-                                        const deficit = it.minStock - stock;
-                                        return `
-                                            <tr class="hover:bg-slate-50 transition-colors">
-                                                <td class="px-6 py-3.5">
-                                                    <div class="text-xs font-bold text-slate-700">${it.itemName}</div>
-                                                    <div class="text-[9px] text-slate-400 font-mono">${it.itemCode}</div>
-                                                </td>
-                                                <td class="px-6 py-3.5 text-right text-xs font-medium text-slate-400">${fmt(it.minStock)}</td>
-                                                <td class="px-6 py-3.5 text-right text-xs font-black text-red-600">${fmt(stock)}</td>
-                                                <td class="px-6 py-3.5 text-center">
-                                                    <span class="px-2 py-0.5 bg-red-50 text-red-500 rounded text-[10px] font-bold">-${fmt(deficit)}</span>
-                                                </td>
-                                            </tr>
-                                        `;
-                                    }).join('')}
+                            <tbody class="divide-y divide-gray-50 text-sm text-gray-700">
+                                ${shortageItems.map(it => `
+                                    <tr>
+                                        <td class="px-2 py-2 truncate max-w-[150px]">${it.itemName}</td>
+                                        <td class="px-2 py-2 text-right font-medium text-red-500">${db.getInventoryStock(it.id)}</td>
+                                        <td class="px-2 py-2 text-right text-gray-400">${it.minStock}</td>
+                                    </tr>
+                                `).join('')}
                             </tbody>
                         </table>
-                    </div>
-                </div>
-
-                <!-- Recent Activities -->
-                <div class="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden flex flex-col min-h-[350px]">
-                    <div class="px-6 py-4 border-b border-slate-50 flex items-center justify-between bg-slate-50/10">
-                        <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
-                             Recent Stock Movements
-                        </h3>
-                    </div>
-                    <div class="flex-1 overflow-y-auto p-6">
-                        <div class="space-y-4 relative before:absolute before:left-3.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-100">
-                            ${recentStockIn.map(tx => {
-                                const item = items.find(it => it.id === tx.itemId) || { itemName: 'Unknown Item' };
-                                return `
-                                    <div class="relative pl-10 group">
-                                        <div class="absolute left-1 top-1.5 w-5 h-5 rounded-full border-4 border-white bg-blue-500 group-hover:scale-125 transition-transform"></div>
-                                        <div class="text-xs font-black text-slate-800 uppercase tracking-tighter">${invDate(tx.date)}</div>
-                                        <div class="text-sm font-medium text-slate-600 mt-0.5">
-                                            Stock In: <span class="font-bold text-slate-800">${fmt(tx.qty)} ${item.unit || ''}</span> of ${item.itemName}
-                                        </div>
-                                        <div class="text-[10px] text-slate-400 mt-1 italic">${tx.notes || 'No notes'}</div>
-                                    </div>
-                                `;
-                            }).join('')}
-                            ${recentStockIn.length === 0 ? '<div class="text-center py-20 text-[10px] font-bold text-slate-300 uppercase">No recent activity</div>' : ''}
-                        </div>
+                        `}
                     </div>
                 </div>
             </div>
         </div>
     `;
 
-    // Initialize Charts
     setTimeout(() => {
-        // Warehouse Distribution Chart
-        const whCtx = document.getElementById('inv_warehouse_chart');
-        if (whCtx) {
-            new Chart(whCtx, {
-                type: 'doughnut',
+        if(window.initInventoryCharts) window.initInventoryCharts(warehouseValues, stockTxs);
+    }, 100);
+};
+
+window.initInventoryCharts = function(warehouseValues, stockTxs) {
+    if (typeof Chart === 'undefined') return;
+    const currentYear = new Date().getFullYear();
+
+    // 1. Warehouse Value
+    const ctxWh = document.getElementById('chartWhValue');
+    if (ctxWh) {
+        const labels = Object.keys(warehouseValues);
+        const data = Object.values(warehouseValues);
+        if (data.every(v => v === 0)) {
+            ctxWh.parentElement.innerHTML = '<div class="bg-[#f8f9fa] flex items-center justify-center w-full h-full rounded-lg"><span class="text-sm text-gray-400">No Data</span></div>';
+        } else {
+            new Chart(ctxWh, {
+                type: 'bar',
                 data: {
-                    labels: Object.keys(warehouseValues),
+                    labels: labels,
                     datasets: [{
-                        data: Object.values(warehouseValues),
-                        backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'],
-                        borderWidth: 0,
-                        hoverOffset: 10
+                        data: data,
+                        backgroundColor: '#818cf8',
+                        borderRadius: 4,
+                        barThickness: 40
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: {
-                        legend: { position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, font: { size: 10, weight: 'bold' } } },
-                        tooltip: { callbacks: { label: ctx => ` Rp ${fmt(ctx.parsed)}` } }
-                    },
-                    cutout: '70%'
-                }
-            });
-        }
-
-        // Trends Chart (Inventory In/Out)
-        const trendsCtx = document.getElementById('inv_trends_chart');
-        if (trendsCtx) {
-            const months = ['Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar'];
-            new Chart(trendsCtx, {
-                type: 'bar',
-                data: {
-                    labels: months,
-                    datasets: [
-                        { label: 'Stock In', data: [45, 62, 58, 85, 75, 92], backgroundColor: 'rgba(59, 130, 246, 0.2)', borderColor: '#3b82f6', borderWidth: 2, borderRadius: 5, type: 'bar' },
-                        { label: 'Stock Out', data: [38, 45, 50, 72, 60, 80], borderColor: '#f43f5e', borderWidth: 2, tension: 0.4, type: 'line', fill: false, pointRadius: 4 }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 12, font: { size: 10, weight: 'bold' } } } },
+                    plugins: { legend: { display: false } },
                     scales: {
-                        x: { grid: { display: false }, ticks: { font: { size: 10, weight: 'bold' }, color: '#94a3b8' } },
-                        y: { border: { display: false }, grid: { color: '#f1f5f9' }, ticks: { font: { size: 10 }, color: '#94a3b8' } }
+                        y: { display: false, grid: {display: false} },
+                        x: { grid: {display: false}, border: {display: false}, ticks: { color: '#6b7280', font: {size: 11} } }
                     }
                 }
             });
         }
-    }, 100);
+    }
+
+    // Prepare monthly data for trends
+    const purchaseMonthly = new Array(12).fill(0);
+    const deliveryMonthly = new Array(12).fill(0);
+
+    stockTxs.forEach(tx => {
+        const d = new Date(tx.date || tx.createdAt);
+        if (d.getFullYear() === currentYear) {
+            if (tx.type === 'IN') {
+                purchaseMonthly[d.getMonth()] += parseFloat(tx.qty || 0);
+            }
+            if (tx.type === 'OUT') {
+                deliveryMonthly[d.getMonth()] += parseFloat(tx.qty || 0);
+            }
+        }
+    });
+
+    // 2. Purchase Trends
+    const ctxPurchase = document.getElementById('chartPurchaseTrends');
+    if (ctxPurchase) {
+        if (purchaseMonthly.every(v => v === 0)) {
+            ctxPurchase.parentElement.innerHTML = '<div class="bg-[#f8f9fa] flex items-center justify-center w-full h-full rounded-lg"><span class="text-sm text-gray-400">No Data</span></div>';
+        } else {
+            new Chart(ctxPurchase, {
+                type: 'line',
+                data: {
+                    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                    datasets: [{
+                        label: 'Qty Received',
+                        data: purchaseMonthly,
+                        borderColor: '#f9a8d4', // pink
+                        borderWidth: 2,
+                        tension: 0.1,
+                        pointBackgroundColor: '#f9a8d4',
+                        pointRadius: purchaseMonthly.some(v => v > 0) ? 3 : 0,
+                        fill: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: '#f3f4f6', drawBorder: false }, ticks: { color: '#9ca3af', font: {size: 11} }, border: {display: false} },
+                        x: { grid: { display: false, drawBorder: false }, ticks: { color: '#9ca3af', font: {size: 11} }, border: {display: false} }
+                    }
+                }
+            });
+        }
+    }
+
+    // 3. Delivery Trends
+    const ctxDelivery = document.getElementById('chartDeliveryTrends');
+    if (ctxDelivery) {
+        if (deliveryMonthly.every(v => v === 0)) {
+            ctxDelivery.parentElement.innerHTML = '<div class="bg-[#f8f9fa] flex items-center justify-center w-full h-full rounded-lg"><span class="text-sm text-gray-400">No Data</span></div>';
+        } else {
+            new Chart(ctxDelivery, {
+                type: 'line',
+                data: {
+                    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+                    datasets: [{
+                        label: 'Qty Delivered',
+                        data: deliveryMonthly,
+                        borderColor: '#34d399', // emerald
+                        borderWidth: 2,
+                        tension: 0.1,
+                        pointBackgroundColor: '#34d399',
+                        pointRadius: deliveryMonthly.some(v => v > 0) ? 3 : 0,
+                        fill: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: '#f3f4f6', drawBorder: false }, ticks: { color: '#9ca3af', font: {size: 11} }, border: {display: false} },
+                        x: { grid: { display: false, drawBorder: false }, ticks: { color: '#9ca3af', font: {size: 11} }, border: {display: false} }
+                    }
+                }
+            });
+        }
+    }
 };
 
 // ——— 1. MASTER ITEM ————————————————————————————————————————
 function renderInventoryMaster() {
     const canEdit = getModulePermission('logistik').edit;
+    renderBreadcrumb(['Stock', 'Master Items']);
     document.getElementById('pageTitle').innerText = 'Master Item';
     const mc = document.getElementById('main-content');
     
@@ -285,185 +299,171 @@ function renderInventoryMaster() {
         items = items.filter(it => it.itemName.toLowerCase().includes(q) || it.itemCode.toLowerCase().includes(q));
     }
 
-    // Current month range for detailed mutation
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-    const allTxs = db.read('stockTransactions') || [];
-
-    // Calculate low stock count for current filtered items
-    const lowStockCount = items.filter(it => db.getInventoryStock(it.id) < it.minStock).length;
-
-    // --- GROUPING LOGIC ---
-    const categoryOrder = ['RAW_MATERIAL', 'MIXING_STOCK', 'OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK', 'FINISHED_GOODS'];
-    const grouped = {};
-    items.forEach(it => {
-        if (!grouped[it.category]) grouped[it.category] = [];
-        grouped[it.category].push(it);
+    // Sort items: Gudang Jadi first, then others by logical order, then alphabetical
+    const catOrder = {
+        FINISHED_GOODS: 1,
+        RAW_MATERIAL: 2,
+        OVEN_BASAH_STOCK: 3,
+        OVEN_KERING_STOCK: 4,
+        BULK_STOCK: 5
+    };
+    items.sort((a, b) => {
+        const orderA = catOrder[a.category] || 99;
+        const orderB = catOrder[b.category] || 99;
+        if (orderA !== orderB) return orderA - orderB;
+        return (a.itemName || '').localeCompare(b.itemName || '');
     });
-
-    let mainHtml = '';
-    
-    if (items.length === 0) {
-        mainHtml = `<tr><td colspan="8" class="py-12 text-center text-gray-400 italic font-medium">Belum ada item yang sesuai filter.</td></tr>`;
-    } else {
-        // Use predefined order for sorting, then append any remaining categories
-        const categoriesToShow = [...categoryOrder];
-        Object.keys(grouped).forEach(cat => {
-            if (!categoriesToShow.includes(cat)) categoriesToShow.push(cat);
-        });
-
-        categoriesToShow.forEach(cat => {
-            const catItems = grouped[cat];
-            if (!catItems || catItems.length === 0) return;
-
-            // Add Category Header
-            mainHtml += `
-                <tr class="bg-gray-50/80 border-y border-gray-100 sticky top-0 z-10">
-                    <td colspan="8" class="py-3 px-6">
-                        <div class="flex items-center gap-3">
-                            <span class="w-2 h-6 rounded-full ${CATEGORY_COLORS[cat]?.split(' ')[0] || 'bg-slate-400'}"></span>
-                            <span class="text-xs font-black text-slate-800 uppercase tracking-[0.2em]">${CATEGORY_LABELS[cat] || cat}</span>
-                            <span class="px-2 py-0.5 bg-white border border-slate-200 rounded-full text-[10px] font-bold text-slate-400">${catItems.length} Item</span>
-                        </div>
-                    </td>
-                </tr>
-            `;
-
-            // Add Item Rows
-            catItems.forEach(it => {
-                const stock = db.getInventoryStock(it.id);
-                const isLow = stock < it.minStock;
-                const isActive = it.status !== 'INACTIVE';
-
-                mainHtml += `
-                    <tr class="border-b border-gray-50 hover:bg-slate-50/50 group transition-all ${isLow ? 'bg-red-50/20' : ''}">
-                        <td class="py-4 px-6 text-xs font-bold text-slate-400 font-mono tracking-tight">${it.itemCode}</td>
-                        <td class="py-4 px-6">
-                            <div class="flex items-center gap-2">
-                                <span class="text-sm font-black text-slate-700 group-hover:text-blue-600 transition-colors">${it.itemName}</span>
-                                ${isLow ? '<span class="px-1.5 py-0.5 bg-red-100 text-red-600 rounded text-[9px] font-black uppercase tracking-tighter animate-pulse">Low Stock</span>' : ''}
-                            </div>
-                        </td>
-                        <td class="py-4 px-6">
-                            <span class="px-2.5 py-1 rounded-lg text-[10px] font-bold ${CATEGORY_COLORS[it.category] || 'bg-slate-100 text-slate-600'} border border-black/5 shadow-sm">
-                                ${CATEGORY_LABELS[it.category] || it.category}
-                            </span>
-                        </td>
-                        <td class="py-4 px-6 text-[11px] font-black text-slate-400 uppercase tracking-widest">${it.unit}</td>
-                        <td class="py-4 px-6 text-sm text-right font-black ${isLow ? 'text-red-600' : 'text-slate-800'}">
-                            ${invFmt(stock)}
-                        </td>
-                        <td class="py-4 px-6 text-sm text-right text-slate-300 font-bold">${invFmt(it.minStock)}</td>
-                        <td class="py-4 px-6">
-                            <div class="flex items-center gap-2">
-                                <span class="w-1.5 h-1.5 rounded-full ${isActive ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-slate-300'}"></span>
-                                <span class="text-[10px] font-bold ${isActive ? 'text-green-600' : 'text-slate-400'} uppercase tracking-widest">${isActive ? 'Active' : 'Non-Active'}</span>
-                            </div>
-                        </td>
-                        <td class="py-4 px-6 text-right whitespace-nowrap">
-                            ${canEdit ? `
-                                <div class="flex items-center justify-end gap-1">
-                                    ${isCurrentUserAdmin() ? `
-                                        <button onclick="openStockAdjustmentModal('${it.id}')" class="p-2 text-orange-500 hover:bg-orange-50 rounded-lg transition-all" title="Penyesuaian Stok"><i class="fas fa-sync-alt"></i></button>
-                                        <button onclick="deleteInventoryItem('${it.id}')" class="p-2 text-red-400 hover:bg-red-50 rounded-lg transition-all" title="Hapus Permanen"><i class="fas fa-trash-alt"></i></button>
-                                    ` : ''}
-                                    <button onclick="openInventoryItemModal('${it.id}')" class="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-all" title="Edit Item"><i class="fas fa-edit"></i></button>
-                                    <button onclick="toggleInventoryItemStatus('${it.id}')" class="p-2 ${isActive ? 'text-green-500' : 'text-slate-300'} hover:bg-slate-100 rounded-lg transition-all" title="${isActive ? 'Non-Aktifkan' : 'Aktifkan'}"><i class="fas fa-${isActive ? 'toggle-on' : 'toggle-off'}"></i></button>
-                                </div>
-                            ` : '<span class="text-[10px] font-bold text-slate-300 uppercase italic">ReadOnly</span>'}
-                        </td>
-                    </tr>
-                `;
-            });
-        });
-    }
 
     const catOpts = Object.entries(CATEGORY_LABELS)
         .map(([v, l]) => `<option value="${v}" ${f.category === v ? 'selected' : ''}>${l}</option>`)
         .join('');
 
     mc.innerHTML = `
-    <div class="space-y-4">
-        ${lowStockCount ? `<div class="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700"><i class="fas fa-exclamation-triangle"></i><span><strong>${lowStockCount} item</strong> di bawah minimum stok (Total Aktif)!</span></div>` : ''}
-        
-        <!-- Standard Filter Bar -->
-        <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-5 overflow-hidden">
-            <div onclick="toggleInvMasterFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
-                <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
-                    <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
-                    ${(!window._uiState.invMasterFilterOpen && (f.category || f.name)) ? 
-                        `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
-                </h3>
-                <div class="flex items-center gap-3">
-                    <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.invMasterFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
-                    <i class="fas fa-chevron-${window._uiState.invMasterFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
+    <div class="space-y-4 animate-in fade-in duration-500">
+        <!-- Compact Filter Bar -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+            <div class="flex flex-wrap items-center gap-4">
+                <!-- Search Input -->
+                <div class="flex-1 min-w-[250px] relative group">
+                    <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors"></i>
+                    <input type="text" id="filter_item_name" onkeyup="updateInventoryFilters()" value="${f.name}" placeholder="Search Code or Item Name..." 
+                        class="w-full pl-12 pr-4 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-semibold text-slate-700 placeholder:text-slate-300 focus:bg-white focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all">
                 </div>
-            </div>
 
-            <div class="${window._uiState.invMasterFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                    <div class="md:col-span-2">
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Pencarian Barang</label>
-                        <div class="relative">
-                            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                            <input type="text" id="filter_item_name" value="${f.name}" placeholder="Cari Nama atau Kode Item..." 
-                                class="w-full border-2 border-slate-100 rounded-lg pl-10 pr-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white">
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Kategori</label>
-                        <select id="filter_item_category" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none bg-slate-50/50 focus:bg-white cursor-pointer font-sans transition-all">
-                            <option value="">-- Semua Kategori --</option>
-                            ${catOpts}
-                        </select>
-                    </div>
+                <!-- Category Filter -->
+                <div class="relative min-w-[180px]">
+                    <i class="fas fa-filter absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"></i>
+                    <select id="filter_item_category" onchange="updateInventoryFilters()" 
+                        class="w-full pl-11 pr-10 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-bold text-slate-700 appearance-none cursor-pointer focus:bg-white focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/5 transition-all outline-none">
+                        <option value="">All Categories</option>
+                        ${catOpts}
+                    </select>
+                    <i class="fas fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none text-[10px]"></i>
                 </div>
-                <div class="flex gap-2 pt-4 mt-4 border-t border-slate-50">
-                    <button onclick="updateInventoryFilters()" class="bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
-                        <i class="fas fa-search mr-2"></i> TAMPILKAN DATA
+
+                <!-- Actions -->
+                <div class="flex gap-3 ml-auto">
+                    ${canEdit ? `
+                    <button onclick="renderInventoryItemForm()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl transition-all text-sm font-bold shadow-lg shadow-indigo-500/20 flex items-center gap-2">
+                        <i class="fas fa-plus"></i> New Item
                     </button>
-                    <button onclick="resetInventoryFilters()" class="bg-slate-50 hover:bg-slate-100 text-slate-400 px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">
-                        <i class="fas fa-undo mr-2"></i> RESET
+                    ` : ''}
+                    <button onclick="resetInventoryFilters()" class="bg-white border border-slate-200 text-slate-600 px-5 py-2.5 rounded-xl hover:bg-slate-50 transition-all text-sm font-bold" title="Reset Filters">
+                        <i class="fas fa-sync-alt"></i>
                     </button>
                 </div>
             </div>
         </div>
 
-        <div class="bg-white rounded-lg shadow-sm border border-gray-100">
-            <div class="flex justify-between items-center p-4 sm:p-6 border-b border-gray-100">
-                <h2 class="text-lg font-black text-gray-800 uppercase tracking-tight flex items-center gap-2">
-                    <i class="fas fa-boxes text-blue-600"></i> Master Barang / Stok
-                </h2>
-                <div class="flex gap-2">
-                    ${canEdit ? `
-                    <button onclick="openInventoryItemModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm font-medium">
-                        <i class="fas fa-plus mr-2"></i>Tambah Item
-                    </button>
-                    ` : `
-                    <span class="text-xs font-medium text-orange-500 bg-orange-50 border border-orange-100 px-3 py-1.5 rounded-lg flex items-center gap-2">
-                        <i class="fas fa-info-circle"></i> Mode Lihat Saja
-                    </span>
-                    `}
+        <!-- Master Item Table Card -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left" id="inventory_table">
+                    <thead class="bg-slate-50/50 border-b border-slate-100">
+                        <tr>
+                            <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Item Information</th>
+                            <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Category</th>
+                            <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Unit</th>
+                            <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Stock</th>
+                            <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Min Stock</th>
+                            <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                            <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inventory_table_body" class="divide-y divide-slate-50">
+                        ${renderInventoryRows(items)}
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="p-4 bg-slate-50/50 border-t border-slate-100 flex justify-between items-center">
+                <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Showing ${items.length} Registered Items</span>
+                <div class="flex gap-1">
+                    <!-- Pagination could go here if needed -->
                 </div>
             </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead><tr class="bg-gray-50 border-b border-gray-200">
-                        <th class="py-3 px-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Kode</th>
-                        <th class="py-3 px-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Nama Item</th>
-                        <th class="py-3 px-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Kategori</th>
-                        <th class="py-3 px-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Unit</th>
-                        <th class="py-3 px-4 text-[11px] font-black text-slate-400 uppercase tracking-widest text-right">Stok Saat Ini</th>
-                        <th class="py-3 px-4 text-[11px] font-black text-slate-400 uppercase tracking-widest text-right text-slate-300">Min. Stok</th>
-                        <th class="py-3 px-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-                        <th class="py-3 px-4 text-[11px] font-black text-slate-400 uppercase tracking-widest text-right">Aksi</th>
-                    </tr></thead>
-                    <tbody>${mainHtml}</tbody>
-                </table>
+
+            <div id="inventory_empty_state" class="${items.length === 0 ? '' : 'hidden'} py-20 flex flex-col items-center justify-center text-center">
+                <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-300 mb-4 text-2xl">
+                    <i class="fas fa-boxes"></i>
+                </div>
+                <p class="text-sm font-medium text-slate-500">No items found matching your filters.</p>
             </div>
         </div>
     </div>`;
+}
+
+function renderInventoryRows(items) {
+    const canEdit = getModulePermission('logistik').edit;
+    if (items.length === 0) return '';
+    
+    return items.map(it => {
+        const stock = db.getInventoryStock(it.id);
+        const isLow = stock < (it.minStock || 0);
+        const isActive = it.status !== 'INACTIVE';
+        
+        return `
+        <tr class="hover:bg-slate-50/80 transition-colors group ${isLow ? 'bg-red-50/10' : ''}">
+            <td class="py-4 px-5">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg ${isLow ? 'bg-red-50 text-red-500' : 'bg-indigo-50 text-indigo-600'} flex items-center justify-center text-[10px] font-black shrink-0 border border-black/5">
+                        <i class="fas fa-cube"></i>
+                    </div>
+                    <div>
+                        <div class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                            ${it.itemName}
+                            ${isLow ? '<span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" title="Low Stock"></span>' : ''}
+                        </div>
+                        <div class="text-[11px] text-slate-400 font-mono font-medium">${it.itemCode}</div>
+                    </div>
+                </div>
+            </td>
+            <td class="py-4 px-5">
+                <span class="px-2.5 py-1 rounded-lg text-[10px] font-bold ${CATEGORY_COLORS[it.category] || 'bg-slate-100 text-slate-600'} border border-black/5 shadow-sm">
+                    ${CATEGORY_LABELS[it.category] || it.category}
+                </span>
+            </td>
+            <td class="py-4 px-5 text-[11px] font-black text-slate-400 uppercase tracking-widest">${it.unit}</td>
+            <td class="py-4 px-5 text-sm text-right font-black ${isLow ? 'text-red-600' : 'text-slate-800'}">
+                ${invFmt(stock)}
+            </td>
+            <td class="py-4 px-5 text-sm text-right text-slate-400 font-bold">${invFmt(it.minStock)}</td>
+            <td class="py-4 px-5">
+                <div class="flex items-center gap-2">
+                    <span class="w-1.5 h-1.5 rounded-full ${isActive ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.3)]' : 'bg-slate-300'}"></span>
+                    <span class="text-[10px] font-bold ${isActive ? 'text-green-600' : 'text-slate-400'} uppercase tracking-widest">${isActive ? 'Active' : 'Non-Active'}</span>
+                </div>
+            </td>
+            <td class="py-4 px-5 text-right">
+                ${canEdit ? `
+                <div class="flex justify-end">
+                    <div class="relative" onmouseenter="this.querySelector('.dropdown-menu').classList.remove('hidden')" onmouseleave="this.querySelector('.dropdown-menu').classList.add('hidden')">
+                        <button class="flex items-center gap-2 px-3 py-1.5 rounded-[10px] border border-slate-200 text-slate-700 bg-[#f8fafc] hover:bg-slate-100 transition-colors text-[12px] font-bold shadow-sm whitespace-nowrap">
+                            Pilih Aksi...
+                            <i class="fas fa-chevron-down text-[10px] text-slate-400"></i>
+                        </button>
+                        <div class="dropdown-menu hidden absolute right-0 top-full mt-1 w-40 bg-white rounded-xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.1)] border border-slate-100 z-[99] overflow-hidden text-left">
+                            <div class="py-1 flex flex-col">
+                                <button onclick="renderInventoryItemForm('${it.id}')" class="text-left px-4 py-2 text-xs font-bold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50/50 flex items-center gap-2 transition-colors">
+                                    <i class="fas fa-edit w-4"></i> Edit Item
+                                </button>
+                                ${isCurrentUserAdmin() ? `
+                                <button onclick="openStockAdjustmentModal('${it.id}')" class="text-left px-4 py-2 text-xs font-bold text-slate-600 hover:text-orange-600 hover:bg-orange-50/50 flex items-center gap-2 transition-colors">
+                                    <i class="fas fa-sync-alt w-4"></i> Adjustment
+                                </button>
+                                <div class="h-px bg-slate-100 my-1 mx-2"></div>
+                                <button onclick="deleteInventoryItem('${it.id}')" class="text-left px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50/50 flex items-center gap-2 transition-colors">
+                                    <i class="fas fa-trash w-4"></i> Hapus Item
+                                </button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                ` : ''}
+            </td>
+        </tr>`;
+    }).join('');
 }
 
 window.updateInventoryFilters = () => {
@@ -479,7 +479,8 @@ window.resetInventoryFilters = () => {
     renderInventoryMaster();
 };
 
-window.openInventoryItemModal = (id = null) => {
+window.renderInventoryItemForm = (id = null) => {
+    if (window.pushCurrentToHistory) window.pushCurrentToHistory();
     const item = id ? db.findById('inventoryItems', id) : null;
     const units = ['KG', 'GR', 'L', 'PCS', 'BOX', 'SAK', 'KARTON', 'LITER'];
     const unitOpts = units.map(u => `<option ${item?.unit === u ? 'selected' : ''}>${u}</option>`).join('');
@@ -487,62 +488,154 @@ window.openInventoryItemModal = (id = null) => {
     // Dynamic Categories based on context
     const allCats = [
         ['RAW_MATERIAL', 'Bahan Baku'], 
-        ['MIXING_STOCK', 'Campuran'], 
         ['OVEN_BASAH_STOCK', 'Oven Basah'], 
         ['OVEN_KERING_STOCK', 'Oven Kering'], 
         ['FINISHED_GOODS', 'Gudang Jadi']
     ];
     
-    const pageTitle = document.getElementById('pageTitle')?.innerText;
+    const pageTitleText = document.getElementById('pageTitle')?.innerText;
     let filteredCats = allCats;
-    if (pageTitle === 'Stok Produksi') {
-        filteredCats = allCats.filter(([v]) => ['MIXING_STOCK', 'OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'].includes(v));
+    if (pageTitleText === 'Stok Produksi') {
+        filteredCats = allCats.filter(([v]) => ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'].includes(v));
     }
 
     const catOpts = filteredCats.map(([v, l]) => `<option value="${v}" ${item?.category === v ? 'selected' : ''}>${l}</option>`).join('');
     const previewCode = item ? item.itemCode : '(auto-generate)';
 
-    const body = `<div class="space-y-4">
-        <div class="grid grid-cols-2 gap-4">
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Kode Item</label>
-                <input type="text" id="inv_code_preview" value="${previewCode}" class="w-full border border-gray-200 rounded px-3 py-2 bg-gray-50 text-gray-500 text-sm" readonly></div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Nama Item <span class="text-red-500">*</span></label>
-                <input type="text" id="inv_name" value="${item?.itemName || ''}" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"></div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Kategori <span class="text-red-500">*</span></label>
-                <select id="inv_category" onchange="invUpdateCodePreview()" class="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500">
-                    <option value="">-- Pilih --</option>${catOpts}
-                </select></div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Satuan <span class="text-red-500">*</span></label>
-                <select id="inv_unit" class="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500">${unitOpts}</select></div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Harga Beli / Cost per Unit</label>
-                <input type="number" id="inv_price" value="${item?.purchasePrice ?? 0}" min="0" step="0.01" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"></div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Minimum Stok</label>
-                <input type="number" id="inv_min_stock" value="${item?.minStock ?? 0}" min="0" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"></div>
-            <div><label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                <select id="inv_status" class="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500">
-                    <option value="ACTIVE" ${(!item || item.status !== 'INACTIVE') ? 'selected' : ''}>Active</option>
-                    <option value="INACTIVE" ${item?.status === 'INACTIVE' ? 'selected' : ''}>Non-Active</option>
-                </select></div>
-            ${(!id && isCurrentUserAdmin()) ? `
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1 font-bold text-blue-600">Awal Stok (Starting Stock)</label>
-                <input type="number" id="inv_initial_stock" value="0" min="0" class="w-full border border-blue-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 bg-blue-50">
-            </div>` : ''}
+    const isProduction = pageTitleText === 'Stok Produksi' || (window._currentView && window._currentView.includes('production'));
+    renderBreadcrumb([isProduction ? 'Produksi' : 'Stock', 'Master Items', id ? 'Edit Item' : 'New Item']);
+    document.getElementById('pageTitle').innerText = id ? 'Edit Item Master' : 'Tambah Item Baru';
+    const mc = document.getElementById('main-content');
+
+    mc.innerHTML = `
+    <div class="w-full space-y-6 animate-fade-in pb-20">
+        <!-- Header Section -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+            <div class="flex justify-between items-center mb-6">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
+                        <i class="fas fa-boxes text-xl"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-bold text-slate-800">${id ? 'Edit Item Master' : 'Tambah Item Baru'}</h2>
+                        <p class="text-xs text-slate-500">Lengkapi detail informasi produk/barang inventaris.</p>
+                    </div>
+                </div>
+                <div class="flex gap-3">
+                    <button onclick="renderInventoryMaster()" class="px-6 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all">Batal</button>
+                    <button onclick="saveInventoryItem('${id || ''}')" class="px-8 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20">Simpan Item</button>
+                </div>
+            </div>
+
+            <div class="space-y-8">
+                <!-- Basic Info Card -->
+                <div class="bg-slate-50/50 p-6 rounded-2xl border border-slate-100 relative group transition-all hover:bg-white hover:shadow-md">
+                    <div class="flex justify-between items-center mb-6">
+                        <div>
+                            <h4 class="text-[11px] font-black text-indigo-600 uppercase tracking-widest">Informasi Dasar</h4>
+                            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Identitas Produk & Klasifikasi</p>
+                        </div>
+                        <div class="px-4 py-2 bg-white border border-slate-200 rounded-xl shadow-sm text-center min-w-[120px]">
+                            <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Item Code</span>
+                            <span class="text-sm font-black text-slate-700 block font-mono" id="inv_code_preview_label">${previewCode}</span>
+                            <input type="hidden" id="inv_code_preview" value="${previewCode}">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="md:col-span-2">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Nama Item / Produk <span class="text-red-500">*</span></label>
+                            <input type="text" id="inv_name" value="${item?.itemName || ''}" class="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 outline-none transition-all shadow-sm" placeholder="cth: Semen Padang 50kg">
+                        </div>
+
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Kategori <span class="text-red-500">*</span></label>
+                            <div class="relative">
+                                <select id="inv_category" onchange="invUpdateCodePreview()" class="w-full bg-white border border-slate-200 rounded-xl pl-4 pr-10 py-3 text-sm font-bold text-slate-700 focus:border-indigo-400 outline-none transition-all appearance-none cursor-pointer shadow-sm">
+                                    <option value="">-- Pilih Kategori --</option>${catOpts}
+                                </select>
+                                <i class="fas fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none text-xs"></i>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Satuan Dasar <span class="text-red-500">*</span></label>
+                            <div class="relative">
+                                <select id="inv_unit" class="w-full bg-white border border-slate-200 rounded-xl pl-4 pr-10 py-3 text-sm font-bold text-slate-700 focus:border-indigo-400 outline-none transition-all appearance-none cursor-pointer shadow-sm">
+                                    ${unitOpts}
+                                </select>
+                                <i class="fas fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none text-xs"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Parameters Card -->
+                <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm relative group transition-all hover:shadow-lg">
+                    <div class="mb-6">
+                        <h4 class="text-[11px] font-black text-orange-600 uppercase tracking-widest">Parameter Stok & Harga</h4>
+                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Estimasi biaya dan ambang batas stok</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Harga Beli Rata-rata (Avg Cost)</label>
+                            <div class="relative">
+                                <span class="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-300">Rp</span>
+                                <input type="number" id="inv_price" value="${item?.purchasePrice ?? 0}" min="0" step="0.01" class="w-full bg-slate-50 border border-slate-100 rounded-xl pl-10 pr-4 py-3 text-sm font-bold text-slate-700 focus:ring-4 focus:ring-orange-500/5 focus:border-orange-300 outline-none transition-all">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Safety Stock (Min. Stok)</label>
+                            <div class="relative">
+                                <input type="number" id="inv_min_stock" value="${item?.minStock ?? 0}" min="0" class="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:ring-4 focus:ring-orange-500/5 focus:border-orange-300 outline-none transition-all">
+                                <span class="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-300 uppercase">${item?.unit || 'Unit'}</span>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Status Ketersediaan</label>
+                            <div class="relative">
+                                <select id="inv_status" class="w-full bg-slate-50 border border-slate-100 rounded-xl pl-4 pr-10 py-3 text-sm font-bold text-slate-700 focus:border-indigo-400 outline-none transition-all appearance-none cursor-pointer">
+                                    <option value="ACTIVE" ${(!item || item.status !== 'INACTIVE') ? 'selected' : ''}>Active</option>
+                                    <option value="INACTIVE" ${item?.status === 'INACTIVE' ? 'selected' : ''}>Non-Active</option>
+                                </select>
+                                <i class="fas fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none text-xs"></i>
+                            </div>
+                        </div>
+
+                        ${(!id && isCurrentUserAdmin()) ? `
+                        <div>
+                            <label class="block text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-2 ml-1 font-bold">Stok Awal (Initial Balance)</label>
+                            <div class="relative">
+                                <input type="number" id="inv_initial_stock" value="0" min="0" class="w-full bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 text-sm font-black text-indigo-700 focus:border-indigo-400 outline-none transition-all">
+                                <i class="fas fa-warehouse absolute right-4 top-1/2 -translate-y-1/2 text-indigo-200"></i>
+                            </div>
+                        </div>` : ''}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Actions -->
+            <div class="mt-10 pt-8 border-t border-slate-100 flex justify-end gap-3">
+                <button onclick="renderInventoryMaster()" class="px-8 py-3 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all">Batal</button>
+                <button onclick="saveInventoryItem('${id || ''}')" class="px-12 py-3 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/25">Simpan Data Item</button>
+            </div>
         </div>
     </div>`;
-
-    const footer = `
-        <button onclick="saveInventoryItem('${id || ''}')" class="w-full sm:w-auto inline-flex justify-center rounded-md bg-blue-600 px-4 py-2 text-white text-sm font-medium hover:bg-blue-700 sm:ml-3">Simpan</button>
-        <button onclick="closeModal()" class="mt-3 sm:mt-0 w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 px-4 py-2 bg-white text-gray-700 text-sm font-medium sm:ml-3">Batal</button>`;
-    showModal(id ? 'Edit Item' : 'Tambah Item Baru', body, footer, 'xl');
 };
 
 window.invUpdateCodePreview = () => {
     const cat = document.getElementById('inv_category')?.value;
     if (!cat) return;
     const preview = document.getElementById('inv_code_preview');
-    if (preview && preview.value.includes('(auto-generate)') || preview.value.includes('(preview)')) {
-        preview.value = db.generateItemCode(cat) + ' (preview)';
+    const label = document.getElementById('inv_code_preview_label');
+    
+    if (preview && (preview.value.includes('(auto-generate)') || preview.value.includes('(preview)'))) {
+        const newCode = db.generateItemCode(cat) + ' (preview)';
+        preview.value = newCode;
+        if (label) label.innerText = newCode;
     }
 
     // Auto-suffix name for Oven categories
@@ -610,7 +703,7 @@ window.saveInventoryItem = (id) => {
         showToast('Item baru berhasil ditambahkan');
     }
     closeModal();
-    refreshStockMasterView();
+    renderInventoryMaster();
 };
 
 window.toggleInventoryItemStatus = (id) => {
@@ -705,7 +798,6 @@ window.deleteInventoryItem = (id) => {
     refreshStockMasterView();
 };
 
-// â”€â”€â”€ STOCK ADJUSTMENT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 window.openStockAdjustmentModal = (itemId) => {
     if (!isCurrentUserAdmin()) { showToast('Akses ditolak: Hanya Admin yang bisa melakukan penyesuaian stok.', 'error'); return; }
     const item = db.findById('inventoryItems', itemId);
@@ -713,53 +805,68 @@ window.openStockAdjustmentModal = (itemId) => {
     const currentStock = db.getInventoryStock(itemId);
 
     const body = `
-        <div class="space-y-4">
-            <div class="bg-orange-50 border border-orange-200 rounded-lg p-3 text-xs text-orange-700 flex items-start gap-2">
-                <i class="fas fa-exclamation-triangle mt-0.5"></i>
-                <div>
-                    <strong>Penyesuaian Stok (Stock Adjustment)</strong><br>
-                    Gunakan fitur ini untuk menyesuaikan stok sistem dengan stok fisik di gudang. 
-                    Sistem akan otomatis membuat transaksi masuk/keluar untuk mencocokkan jumlahnya.
-                </div>
+    <div class="space-y-6">
+        <div class="p-4 bg-orange-50 border border-orange-100 rounded-2xl text-[10px] text-orange-700 font-bold uppercase tracking-widest leading-relaxed flex items-center gap-3">
+            <div class="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center text-orange-500 shadow-sm flex-shrink-0">
+                <i class="fas fa-sync-alt text-sm"></i>
             </div>
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Kode Item</label>
-                    <input type="text" value="${item.itemCode}" readonly class="w-full border border-gray-200 rounded px-3 py-2 text-sm bg-gray-50 text-gray-500">
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Nama Item</label>
-                    <input type="text" value="${item.itemName}" readonly class="w-full border border-gray-200 rounded px-3 py-2 text-sm bg-gray-50 text-gray-500">
-                </div>
+            <span>Gunakan fitur ini untuk mencocokkan stok sistem dengan stok fisik di gudang.</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+            <div class="p-4 bg-slate-50/50 rounded-2xl border border-slate-100">
+                <label class="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Kode Item</label>
+                <div class="text-xs font-black text-slate-700 font-mono">${item.itemCode}</div>
             </div>
-            <div class="grid grid-cols-2 gap-6 p-4 bg-gray-50 rounded-xl border border-gray-100">
-                <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1 text-center">Stok di Sistem</label>
-                    <div class="text-2xl font-black text-center text-gray-400">${invFmt(currentStock)} <span class="text-xs font-normal">${item.unit}</span></div>
+            <div class="p-4 bg-slate-50/50 rounded-2xl border border-slate-100">
+                <label class="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Nama Item</label>
+                <div class="text-xs font-black text-slate-700 truncate">${item.itemName}</div>
+            </div>
+        </div>
+
+        <div class="bg-white p-6 rounded-2xl border-2 border-slate-100 shadow-sm relative overflow-hidden">
+            <div class="flex flex-col items-center gap-6 relative z-10">
+                <div class="text-center">
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3">STOK DI SISTEM</label>
+                    <div class="flex items-baseline justify-center gap-2">
+                        <span class="text-3xl font-black text-slate-300">${invFmt(currentStock)}</span>
+                        <span class="text-[10px] font-black text-slate-300 uppercase">${item.unit}</span>
+                    </div>
                 </div>
-                <div class="flex items-center justify-center text-gray-300">
-                    <i class="fas fa-arrow-right fa-2x"></i>
+
+                <div class="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center text-blue-200">
+                    <i class="fas fa-chevron-down text-lg"></i>
                 </div>
-                <div class="col-span-2">
-                    <label class="block text-sm font-bold text-blue-800 text-center mb-2">STOK FISIK AKTUAL (HASIL OPNAME)</label>
-                    <div class="flex items-center justify-center gap-3">
-                        <input type="number" id="adj_physical_stock" value="${currentStock}" min="0" step="0.01" 
-                            class="w-48 text-center text-3xl font-black border-2 border-blue-500 rounded-xl px-4 py-3 text-blue-600 focus:ring-4 focus:ring-blue-100">
-                        <span class="text-lg font-bold text-gray-500">${item.unit}</span>
+
+                <div class="w-full text-center">
+                    <label class="block text-[10px] font-black text-blue-600 uppercase tracking-[0.2em] mb-4">STOK FISIK AKTUAL (OPNAME)</label>
+                    <div class="flex flex-col items-center gap-2">
+                        <div class="relative group">
+                            <input type="number" id="adj_physical_stock" value="${currentStock}" min="0" step="0.01" 
+                                class="w-full max-w-[200px] text-center text-4xl font-black border-b-4 border-blue-500 pb-2 text-blue-600 outline-none transition-all focus:border-blue-700 bg-transparent">
+                        </div>
+                        <span class="text-xs font-black text-slate-400 uppercase tracking-widest mt-2">${item.unit}</span>
                     </div>
                 </div>
             </div>
-            <div>
-                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Alasan Penyesuaian</label>
-                <textarea id="adj_notes" rows="2" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500" placeholder="cth: Hasil stok opname bulanan, barang rusak, dll"></textarea>
-            </div>
+            
+            <!-- Subtle background icon -->
+            <i class="fas fa-clipboard-check absolute -bottom-6 -right-6 text-8xl text-slate-50/50 -rotate-12"></i>
         </div>
-    `;
+
+        <div>
+            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Alasan Penyesuaian / Catatan Opname</label>
+            <textarea id="adj_notes" rows="2" class="w-full border-2 border-slate-100 rounded-2xl px-4 py-3 text-xs font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50" placeholder="cth: Hasil stok opname bulanan, barang rusak, dll"></textarea>
+        </div>
+    </div>`;
 
     const footer = `
-        <button onclick="saveStockAdjustment('${itemId}')" class="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-blue-700 shadow-md">Simpan Penyesuaian</button>
-        <button onclick="closeModal()" class="px-6 py-2 text-sm font-bold text-gray-500 hover:bg-gray-100 rounded-lg">Batal</button>
-    `;
+        <div class="flex gap-3 w-full sm:w-auto">
+            <button onclick="closeModal()" class="flex-1 sm:flex-none px-6 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all">Batal</button>
+            <button onclick="saveStockAdjustment('${itemId}')" class="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700 text-white px-8 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-200 transition-all active:scale-95 flex items-center justify-center gap-2">
+                <i class="fas fa-check-circle"></i> SIMPAN PENYESUAIAN
+            </button>
+        </div>`;
     showModal('Penyesuaian Stok', body, footer, 'max-w-md');
 };
 
@@ -874,12 +981,22 @@ window.openInventoryConversionModal = (preSelectedId = null) => {
             <!-- Kolom Kiri: Sumber -->
             <div class="space-y-6">
                 <p class="text-xs font-black text-blue-600 uppercase tracking-[0.2em] border-b-2 border-blue-50 pb-2">Data Produk</p>
-                <div>
+                <div class="relative">
                     <label class="block text-xs font-bold text-gray-500 mb-2">Produk yang mau di konversi</label>
-                    <select id="conv_from_item" onchange="updateConversionSourceInfo()" class="w-full border-2 border-gray-200 rounded-xl px-4 py-4 text-base font-black text-gray-800 bg-white focus:border-blue-500 outline-none shadow-sm">
-                        <option value="">-- Pilih Produk --</option>
-                        ${items.map(i => `<option value="${i.id}" ${i.id === preSelectedId ? 'selected' : ''}>${i.itemCode} - ${i.itemName}</option>`).join('')}
-                    </select>
+                    <div id="conv_from_trigger" onclick="openProductSearch('conv_from', 'FINISHED_GOODS')" class="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-base font-black text-slate-400 cursor-pointer hover:bg-slate-50 transition-all flex justify-between items-center group">
+                        <span id="conv_from_label" class="truncate pr-2">-- Pilih Produk --</span>
+                        <i class="fas fa-chevron-down text-xs text-slate-300 group-hover:text-slate-400 transition-colors"></i>
+                    </div>
+                    <input type="hidden" id="conv_from_item" onchange="updateConversionSourceInfo()">
+                    <div id="conv_from_results_container" class="absolute z-[100] top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-[0_15px_40px_rgba(0,0,0,0.12)] hidden border border-slate-100 overflow-hidden min-w-[320px]">
+                        <div class="p-3 border-b border-slate-50">
+                            <div class="relative">
+                                <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+                                <input type="text" id="conv_from_search_input" placeholder="Ketik kode atau nama..." class="w-full bg-slate-50 border border-blue-100 rounded-lg pl-9 pr-3 py-2 text-xs focus:border-blue-400 outline-none transition-all font-medium">
+                            </div>
+                        </div>
+                        <div id="conv_from_results" class="max-h-[300px] overflow-y-auto custom-scrollbar"></div>
+                    </div>
                 </div>
                 <div id="conv_src_info" class="hidden">
                     <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 flex justify-between items-center">
@@ -946,10 +1063,20 @@ window.openInventoryConversionModal = (preSelectedId = null) => {
     showModal('Konversi Kemasan Produk', body, footer, 'xl');
 
     if (preSelectedId) {
-        setTimeout(() => {
-            document.getElementById('conv_from_item').value = preSelectedId;
-            updateConversionSourceInfo();
-        }, 100);
+        const item = db.findById('inventoryItems', preSelectedId);
+        if (item) {
+            setTimeout(() => {
+                const hidden = document.getElementById('conv_from_item');
+                const label = document.getElementById('conv_from_label');
+                if (hidden) hidden.value = preSelectedId;
+                if (label) {
+                    label.innerText = item.itemName;
+                    label.classList.remove('text-slate-400');
+                    label.classList.add('text-slate-800', 'font-black');
+                }
+                updateConversionSourceInfo();
+            }, 100);
+        }
     }
 };
 
@@ -1101,7 +1228,6 @@ function renderInventoryStockIn() {
                 <select id="si_fcat" class="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
                     <option value="">-- Semua Kategori --</option>
                     <option value="RAW_MATERIAL">Bahan Baku</option>
-                    <option value="MIXING_STOCK">Campuran</option>
                     <option value="OVEN_BASAH_STOCK">Oven Basah</option>
                     <option value="OVEN_KERING_STOCK">Oven Kering</option>
                     <option value="FINISHED_GOODS">Gudang Jadi</option>
@@ -1181,8 +1307,23 @@ window.openStockInModal = () => {
                     <option value="MANUAL">Manual</option>
                 </select></div>
         </div>
-        <div><label class="block text-sm font-medium text-gray-700 mb-1">Item <span class="text-red-500">*</span></label>
-            <select id="si_item" onchange="invUpdateUnit('si_item','si_unit_display')" class="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white">${getActiveItemOpts()}</select></div>
+        <div class="relative mb-4">
+            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Pilih Barang / Material <span class="text-red-500">*</span></label>
+            <div id="si_trigger" onclick="openProductSearch('si')" class="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs text-slate-400 cursor-pointer hover:bg-slate-50 transition-all flex justify-between items-center group h-[38px]">
+                <span id="si_label" class="truncate pr-2">-- Cari Kode atau Nama Produk --</span>
+                <i class="fas fa-chevron-down text-[10px] text-slate-300 group-hover:text-slate-400 transition-colors"></i>
+            </div>
+            <input type="hidden" id="si_item">
+            <div id="si_results_container" class="absolute z-[100] top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-[0_15px_40px_rgba(0,0,0,0.12)] hidden border border-slate-100 overflow-hidden min-w-[320px]">
+                <div class="p-3 border-b border-slate-50">
+                    <div class="relative">
+                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+                        <input type="text" id="si_search_input" placeholder="Ketik kode atau nama..." class="w-full bg-slate-50 border border-blue-100 rounded-lg pl-9 pr-3 py-2 text-xs focus:border-blue-400 outline-none transition-all font-medium">
+                    </div>
+                </div>
+                <div id="si_results" class="max-h-[300px] overflow-y-auto custom-scrollbar"></div>
+            </div>
+        </div>
         <div class="grid grid-cols-2 gap-4">
             <div><label class="block text-sm font-medium text-gray-700 mb-1">Qty <span class="text-red-500">*</span></label>
                 <input type="number" id="si_qty" min="0.01" step="0.01" placeholder="0" class="w-full border border-gray-300 rounded px-3 py-2 text-sm"></div>
@@ -1251,7 +1392,6 @@ function renderInventoryStockOut() {
                 <select id="sout_fcat" class="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
                     <option value="">-- Semua Kategori --</option>
                     <option value="RAW_MATERIAL">Bahan Baku</option>
-                    <option value="MIXING_STOCK">Campuran</option>
                     <option value="OVEN_BASAH_STOCK">Oven Basah</option>
                     <option value="OVEN_KERING_STOCK">Oven Kering</option>
                     <option value="FINISHED_GOODS">Gudang Jadi</option>
@@ -1331,9 +1471,24 @@ window.openStockOutModal = () => {
                     <option value="MANUAL">Manual</option>
                 </select></div>
         </div>
-        <div><label class="block text-sm font-medium text-gray-700 mb-1">Item <span class="text-red-500">*</span></label>
-            <select id="so_item" onchange="invUpdateUnit('so_item','so_unit_display'); invShowCurrentStock('so_item','so_stock_info')" class="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white">${getActiveItemOpts()}</select></div>
-        <div id="so_stock_info" class="hidden p-2 bg-indigo-50 border border-blue-100 rounded text-sm text-blue-700"></div>
+        <div class="relative mb-4">
+            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Pilih Barang / Material <span class="text-red-500">*</span></label>
+            <div id="so_trigger" onclick="openProductSearch('so')" class="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs text-slate-400 cursor-pointer hover:bg-slate-50 transition-all flex justify-between items-center group h-[38px]">
+                <span id="so_label" class="truncate pr-2">-- Cari Kode atau Nama Produk --</span>
+                <i class="fas fa-chevron-down text-[10px] text-slate-300 group-hover:text-slate-400 transition-colors"></i>
+            </div>
+            <input type="hidden" id="so_item" onchange="invShowCurrentStock('so_item','so_stock_info')">
+            <div id="so_results_container" class="absolute z-[100] top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-[0_15px_40px_rgba(0,0,0,0.12)] hidden border border-slate-100 overflow-hidden min-w-[320px]">
+                <div class="p-3 border-b border-slate-50">
+                    <div class="relative">
+                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+                        <input type="text" id="so_search_input" placeholder="Ketik kode atau nama..." class="w-full bg-slate-50 border border-blue-100 rounded-lg pl-9 pr-3 py-2 text-xs focus:border-blue-400 outline-none transition-all font-medium">
+                    </div>
+                </div>
+                <div id="so_results" class="max-h-[300px] overflow-y-auto custom-scrollbar"></div>
+            </div>
+        </div>
+        <div id="so_stock_info" class="hidden p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700 font-bold mb-4"></div>
         <div class="grid grid-cols-2 gap-4">
             <div><label class="block text-sm font-medium text-gray-700 mb-1">Qty <span class="text-red-500">*</span></label>
                 <input type="number" id="so_qty" min="0.01" step="0.01" placeholder="0" class="w-full border border-gray-300 rounded px-3 py-2 text-sm"></div>
@@ -1350,13 +1505,16 @@ window.openStockOutModal = () => {
 };
 
 window.invShowCurrentStock = (selectId, infoId) => {
-    const sel = document.getElementById(selectId);
+    const hidden = document.getElementById(selectId);
     const info = document.getElementById(infoId);
-    if (!sel || !info || !sel.value) { info.classList.add('hidden'); return; }
-    const stock = db.getInventoryStock(sel.value);
-    const unit = sel.selectedOptions[0]?.dataset.unit || '';
+    if (!hidden || !info || !hidden.value) { info.classList.add('hidden'); return; }
+    
+    const item = db.findById('inventoryItems', hidden.value);
+    if (!item) return;
+
+    const stock = db.getInventoryStock(hidden.value);
     info.classList.remove('hidden');
-    info.innerHTML = `<i class="fas fa-info-circle mr-1"></i>Stok saat ini: <strong>${invFmt(stock)} ${unit}</strong>`;
+    info.innerHTML = `<i class="fas fa-info-circle mr-2"></i>Stok saat ini: <span class="text-blue-800">${invFmt(stock)} ${item.unit || ''}</span>`;
 };
 
 window.saveStockOut = () => {
@@ -1390,326 +1548,298 @@ function renderProductionBoard() {
     const todayOutput = finishedToday.reduce((s, m) => s + (m.outputQty || 0), 0);
     const avgYield = finishedToday.length ? (finishedToday.reduce((s, m) => s + (m.yield || 100), 0) / finishedToday.length).toFixed(1) : '100';
 
-    const STAGES = [
-        { 
-            id: 'MIXING', label: 'LANE 1: CAMPURAN', category: 'MIXING_STOCK', icon: 'fas fa-blender', 
-            tw: { badge: 'bg-blue-100 text-blue-700', iconBg: 'bg-gradient-to-br from-blue-100 to-blue-50 text-blue-600 border-blue-200/50', btn: 'bg-gradient-to-r from-blue-600 to-indigo-600 shadow-blue-500/30', dot: 'bg-blue-500', dotPulse: 'bg-blue-400', gradientL: 'from-blue-50/80', tagBg: 'bg-blue-50 text-blue-600' },
-            monitorLocation: 'MIXING' 
-        },
-        { 
-            id: 'OVEN_BASAH', label: 'LANE 2: OVEN BASAH', category: 'OVEN_BASAH_STOCK', icon: 'fas fa-fire', 
-            tw: { badge: 'bg-orange-100 text-orange-700', iconBg: 'bg-gradient-to-br from-orange-100 to-orange-50 text-orange-600 border-orange-200/50', btn: 'bg-gradient-to-r from-orange-500 to-red-500 shadow-orange-500/30', dot: 'bg-orange-500', dotPulse: 'bg-orange-400', gradientL: 'from-orange-50/80', tagBg: 'bg-orange-50 text-orange-600' },
-            monitorLocation: 'OVEN_BASAH' 
-        },
-        { 
-            id: 'OVEN_KERING', label: 'LANE 3: OVEN KERING', category: 'OVEN_KERING_STOCK', icon: 'fas fa-sun', 
-            tw: { badge: 'bg-emerald-100 text-emerald-700', iconBg: 'bg-gradient-to-br from-emerald-100 to-emerald-50 text-emerald-600 border-emerald-200/50', btn: 'bg-gradient-to-r from-emerald-500 to-green-600 shadow-emerald-500/30', dot: 'bg-emerald-500', dotPulse: 'bg-emerald-400', gradientL: 'from-emerald-50/80', tagBg: 'bg-emerald-50 text-emerald-600' },
-            monitorLocation: 'WHS' 
-        }
-    ];
+
+
+    const frappeCard = (title, value) => `
+        <div class="bg-white rounded-xl border border-gray-100 p-5 flex flex-col justify-between shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] h-[104px]">
+            <div class="flex justify-between items-start mb-2">
+                <span class="text-sm font-medium text-gray-500 hover:text-gray-700 cursor-pointer">${title}</span>
+                <span class="text-gray-300 hover:text-gray-500 cursor-pointer text-lg leading-none">...</span>
+            </div>
+            <div class="text-[26px] font-semibold text-gray-800 tracking-tight leading-none">${value}</div>
+        </div>`;
 
     const statsHeader = `
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
-            <div class="bg-gradient-to-br from-white to-blue-50/50 p-5 rounded-2xl shadow-sm border border-blue-100 flex flex-col relative overflow-hidden group hover:shadow-md transition-all">
-                <div class="absolute -right-4 -top-4 w-20 h-20 bg-blue-100 rounded-full blur-2xl opacity-50 group-hover:scale-110 transition-transform"></div>
-                <div class="absolute top-4 right-4 text-blue-200 group-hover:text-blue-500 transition-colors duration-500"><i class="fas fa-layer-group fa-2x"></i></div>
-                <p class="text-[10px] font-black text-blue-500 uppercase tracking-widest mb-2 z-10 relative">Batch Aktif</p>
-                <div class="flex items-end gap-2 mt-auto z-10 relative">
-                    <span class="text-4xl font-black text-slate-800 tracking-tighter">${activeMOs.length}</span>
-                    <span class="text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Orders</span>
-                </div>
-            </div>
-            
-            <div class="bg-gradient-to-br from-white to-emerald-50/50 p-5 rounded-2xl shadow-sm border border-emerald-100 flex flex-col relative overflow-hidden group hover:shadow-md transition-all">
-                <div class="absolute -right-4 -top-4 w-20 h-20 bg-emerald-100 rounded-full blur-2xl opacity-50 group-hover:scale-110 transition-transform"></div>
-                <div class="absolute top-4 right-4 text-emerald-200 group-hover:text-emerald-500 transition-colors duration-500"><i class="fas fa-box-open fa-2x"></i></div>
-                <p class="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-2 z-10 relative">Output Hari Ini</p>
-                <div class="flex items-end gap-2 mt-auto z-10 relative">
-                    <span class="text-4xl font-black text-slate-800 tracking-tighter">${invFmt(todayOutput)}</span>
-                    <span class="text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Kg</span>
-                </div>
-            </div>
-
-            <div class="bg-gradient-to-br from-white to-orange-50/50 p-5 rounded-2xl shadow-sm border border-orange-100 flex flex-col relative overflow-hidden group hover:shadow-md transition-all">
-                <div class="absolute -right-4 -top-4 w-20 h-20 bg-orange-100 rounded-full blur-2xl opacity-50 group-hover:scale-110 transition-transform"></div>
-                <div class="absolute top-4 right-4 text-orange-200 group-hover:text-orange-500 transition-colors duration-500"><i class="fas fa-chart-line fa-2x"></i></div>
-                <p class="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-2 z-10 relative">Rata-rata Yield</p>
-                <div class="flex items-end gap-2 mt-auto z-10 relative">
-                    <span class="text-4xl font-black text-slate-800 tracking-tighter">${avgYield}%</span>
-                    <span class="text-xs font-bold text-slate-400 mb-1.5 uppercase tracking-wider">Efisiensi</span>
-                </div>
-            </div>
-
+            ${frappeCard('Batch Aktif', activeMOs.length)}
+            ${frappeCard('Output Hari Ini (Kg)', invFmt(todayOutput))}
+            ${frappeCard('Rata-rata Yield', avgYield + '%')}
         </div>
     `;
 
-    const getStageData = (stageId, category, monitorLocation) => {
-        const items = db.read('inventoryItems');
-        const allTxs = db.read('stockTransactions');
-        const stageItems = items.filter(i => i.category === category);
-        const loc = monitorLocation || stageId;
 
-        return stageItems.map(item => {
-            const txs = allTxs.filter(t => t.itemId === item.id && t.location === loc);
-            const awal = txs.filter(t => t.date < todayStr).reduce((s, t) => t.type === 'IN' ? s + t.qty : s - t.qty, 0);
-            const masuk = txs.filter(t => t.date >= todayStr && t.type === 'IN').reduce((s, t) => s + t.qty, 0);
-            const keluar = txs.filter(t => t.date >= todayStr && t.type === 'OUT').reduce((s, t) => s + t.qty, 0);
-            const akhir = awal + masuk - keluar;
-            if (awal === 0 && masuk === 0 && keluar === 0 && akhir === 0) return null;
-            return { item, awal, masuk, keluar, akhir };
-        }).filter(Boolean);
-    };
 
-    const renderLane = (st) => {
-        const laneMOs = activeMOs.filter(m => m.stage === st.id);
-        const stockData = getStageData(st.id, st.category, st.monitorLocation);
-        
-        const moCards = laneMOs.map(mo => `
-            <div class="bg-white rounded-xl border border-slate-200/60 p-4 mb-3 shadow-sm hover:shadow-md hover:border-slate-300 transition-all cursor-pointer relative overflow-hidden group" onclick="viewProductionMO('${mo.id}')">
-                <div class="absolute -right-4 -top-4 w-16 h-16 bg-slate-50 rounded-full rotate-12 opacity-50 group-hover:scale-150 transition-all duration-500"></div>
-                <div class="absolute top-4 right-4 opacity-20 text-slate-400 transform group-hover:rotate-12 group-hover:scale-110 transition-all duration-500">
-                    <i class="${st.icon} fa-2x"></i>
+    const chartPanel = (title, subtitle, id, heightClass = 'h-64', hasFilters = false, extraBody = '', customFilterHtml = '') => `
+        <div class="bg-white rounded-xl border border-gray-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] p-5 flex flex-col">
+            <div class="flex justify-between items-start mb-6">
+                <div>
+                    <h3 class="text-[15px] font-semibold text-gray-800">${title}</h3>
+                    ${subtitle ? `<p class="text-[12px] text-gray-500 mt-1">${subtitle}</p>` : ''}
                 </div>
-                
-                <div class="relative z-10">
-                    <div class="flex justify-between items-center mb-3">
-                        <span class="text-[10px] font-black ${st.tw.badge} px-2 py-1 rounded-md uppercase tracking-wider shadow-[0_1px_2px_rgba(0,0,0,0.05)] border border-white/50">${mo.moNumber}</span>
-                        <span class="text-[10px] font-bold text-slate-400 flex items-center gap-1.5"><i class="far fa-clock"></i>${new Date(mo.createdAt).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</span>
-                    </div>
-                    <p class="text-sm font-black text-slate-800 mb-4 pr-8 leading-tight tracking-tight">${mo.productName}</p>
-                    
-                    <div class="grid grid-cols-2 gap-2 mb-4">
-                        <div class="bg-slate-50/80 p-2 rounded-lg border border-slate-100">
-                            <span class="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Target Produksi</span>
-                            <span class="block text-xs font-black text-slate-700">${invFmt(mo.targetQty)} Kg</span>
-                        </div>
-                        <div class="bg-slate-50/80 p-2 rounded-lg border border-slate-100">
-                            <span class="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Mesin/Jalur</span>
-                            <span class="block text-[10px] font-bold text-slate-600 truncate">${mo.machineName || '-'}</span>
-                        </div>
-                    </div>
-                    
-                    <button onclick="event.stopPropagation(); openCompleteMOModal('${mo.id}')" 
-                        class="w-full ${st.tw.btn} text-white py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-md hover:shadow-lg hover:scale-[1.01] active:scale-95 transition-all flex items-center justify-center gap-2">
-                        <i class="fas fa-check-circle"></i> Selesaikan Tahap
+                <div class="flex gap-2 items-center">
+                    ${customFilterHtml}
+                    <button class="w-7 h-7 rounded bg-gray-50 text-gray-500 hover:bg-gray-100 flex items-center justify-center transition-colors"><i class="fas fa-filter text-[10px]"></i></button>
+                    ${hasFilters ? `
+                    <button class="px-2 h-7 rounded bg-gray-50 text-gray-600 hover:bg-gray-100 flex items-center justify-center transition-colors text-[11px] font-medium gap-1">
+                        Last Year <i class="fas fa-chevron-down text-[8px] text-gray-400"></i>
                     </button>
+                    <button class="px-2 h-7 rounded bg-gray-50 text-gray-600 hover:bg-gray-100 flex items-center justify-center transition-colors text-[11px] font-medium gap-1">
+                        <i class="far fa-calendar text-[10px] text-gray-500"></i> Monthly <i class="fas fa-chevron-down text-[8px] text-gray-400"></i>
+                    </button>
+                    ` : ''}
+                    <button class="w-7 h-7 rounded bg-gray-50 text-gray-500 hover:bg-gray-100 flex items-center justify-center transition-colors"><span class="leading-none pb-2 font-bold tracking-widest text-[10px]">...</span></button>
                 </div>
             </div>
-        `).join('');
+            ${id ? `<div class="relative w-full ${heightClass} flex-1"><canvas id="${id}"></canvas></div>` : ''}
+            ${extraBody}
+        </div>`;
 
-        const stockRows = stockData.map(d => `
-            <div class="flex justify-between items-center py-2 px-3 hover:bg-slate-50 rounded-lg transition-colors border-b border-slate-50 last:border-0">
-                <div class="flex items-center gap-2">
-                    <div class="w-1.5 h-1.5 rounded-full ${st.tw.dot}"></div>
-                    <span class="text-[11px] font-bold text-slate-700">${d.item.itemName}</span>
-                </div>
-                <span class="text-[11px] font-black text-slate-800 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-200/60 shadow-sm">${invFmt(d.akhir)}</span>
-            </div>
-        `).join('');
+    window._mosRawData = mos;
+    const uniqueProducts = [...new Set(mos.filter(m => m.stage === 'OVEN_KERING' && m.status === 'DONE').flatMap(m => {
+        if (m.targetProducts && m.targetProducts.length > 0) return m.targetProducts.map(tp => tp.itemName);
+        return m.productName ? [m.productName] : [];
+    }))];
+    const prodOpts = uniqueProducts.map(p => `<option value="${p}">${p}</option>`).join('');
+    const yieldFilterHtml = `<select id="chartProdYieldFilter" class="px-2 h-7 rounded bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors text-[11px] font-medium outline-none" onchange="window.initProdCharts(window._mosRawData)"><option value="">-- Semua Produk --</option>${prodOpts}</select>`;
 
-        return `
-            <div class="flex flex-col h-full min-w-[340px] max-w-[360px]">
-                <!-- Lane Header -->
-                <div class="bg-white rounded-2xl rounded-b-none p-5 border border-b-0 border-slate-200/80 shadow-sm relative overflow-hidden z-10">
-                    <div class="absolute right-0 top-0 w-32 h-full bg-gradient-to-l ${st.tw.gradientL} to-transparent opacity-80"></div>
-                    <div class="flex items-center gap-4 relative z-10">
-                        <div class="w-12 h-12 rounded-2xl ${st.tw.iconBg} flex items-center justify-center text-xl shadow-sm border">
-                            <i class="${st.icon} drop-shadow-[0_2px_4px_rgba(0,0,0,0.1)]"></i>
-                        </div>
-                        <div>
-                            <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest drop-shadow-sm">${st.label}</h3>
-                            <p class="text-[10px] font-black text-slate-500 mt-0.5 flex items-center gap-2 uppercase tracking-wider">
-                                <span class="relative flex h-2 w-2">
-                                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full ${st.tw.dotPulse} opacity-75"></span>
-                                  <span class="relative inline-flex rounded-full h-2 w-2 ${st.tw.dot}"></span>
-                                </span>
-                                ${laneMOs.length} Menunggu
-                            </p>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Lane Body (Active Jobs) -->
-                <div class="flex-1 bg-slate-100 p-4 border-x border-slate-200/80 overflow-y-auto max-h-[500px] shadow-inner styled-scrollbar">
-                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                        <i class="fas fa-stream"></i> Antrean Proses
-                    </p>
-                    ${moCards || `
-                    <div class="py-12 text-center border-2 border-dashed border-slate-200/80 rounded-2xl bg-slate-50 border-white/50 shadow-sm">
-                        <div class="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-3 shadow-sm border border-slate-100">
-                            <i class="fas fa-inbox text-slate-300 text-2xl"></i>
-                        </div>
-                        <p class="text-xs font-black text-slate-400 uppercase tracking-widest">Kosong</p>
-                        <p class="text-[10px] font-bold text-slate-400 mt-1">Tidak ada job di antrean</p>
-                    </div>`}
-                </div>
-
-                <!-- Lane Footer (WIP Stock) -->
-                <div class="bg-white rounded-2xl rounded-t-none p-4 border border-slate-200/80 shadow-[0_-4px_10px_-2px_rgba(0,0,0,0.03)] z-10 relative">
-                    <div class="absolute inset-0 bg-gradient-to-b from-slate-50/50 to-transparent rounded-2xl pointer-events-none"></div>
-                    <div class="flex items-center justify-between mb-4 px-1 relative z-10">
-                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                            <i class="fas fa-boxes text-slate-300"></i> Buffer WIP
-                        </p>
-                        <span class="text-[9px] font-black ${st.tw.tagBg} px-2 py-1 rounded-md shadow-sm border border-white/50">${stockData.length} Varian</span>
-                    </div>
-                    <div class="space-y-1 relative z-10">
-                        ${stockRows || '<div class="py-4 text-center text-[10px] font-bold italic text-slate-400 bg-slate-50 rounded-lg">Stok Kosong / Tidak Tercatat</div>'}
-                    </div>
-                </div>
-            </div>
-        `;
-    };
+    const chartSection = `
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+            ${chartPanel('Tren Output Produksi', 'Last synced just now', 'chartProdOutput', 'h-[300px]', true)}
+            ${chartPanel('Tren Yield Oven Kering', 'Efisiensi yield harian per produk', 'chartProdYield', 'h-[300px]', true, '', yieldFilterHtml)}
+        </div>
+        <div class="grid grid-cols-1 gap-4 mb-8">
+            ${chartPanel('Produk Paling Sering Diproduksi', 'Top 5 produk berdasarkan total output (KG)', 'chartTopProds', 'h-[320px]')}
+        </div>
+    `;
 
     mc.innerHTML = `
         <div class="animate-in fade-in slide-in-from-bottom-4 duration-500">
             ${statsHeader}
-            
-            <div class="flex gap-6 overflow-x-auto pb-6">
-                ${STAGES.map(st => renderLane(st)).join('')}
-            </div>
+            ${chartSection}
         </div>
     `;
+
+    setTimeout(() => {
+        if(window.initProdCharts) window.initProdCharts(mos);
+    }, 100);
 }
 
-window.openTransferToMixingModal = () => {
-    const rmOpts = getActiveItemOpts('RAW_MATERIAL');
-    const body = `
-        <div class="space-y-4">
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Pilih Bahan Baku</label>
-                <select id="trans_item" class="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white">${rmOpts}</select>
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Qty di Kirim</label>
-                <input type="number" id="trans_qty" min="0.01" step="0.01" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" placeholder="0.00">
-            </div>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Keterangan</label>
-                <input type="text" id="trans_notes" class="w-full border border-gray-300 rounded px-3 py-2 text-sm" placeholder="Opsional">
-            </div>
-        </div>
-    `;
-    const footer = `
-        <button onclick="saveTransferToMixing()" class="bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold">Kirim ke Campuran</button>
-        <button onclick="closeModal()" class="text-gray-500 px-4 py-2 text-sm">Batal</button>
-    `;
-    showModal('Kirim Bahan ke Mixing', body, footer);
-};
+window.initProdCharts = function(mos) {
+    if (typeof Chart === 'undefined') return;
 
-window.saveTransferToMixing = () => {
-    const itemId = document.getElementById('trans_item').value;
-    const qty = parseFloat(document.getElementById('trans_qty').value);
-    const notes = document.getElementById('trans_notes').value;
-    if (!itemId || !qty) return showToast('Isi semua data!', 'error');
+    // Destroy existing instances if any
+    if (window.outputChartInstance) window.outputChartInstance.destroy();
+    if (window.yieldChartInstance) window.yieldChartInstance.destroy();
 
-    if (!db.validateInventoryStock(itemId, qty)) return showToast('Stok tidak cukup!', 'error');
-
-    const txId = 'TRF-' + Date.now().toString().slice(-6);
-    // WHS OUT
-    db.addInventoryTransaction(itemId, 'OUT', qty, 'STAGE_TRANSFER', txId, notes, 'Admin', 'WHS');
-    // MIXING IN
-    db.addInventoryTransaction(itemId, 'IN', qty, 'STAGE_TRANSFER', txId, notes, 'Admin', 'MIXING');
-
-    showToast('Berhasil dikirim ke Mixing', 'success');
-    closeModal();
-    renderInventoryProduction();
-};
-
-window.openMixingProcessModal = () => {
-    const rmItemsInMixing = db.read('inventoryItems').filter(i => i.category === 'RAW_MATERIAL');
-    // Filter items that have stock in Mixing
-    const validOpts = rmItemsInMixing.map(i => {
-        const stock = db.getInventoryStock(i.id, 'MIXING');
-        if (stock <= 0) return null;
-        return `<option value="${i.id}" data-stock="${stock}">${i.itemName} (Stok: ${formatNumber(stock)})</option>`;
-    }).filter(Boolean).join('');
-
-    const wipOpts = getActiveItemOpts('WIP');
-
-    const body = `
-        <div class="space-y-4">
-            <div class="p-3 bg-blue-50 border border-blue-100 rounded text-xs text-blue-700">
-                Langkah ini mengonsumsi Bahan Baku di <strong>Campuran</strong> dan menghasilkan Adonan di <strong>Oven basah</strong>.
-            </div>
-            <div id="mixing_rm_rows" class="space-y-2">
-                <div class="flex gap-2">
-                    <select class="flex-1 border border-gray-300 rounded px-2 py-1.5 text-xs bg-white">${validOpts}</select>
-                    <input type="number" class="w-24 border border-gray-300 rounded px-2 py-1.5 text-xs" placeholder="Qty">
-                </div>
-            </div>
-            <button onclick="addMixingRMRow('${validOpts.replace(/'/g, "\\'")}')" class="text-[10px] text-blue-600 font-bold uppercase"><i class="fas fa-plus"></i> Tambah Bahan</button>
-            <hr>
-            <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Hasil Adonan (Oven Basah)</label>
-                <select id="mix_output_item" class="w-full border border-gray-300 rounded px-3 py-2 text-xs bg-white">${wipOpts}</select>
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label class="block text-xs font-medium text-gray-600 mb-1">Total Hasil (Incl. Air)</label>
-                    <input type="number" id="mix_output_qty" class="w-full border border-green-300 rounded px-3 py-2 text-sm bg-green-50 font-bold" placeholder="0.00">
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-600 mb-1">Keterangan</label>
-                    <input type="text" id="mix_notes" class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
-                </div>
-            </div>
-        </div>
-    `;
-    const footer = `
-        <button onclick="saveMixingProcess()" class="bg-orange-500 text-white px-4 py-2 rounded text-sm font-bold">Proses Campuran</button>
-        <button onclick="closeModal()" class="text-gray-500 px-4 py-2 text-sm">Batal</button>
-    `;
-    showModal('Proses Mixing & Tambah Air', body, footer);
-};
-
-window.addMixingRMRow = (opts) => {
-    const div = document.createElement('div');
-    div.className = 'flex gap-2 transition-all animate-fadeIn';
-    div.innerHTML = `<select class="flex-1 border border-gray-300 rounded px-2 py-1.5 text-xs bg-white">${opts}</select>
-                     <input type="number" class="w-24 border border-gray-300 rounded px-2 py-1.5 text-xs" placeholder="Qty">
-                     <button onclick="this.parentElement.remove()" class="text-red-400"><i class="fas fa-times"></i></button>`;
-    document.getElementById('mixing_rm_rows').appendChild(div);
-};
-
-window.saveMixingProcess = () => {
-    const outputItemId = document.getElementById('mix_output_item').value;
-    const outputQty = parseFloat(document.getElementById('mix_output_qty').value);
-    const notes = document.getElementById('mix_notes').value;
-    const txId = 'MIX-' + Date.now().toString().slice(-6);
-
-    if (!outputItemId || !outputQty) return showToast('Isi hasil adonan!', 'error');
-
-    const rows = document.getElementById('mixing_rm_rows').querySelectorAll('div');
-    const consumptions = [];
-    let error = null;
-
-    rows.forEach(row => {
-        const id = row.querySelector('select').value;
-        const qty = parseFloat(row.querySelector('input').value);
-        if (id && qty > 0) {
-            if (db.getInventoryStock(id, 'MIXING') < qty) {
-                error = 'Stok di Mixing tidak cukup!';
-            }
-            consumptions.push({ id, qty });
+    // 1. Tren Output Produksi (Bar Chart)
+    const ctxOutput = document.getElementById('chartProdOutput');
+    if (ctxOutput) {
+        const last7Days = [];
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            last7Days.push(d.toISOString().split('T')[0]);
         }
-    });
 
-    if (error) return showToast(error, 'error');
-    if (!consumptions.length) return showToast('Pilih minimal 1 bahan baku!', 'error');
+        const ovenBasahData = [];
+        const ovenKeringData = [];
 
-    // 1. Consume RM from Mixing
-    consumptions.forEach(c => {
-        db.addInventoryTransaction(c.id, 'OUT', c.qty, 'PRODUCTION_MIXING', txId, notes, 'Admin', 'MIXING');
-    });
+        last7Days.forEach(dateStr => {
+            const dateMOs = mos.filter(m => m.status === 'DONE' && m.updatedAt?.startsWith(dateStr));
+            let ob = 0, ok = 0;
+            dateMOs.forEach(m => {
+                if (m.stage === 'OVEN_BASAH') ob += (m.outputQty || 0);
+                if (m.stage === 'OVEN_KERING') ok += (m.outputQty || 0);
+            });
+            ovenBasahData.push(ob);
+            ovenKeringData.push(ok);
+        });
 
-    // 2. Add WIP to Oven Basah
-    db.addInventoryTransaction(outputItemId, 'IN', outputQty, 'PRODUCTION_MIXING', txId, notes, 'Admin', 'OVEN_BASAH');
+        const labels = last7Days.map(d => {
+            const dt = new Date(d);
+            return dt.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+        });
 
-    showToast('Proses Mixing selesai', 'success');
-    closeModal();
-    renderInventoryProduction();
-};
+        window.outputChartInstance = new Chart(ctxOutput, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Oven Basah (Kg)',
+                        data: ovenBasahData,
+                        backgroundColor: '#fdba74',
+                        borderRadius: 4,
+                        barThickness: 16
+                    },
+                    {
+                        label: 'Oven Kering (Kg)',
+                        data: ovenKeringData,
+                        backgroundColor: '#6ee7b7',
+                        borderRadius: 4,
+                        barThickness: 16
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top', labels: { boxWidth: 10, usePointStyle: true, font: {size: 11} } }
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { color: '#9ca3af', font: {size: 11} } },
+                    y: { beginAtZero: true, grid: { color: '#f3f4f6', drawBorder: false }, ticks: { color: '#9ca3af', font: {size: 11} }, border: {display: false} }
+                }
+            }
+        });
+    }
+
+    // 2. Analisis Yield per Produk (Trend)
+    const ctxYield = document.getElementById('chartProdYield');
+    if (ctxYield) {
+        const filterProduct = document.getElementById('chartProdYieldFilter')?.value;
+        const last7Days = [];
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            last7Days.push(d.toISOString().split('T')[0]);
+        }
+
+        const yieldData = [];
+        let hasData = false;
+
+        last7Days.forEach(dateStr => {
+            const dateMOs = mos.filter(m => m.status === 'DONE' && m.stage === 'OVEN_KERING' && m.updatedAt?.startsWith(dateStr));
+            let totalYield = 0;
+            let count = 0;
+            dateMOs.forEach(m => {
+                if (m.targetProducts && m.targetProducts.length > 0) {
+                    m.targetProducts.forEach(tp => {
+                        if (!filterProduct || tp.itemName === filterProduct) {
+                            const y = tp.qty > 0 ? (tp.outputQty / tp.qty) * 100 : 100;
+                            totalYield += y;
+                            count++;
+                            hasData = true;
+                        }
+                    });
+                } else if (m.productName) {
+                    if (!filterProduct || m.productName === filterProduct) {
+                        const y = m.yield !== undefined ? parseFloat(m.yield) : (m.inputQty > 0 ? (m.outputQty / m.inputQty * 100) : 100);
+                        totalYield += y;
+                        count++;
+                        hasData = true;
+                    }
+                }
+            });
+            yieldData.push(count > 0 ? totalYield / count : null);
+        });
+
+        const labels = last7Days.map(d => new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }));
+
+        if (!hasData && filterProduct) {
+            ctxYield.parentElement.innerHTML = '<div class="bg-[#f8f9fa] flex items-center justify-center w-full h-full rounded-lg"><span class="text-sm text-gray-400">Belum Ada Data Yield</span></div><canvas id="chartProdYield" class="hidden"></canvas>';
+        } else {
+            // Restore canvas if it was replaced by 'Belum Ada Data'
+            if (ctxYield.classList.contains('hidden')) {
+                ctxYield.parentElement.innerHTML = '<canvas id="chartProdYield"></canvas>';
+            }
+            
+            window.yieldChartInstance = new Chart(document.getElementById('chartProdYield'), {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Rata-rata Yield (%)',
+                        data: yieldData,
+                        borderColor: '#818cf8',
+                        backgroundColor: 'rgba(129, 140, 248, 0.2)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.4,
+                        spanGaps: true,
+                        pointBackgroundColor: '#818cf8',
+                        pointRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { 
+                            beginAtZero: false, 
+                            min: 80,
+                            max: 100, 
+ 
+                            grid: { color: '#f3f4f6', drawBorder: false }, 
+                            ticks: { callback: function(value) { return value + "%" }, color: '#9ca3af', font: {size: 11} },
+                            border: {display: false}
+                        },
+                        x: { grid: { display: false }, ticks: { color: '#9ca3af', font: {size: 11} }, border: {display: false} }
+                    }
+                }
+            });
+        }
+
+        // 3. Top Products (Horizontal Bar Chart)
+        const ctxTop = document.getElementById('chartTopProds');
+        if (ctxTop) {
+            if (window.topProdChartInstance) window.topProdChartInstance.destroy();
+            const topProdsRaw = {};
+            mos.filter(m => m.status === 'DONE').forEach(m => {
+                const name = m.productName || (m.outputProducts && m.outputProducts.length > 0 ? m.outputProducts[0].itemName : null) || 'Unknown';
+                topProdsRaw[name] = (topProdsRaw[name] || 0) + (parseFloat(m.outputQty) || 0);
+            });
+            const sorted = Object.entries(topProdsRaw).sort((a,b) => b[1] - a[1]).slice(0, 5);
+
+            window.topProdChartInstance = new Chart(ctxTop, {
+                type: 'bar',
+                data: {
+                    labels: sorted.map(p => p[0]),
+                    datasets: [{
+                        data: sorted.map(p => p[1]),
+                        backgroundColor: '#818cf8',
+                        borderRadius: 6,
+                        barThickness: 24,
+                        hoverBackgroundColor: '#6366f1'
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { 
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: '#1e293b',
+                            padding: 12,
+                            cornerRadius: 8,
+                            callbacks: {
+                                label: (c) => ` ${invFmt(c.parsed.x)} KG`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { display: false, grid: { display: false } },
+                        y: { 
+                            grid: { display: false }, 
+                            border: { display: false },
+                            ticks: { 
+                                color: '#64748b', 
+                                font: { size: 10, weight: 'bold' },
+                                padding: 10
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+}
+
+
+// --- Fungsi Transfer ke Mixing & Proses Mixing dihapus (tahap Mixing sudah tidak ada) ---
 
 window.openOvenProcessModal = () => {
     const wipInWet = db.read('inventoryItems').filter(i => i.category === 'WIP');
@@ -1720,33 +1850,53 @@ window.openOvenProcessModal = () => {
     }).filter(Boolean).join('');
 
     const body = `
-        <div class="space-y-4">
+    <div class="space-y-6">
+        <div class="p-4 bg-red-50 border border-red-100 rounded-2xl text-[10px] text-red-700 font-bold uppercase tracking-widest leading-relaxed flex items-center gap-3">
+            <div class="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-500 shadow-sm flex-shrink-0">
+                <i class="fas fa-fire text-sm"></i>
+            </div>
+            <span>Langkah ini memindahkan item dari <strong>Oven Basah</strong> ke <strong>Oven Kering</strong> dengan penyusutan berat.</span>
+        </div>
+
+        <div>
+            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Pilih Item di Oven Basah</label>
+            <select id="oven_input_item" class="w-full h-[42px] border-2 border-slate-100 rounded-xl px-4 text-xs font-black text-slate-700 focus:border-red-400 outline-none transition-all appearance-none bg-slate-50/50 cursor-pointer" onchange="document.getElementById('oven_in_qty').value=this.selectedOptions[0]?.dataset.stock || 0">
+                <option value="">-- Pilih Produk --</option>
+                ${validOpts}
+            </select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-6 bg-slate-50/50 p-5 rounded-2xl border border-slate-100">
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Pilih Item di Oven Basah</label>
-                <select id="oven_input_item" class="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white" onchange="document.getElementById('oven_in_qty').value=this.selectedOptions[0].dataset.stock">${validOpts}</select>
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label class="block text-xs font-medium text-gray-600 mb-1">Qty Masuk Oven</label>
-                    <input type="number" id="oven_in_qty" class="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-gray-50" readonly>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-600 mb-1">Hasil Oven (Oven Kering)</label>
-                    <input type="number" id="oven_out_qty" class="w-full border border-red-300 rounded px-3 py-2 text-sm font-bold bg-red-50" placeholder="0.00">
+                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Qty Masuk Oven</label>
+                <div class="relative">
+                    <input type="number" id="oven_in_qty" class="w-full h-[38px] border-2 border-slate-200 rounded-xl px-4 text-xs font-black text-slate-400 bg-slate-100 outline-none" readonly>
+                    <span class="absolute right-4 top-1/2 -translate-y-1/2 text-[9px] font-black text-slate-300 uppercase tracking-widest">KG</span>
                 </div>
             </div>
-             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Keterangan</label>
-                <input type="text" id="oven_notes" class="w-full border border-gray-300 rounded px-3 py-2 text-sm">
+            <div>
+                <label class="block text-[10px] font-black text-red-600 uppercase tracking-widest mb-2 ml-1">Hasil (Oven Kering)</label>
+                <div class="relative">
+                    <input type="number" id="oven_out_qty" class="w-full h-[38px] border-2 border-red-200 rounded-xl px-4 text-xs font-black text-red-700 focus:border-red-500 outline-none transition-all bg-white shadow-sm" placeholder="0.00">
+                    <span class="absolute right-4 top-1/2 -translate-y-1/2 text-[9px] font-black text-red-400 uppercase tracking-widest">KG</span>
+                </div>
             </div>
         </div>
-    `;
+
+        <div>
+            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Keterangan / Catatan</label>
+            <input type="text" id="oven_notes" class="w-full h-[38px] border-2 border-slate-100 rounded-xl px-4 text-xs font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50" placeholder="Opsional...">
+        </div>
+    </div>`;
+
     const footer = `
-        <button onclick="saveOvenProcess()" class="bg-red-600 text-white px-4 py-2 rounded text-sm font-bold">Mulai Baking / Dioven</button>
-        <button onclick="closeModal()" class="text-gray-500 px-4 py-2 text-sm">Batal</button>
-    `;
-    showModal('Proses Oven (Penyusutan)', body, footer);
-    // Trigger initial qty
+        <div class="flex gap-3 w-full sm:w-auto">
+            <button onclick="closeModal()" class="flex-1 sm:flex-none px-6 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all">Batal</button>
+            <button onclick="saveOvenProcess()" class="flex-1 sm:flex-none bg-red-600 hover:bg-red-700 text-white px-8 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-red-200 transition-all active:scale-95 flex items-center justify-center gap-2">
+                <i class="fas fa-thermometer-half"></i> MULAI BAKING
+            </button>
+        </div>`;
+    showModal('Proses Oven (Baking)', body, footer, 'max-w-md');
     setTimeout(() => { const el = document.getElementById('oven_input_item'); if(el) el.dispatchEvent(new Event('change')); }, 100);
 };
 
@@ -1778,36 +1928,61 @@ window.openFinalizeProdModal = () => {
         return `<option value="${i.id}" data-stock="${stock}">${i.itemName} (Stok: ${formatNumber(stock)})</option>`;
     }).filter(Boolean).join('');
 
-    const fgOpts = getActiveItemOpts('FINISHED_GOODS');
-
     const body = `
-        <div class="space-y-4">
-             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Item di Oven Kering</label>
-                <select id="fin_input_item" class="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white" onchange="document.getElementById('fin_in_qty').value=this.selectedOptions[0].dataset.stock">${wipOpts}</select>
+    <div class="space-y-6">
+        <div class="p-4 bg-green-50 border border-green-100 rounded-2xl text-[10px] text-green-700 font-bold uppercase tracking-widest leading-relaxed flex items-center gap-3">
+            <div class="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-500 shadow-sm flex-shrink-0">
+                <i class="fas fa-check-double text-sm"></i>
             </div>
-             <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label class="block text-xs font-medium text-gray-600 mb-1">Qty Tersedia</label>
-                    <input type="number" id="fin_in_qty" class="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-gray-50" readonly>
-                </div>
-                <div>
-                    <label class="block text-xs font-medium text-gray-600 mb-1">Qty Jadi FG</label>
-                    <input type="number" id="fin_out_qty" class="w-full border border-green-300 rounded px-3 py-2 text-sm font-bold bg-green-50" placeholder="0.00">
-                </div>
+            <span>Tahap akhir: Memindahkan stok dari <strong>Oven Kering</strong> ke <strong>Gudang Jadi (FG)</strong>.</span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="md:col-span-2">
+                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Pilih Item di Oven Kering</label>
+                <select id="fin_input_item" class="w-full h-[42px] border-2 border-slate-100 rounded-xl px-4 text-xs font-black text-slate-700 focus:border-green-400 outline-none transition-all appearance-none bg-slate-50/50 cursor-pointer" onchange="document.getElementById('fin_in_qty').value=this.selectedOptions[0]?.dataset.stock || 0">
+                    <option value="">-- Pilih Produk --</option>
+                    ${wipOpts}
+                </select>
             </div>
-            <hr>
+
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-1">Simpan sebagai Finished Good</label>
-                <select id="fin_output_item" class="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white">${fgOpts}</select>
+                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Stok Tersedia</label>
+                <div class="relative">
+                    <input type="number" id="fin_in_qty" class="w-full h-[38px] border-2 border-slate-200 rounded-xl px-4 text-xs font-black text-slate-400 bg-slate-100 outline-none" readonly>
+                    <span class="absolute right-4 top-1/2 -translate-y-1/2 text-[9px] font-black text-slate-300 uppercase tracking-widest">KG</span>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-[10px] font-black text-green-600 uppercase tracking-widest mb-2 ml-1">Qty Jadi (Ke FG)</label>
+                <div class="relative">
+                    <input type="number" id="fin_out_qty" class="w-full h-[38px] border-2 border-green-200 rounded-xl px-4 text-xs font-black text-green-700 focus:border-green-500 outline-none transition-all bg-white shadow-sm" placeholder="0.00">
+                    <span class="absolute right-4 top-1/2 -translate-y-1/2 text-[9px] font-black text-green-400 uppercase tracking-widest">KG</span>
+                </div>
             </div>
         </div>
-    `;
+
+        <div class="pt-6 border-t border-slate-100">
+            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">SIMPAN SEBAGAI PRODUK JADI (FG)</label>
+            <div id="fin_output_trigger" onclick="openProductSearch('fin_output', 'FINISHED_GOODS')" class="w-full h-[42px] bg-white border-2 border-slate-100 rounded-xl px-4 text-xs font-black text-slate-400 cursor-pointer hover:border-green-400 hover:bg-green-50/20 transition-all flex justify-between items-center group shadow-sm">
+                <span id="fin_output_label" class="truncate pr-2 uppercase tracking-widest">-- Cari Produk Jadi di Gudang --</span>
+                <div class="w-6 h-6 rounded-lg bg-slate-50 flex items-center justify-center text-slate-300 group-hover:text-green-500 group-hover:bg-green-100 transition-all">
+                    <i class="fas fa-search text-[10px]"></i>
+                </div>
+            </div>
+            <input type="hidden" id="fin_output_item">
+        </div>
+    </div>`;
+
     const footer = `
-        <button onclick="saveFinalizeProd()" class="bg-green-600 text-white px-4 py-2 rounded text-sm font-bold">Selesai Produksi (STOK FG)</button>
-        <button onclick="closeModal()" class="text-gray-500 px-4 py-2 text-sm">Batal</button>
-    `;
-    showModal('Finalisasi Produksi ke Gudang FG', body, footer);
+        <div class="flex gap-3 w-full sm:w-auto">
+            <button onclick="closeModal()" class="flex-1 sm:flex-none px-6 py-2.5 rounded-xl border border-slate-200 text-slate-500 text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all">Batal</button>
+            <button onclick="saveFinalizeProd()" class="flex-1 sm:flex-none bg-green-600 hover:bg-green-700 text-white px-8 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-green-200 transition-all active:scale-95 flex items-center justify-center gap-2">
+                <i class="fas fa-warehouse"></i> MASUK GUDANG FG
+            </button>
+        </div>`;
+    showModal('Finalisasi Produksi', body, footer, 'xl');
     setTimeout(() => { const el = document.getElementById('fin_input_item'); if(el) el.dispatchEvent(new Event('change')); }, 100);
 };
 
@@ -1870,7 +2045,7 @@ function renderInventoryReport() {
                     </td>
                     <td class="py-3 px-4 text-sm text-right whitespace-nowrap">
                         ${it.category === 'FINISHED_GOODS' ? `<button onclick="openRepackModal('${it.id}')" class="text-blue-600 hover:text-blue-800 font-bold text-xs bg-blue-50 px-2 py-1 rounded border border-blue-100 mr-2"><i class="fas fa-box-open mr-1"></i>Repack</button>` : ''}
-                        <button onclick="openInventoryItemModal('${it.id}')" class="text-slate-400 hover:text-slate-600 p-1"><i class="fas fa-edit"></i></button>
+                        <button onclick="renderInventoryItemForm('${it.id}')" class="text-slate-400 hover:text-slate-600 p-1"> <i class="fas fa-edit"></i></button>
                     </td>
                 </tr>`;
         }).join('')}</tbody>
@@ -1987,223 +2162,346 @@ window.switchInvReportTab = (cat) => {
 
 // â”€â”€â”€ PENERIMAAN BARANG DARI PO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderInventoryPOReceipt() {
-    const canEdit = getModulePermission('logistik').edit;
-    document.getElementById('pageTitle').innerText = 'Penerimaan Barang dari PO';
-    const mc = document.getElementById('main-content');
-    let pos = db.read('purchaseOrders').sort((a, b) => new Date(b.date) - new Date(a.date));
+    const mainContent = document.getElementById('main-content');
+    const tab = window._porActiveTab || 'pending';
     const suppliers = db.read('suppliers');
+    const canEdit = getModulePermission('logistik').edit;
 
-    if (!window._porActiveTab) window._porActiveTab = 'pending';
+    document.getElementById('pageTitle').innerText = 'Penerimaan Barang dari PO';
 
-    // Apply Date Filter
-    pos = filterByDateRange(pos, 'inventoryPOReceipt');
+    // --- TAB NAVIGATION UI ---
+    let tabsHtml = `
+        <div class="flex items-center gap-1 bg-slate-100 p-1.5 rounded-2xl w-fit border border-slate-200/60 shadow-inner overflow-hidden">
+            <button onclick="window._porActiveTab='pending'; renderInventoryPOReceipt();" 
+                class="px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 ${tab === 'pending' ? 'bg-white text-blue-600 shadow-md scale-100 border border-slate-100' : 'text-slate-400 hover:text-slate-600 hover:bg-white/40 opacity-70'}">
+                <i class="fas fa-truck-loading"></i> Antrian Gudang
+            </button>
+            <button onclick="window._porActiveTab='history'; renderInventoryPOReceipt();" 
+                class="px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 ${tab === 'history' ? 'bg-white text-green-600 shadow-md scale-100 border border-slate-100' : 'text-slate-400 hover:text-slate-600 hover:bg-white/40 opacity-70'}">
+                <i class="fas fa-history"></i> Riwayat Selesai
+            </button>
+        </div>
+    `;
 
-    // Filter logic
-    let filteredPOs = pos.filter(po => {
-        // Apply Supplier Filter
-        if (window.currentFilters.inventoryPOReceipt.supplier && po.supplierId !== window.currentFilters.inventoryPOReceipt.supplier) return false;
+    const filters = window.currentFilters.inventoryPOReceipt;
+    const supOptions = suppliers.map(s => `<option value="${s.id}" ${filters.supplier === s.id ? 'selected' : ''}>${s.name}</option>`).join('');
 
-        // Apply Status Filter
-        const stFilter = window.currentFilters.inventoryPOReceipt.status;
-        if (stFilter === 'PENDING') {
-            if (['RECEIVED', 'CANCELLED', 'DRAFT'].includes(po.status)) return false;
-            const hasUnreceived = (po.items || []).some(i => (i.receivedQty || 0) < i.qty);
-            if (!hasUnreceived && po.status !== 'APPROVED' && po.status !== 'PARTIALLY RECEIVED') return false;
-        } else if (stFilter === 'RECEIVED') {
-            if (po.status !== 'RECEIVED' && !(po.status === 'PARTIALLY RECEIVED' && (po.items || []).some(i => (i.receivedQty || 0) > 0))) return false;
-        } else if (stFilter === 'UNRECEIVED') {
-            // Specifically only those with NO goods received yet
-            const noReceived = (po.items || []).every(i => (i.receivedQty || 0) === 0);
-            if (!noReceived || po.status === 'RECEIVED' || po.status === 'CANCELLED') return false;
-        }
+    let pos = db.read('purchaseOrders').sort((a, b) => new Date(b.date) - new Date(a.date));
 
-        // Apply Tab Filter (Current behavior fallback)
-        if (window._porActiveTab === 'pending') {
-            if (['RECEIVED', 'CANCELLED', 'DRAFT'].includes(po.status)) return false;
-            const hasUnreceived = (po.items || []).some(i => (i.receivedQty || 0) < i.qty);
-            if (!hasUnreceived && po.status !== 'APPROVED' && po.status !== 'PARTIALLY RECEIVED') return false;
-        } else {
-            if (po.status !== 'RECEIVED' && !(po.status === 'PARTIALLY RECEIVED' && (po.items || []).some(i => (i.receivedQty || 0) > 0))) return false;
-        }
-        
-        return true;
-    });
+    // Base Tab Filter
+    if (tab === 'pending') {
+        pos = pos.filter(po => ['APPROVED', 'PARTIALLY RECEIVED'].includes(po.status));
+    } else {
+        pos = pos.filter(po => ['RECEIVED', 'PARTIALLY RECEIVED'].includes(po.status) && (po.items || []).some(i => (i.receivedQty || 0) > 0));
+    }
 
-    const rows = filteredPOs.map(po => {
-        const sup = suppliers.find(s => s.id === po.supplierId) || { name: '-' };
-        const totalOrdered = (po.items || []).reduce((s, i) => s + i.qty, 0);
-        const totalReceived = (po.items || []).reduce((s, i) => s + (i.receivedQty || 0), 0);
-        const pct = totalOrdered > 0 ? Math.round((totalReceived / totalOrdered) * 100) : 0;
+    // Filter Logic
+    if (filters.start) { const d = new Date(filters.start); d.setHours(0, 0, 0, 0); pos = pos.filter(po => new Date(po.date) >= d); }
+    if (filters.end) { const d = new Date(filters.end); d.setHours(23, 59, 59, 999); pos = pos.filter(po => new Date(po.date) <= d); }
+    if (filters.supplier) { pos = pos.filter(po => po.supplierId === filters.supplier); }
 
-        let statusBadge = `<span class="px-2 py-0.5 rounded text-xs font-semibold bg-blue-100 text-blue-700">${po.status}</span>`;
-        if (po.status === 'PARTIALLY RECEIVED') statusBadge = `<span class="px-2 py-0.5 rounded text-xs font-semibold bg-orange-100 text-orange-700">PARTIAL</span>`;
-        if (po.status === 'RECEIVED') statusBadge = `<span class="px-2 py-0.5 rounded text-xs font-semibold bg-green-100 text-green-700">RECEIVED</span>`;
+    let rows = pos.map(po => {
+        const supplier = suppliers.find(s => s.id === po.supplierId) || { name: 'Unknown' };
+        const totalQty = (po.items || []).reduce((s, i) => s + (i.qty || 0), 0);
+        const receivedQty = (po.items || []).reduce((s, i) => s + (i.receivedQty || 0), 0);
+        const progressPct = totalQty > 0 ? Math.round((receivedQty / totalQty) * 100) : 0;
 
-        return `<tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-            <td class="py-3 px-4 text-sm font-medium text-blue-600">${po.poNumber}</td>
-            <td class="py-3 px-4 text-sm text-gray-700">${invDate(po.date)}</td>
-            <td class="py-3 px-4 text-sm text-gray-800">${sup.name}</td>
-            <td class="py-3 px-4 text-sm text-gray-600">${po.status === 'RECEIVED' ? invDate(po.receivedAt) : '-'}</td>
-            <td class="py-3 px-4 text-sm">
-                <div class="flex items-center gap-2">
-                    <div class="flex-1 bg-gray-200 rounded-full h-1.5" style="min-width:60px">
-                        <div class="bg-green-500 h-1.5 rounded-full" style="width:${pct}%"></div>
+        return `
+            <tr class="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group">
+                <td class="py-4 px-6 whitespace-nowrap">
+                    <button onclick="${tab === 'pending' ? `viewPO('${po.id}')` : `viewPOReceiptDetails('${po.id}')`}" class="text-blue-700 hover:text-blue-800 font-mono text-sm font-bold transition-colors cursor-pointer outline-none bg-blue-50/80 px-3.5 py-1.5 rounded-lg border border-blue-200 shadow-sm">
+                        ${po.poNumber.toUpperCase()}
+                    </button>
+                </td>
+                <td class="py-4 px-6 text-sm text-slate-500 font-medium">${invDate(po.date)}</td>
+                <td class="py-4 px-6 text-sm text-slate-900 font-bold tracking-tight">${supplier.name}</td>
+                <td class="py-4 px-6">
+                    <div class="flex items-center gap-3">
+                        <div class="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden" style="min-width:100px">
+                            <div class="h-full ${progressPct === 100 ? 'bg-green-500' : 'bg-blue-500'} rounded-full transition-all duration-1000" style="width: ${progressPct}%"></div>
+                        </div>
+                        <span class="text-[10px] font-black text-slate-500 tracking-tighter w-12 text-right">${invFmt(receivedQty)}/${invFmt(totalQty)}</span>
                     </div>
-                    <span class="text-xs text-gray-600">${invFmt(totalReceived)}/${invFmt(totalOrdered)}</span>
-                </div>
-            </td>
-            <td class="py-3 px-4 text-center">${statusBadge}</td>
-            <td class="py-3 px-4 text-right">
-                ${window._porActiveTab === 'pending' ? (canEdit ? `
-                <button onclick="openPOReceiptModal('${po.id}')" class="text-white bg-green-600 hover:bg-green-700 text-xs px-3 py-1.5 rounded font-medium shadow-sm transition-colors">
-                    <i class="fas fa-truck-loading mr-1"></i>Terima Barang
-                </button>` : '<span class="text-gray-400 text-[10px] italic font-medium">VIEW ONLY</span>') : `
-                <button onclick="viewPOReceiptDetails('${po.id}')" class="text-blue-500 hover:text-blue-700 text-xs font-bold">
-                    <i class="fas fa-eye mr-1"></i>Detail
-                </button>
-                `}
-            </td>
-        </tr>`;
+                </td>
+                <td class="py-4 px-6 text-center">
+                    <span class="px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border border-blue-100 bg-blue-50 text-blue-600">${po.status === 'PARTIALLY RECEIVED' ? 'PARTIALLY RECEIVED' : po.status}</span>
+                </td>
+                <td class="py-4 px-6 text-right whitespace-nowrap">
+                    ${tab === 'pending' ? (canEdit ? `
+                    <button onclick="openPOReceiptModal('${po.id}')" class="bg-blue-600 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-200 transition-all active:scale-95 flex items-center gap-2 ml-auto">
+                        <i class="fas fa-box-open"></i> TERIMA
+                    </button>
+                    ` : '<span class="text-slate-400 text-[10px] italic font-medium">VIEW ONLY</span>') : `
+                    <button onclick="viewPOReceiptDetails('${po.id}')" class="bg-slate-100 hover:bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 ml-auto">
+                        <i class="fas fa-eye"></i> DETAIL
+                    </button>
+                    `}
+                </td>
+            </tr>`;
     }).join('');
 
-    const tableHtml = rows ? `
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div class="overflow-x-auto">
-                <table class="w-full text-left">
-                    <thead><tr class="bg-gray-50 border-b border-gray-200">
-                        <th class="py-3 px-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider">No. PO</th>
-                        <th class="py-3 px-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider">Tgl PO</th>
-                        <th class="py-3 px-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider">Supplier</th>
-                        <th class="py-3 px-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider">Tgl Terima</th>
-                        <th class="py-3 px-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider">Progress</th>
-                        <th class="py-3 px-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-center">Status</th>
-                        <th class="py-3 px-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-right">Aksi</th>
-                    </tr></thead>
-                    <tbody>${rows}</tbody>
+    if (pos.length === 0) rows = `<tr><td colspan="6" class="py-32 text-center text-slate-300 font-black uppercase tracking-widest opacity-40 italic"><i class="fas fa-truck-loading text-5xl mb-4"></i><br>${tab === 'pending' ? 'Tidak ada antrian penerimaan barang' : 'Belum ada riwayat penerimaan'}</td></tr>`;
+
+    mainContent.innerHTML = `
+        <div id="por-list-view" class="animate-in fade-in duration-300 h-[calc(100vh-64px)] flex flex-col bg-slate-50 -m-4 sm:-m-6">
+            <!-- Full Width Fixed Header Bar -->
+            <div class="bg-white border-b border-gray-200 shrink-0 z-40 shadow-sm relative">
+                <div class="flex flex-wrap md:flex-nowrap justify-between items-center px-6 py-4 gap-4">
+                    <div class="flex items-center gap-3 flex-1">
+                        <div class="flex-1 max-w-md relative">
+                            <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm cursor-text pointer-events-none"></i>
+                            <input type="text" id="por_search" onkeyup="filterPORTable()" placeholder="Search Pending Receiving..." 
+                                class="w-full pl-11 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:bg-white outline-none transition-all">
+                        </div>
+                        
+                        <!-- Date Filter Dropdown Trigger -->
+                        <div class="relative" id="por_date_filter_container">
+                            <button onclick="togglePORDateDropdown()" class="flex items-center bg-slate-50 border border-slate-200 rounded-xl overflow-hidden hover:bg-slate-100 transition-all shadow-sm h-[38px] group p-0">
+                                <span class="bg-slate-100 border-r border-slate-200 px-3 h-full flex items-center text-slate-600 transition-colors">
+                                    <i class="fas fa-sort-amount-up text-[13px]"></i>
+                                </span>
+                                <span class="px-4 text-[14px] font-medium text-blue-600">Date</span>
+                                <span class="pr-3 pl-1 text-slate-500 justify-center flex items-center">
+                                    <i class="fas fa-chevron-down text-[11px]"></i>
+                                </span>
+                            </button>
+                            
+                            <!-- Dropdown Content -->
+                            <div id="por_date_dropdown" class="absolute left-0 mt-2 w-72 bg-white border border-slate-100 rounded-2xl shadow-xl z-[200] hidden p-5 animate-in fade-in zoom-in-95 duration-200">
+                                <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Filter Berdasarkan Tanggal</h4>
+                                <div class="space-y-4">
+                                    <div>
+                                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Dari Tanggal</label>
+                                        <input type="date" id="por_header_start" value="${filters.start || ''}" class="w-full border border-slate-100 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 focus:bg-white focus:border-blue-500 outline-none transition-all">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Sampai Tanggal</label>
+                                        <input type="date" id="por_header_end" value="${filters.end || ''}" class="w-full border border-slate-100 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 focus:bg-white focus:border-blue-500 outline-none transition-all">
+                                    </div>
+                                    <div class="flex gap-2 pt-2">
+                                        <button onclick="applyPORHeaderFilter()" class="flex-1 bg-blue-600 text-white py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-md active:scale-95">Apply</button>
+                                        <button onclick="resetPORHeaderFilter()" class="flex-1 bg-slate-50 text-slate-500 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all">Reset</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Supplier Filter Dropdown Trigger -->
+                        <div class="relative" id="por_sup_filter_container">
+                            <button onclick="togglePORSupDropdown()" class="flex items-center bg-slate-50 border border-slate-200 rounded-xl overflow-hidden hover:bg-slate-100 transition-all shadow-sm h-[38px] group p-0">
+                                <span class="bg-slate-100 border-r border-slate-200 px-3 h-full flex items-center text-slate-600 transition-colors">
+                                    <i class="fas fa-building text-[13px]"></i>
+                                </span>
+                                <span class="px-4 text-[14px] font-medium text-blue-600">Supplier</span>
+                                <span class="pr-3 pl-1 text-slate-500 justify-center flex items-center">
+                                    <i class="fas fa-chevron-down text-[11px]"></i>
+                                </span>
+                            </button>
+                            
+                            <!-- Dropdown Content -->
+                            <div id="por_sup_dropdown" class="absolute left-0 mt-2 w-72 bg-white border border-slate-100 rounded-2xl shadow-xl z-[200] hidden p-5 animate-in fade-in zoom-in-95 duration-200">
+                                <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Pilih Supplier</h4>
+                                <div class="space-y-4">
+                                    <select id="por_header_sup" class="w-full border border-slate-100 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 focus:bg-white focus:border-blue-500 outline-none transition-all">
+                                        <option value="">Semua Supplier</option>
+                                        ${supOptions}
+                                    </select>
+                                    <div class="flex gap-2 pt-2">
+                                        <button onclick="applyPORHeaderFilter()" class="flex-1 bg-blue-600 text-white py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-md active:scale-95">Apply</button>
+                                        <button onclick="resetPORHeaderFilter()" class="flex-1 bg-slate-50 text-slate-500 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all">Reset</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="px-6 pb-4 pt-4">
+                    ${tabsHtml}
+                </div>
+            </div>
+
+            <!-- Content Area -->
+            <div class="flex-1 overflow-auto">
+                <table class="w-full text-left border-collapse" id="por_table">
+                    <thead class="bg-slate-50 sticky top-0 z-30 shadow-[0_1px_0_#e2e8f0]">
+                        <tr class="bg-slate-50/50 border-b border-slate-100">
+                            <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">NO. PO</th>
+                            <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">TGL ORDER</th>
+                            <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">SUPPLIER</th>
+                            <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">PROGRES TERIMA</th>
+                            <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-center">STATUS</th>
+                            <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">AKSI</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 bg-white">
+                        ${rows}
+                    </tbody>
                 </table>
             </div>
-        </div>` : `
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-20 text-center">
-            <div class="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-300">
-                <i class="fas fa-box-open text-4xl"></i>
-            </div>
-            <h3 class="text-gray-800 font-bold text-lg">${window._porActiveTab === 'pending' ? 'Tidak Ada Antrian Penerimaan' : 'Belum Ada Riwayat'}</h3>
-            <p class="text-gray-500 text-sm mt-1">${window._porActiveTab === 'pending' ? 'Semua Purchase Order telah diterima atau belum disetujui.' : 'Belum ada PO yang tercatat diterima.'}</p>
-        </div>`;
-
-    mc.innerHTML = `
-        <div class="flex items-center gap-4 mb-6 border-b border-gray-200">
-            <button onclick="window._porActiveTab='pending'; renderInventoryPOReceipt()" 
-                class="px-4 py-2 text-sm font-bold border-b-2 transition-all ${window._porActiveTab === 'pending' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'}">
-                Antrean Penerimaan
-            </button>
-            <button onclick="window._porActiveTab='history'; renderInventoryPOReceipt()" 
-                class="px-4 py-2 text-sm font-bold border-b-2 transition-all ${window._porActiveTab === 'history' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'}">
-                Riwayat Penerimaan
-            </button>
-        </div>
-
-        <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-4 mb-4">
-            <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest mb-3 flex items-center gap-3">
-                <i class="fas fa-filter text-blue-500"></i> FILTER PENCARIAN
-            </h3>
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 items-end mb-3">
-                <div>
-                    <label class="block text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Supplier</label>
-                    <select id="por_supplier" class="w-full border-2 border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
-                        <option value="">Semua Supplier</option>
-                        ${suppliers.map(s => `<option value="${s.id}" ${window.currentFilters.inventoryPOReceipt.supplier === s.id ? 'selected' : ''}>${s.name}</option>`).join('')}
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Status</label>
-                    <select id="por_status" class="w-full border-2 border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
-                        <option value="" ${!window.currentFilters.inventoryPOReceipt.status ? 'selected' : ''}>Semua Status</option>
-                        <option value="PENDING" ${window.currentFilters.inventoryPOReceipt.status === 'PENDING' ? 'selected' : ''}>Menunggu / Antrean</option>
-                        <option value="UNRECEIVED" ${window.currentFilters.inventoryPOReceipt.status === 'UNRECEIVED' ? 'selected' : ''}>Unreceived (Nol Penerimaan)</option>
-                        <option value="RECEIVED" ${window.currentFilters.inventoryPOReceipt.status === 'RECEIVED' ? 'selected' : ''}>Selesai / Riwayat</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Dari Tanggal PO</label>
-                    <input type="date" id="por_start_date" value="${window.currentFilters.inventoryPOReceipt.start}" 
-                        class="w-full border-2 border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
-                </div>
-                <div>
-                    <label class="block text-xs font-black text-slate-400 uppercase tracking-widest mb-1">Sampai Tanggal PO</label>
-                    <input type="date" id="por_end_date" value="${window.currentFilters.inventoryPOReceipt.end}" 
-                        class="w-full border-2 border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
-                </div>
-            </div>
-            <div class="flex gap-2">
-                <button onclick="applyPORFilter()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-sm">
-                    <i class="fas fa-search mr-2"></i> TAMPILKAN
-                </button>
-                <button onclick="resetPORFilter()" class="bg-slate-100 hover:bg-slate-200 text-slate-500 px-4 py-1.5 rounded-lg text-[10px] uppercase font-black tracking-widest transition-all shadow-sm">
-                    <i class="fas fa-undo"></i>
-                </button>
+            
+            <div class="bg-slate-50 border-t border-slate-200 p-2 text-center text-[10px] font-black text-slate-400 tracking-widest uppercase shrink-0">
+                TOTAL: ${pos.length} DOKUMEN MENUNGGU
             </div>
         </div>
-        ${tableHtml}`;
+    `;
+
+    // Add UI Helpers
+    window.togglePORDateDropdown = () => {
+        document.getElementById('por_date_dropdown').classList.toggle('hidden');
+        const el = document.getElementById('por_sup_dropdown');
+        if (el) el.classList.add('hidden');
+    };
+    
+    window.togglePORSupDropdown = () => {
+        document.getElementById('por_sup_dropdown').classList.toggle('hidden');
+        const el = document.getElementById('por_date_dropdown');
+        if (el) el.classList.add('hidden');
+    };
+
+    window.applyPORHeaderFilter = () => {
+        window.currentFilters.inventoryPOReceipt.start = document.getElementById('por_header_start').value;
+        window.currentFilters.inventoryPOReceipt.end = document.getElementById('por_header_end').value;
+        window.currentFilters.inventoryPOReceipt.supplier = document.getElementById('por_header_sup').value;
+        renderInventoryPOReceipt();
+    };
+
+    window.resetPORHeaderFilter = () => {
+        window.currentFilters.inventoryPOReceipt = { start: '', end: '', supplier: '', status: '' };
+        renderInventoryPOReceipt();
+    };
+
+    window.filterPORTable = () => {
+        const query = document.getElementById('por_search').value.toLowerCase();
+        const trs = document.getElementById('por_table').querySelectorAll('tbody tr');
+        trs.forEach(tr => {
+            const txt = tr.innerText.toLowerCase();
+            tr.style.display = txt.includes(query) ? '' : 'none';
+        });
+    };
 }
 
-window.applyPORFilter = () => {
-    window.currentFilters.inventoryPOReceipt.start = document.getElementById('por_start_date').value;
-    window.currentFilters.inventoryPOReceipt.end = document.getElementById('por_end_date').value;
-    window.currentFilters.inventoryPOReceipt.supplier = document.getElementById('por_supplier').value;
-    window.currentFilters.inventoryPOReceipt.status = document.getElementById('por_status').value;
-    renderInventoryPOReceipt();
-};
-
-window.resetPORFilter = () => {
-    window.currentFilters.inventoryPOReceipt = { start: '', end: '', supplier: '', status: '' };
-    renderInventoryPOReceipt();
-};
+// Close dropdowns on outside click
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('#por_date_filter_container')) {
+        const el = document.getElementById('por_date_dropdown');
+        if (el) el.classList.add('hidden');
+    }
+    if (!e.target.closest('#por_sup_filter_container')) {
+        const el = document.getElementById('por_sup_dropdown');
+        if (el) el.classList.add('hidden');
+    }
+});
 
 window.openPOReceiptModal = (id) => {
     const po = db.findById('purchaseOrders', id);
+    if (!['APPROVED', 'PARTIALLY RECEIVED'].includes(po.status)) {
+        showToast('PO harus APPROVED atau PARTIAL sebelum terima barang', 'error');
+        return;
+    }
     const rows = (po.items || []).map((i, idx) => {
         const receivedSoFar = i.receivedQty || 0;
         const sisa = Math.max(0, i.qty - receivedSoFar);
-        return `<tr class="border-b text-sm">
-            <td class="py-3 px-3">
-                <div class="font-medium text-gray-800">${i.prodText || i.itemName || '-'}</div>
-                <div class="text-xs text-gray-400">Pesan: ${invFmt(i.qty)} | Diterima: ${invFmt(receivedSoFar)} | Sisa: <span class="text-orange-600 font-medium">${invFmt(sisa)}</span></div>
+        return `
+        <tr class="border-b text-sm">
+            <td class="py-4 px-4">${i.prodText || i.itemName || '-'}
+                <div class="text-[10px] text-gray-400 mt-1">Total Pesan: ${invFmt(i.qty)} | Sudah Terima: ${invFmt(receivedSoFar)}</div>
             </td>
-            <td class="py-3 px-3">
-                <div class="w-full bg-gray-200 rounded-full h-1.5 mb-1">
-                    <div class="bg-green-500 h-1.5 rounded-full" style="width:${i.qty > 0 ? Math.round((receivedSoFar / i.qty) * 100) : 0}%"></div>
-                </div>
-            </td>
-            <td class="py-3 px-3 text-right">
+            <td class="py-4 px-4 text-center"><span class="font-bold text-blue-600">${invFmt(sisa)}</span></td>
+            <td class="py-4 px-4 text-right">
                 <input type="number" id="recv_qty_${idx}" value="${sisa}" max="${sisa}" min="0"
                     ${sisa === 0 ? 'disabled' : ''}
-                    class="w-24 border border-gray-300 rounded px-2 py-1 text-center text-sm ${sisa === 0 ? 'bg-gray-100 text-gray-400' : 'bg-white'}">
+                    class="w-20 border border-gray-300 rounded px-2 py-1 text-center text-sm ${sisa === 0 ? 'bg-gray-100' : ''}">
             </td>
         </tr>`;
     }).join('');
 
+    const todayStr = new Date().toISOString().split('T')[0];
+    const npbNum = window.generateNPBNumber ? window.generateNPBNumber() : `NPB-${todayStr.replace(/-/g, '')}-${Math.floor(Math.random()*1000)}`;
     const body = `<div class="text-sm">
-        <div class="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-4 text-xs text-blue-700">
-            <i class="fas fa-info-circle mr-1"></i> Masukkan qty aktual yang diterima hari ini. Anda bisa menerima sebagian saja.
+        <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">No. NPB (Otomatis)</label>
+                    <input type="text" id="recv_npb" value="${npbNum}" readonly class="w-full border-none rounded-lg px-3 py-2 text-sm font-bold text-blue-700 bg-blue-100/50 shadow-sm outline-none cursor-not-allowed">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Tanggal Terima</label>
+                    <input type="date" id="recv_date" value="${todayStr}" class="w-full border-none rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">No. Surat Jalan (Supplier)</label>
+                    <input type="text" id="recv_sj" placeholder="Contoh: SJ-12345" class="w-full border-none rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Penerima / Keterangan</label>
+                    <input type="text" id="recv_notes" placeholder="Nama penerima atau catatan tambahan" class="w-full border-none rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+            </div>
         </div>
-        <table class="w-full">
-            <thead><tr class="border-b-2 border-gray-800 text-xs uppercase">
-                <th class="py-2 px-3 text-left">Produk</th>
-                <th class="py-2 px-3 text-left">Progress</th>
-                <th class="py-2 px-3 text-right">Terima Hari Ini</th>
-            </tr></thead>
-            <tbody>${rows}</tbody>
-        </table>
+        
+        <p class="text-gray-500 mb-3 text-xs italic">Masukkan qty aktual yang diterima. (Barang yang sudah diterima 100% tidak bisa diinput lagi).</p>
+        <div class="overflow-x-auto rounded-xl border border-slate-200">
+            <table class="w-full text-left">
+                <thead class="bg-slate-50 border-b border-slate-200 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                    <tr>
+                        <th class="py-4 px-4">Produk</th>
+                        <th class="py-4 px-4 text-center">Sisa Qty</th>
+                        <th class="py-4 px-4 text-right">Terima Hari Ini</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                    ${rows}
+                </tbody>
+            </table>
+        </div>
     </div>`;
 
-    const footer = `
-        <button onclick="confirmPOReceipt('${id}')" class="w-full sm:w-auto inline-flex justify-center rounded-md bg-green-600 px-5 py-2 text-white text-sm font-medium hover:bg-green-700 sm:ml-3">
-            <i class="fas fa-check mr-2"></i>Konfirmasi Terima
-        </button>
-        <button onclick="closeModal()" class="mt-3 sm:mt-0 w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 px-4 py-2 bg-white text-gray-700 text-sm font-medium sm:ml-3">Batal</button>`;
+    const mainContent = document.getElementById('main-content');
+    let formView = document.getElementById('por-form-view');
+    if (!formView) {
+        mainContent.insertAdjacentHTML('beforeend', '\n<div id="por-form-view" class="hidden"></div>');
+        formView = document.getElementById('por-form-view');
+    }
 
-    showModal(`Terima Barang - ${po.poNumber}`, body, footer, 'full');
+    const listViewPending = document.getElementById('por-list-view');
+    if (listViewPending) listViewPending.classList.add('hidden');
+    
+    formView.innerHTML = `
+        <div class="animate-in fade-in slide-in-from-bottom-2 duration-400 -m-4 sm:-m-6 h-[calc(100vh-64px)] flex flex-col overflow-hidden bg-slate-50/50">
+            <div class="sticky top-0 z-40 bg-white border-b border-slate-100 px-8 py-4 flex justify-between items-center shrink-0 shadow-sm">
+                <div class="flex items-center gap-4">
+                    <h2 class="text-lg font-black text-slate-800 tracking-tight">Terima Barang - <span class="text-blue-600">${po.poNumber}</span></h2>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button onclick="closePORForm()" class="px-6 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95">BATAL</button>
+                    <button onclick="confirmPOReceipt('${id}')" class="px-8 py-2.5 bg-green-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-200 active:scale-95 flex items-center gap-2">
+                        <i class="fas fa-check"></i> KONFIRMASI TERIMA
+                    </button>
+                </div>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto custom-scrollbar pb-32">
+                <div class="w-full px-8 py-8 max-w-7xl mx-auto space-y-8">
+                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm">
+                        <h3 class="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-6 flex items-center gap-2">
+                            <i class="fas fa-info-circle"></i> INFORMASI PENERIMAAN
+                        </h3>
+                        ${body}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    formView.classList.remove('hidden');
+};
+
+window.closePORForm = () => {
+    const formView = document.getElementById('por-form-view');
+    const listViewPending = document.getElementById('por-list-view');
+    if (formView) formView.classList.add('hidden');
+    if (listViewPending) listViewPending.classList.remove('hidden');
+    renderInventoryPOReceipt();
 };
 
 window.confirmPOReceipt = (id) => {
@@ -2240,8 +2538,7 @@ window.confirmPOReceipt = (id) => {
 
     const sisa = sumTarget - sumReceived;
     showToast(done ? 'Semua barang diterima! PO selesai.' : `Diterima sebagian. Sisa ${invFmt(sisa)} unit.`, done ? 'success' : 'info');
-    closeModal();
-    renderInventoryPOReceipt();
+    closePORForm();
 };
 
 window.viewPOReceiptDetails = (id) => {
@@ -2284,73 +2581,107 @@ window.viewPOReceiptDetails = (id) => {
 };
 
 
-// â”€â”€â”€ 7. SHRINKAGE REPORT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+// ─── 7. SHRINKAGE REPORT ──────────────────────────────────────────
 window.renderInventoryShrinkageReport = () => {
     const canEdit = getModulePermission('produksi').edit;
     document.getElementById('pageTitle').innerText = 'Laporan Penyusutan';
     const mc = document.getElementById('main-content');
 
-    const filters = window.currentFilters.inventoryShrinkage;
+    const filters = window.currentFilters.inventoryShrinkage || {};
     const now = new Date();
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+    const currentYear = now.getFullYear();
+    const firstDay = `${currentYear}-01-01`;
+    const lastDay = `${currentYear}-12-31`;
 
     const fromVal = filters.start || firstDay;
     const toVal = filters.end || lastDay;
 
     mc.innerHTML = `
-    <div class="animate-in fade-in slide-in-from-top-4 duration-500">
-        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3">
+    <div class="animate-in fade-in slide-in-from-top-4 duration-500 space-y-6">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <div>
-                <h2 class="text-lg font-bold text-slate-800 tracking-tight">Laporan Penyusutan / NG</h2>
-                <p class="text-xs text-slate-400 font-medium">Monitoring penyusutan bahan baku dan produk rusak</p>
+                <h2 class="text-lg font-bold text-slate-800 tracking-tight">Analytics Penyusutan (KG)</h2>
+                <p class="text-xs text-slate-400 font-medium">Monitoring tren penyusutan produksi bulanan</p>
             </div>
             <div class="flex gap-2">
                 ${canEdit ? `
                 <button onclick="openManualShrinkageModal()" class="bg-blue-600 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-200 transition-all active:scale-95 flex items-center gap-2">
                     <i class="fas fa-plus"></i> CATAT PENYUSUTAN MANUAL
                 </button>
-                ` : `
-                <span class="text-[10px] font-black text-orange-500 bg-orange-50 border border-orange-100 px-4 py-2 rounded-xl uppercase tracking-widest flex items-center gap-2">
-                    <i class="fas fa-info-circle"></i> Mode Lihat Saja
-                </span>
-                `}
+                ` : ''}
             </div>
         </div>
 
-        <!-- Standardized Accordion Filter -->
-        <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-5 overflow-hidden">
-            <div onclick="toggleShrinkFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
-                <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
-                    <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
-                    ${(!window._uiState.shrinkFilterOpen && (fromVal || toVal)) ? `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
-                </h3>
-                <div class="flex items-center gap-3">
-                    <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.shrinkFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
-                    <i class="fas fa-chevron-${window._uiState.shrinkFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
+        <!-- Analytics Filter Bar -->
+        <div class="bg-white border border-slate-100 rounded-2xl shadow-sm p-5">
+            <div class="flex flex-wrap items-center gap-4">
+                <div class="flex items-center gap-3 bg-slate-50 p-1.5 rounded-xl border border-slate-100">
+                    <div class="flex flex-col px-3">
+                        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Dari Tanggal</label>
+                        <input type="date" id="sr_from" value="${fromVal}" onchange="runShrinkageReport()"
+                            class="bg-transparent border-none text-sm font-bold text-slate-700 focus:ring-0 p-0 cursor-pointer">
+                    </div>
+                    <div class="w-px h-8 bg-slate-200"></div>
+                    <div class="flex flex-col px-3">
+                        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Sampai Tanggal</label>
+                        <input type="date" id="sr_to" value="${toVal}" onchange="runShrinkageReport()"
+                            class="bg-transparent border-none text-sm font-bold text-slate-700 focus:ring-0 p-0 cursor-pointer">
+                    </div>
                 </div>
-            </div>
 
-            <div class="${window._uiState.shrinkFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
-                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 items-end mb-4">
-                    <div class="space-y-1.5">
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Dari Tanggal</label>
-                        <input type="date" id="sr_from" value="${fromVal}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 focus:bg-white focus:border-blue-500 outline-none transition-all">
-                    </div>
-                    <div class="space-y-1.5">
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Sampai Tanggal</label>
-                        <input type="date" id="sr_to" value="${toVal}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 focus:bg-white focus:border-blue-500 outline-none transition-all">
-                    </div>
-                    <div>
-                        <button onclick="runShrinkageReport()" class="w-full bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2">
-                            <i class="fas fa-search text-xs"></i> TAMPILKAN LAPORAN
-                        </button>
-                    </div>
+                <div class="h-10 w-px bg-slate-100 hidden md:block mx-2"></div>
+
+                <div class="flex items-center gap-2">
+                    <button onclick="runShrinkageReport()" class="bg-blue-600 text-white px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-500/20 hover:bg-slate-900 transition-all active:scale-95">
+                        Update Report
+                    </button>
+                    <button onclick="exportShrinkageReport()" class="bg-white border border-slate-200 text-slate-600 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-all">
+                        <i class="fas fa-file-export mr-2"></i> Export
+                    </button>
                 </div>
             </div>
         </div>
 
-        <div id="shrinkage_report_output"></div>
+        <!-- Chart Section -->
+        <div class="bg-white border border-slate-100 rounded-2xl shadow-sm p-6">
+            <div class="flex items-center justify-between mb-6">
+                <div>
+                    <h3 class="text-sm font-bold text-slate-800">Tren Penyusutan Bulanan</h3>
+                    <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Nilai dalam Kilogram (KG)</p>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="flex items-center gap-2">
+                        <div class="w-3 h-3 rounded-full bg-blue-500"></div>
+                        <span class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Penyusutan</span>
+                    </div>
+                </div>
+            </div>
+            <div style="height:320px; position:relative;">
+                <canvas id="shrinkage_analytics_chart"></canvas>
+            </div>
+        </div>
+
+        <!-- Monthly Summary (Full Width) -->
+        <div class="bg-white border border-slate-100 rounded-2xl shadow-sm overflow-hidden flex flex-col">
+            <div class="px-5 py-4 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center">
+                <h3 class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Ringkasan Penyusutan Bulanan</h3>
+                <span class="text-[9px] font-bold text-slate-400">KLIK DETAIL UNTUK MELIHAT DATA HARIAN</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-white border-b border-slate-100">
+                        <tr>
+                            <th class="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Periode Bulan</th>
+                            <th class="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Penyusutan</th>
+                            <th class="px-6 py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="shrinkage_monthly_body" class="divide-y divide-slate-50"></tbody>
+                    <tfoot id="shrinkage_monthly_foot" class="bg-blue-50/20 font-black"></tfoot>
+                </table>
+            </div>
+        </div>
     </div>`;
 
     setTimeout(() => runShrinkageReport(), 50);
@@ -2360,197 +2691,313 @@ window.runShrinkageReport = () => {
     const fromVal = document.getElementById('sr_from')?.value;
     const toVal = document.getElementById('sr_to')?.value;
     
-    // Save to global filters
+    if (!window.currentFilters.inventoryShrinkage) window.currentFilters.inventoryShrinkage = {};
     if (fromVal) window.currentFilters.inventoryShrinkage.start = fromVal;
     if (toVal) window.currentFilters.inventoryShrinkage.end = toVal;
-    const output = document.getElementById('shrinkage_report_output');
-    if (!fromVal || !toVal || !output) return;
+
+    const monthlyBody = document.getElementById('shrinkage_monthly_body');
+    const monthlyFoot = document.getElementById('shrinkage_monthly_foot');
+    
+    if (!fromVal || !toVal || !monthlyBody) return;
 
     const from = new Date(fromVal + 'T00:00:00');
     const to = new Date(toVal + 'T23:59:59');
 
     const items = db.read('inventoryItems');
 
-    // â”€â”€ 1. Penyusutan dari MO (productionOrders) â€” tidak double-count mutasi stok â”€â”€
     const moShrinkages = (db.read('productionOrders') || []).filter(mo => {
         if (mo.status !== 'DONE') return false;
-        // Include any stage that has shrinkage recorded
         const kg = parseFloat(mo.shrinkageKg) || 0;
         if (kg <= 0) return false;
         const d = new Date(mo.completedAt || mo.updatedAt || mo.createdAt);
         return d >= from && d <= to;
     }).map(mo => {
         const inputItem = mo.inputItemId ? items.find(i => i.id === mo.inputItemId) : null;
-        const inputQty = parseFloat(mo.weightBeforeOven) || parseFloat(mo.inputQty) || 0;
-        const pct = parseFloat(mo.shrinkagePct) || 0;
         return {
             date: mo.completedAt || mo.updatedAt || mo.createdAt,
-            itemCode: inputItem?.itemCode || '-',
             itemName: inputItem?.itemName || `WIP ${mo.stage} (${mo.productName || '-'})`,
-            itemId: mo.inputItemId || null,
             qty: parseFloat(mo.shrinkageKg) || 0,
-            inputQty: inputQty,
-            pct: pct,
-            unit: inputItem?.unit || 'Kg',
-            notes: `Susut ${mo.stage === 'OVEN_KERING' ? 'Oven Kering' : mo.stage} MO ${mo.moNumber}`,
+            pct: parseFloat(mo.shrinkagePct) || 0,
+            unit: inputItem?.unit || 'KG',
+            notes: `Susut ${mo.stage} MO ${mo.moNumber}`,
             source: 'MO'
         };
     });
 
-    // â”€â”€ 2. Penyusutan manual (dari stockTransactions dengan reference SHRINKAGE) â”€â”€
     const manualTxs = (db.read('stockTransactions') || []).filter(t => {
         const d = new Date(t.date);
         return d >= from && d <= to && (t.reference === 'SHRINKAGE' || t.type === 'SHRINKAGE');
     }).map(t => {
-        // Try to parse pct from notes if manual (e.g. "Susut 4.2%...")
         let pct = 0;
         const match = t.notes?.match(/Susut ([\d.]+)%/i);
         if (match) pct = parseFloat(match[1]);
-        
         return {
             date: t.date,
-            itemCode: t.itemCode || '-',
-            itemName: t.itemName,
-            itemId: t.itemId,
+            itemName: t.itemName || 'Item Tidak Diketahui',
             qty: parseFloat(t.qty) || 0,
-            inputQty: 0, // Unknown for manual
             pct: pct,
-            unit: items.find(i => i.id === t.itemId)?.unit || t.unit || 'Kg',
+            unit: items.find(i => i.id === t.itemId)?.unit || t.unit || 'KG',
             notes: t.notes || 'Penyusutan Manual',
             source: 'MANUAL'
         };
     });
 
-    // â”€â”€ Gabungkan & sort terbaru dulu â”€â”€
-    const allEntries = [...moShrinkages, ...manualTxs]
-        .sort((a, b) => new Date(b.date) - new Date(a.date));
+    const allEntries = [...moShrinkages, ...manualTxs].sort((a,b) => new Date(b.date) - new Date(a.date));
+    let grandTotal = 0;
+    
+    const buckets = [];
+    let curr = new Date(from.getFullYear(), from.getMonth(), 1);
+    while (curr <= to) {
+        buckets.push({
+            month: curr.getMonth(),
+            year: curr.getFullYear(),
+            label: curr.toLocaleString('id-ID', { month: 'long', year: 'numeric' }),
+            total: 0
+        });
+        curr.setMonth(curr.getMonth() + 1);
+    }
 
-    // â”€â”€ Summary per item â”€â”€
-    const summary = {};
     allEntries.forEach(e => {
-        const key = e.itemId || e.itemName;
-        if (!summary[key]) summary[key] = { itemName: e.itemName, itemCode: e.itemCode, totalQty: 0, totalInput: 0, count: 0, unit: e.unit, totalPct: 0, pctCount: 0 };
-        summary[key].totalQty += e.qty;
-        summary[key].totalInput += e.inputQty;
-        summary[key].count += 1;
-        if (e.pct > 0) {
-            summary[key].totalPct += e.pct;
-            summary[key].pctCount += 1;
+        const d = new Date(e.date);
+        const b = buckets.find(x => x.month === d.getMonth() && x.year === d.getFullYear());
+        if (b) {
+            b.total += e.qty;
+            grandTotal += e.qty;
         }
     });
 
-    // â”€â”€ Detail rows â”€â”€
-    const detailRows = allEntries.map(e => {
-        const sourceBadge = e.source === 'MO'
-            ? `<span class="px-1.5 py-0.5 rounded text-[9px] font-black bg-orange-100 text-orange-700 uppercase">MO</span>`
-            : `<span class="px-1.5 py-0.5 rounded text-[9px] font-black bg-gray-100 text-gray-500 uppercase">Manual</span>`;
-        return `
-            <tr class="border-b border-gray-100 hover:bg-orange-50/30 transition-colors">
-                <td class="py-2.5 px-4 text-xs text-gray-500">${invDate(e.date)}</td>
-                <td class="py-2.5 px-4 text-xs font-mono font-bold text-blue-600">${e.itemCode}</td>
-                <td class="py-2.5 px-4 text-sm font-medium text-gray-800">${e.itemName}</td>
-                <td class="py-2.5 px-4 text-xs text-gray-500 italic truncate" title="${e.notes}">
-                    ${sourceBadge} ${e.notes}
-                </td>
-                <td class="py-2.5 px-4 text-sm text-right font-black text-red-600">-${invFmt(e.qty)}</td>
-                <td class="py-2.5 px-4 text-xs font-bold text-gray-400 uppercase text-center">${e.pct > 0 ? e.pct.toFixed(1) + '%' : '-'}</td>
-                <td class="py-2.5 px-4 text-xs font-bold text-gray-400 uppercase">${e.unit}</td>
-            </tr>
-        `;
-    }).join('') || '<tr><td colspan="6" class="py-10 text-center text-gray-400 text-sm italic">Tidak ada data penyusutan dalam periode ini.</td></tr>';
+    monthlyBody.innerHTML = buckets.slice().reverse().map(b => `
+        <tr class="hover:bg-slate-50 transition-colors">
+            <td class="px-6 py-4 font-bold text-slate-700">${b.label}</td>
+            <td class="px-6 py-4 text-right font-black text-slate-900 font-mono">${invFmt(b.total)} KG</td>
+            <td class="px-6 py-4 text-center">
+                <button onclick="showShrinkageMonthDetail(${b.month}, ${b.year})" class="text-[10px] font-black text-blue-600 hover:text-slate-900 uppercase tracking-widest border-b-2 border-blue-100 hover:border-slate-200 pb-0.5 transition-all">Detail</button>
+            </td>
+        </tr>
+    `).join('') || '<tr><td colspan="3" class="py-12 text-center text-slate-400 italic">Tidak ada data penyusutan di periode ini.</td></tr>';
 
-    // â”€â”€ Summary rows â”€â”€
-    const summaryRows = Object.values(summary).sort((a, b) => b.totalQty - a.totalQty).map(s => {
-        const it = items.find(i => i.id === s.itemId || i.itemCode === s.itemCode);
-        const avgPct = s.pctCount > 0 ? (s.totalPct / s.pctCount) : 0;
-        return `
-            <tr class="border-b border-gray-100 hover:bg-gray-50">
-                <td class="py-3 px-4 text-sm font-mono text-blue-600">${s.itemCode}</td>
-                <td class="py-3 px-4 text-sm font-medium text-gray-800">${s.itemName}</td>
-                <td class="py-3 px-4 text-sm text-right font-black text-red-600">-${invFmt(s.totalQty)} ${s.unit}</td>
-                <td class="py-3 px-4 text-sm text-center font-bold text-orange-600">${avgPct > 0 ? avgPct.toFixed(1) + '%' : '-'}</td>
-                <td class="py-3 px-4 text-sm text-center text-gray-500">${s.count} kali</td>
-            </tr>
-        `;
-    }).join('') || '<tr><td colspan="5" class="py-8 text-center text-gray-400 text-sm italic">Tidak ada data.</td></tr>';
+    monthlyFoot.innerHTML = `
+        <tr>
+            <td class="px-6 py-5 text-[11px] text-blue-800 uppercase tracking-widest">Total Akumulasi Periode</td>
+            <td class="px-6 py-5 text-right text-lg text-blue-900 font-black font-mono">${invFmt(grandTotal)} KG</td>
+            <td></td>
+        </tr>
+    `;
 
-    const totalSusutKg = allEntries.reduce((s, e) => s + e.qty, 0);
+    // Store globally for detail modal access
+    window._lastShrinkData = allEntries;
 
-    output.innerHTML = `
-        <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-            <div class="bg-red-50 border border-red-100 rounded-xl p-4">
-                <p class="text-[10px] font-black text-red-400 uppercase tracking-widest mb-1">Total Susut</p>
-                <p class="text-2xl font-black text-red-600">${invFmt(totalSusutKg)} <span class="text-sm font-bold">Kg</span></p>
-            </div>
-            <div class="bg-orange-50 border border-orange-100 rounded-xl p-4">
-                <p class="text-[10px] font-black text-orange-400 uppercase tracking-widest mb-1">Jumlah Kejadian</p>
-                <p class="text-2xl font-black text-orange-600">${allEntries.length} <span class="text-sm font-bold">Entri</span></p>
-            </div>
-            <div class="bg-blue-50 border border-blue-100 rounded-xl p-4 col-span-2 md:col-span-1">
-                <p class="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Rata-rata Susut</p>
-                <p class="text-2xl font-black text-blue-600">${allEntries.filter(e => e.pct > 0).length > 0 ? (allEntries.filter(e => e.pct > 0).reduce((sum, e) => sum + e.pct, 0) / allEntries.filter(e => e.pct > 0).length).toFixed(1) : 0} <span class="text-sm font-bold">%</span></p>
-            </div>
-        </div>
+    // Render Chart
+    const ctx = document.getElementById('shrinkage_analytics_chart');
+    if (ctx && typeof Chart !== 'undefined') {
+        if (window._shrinkChart) window._shrinkChart.destroy();
+        window._shrinkChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: buckets.map(b => b.label),
+                datasets: [{
+                    label: 'Penyusutan (KG)',
+                    data: buckets.map(b => b.total),
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#3b82f6',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    borderWidth: 3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: '#1e293b',
+                        titleFont: { size: 11, weight: 'bold' },
+                        bodyFont: { size: 12, weight: 'black' },
+                        padding: 12,
+                        callbacks: { label: ctx => ` ${ctx.parsed.y.toLocaleString('id-ID')} KG` }
+                    }
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { font: { size: 10, weight: 'bold' }, color: '#94a3b8' } },
+                    y: { 
+                        beginAtZero: true, 
+                        grid: { color: 'rgba(226, 232, 240, 0.5)', drawBorder: false },
+                        ticks: { font: { size: 10, weight: 'bold' }, color: '#94a3b8', callback: v => v + ' kg' }
+                    }
+                }
+            }
+        });
+    }
+};
 
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden mb-6">
-            <div class="p-4 bg-slate-50 border-b border-gray-100 flex justify-between items-center">
-                <h3 class="font-bold text-gray-700 flex items-center gap-2">
-                    <i class="fas fa-history text-orange-500"></i> Riwayat Penyusutan Detail
-                </h3>
-                <span class="text-xs text-gray-500">${allEntries.length} Entri</span>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left">
-                    <thead>
-                        <tr class="bg-gray-50/50 border-b border-gray-200">
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Tanggal</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Kode</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Nama Item</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Keterangan / Sumber</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Susut (Kg)</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-center">%</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Unit</th>
-                        </tr>
-                    </thead>
-                    <tbody>${detailRows}</tbody>
-                </table>
-            </div>
-        </div>
+window.showShrinkageMonthDetail = (month, year, start = null, end = null) => {
+    const months = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+    const label = `${months[month]} ${year}`;
+    
+    // Default to full month if no specific dates provided
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    
+    const filterStart = start ? new Date(start) : firstDay;
+    const filterEnd = end ? new Date(end) : lastDay;
+    
+    // Set hours to ensure range works
+    filterStart.setHours(0,0,0,0);
+    filterEnd.setHours(23,59,59,999);
 
-        <div class="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
-            <div class="p-4 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
-                <h3 class="font-bold text-gray-700"><i class="fas fa-chart-bar mr-2 text-blue-500"></i>Ringkasan per Item</h3>
-                <span class="text-xs text-gray-500">${Object.keys(summary).length} Item</span>
+    const data = (window._lastShrinkData || []).filter(e => {
+        const d = new Date(e.date);
+        return d >= filterStart && d <= filterEnd;
+    });
+
+    const rows = data.map(e => `
+        <tr class="hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-0">
+            <td class="px-4 py-3 text-[11px] text-slate-500 font-medium">${invDate(e.date)}</td>
+            <td class="px-4 py-3">
+                <div class="text-xs font-bold text-slate-800">${e.itemName}</div>
+                <div class="text-[9px] text-slate-400 italic leading-tight mt-0.5">${e.notes}</div>
+            </td>
+            <td class="px-4 py-3 text-right text-sm font-black text-red-600 font-mono">-${invFmt(e.qty)} <span class="text-[10px]">KG</span></td>
+            <td class="px-4 py-3 text-center">
+                <span class="text-[10px] font-bold text-slate-500 bg-slate-50 px-2 py-0.5 rounded border border-slate-100">${e.pct > 0 ? e.pct.toFixed(1) + '%' : '-'}</span>
+            </td>
+        </tr>
+    `).join('') || '<tr><td colspan="4" class="py-12 text-center text-slate-400 italic">Tidak ada rincian data untuk periode ini.</td></tr>';
+
+    const total = data.reduce((s, e) => s + e.qty, 0);
+    const fromVal = filterStart.toISOString().split('T')[0];
+    const toVal = filterEnd.toISOString().split('T')[0];
+
+    const body = `
+        <div class="space-y-4 animate-in fade-in duration-300">
+            <!-- Filter Bar styled like image -->
+            <div class="flex justify-end mb-2">
+                <div class="flex items-center bg-[#f8fafc] border border-slate-200 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition-all group">
+                    <div class="px-3 py-2.5 bg-slate-100 border-r border-slate-200 text-slate-500 group-hover:text-blue-600 transition-colors">
+                        <i class="fas fa-calendar-day text-xs"></i>
+                    </div>
+                    <div class="flex items-center px-4 py-2 gap-4">
+                        <div class="flex flex-col">
+                            <span class="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Dari</span>
+                            <input type="date" id="modal_shrink_from" value="${fromVal}" 
+                                class="bg-transparent border-none p-0 text-[11px] font-bold text-blue-600 outline-none w-[100px] cursor-pointer">
+                        </div>
+                        <div class="w-px h-8 bg-slate-200"></div>
+                        <div class="flex flex-col">
+                            <span class="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Sampai</span>
+                            <input type="date" id="modal_shrink_to" value="${toVal}" 
+                                class="bg-transparent border-none p-0 text-[11px] font-bold text-blue-600 outline-none w-[100px] cursor-pointer">
+                        </div>
+                        <button onclick="applyModalShrinkFilter(${month}, ${year})" 
+                            class="ml-2 w-9 h-9 rounded-lg bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 active:scale-95">
+                            <i class="fas fa-filter text-xs"></i>
+                        </button>
+                    </div>
+                </div>
             </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left">
-                    <thead>
-                        <tr class="bg-gray-50/50 border-b border-gray-200">
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Kode</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase">Nama Item</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-right">Total Susut</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-center">Rerata %</th>
-                            <th class="py-3 px-4 text-xs font-semibold text-gray-600 uppercase text-center">Frekuensi</th>
-                        </tr>
-                    </thead>
-                    <tbody>${summaryRows}</tbody>
-                </table>
+
+            <div class="flex items-center justify-between bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                <div>
+                    <p class="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-0.5">Total Penyusutan Terfilter</p>
+                    <p class="text-xl font-black text-blue-800 font-mono">${invFmt(total)} KG</p>
+                </div>
+                <div class="text-right">
+                    <p class="text-[9px] font-black text-blue-400 uppercase tracking-widest mb-0.5">Jumlah Entri</p>
+                    <p class="text-lg font-black text-blue-800">${data.length}</p>
+                </div>
+            </div>
+
+            <div class="border border-slate-200 rounded-xl overflow-hidden">
+                <div class="max-h-[400px] overflow-y-auto scrollbar-thin">
+                    <table class="w-full text-sm">
+                        <thead class="bg-slate-50 sticky top-0 border-b border-slate-200 z-10">
+                            <tr>
+                                <th class="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Tanggal</th>
+                                <th class="px-4 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Produk / Keterangan</th>
+                                <th class="px-4 py-3 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Susut</th>
+                                <th class="px-4 py-3 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">%</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50 bg-white">
+                            ${rows}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     `;
+
+    if (!window._isModalOpen) {
+        showModal(`Detail Penyusutan: ${label}`, body, `<button onclick="closeModal()" class="w-full sm:w-auto bg-slate-900 text-white px-8 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-slate-200 hover:bg-black transition-all">Tutup</button>`, 'lg');
+    } else {
+        const modalBody = document.querySelector('#modal-container .overflow-y-auto.flex-1');
+        if (modalBody) modalBody.innerHTML = body;
+    }
+};
+
+window.applyModalShrinkFilter = (month, year) => {
+    const start = document.getElementById('modal_shrink_from')?.value;
+    const end = document.getElementById('modal_shrink_to')?.value;
+    window.showShrinkageMonthDetail(month, year, start, end);
+};
+
+window.exportShrinkageReport = () => {
+    const data = window._lastShrinkData || [];
+    if (data.length === 0) { showToast('Tidak ada data untuk diekspor', 'info'); return; }
+    
+    const headers = ['Tanggal', 'Item', 'Keterangan', 'Qty (KG)', 'Persentase (%)', 'Sumber'];
+    const csvRows = [headers.join(',')];
+    
+    data.forEach(e => {
+        csvRows.push([
+            invDate(e.date),
+            `"${e.itemName}"`,
+            `"${e.notes}"`,
+            e.qty,
+            e.pct.toFixed(2),
+            e.source
+        ].join(','));
+    });
+    
+    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Laporan_Penyusutan_Produksi_${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
 };
 
 window.openManualShrinkageModal = () => {
+
     const todayStr = new Date().toISOString().split('T')[0];
     const itemOpts = getActiveItemOpts();
 
     const body = `<div class="space-y-4">
         <div><label class="block text-sm font-medium text-gray-700 mb-1">Tanggal Judgment</label>
             <input type="date" id="mshrink_date" value="${todayStr}" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"></div>
-        <div><label class="block text-sm font-medium text-gray-700 mb-1">Item yang Bermasalah (NG/Susut) <span class="text-red-500">*</span></label>
-            <select id="mshrink_item" onchange="invUpdateUnit('mshrink_item','mshrink_unit_disp'); invShowCurrentStock('mshrink_item','mshrink_stock_info')" 
-                class="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500">${itemOpts}</select></div>
-        <div id="mshrink_stock_info" class="hidden p-2 bg-blue-50 border border-blue-100 rounded text-xs text-blue-700"></div>
+        <div class="relative mb-4">
+            <label class="block text-xs font-medium text-gray-700 mb-1.5 ml-1">Item yang Bermasalah (NG/Susut) <span class="text-red-500">*</span></label>
+            <div id="mshrink_trigger" onclick="openProductSearch('mshrink')" class="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs text-slate-400 cursor-pointer hover:bg-slate-50 transition-all flex justify-between items-center group h-[38px]">
+                <span id="mshrink_label" class="truncate pr-2">-- Pilih Barang Bermasalah --</span>
+                <i class="fas fa-chevron-down text-[10px] text-slate-300 group-hover:text-slate-400 transition-colors"></i>
+            </div>
+            <input type="hidden" id="mshrink_item" onchange="invShowCurrentStock('mshrink_item','mshrink_stock_info')">
+            <div id="mshrink_results_container" class="absolute z-[100] top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-[0_15px_40px_rgba(0,0,0,0.12)] hidden border border-slate-100 overflow-hidden min-w-[320px]">
+                <div class="p-3 border-b border-slate-50">
+                    <div class="relative">
+                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+                        <input type="text" id="mshrink_search_input" placeholder="Ketik kode atau nama..." class="w-full bg-slate-50 border border-blue-100 rounded-lg pl-9 pr-3 py-2 text-xs focus:border-blue-400 outline-none transition-all font-medium">
+                    </div>
+                </div>
+                <div id="mshrink_results" class="max-h-[300px] overflow-y-auto custom-scrollbar"></div>
+            </div>
+        </div>
+        <div id="mshrink_stock_info" class="hidden p-3 bg-blue-50 border border-blue-100 rounded-xl text-xs text-blue-700 font-bold mb-4"></div>
         <div class="grid grid-cols-2 gap-4">
             <div><label class="block text-sm font-medium text-gray-700 mb-1">Qty Susut <span class="text-red-500">*</span></label>
                 <input type="number" id="mshrink_qty" min="0.01" step="0.01" placeholder="0" class="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500"></div>
@@ -2585,15 +3032,15 @@ window.saveManualShrinkage = () => {
     renderInventoryShrinkageReport();
 };
 
-// â”€â”€â”€ 8. MONTHLY STOCK REPORT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ———— 8. MONTHLY STOCK REPORT ————————————————————————————
 window.currentMonthlyReportCategory = 'RAW_MATERIAL';
 
 window.renderMonthlyStockReport = () => {
-    // Reset to default if current category was one of the removed ones
-    if (['WIP_OVEN_BASAH', 'WIP_OVEN_KERING'].includes(window.currentMonthlyReportCategory)) {
+    if (!window.currentMonthlyReportCategory || ['WIP_OVEN_BASAH', 'WIP_OVEN_KERING'].includes(window.currentMonthlyReportCategory)) {
         window.currentMonthlyReportCategory = 'RAW_MATERIAL';
     }
 
+    renderBreadcrumb(['Stock', 'Mutasi Stok Bulanan']);
     document.getElementById('pageTitle').innerText = 'Laporan Stok Bulanan';
     const mc = document.getElementById('main-content');
 
@@ -2601,58 +3048,57 @@ window.renderMonthlyStockReport = () => {
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
     mc.innerHTML = `
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-5">
-        <h2 class="text-lg font-semibold text-gray-800 mb-4 tracking-tight">Laporan Mutasi Stok Bulanan</h2>
-        <div class="flex flex-wrap gap-3 items-end">
-            <div>
-                <label class="block text-xs font-semibold text-gray-500 uppercase mb-2 tracking-wider">Pilih Bulan</label>
-                <input type="month" id="msr_month" value="${currentMonth}" class="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all">
+    <div class="space-y-4 animate-in fade-in duration-500">
+        <!-- Compact Filter Bar -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+            <div class="flex flex-wrap items-center gap-4">
+                <!-- Search Input -->
+                <div class="flex-1 min-w-[250px] relative group">
+                    <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors"></i>
+                    <input type="text" id="msr_search" onkeyup="runMonthlyStockReport()" placeholder="Search Code or Item Name..." 
+                        class="w-full pl-12 pr-4 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-semibold text-slate-700 placeholder:text-slate-300 focus:bg-white focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all">
+                </div>
+
+                <!-- Month Picker -->
+                <div class="relative min-w-[150px]">
+                    <i class="fas fa-calendar-alt absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"></i>
+                    <input type="month" id="msr_month" value="${currentMonth}" onchange="runMonthlyStockReport()"
+                        class="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-bold text-slate-700 focus:bg-white focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/5 transition-all outline-none cursor-pointer">
+                </div>
+
+                <!-- Category Filter -->
+                <div class="relative min-w-[180px]">
+                    <i class="fas fa-filter absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"></i>
+                    <select id="msr_category" onchange="runMonthlyStockReport()" 
+                        class="w-full pl-11 pr-10 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-bold text-slate-700 appearance-none cursor-pointer focus:bg-white focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/5 transition-all outline-none">
+                        <option value="RAW_MATERIAL" ${window.currentMonthlyReportCategory === 'RAW_MATERIAL' ? 'selected' : ''}>Bahan Baku</option>
+                        <option value="FINISHED_GOODS" ${window.currentMonthlyReportCategory === 'FINISHED_GOODS' ? 'selected' : ''}>Gudang Jadi</option>
+                    </select>
+                    <i class="fas fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none text-[10px]"></i>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex gap-3 ml-auto">
+                    <button onclick="openInventoryConversionModal()" id="btn_msr_conversion" class="hidden bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl transition-all text-sm font-bold shadow-lg shadow-indigo-500/20 flex items-center gap-2">
+                        <i class="fas fa-random"></i> Konversi
+                    </button>
+                    <button onclick="runMonthlyStockReport()" class="bg-white border border-slate-200 text-slate-600 px-5 py-2.5 rounded-xl hover:bg-slate-50 transition-all text-sm font-bold" title="Refresh Data">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                </div>
             </div>
-            <button onclick="runMonthlyStockReport()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-sm h-[38px]">
-                <i class="fas fa-search"></i> Tampilkan Laporan
-            </button>
-            <button onclick="openInventoryConversionModal()" id="btn_msr_conversion" class="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 shadow-sm h-[38px] hidden">
-                <i class="fas fa-random"></i> Konversi Kemasan
-            </button>
         </div>
-    </div>
-    
-    <div class="bg-white rounded-xl shadow-sm border border-gray-100 mb-5 overflow-hidden">
-        <div class="border-b border-gray-100">
-            <nav class="flex overflow-x-auto no-scrollbar" id="msr_tabs_nav">
-                ${[
-                    ['RAW_MATERIAL', 'Bahan Baku'],
-                    ['MIXING_STOCK', 'Campuran'],
-                    ['FINISHED_GOODS', 'Gudang Jadi']
-                ].map(([cat, label]) =>
-                    `<button onclick="switchMonthlyReportTab('${cat}')" id="msr_tab_${cat}" 
-                             class="whitespace-nowrap py-4 px-6 font-bold text-xs uppercase tracking-wider border-b-2 transition-all 
-                             ${(window.currentMonthlyReportCategory || 'RAW_MATERIAL') === cat ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'}">${label}</button>`
-                ).join('')}
-            </nav>
+        
+        <!-- Report Table Card -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+            <div id="monthly_stock_report_output" class="p-0"></div>
         </div>
-        <div id="monthly_stock_report_output"></div>
     </div>`;
 
     setTimeout(() => runMonthlyStockReport(), 50);
 };
 
-window.switchMonthlyReportTab = (cat) => {
-    window.currentMonthlyReportCategory = cat;
-    document.querySelectorAll('[id^="msr_tab_"]').forEach(btn => {
-        btn.classList.remove('border-blue-600', 'text-blue-600');
-        btn.classList.add('border-transparent', 'text-gray-400');
-    });
-    const active = document.getElementById(`msr_tab_${cat}`);
-    if (active) {
-        active.classList.add('border-blue-600', 'text-blue-600');
-        active.classList.remove('border-transparent', 'text-gray-400');
-    }
-    runMonthlyStockReport();
-};
-
 window.runMonthlyStockReport = () => {
-    // db.seedWIPItems(); // REMOVED: Auto-seeding recreates deleted items, causing them to reappear after refresh.
     const monthVal = document.getElementById('msr_month')?.value;
     const output = document.getElementById('monthly_stock_report_output');
     if (!monthVal || !output) return;
@@ -2664,115 +3110,103 @@ window.runMonthlyStockReport = () => {
     const items = db.read('inventoryItems').filter(it => it.status !== 'INACTIVE');
     const allTxs = db.read('stockTransactions');
 
-    // Custom filtering for production stages
+    const catSelect = document.getElementById('msr_category');
+    if (catSelect) window.currentMonthlyReportCategory = catSelect.value;
     const cat = window.currentMonthlyReportCategory || 'RAW_MATERIAL';
     
-    // Toggle header conversion button visibility
     const btnConv = document.getElementById('btn_msr_conversion');
     if (btnConv) {
         if (cat === 'FINISHED_GOODS') btnConv.classList.remove('hidden');
         else btnConv.classList.add('hidden');
     }
 
-    let filteredItems = [];
-
-    if (cat === 'RAW_MATERIAL') {
-        filteredItems = items.filter(it => it.category === 'RAW_MATERIAL');
-    } else if (cat === 'MIXING_STOCK') {
-        filteredItems = items.filter(it => it.category === 'MIXING_STOCK');
-    } else if (cat === 'FINISHED_GOODS') {
-        filteredItems = items.filter(it => it.category === 'FINISHED_GOODS');
-    } else if (cat === 'WIP_OVEN_BASAH') {
-        // Include items explicitly in OVEN_BASAH_STOCK category OR items in WIP category with "Oven Basah" in name
-        filteredItems = items.filter(it => 
-            it.category === 'OVEN_BASAH_STOCK' || 
-            (it.category === 'WIP' && it.itemName.toLowerCase().includes('oven basah'))
-        );
+    let filteredItems = items.filter(it => it.category === cat);
+    if (cat === 'WIP_OVEN_BASAH') {
+        filteredItems = items.filter(it => it.category === 'OVEN_BASAH_STOCK' || (it.category === 'WIP' && it.itemName.toLowerCase().includes('oven basah')));
     } else if (cat === 'WIP_OVEN_KERING') {
-        filteredItems = items.filter(it => 
-            it.category === 'OVEN_KERING_STOCK' ||
-            (it.category === 'WIP' && it.itemName.toLowerCase().includes('oven kering'))
-        );
-    } else if (cat.startsWith('WIP_')) {
-        const stageName = cat.replace('WIP_', '').replace('_', ' ');
-        filteredItems = items.filter(it => it.category === 'WIP' && it.itemName.toLowerCase().includes(stageName.toLowerCase()));
-    } else {
-        filteredItems = items;
+        filteredItems = items.filter(it => it.category === 'OVEN_KERING_STOCK' || (it.category === 'WIP' && it.itemName.toLowerCase().includes('oven kering')));
+    }
+
+    const searchQuery = document.getElementById('msr_search')?.value.toLowerCase() || '';
+    if (searchQuery) {
+        filteredItems = filteredItems.filter(it => it.itemName.toLowerCase().includes(searchQuery) || it.itemCode.toLowerCase().includes(searchQuery));
     }
 
     const reportData = filteredItems.map(it => {
-        // Stok Awal (semua tx sebelum startDate)
-        const openingTxs = allTxs.filter(t => t.itemId === it.id && new Date(t.date) < startDate);
-        const getQty = (txs, direction) => {
-            return txs.reduce((sum, t) => {
-                const q = parseFloat(t.qty) || 0;
-                const type = (t.type || '').toUpperCase();
-                const isIn = ['IN', 'ADJUST_IN', 'PRODUCTION_IN', 'RETURN_IN'].includes(type);
-                const isOut = ['OUT', 'SHRINKAGE', 'ADJUST_OUT', 'PRODUCTION_OUT', 'SALES_OUT', 'WASTE'].includes(type);
-                
-                if (direction === 'IN' && isIn) return sum + q;
-                if (direction === 'OUT' && isOut) return sum + q;
-                if (direction === 'NET') {
-                    if (isIn) return sum + q;
-                    if (isOut) return sum - q;
-                }
-                return sum;
-            }, 0);
-        };
+        const itemTxs = allTxs.filter(t => t.itemId === it.id);
+        const preTxs = itemTxs.filter(t => new Date(t.date) < startDate);
+        const inPeriodTxs = itemTxs.filter(t => new Date(t.date) >= startDate && new Date(t.date) <= endDate);
 
-        const openingStock = getQty(openingTxs, 'NET');
-        const monthTxs = allTxs.filter(t => t.itemId === it.id && new Date(t.date) >= startDate && new Date(t.date) <= endDate);
-        const totalIn = getQty(monthTxs, 'IN');
-        const totalOut = getQty(monthTxs, 'OUT');
-        const closingStock = openingStock + totalIn - totalOut;
+        const initial = preTxs.reduce((sum, t) => sum + (t.type === 'IN' ? t.qty : -t.qty), 0);
+        const totalIn = inPeriodTxs.filter(t => t.type === 'IN').reduce((sum, t) => sum + t.qty, 0);
+        const totalOut = inPeriodTxs.filter(t => t.type === 'OUT').reduce((sum, t) => sum + t.qty, 0);
+        const final = initial + totalIn - totalOut;
 
-        return {
-            ...it,
-            openingStock,
-            totalIn,
-            totalOut,
-            closingStock
-        };
-    }).filter(it => ['WIP', 'MIXING_STOCK', 'OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'].includes(it.category) || it.openingStock !== 0 || it.totalIn !== 0 || it.totalOut !== 0);
+        return { ...it, openingStock: initial, totalIn, totalOut, closingStock: final };
+    }).filter(it => it.openingStock !== 0 || it.totalIn !== 0 || it.totalOut !== 0);
 
-    const rows = reportData.length ? reportData.map(s => `
-        <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-            <td class="py-3 px-4 text-xs font-mono text-gray-500">${s.itemCode}</td>
-            <td class="py-3 px-4 text-sm font-bold text-gray-800">${s.itemName}</td>
-            <td class="py-3 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">${s.unit}</td>
-            <td class="py-3 px-4 text-sm text-right font-medium text-gray-700 bg-gray-50/20">${invFmt(s.openingStock)}</td>
-            <td class="py-3 px-4 text-sm text-right font-bold text-green-600">+${invFmt(s.totalIn)}</td>
-            <td class="py-3 px-4 text-sm text-right font-bold text-red-600">-${invFmt(s.totalOut)}</td>
-            <td class="py-3 px-4 text-sm text-right font-black text-blue-700 bg-blue-50/10">${invFmt(s.closingStock)}</td>
-            <td class="py-3 px-4 text-right">
-                <button onclick="viewProductStockCard('${s.id}', '${monthVal}')" class="text-blue-600 hover:text-blue-800 text-[10px] font-black uppercase tracking-wider bg-blue-50 px-2 py-1 rounded border border-blue-100 transition-colors flex items-center gap-1">
-                    <i class="fas fa-eye"></i> Kartu
-                </button>
-            </td>
-        </tr>
-    `).join('') : `<tr><td colspan="8" class="py-20 text-center text-gray-400">
-        <i class="fas fa-history text-3xl mb-3 opacity-20"></i><br/>
-        <span class="text-sm">Tidak ada pergerakan stok untuk kategori "${CATEGORY_LABELS[window.currentMonthlyReportCategory] || 'Semua'}" di bulan ini.</span>
-    </td></tr>`;
+    let html = `
+    <div class="overflow-x-auto">
+        <table class="w-full text-left" id="inventory_table">
+            <thead class="bg-slate-50/50 border-b border-slate-100">
+                <tr>
+                    <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Item Information</th>
+                    <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Unit</th>
+                    <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Awal</th>
+                    <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right text-green-600">Masuk (+)</th>
+                    <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right text-red-600">Keluar (-)</th>
+                    <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right text-indigo-600">Akhir</th>
+                    <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-50">`;
 
-    output.innerHTML = `
-        <div class="overflow-x-auto">
-            <table class="w-full text-left border-collapse">
-                <thead class="bg-gray-50/50 border-b border-gray-200">
-                    <tr>
-                        <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Kode</th>
-                        <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Nama Item</th>
-                        <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Unit</th>
-                        <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-right">Stok Awal</th>
-                        <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-right">Masuk (+)</th>
-                        <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-right">Keluar (-)</th>
-                        <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-right">Stok Akhir</th>
-                        <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-right">Aksi</th>
-                    </tr>
-                </thead>
-                <tbody>${rows}</tbody>
-            </table>
+    if (reportData.length === 0) {
+        html += `<tr><td colspan="7">
+            <div class="py-20 flex flex-col items-center justify-center text-center">
+                <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-300 mb-4 text-2xl">
+                    <i class="fas fa-boxes"></i>
+                </div>
+                <p class="text-sm font-medium text-slate-500">Tidak ada pergerakan stok di periode ini.</p>
+            </div>
+        </td></tr>`;
+    } else {
+        reportData.forEach(s => {
+            html += `
+                <tr class="hover:bg-slate-50/80 transition-colors group">
+                    <td class="py-4 px-5">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-black shrink-0 border border-black/5">
+                                <i class="fas fa-cube"></i>
+                            </div>
+                            <div>
+                                <div class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                    ${s.itemName}
+                                </div>
+                                <div class="text-[11px] text-slate-400 font-mono font-medium">${s.itemCode}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="py-4 px-5 text-[11px] font-black text-slate-400 uppercase tracking-widest">${s.unit}</td>
+                    <td class="py-4 px-5 text-sm text-right font-black text-slate-400">${invFmt(s.openingStock)}</td>
+                    <td class="py-4 px-5 text-sm text-right font-black text-green-600/80">+${invFmt(s.totalIn)}</td>
+                    <td class="py-4 px-5 text-sm text-right font-black text-red-600/80">-${invFmt(s.totalOut)}</td>
+                    <td class="py-4 px-5 text-sm text-right font-black text-indigo-700">${invFmt(s.closingStock)}</td>
+                    <td class="py-4 px-5 text-right">
+                        <button onclick="viewProductStockCard('${s.id}', '${monthVal}')" class="flex items-center gap-2 px-3 py-1.5 rounded-[10px] border border-slate-200 text-slate-700 bg-[#f8fafc] hover:bg-slate-100 transition-colors text-[12px] font-bold shadow-sm whitespace-nowrap ml-auto">
+                            <i class="fas fa-list-ul text-[10px] text-slate-400"></i>
+                            Kartu Stok
+                        </button>
+                    </td>
+                </tr>`;
+        });
+    }
+
+    html += `</tbody></table></div>
+        <div class="p-4 bg-slate-50/50 border-t border-slate-100 flex justify-between items-center">
+            <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Showing ${reportData.length} Items</span>
         </div>`;
+    output.innerHTML = html;
 };
 
 // --- Repacking Logic ---
@@ -3232,58 +3666,67 @@ window.printProductStockCard = (productId, startDateStr, endDateStr) => {
 
 // â”€â”€â”€ 5. STOK WIP & HISTORY (PRODUCTION SPECIFIC) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 window.renderProductionWIPStock = function() {
-    document.getElementById('pageTitle').innerText = 'Stok WIP & History Tracking';
+    renderBreadcrumb(['Produksi', 'Reports', 'Mutasi Stock Bulanan']);
+    document.getElementById('pageTitle').innerText = 'Mutasi Stock Bulanan';
     const mc = document.getElementById('main-content');
     
-    if (!window.currentWIPMutationCategory) window.currentWIPMutationCategory = 'MIXING';
+    if (!window.currentWIPMutationCategory) window.currentWIPMutationCategory = 'OVEN_BASAH';
     const now = new Date();
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
     mc.innerHTML = `
-    <div class="animate-in fade-in duration-300">
-        <!-- Month Filter -->
-        <!-- Month Filter -->
-        <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-5 mb-5">
-            <h3 class="text-sm font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-3"><i class="fas fa-filter text-blue-500"></i> FILTER PENCARIAN</h3>
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end mb-4">
-                <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Pilih Bulan Mutasi</label>
-                    <input type="month" id="wip_msr_month" value="${currentMonth}" class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
+    <div class="space-y-4 animate-in fade-in duration-500">
+        <!-- Compact Filter Bar -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
+            <div class="flex flex-wrap items-center gap-4">
+                <!-- Search Input -->
+                <div class="flex-1 min-w-[250px] relative group">
+                    <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors"></i>
+                    <input type="text" id="wip_msr_search" onkeyup="runWIPMutationReport()" placeholder="Cari Nama atau Kode WIP..." 
+                        class="w-full pl-12 pr-4 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-semibold text-slate-700 placeholder:text-slate-300 focus:bg-white focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all">
+                </div>
+
+                <!-- Month Picker -->
+                <div class="relative min-w-[150px]">
+                    <i class="fas fa-calendar-alt absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"></i>
+                    <input type="month" id="wip_msr_month" value="${currentMonth}" onchange="runWIPMutationReport()"
+                        class="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-bold text-slate-700 focus:bg-white focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/5 transition-all outline-none cursor-pointer">
+                </div>
+
+                <!-- Location/Stage Filter -->
+                <div class="relative min-w-[180px]">
+                    <i class="fas fa-industry absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"></i>
+                    <select id="wip_msr_location" onchange="runWIPMutationReport()" 
+                        class="w-full pl-11 pr-10 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-bold text-slate-700 appearance-none cursor-pointer focus:bg-white focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/5 transition-all outline-none">
+                        <option value="OVEN_BASAH" ${window.currentWIPMutationCategory === 'OVEN_BASAH' ? 'selected' : ''}>Oven Basah</option>
+                        <option value="OVEN_KERING" ${window.currentWIPMutationCategory === 'OVEN_KERING' ? 'selected' : ''}>Oven Kering</option>
+                    </select>
+                    <i class="fas fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none text-[10px]"></i>
+                </div>
+
+                <!-- Actions -->
+                <div class="flex gap-3 ml-auto">
+                    <button onclick="runWIPMutationReport()" class="bg-white border border-slate-200 text-slate-600 px-5 py-2.5 rounded-xl hover:bg-slate-50 transition-all text-sm font-bold" title="Refresh Data">
+                        <i class="fas fa-sync-alt"></i>
+                    </button>
+                    <button onclick="window.printWIPReport()" class="bg-indigo-600 text-white px-5 py-2.5 rounded-xl hover:bg-indigo-700 transition-all text-sm font-bold shadow-lg shadow-indigo-500/20 flex items-center gap-2">
+                        <i class="fas fa-print"></i> Cetak Lap.
+                    </button>
                 </div>
             </div>
-            <div class="flex gap-2">
-                <button onclick="runWIPMutationReport()" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all shadow-sm">
-                    <i class="fas fa-search mr-2"></i> TAMPILKAN
-                </button>
-            </div>
         </div>
-
-        <!-- Tabs & Table -->
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 mb-5 overflow-hidden">
-            <!-- Tabs Nav -->
-            <div class="border-b border-gray-100 bg-gray-50/30">
-                <nav class="flex overflow-x-auto no-scrollbar">
-                    ${[
-                        ['MIXING', 'Campuran'],
-                        ['OVEN_BASAH', 'Oven Basah'],
-                        ['OVEN_KERING', 'Oven Kering']
-                    ].map(([loc, label]) =>
-                        `<button onclick="switchWIPMutationTab('${loc}')" id="wip_tab_${loc}" 
-                                 class="whitespace-nowrap py-4 px-6 font-bold text-xs uppercase tracking-wider border-b-2 transition-all 
-                                 ${(window.currentWIPMutationCategory === loc) ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'}">${label}</button>`
-                    ).join('')}
-                </nav>
-            </div>
-            
-            <!-- Table Output -->
-            <div id="wip_mutation_report_output">
-                <div class="py-20 text-center text-gray-300 italic"><i class="fas fa-spinner fa-spin mr-2"></i>Loading data...</div>
+        
+        <!-- Report Table Card -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+            <div id="wip_mutation_report_output" class="p-0">
+                <div class="py-20 text-center text-slate-300 italic"><i class="fas fa-spinner fa-spin mr-2"></i>Memuat data mutasi...</div>
             </div>
         </div>
     </div>`;
 
     setTimeout(() => { if (window.runWIPMutationReport) window.runWIPMutationReport(); }, 50);
 }
+
 
 window.switchWIPMutationTab = (loc) => {
     window.currentWIPMutationCategory = loc;
@@ -3303,28 +3746,33 @@ window.runWIPMutationReport = () => {
     try {
         const monthVal = document.getElementById('wip_msr_month')?.value;
         const output = document.getElementById('wip_mutation_report_output');
+        const locSelect = document.getElementById('wip_msr_location');
+        const searchInput = document.getElementById('wip_msr_search');
+        
         if (!monthVal || !output) return;
+
+        if (locSelect) window.currentWIPMutationCategory = locSelect.value;
+        const loc = window.currentWIPMutationCategory || 'OVEN_BASAH';
+        const searchQuery = searchInput?.value.toLowerCase() || '';
 
         const [year, month] = monthVal.split('-').map(Number);
         const startDate = new Date(year, month - 1, 1);
         const endDate = new Date(year, month, 0, 23, 59, 59);
-        const loc = window.currentWIPMutationCategory || 'MIXING';
 
         const items = (db.read('inventoryItems') || []).filter(it => it.status !== 'INACTIVE');
         const allTxs = db.read('stockTransactions') || [];
 
         const reportData = items.filter(it => {
-            // Filter items by category based on current tab (loc)
-            if (loc === 'MIXING') return it.category === 'MIXING_STOCK';
+            // Filter by category
             if (loc === 'OVEN_BASAH') return it.category === 'OVEN_BASAH_STOCK';
             if (loc === 'OVEN_KERING') return it.category === 'OVEN_KERING_STOCK';
-            return true;
+            return false;
+        }).filter(it => {
+            // Filter by search
+            if (!searchQuery) return true;
+            return it.itemName.toLowerCase().includes(searchQuery) || it.itemCode.toLowerCase().includes(searchQuery);
         }).map(it => {
-            // For production stage items (Campuran, Oven), we show GLOBAL stock movement to match Inventory reports
-            const stageCats = ['MIXING_STOCK', 'OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'];
-            const useGlobal = stageCats.includes(it.category);
-            
-            const itemTxs = allTxs.filter(t => t.itemId === it.id && (useGlobal || t.location === loc));
+            const itemTxs = allTxs.filter(t => t.itemId === it.id);
             
             const getStageQty = (txs, direction) => {
                 return txs.reduce((sum, t) => {
@@ -3352,46 +3800,77 @@ window.runWIPMutationReport = () => {
             const closingStock = openingStock + totalIn - totalOut;
 
             return { ...it, openingStock, totalIn, totalOut, closingStock, loc };
-        });
+        }).filter(it => it.openingStock !== 0 || it.totalIn !== 0 || it.totalOut !== 0);
 
-        const rows = reportData.length ? reportData.map(s => `
-            <tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                <td class="py-3 px-4 text-xs font-mono text-gray-400">${s.itemCode}</td>
-                <td class="py-3 px-4 text-sm font-bold text-gray-800">${s.itemName}</td>
-                <td class="py-3 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-widest">${s.unit}</td>
-                <td class="py-3 px-4 text-sm text-right font-medium text-gray-500 bg-gray-50/30">${invFmt(s.openingStock)}</td>
-                <td class="py-3 px-4 text-sm text-right font-bold text-green-600">+${invFmt(s.totalIn)}</td>
-                <td class="py-3 px-4 text-sm text-right font-bold text-red-600">-${invFmt(s.totalOut)}</td>
-                <td class="py-3 px-4 text-sm text-right font-black text-blue-700 bg-blue-50/10">${invFmt(s.closingStock)}</td>
-                <td class="py-3 px-4 text-right">
-                    <button onclick="openWIPHistoryModal('${s.id}', '${loc}')" class="text-blue-600 hover:text-blue-800 text-xs font-bold bg-blue-50 px-3 py-1.5 rounded transition-all shadow-sm">
-                        <i class="fas fa-eye mr-1"></i> Kartu
-                    </button>
-                </td>
-            </tr>
-        `).join('') : `<tr><td colspan="8" class="py-20 text-center text-gray-400 italic text-sm">
-            <i class="fas fa-folder-open text-3xl mb-3 opacity-20"></i><br>
-            Tidak ada pergerakan stok di lokasi "${loc}" pada periode ini.
-        </td></tr>`;
+        let html = `
+        <div class="overflow-x-auto">
+            <table class="w-full text-left">
+                <thead class="bg-slate-50/50 border-b border-slate-100">
+                    <tr>
+                        <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Item Information</th>
+                        <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Unit</th>
+                        <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Stok Awal</th>
+                        <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right text-green-600">Masuk (+)</th>
+                        <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right text-red-600">Keluar (-)</th>
+                        <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right text-indigo-600">Stok Akhir</th>
+                        <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-50">`;
 
-        output.innerHTML = `
-            <div class="overflow-x-auto">
-                <table class="w-full text-left">
-                    <thead class="bg-gray-100/50 border-b border-gray-200">
-                        <tr>
-                            <th class="py-3 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Kode</th>
-                            <th class="py-3 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Nama Item</th>
-                            <th class="py-3 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider">Unit</th>
-                            <th class="py-3 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Stok Awal</th>
-                            <th class="py-3 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Masuk (+)</th>
-                            <th class="py-3 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Keluar (-)</th>
-                            <th class="py-3 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Stok Akhir</th>
-                            <th class="py-3 px-4 text-[10px] font-bold text-gray-400 uppercase tracking-wider text-right">Aksi</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-100">${rows}</tbody>
-                </table>
-            </div>`;
+        if (reportData.length === 0) {
+            html += `
+                <tr>
+                    <td colspan="7">
+                        <div class="py-20 flex flex-col items-center justify-center text-center">
+                            <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-300 mb-4 text-2xl">
+                                <i class="fas fa-boxes-stacked"></i>
+                            </div>
+                            <p class="text-sm font-medium text-slate-500">Tidak ada pergerakan stok WIP di periode ini.</p>
+                        </div>
+                    </td>
+                </tr>`;
+        } else {
+            reportData.forEach(s => {
+                html += `
+                <tr class="hover:bg-slate-50/80 transition-colors group">
+                    <td class="py-4 px-5">
+                        <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-[10px] font-black shrink-0 border border-black/5">
+                                <i class="fas fa-layer-group"></i>
+                            </div>
+                            <div>
+                                <div class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                    ${s.itemName}
+                                </div>
+                                <div class="text-[11px] text-slate-400 font-mono font-medium">${s.itemCode}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="py-4 px-5 text-[11px] font-black text-slate-400 uppercase tracking-widest">${s.unit}</td>
+                    <td class="py-4 px-5 text-sm text-right font-black text-slate-400">${invFmt(s.openingStock)}</td>
+                    <td class="py-4 px-5 text-sm text-right font-black text-green-600/80">+${invFmt(s.totalIn)}</td>
+                    <td class="py-4 px-5 text-sm text-right font-black text-red-600/80">-${invFmt(s.totalOut)}</td>
+                    <td class="py-4 px-5 text-sm text-right font-black text-indigo-700">${invFmt(s.closingStock)}</td>
+                    <td class="py-4 px-5 text-right">
+                        <button onclick="openWIPHistoryModal('${s.id}', '${loc}')" class="flex items-center gap-2 px-3 py-1.5 rounded-[10px] border border-slate-200 text-slate-700 bg-[#f8fafc] hover:bg-slate-100 transition-colors text-[12px] font-bold shadow-sm whitespace-nowrap ml-auto active:scale-95">
+                            <i class="fas fa-file-invoice text-[10px] text-slate-400"></i>
+                            Kartu Stok
+                        </button>
+                    </td>
+                </tr>`;
+            });
+        }
+
+        html += `
+                </tbody>
+            </table>
+        </div>
+        <div class="p-4 bg-slate-50/50 border-t border-slate-100 flex justify-between items-center">
+            <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Showing ${reportData.length} WIP Items</span>
+        </div>`;
+        
+        output.innerHTML = html;
     } catch (e) {
         console.error(e);
         const output = document.getElementById('wip_mutation_report_output');
@@ -3413,8 +3892,7 @@ window.openWIPHistoryModal = (itemId, location, startDateStr = null, endDateStr 
     const _getTxLoc = (t) => {
         let l = t.location;
         if (l === 'WHS' || !l) {
-            if (item.category === 'MIXING_STOCK') l = 'MIXING';
-            else if (item.category === 'OVEN_BASAH_STOCK') l = 'OVEN_BASAH';
+            if (item.category === 'OVEN_BASAH_STOCK') l = 'OVEN_BASAH';
             else if (item.category === 'OVEN_KERING_STOCK') l = 'OVEN_KERING';
             else l = 'WHS';
         }
@@ -3575,8 +4053,7 @@ window.printWIPStockCard = (itemId, location, startDateStr, endDateStr) => {
     const _getTxLoc = (t) => {
         let l = t.location;
         if (l === 'WHS' || !l) {
-            if (item.category === 'MIXING_STOCK') l = 'MIXING';
-            else if (item.category === 'OVEN_BASAH_STOCK') l = 'OVEN_BASAH';
+            if (item.category === 'OVEN_BASAH_STOCK') l = 'OVEN_BASAH';
             else if (item.category === 'OVEN_KERING_STOCK') l = 'OVEN_KERING';
             else l = 'WHS';
         }
@@ -3928,7 +4405,6 @@ window.openJudgmentModal = () => {
                         <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wider ml-1">Pilih Gudang/Tahap</label>
                         <select name="location" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white">
                             <option value="WHS">Gudang Utama (WHS)</option>
-                            <option value="MIXING">Mixing</option>
                             <option value="OVEN_BASAH">Oven Basah</option>
                         </select>
                     </div>
@@ -4043,5 +4519,90 @@ window.deleteInventoryJudgment = (id) => {
         }
     });
 };
+
+window.printWIPReport = () => {
+    const monthVal = document.getElementById('wip_msr_month')?.value;
+    const loc = window.currentWIPMutationCategory || 'OVEN_BASAH';
+    if (!monthVal) return;
+
+    const [year, month] = monthVal.split('-').map(Number);
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59);
+
+    const items = (db.read('inventoryItems') || []).filter(it => it.status !== 'INACTIVE');
+    const allTxs = db.read('stockTransactions') || [];
+
+    const reportData = items.filter(it => {
+        if (loc === 'OVEN_BASAH') return it.category === 'OVEN_BASAH_STOCK';
+        if (loc === 'OVEN_KERING') return it.category === 'OVEN_KERING_STOCK';
+        return false;
+    }).map(it => {
+        const itemTxs = allTxs.filter(t => t.itemId === it.id);
+        const getStageQty = (txs, direction) => {
+            return txs.reduce((sum, t) => {
+                const q = parseFloat(t.qty) || 0;
+                const type = (t.type || '').toUpperCase();
+                const isIn = ['IN', 'ADJUST_IN', 'PRODUCTION_IN', 'RETURN_IN'].includes(type);
+                const isOut = ['OUT', 'SHRINKAGE', 'ADJUST_OUT', 'PRODUCTION_OUT', 'SALES_OUT', 'WASTE'].includes(type);
+                if (direction === 'IN' && isIn) return sum + q;
+                if (direction === 'OUT' && isOut) return sum + q;
+                if (direction === 'NET') {
+                    if (isIn) return sum + q;
+                    if (isOut) return sum - q;
+                }
+                return sum;
+            }, 0);
+        };
+        const openingTxs = itemTxs.filter(t => new Date(t.date) < startDate);
+        const openingStock = getStageQty(openingTxs, 'NET');
+        const monthTxs = itemTxs.filter(t => new Date(t.date) >= startDate && new Date(t.date) <= endDate);
+        const totalIn = getStageQty(monthTxs, 'IN');
+        const totalOut = getStageQty(monthTxs, 'OUT');
+        const closingStock = openingStock + totalIn - totalOut;
+        return { ...it, openingStock, totalIn, totalOut, closingStock };
+    }).filter(it => it.openingStock !== 0 || it.totalIn !== 0 || it.totalOut !== 0);
+
+    let rows = reportData.map(s => `
+        <tr>
+            <td style="font-family:monospace">${s.itemCode}</td>
+            <td>${s.itemName}</td>
+            <td style="text-align:center">${s.unit}</td>
+            <td style="text-align:right">${invFmt(s.openingStock)}</td>
+            <td style="text-align:right;color:#166534">+${invFmt(s.totalIn)}</td>
+            <td style="text-align:right;color:#991b1b">-${invFmt(s.totalOut)}</td>
+            <td style="text-align:right;font-weight:bold">${invFmt(s.closingStock)}</td>
+        </tr>
+    `).join('');
+
+    const printHtml = `
+    <div style="font-family:sans-serif;padding:20px;color:#1e293b">
+        <h2 style="margin:0;text-transform:uppercase;letter-spacing:0.05em">Laporan Mutasi Stok WIP: ${loc.replace('_', ' ')}</h2>
+        <p style="margin:5px 0;font-size:12px;color:#64748b">Periode: ${monthVal} | Perusahaan: ${CONFIG.companyName}</p>
+        <hr style="border:0;border-top:2px solid #e2e8f0;margin:20px 0">
+        <table style="width:100%;border-collapse:collapse;font-size:11px">
+            <thead>
+                <tr style="background:#f8fafc">
+                    <th style="border:1px solid #e2e8f0;padding:10px;text-align:left">KODE</th>
+                    <th style="border:1px solid #e2e8f0;padding:10px;text-align:left">NAMA ITEM</th>
+                    <th style="border:1px solid #e2e8f0;padding:10px;text-align:center">UNIT</th>
+                    <th style="border:1px solid #e2e8f0;padding:10px;text-align:right">AWAL</th>
+                    <th style="border:1px solid #e2e8f0;padding:10px;text-align:right">MASUK (+)</th>
+                    <th style="border:1px solid #e2e8f0;padding:10px;text-align:right">KELUAR (-)</th>
+                    <th style="border:1px solid #e2e8f0;padding:10px;text-align:right">AKHIR</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${rows || '<tr><td colspan="7" style="padding:40px;text-align:center;color:#94a3b8;font-style:italic">Tidak ada data pergerakan stok</td></tr>'}
+            </tbody>
+        </table>
+        <div style="margin-top:40px;display:flex;justify-content:space-between;font-size:10px;color:#94a3b8">
+            <p>Dicetak pada: ${new Date().toLocaleString('id-ID')}</p>
+            <p>Unity ERP System</p>
+        </div>
+    </div>`;
+
+    window.printHTML(printHtml, `Mutasi WIP ${loc} - ${monthVal}`, true);
+};
+
 
 
