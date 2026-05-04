@@ -1,4 +1,4 @@
-// inventory.js - Inventory Module for Unity ERP
+﻿// inventory.js - Inventory Module for Unity ERP
 
 // â”€â”€â”€ HELPERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const CATEGORY_LABELS = {
@@ -278,45 +278,50 @@ window.initInventoryCharts = function(warehouseValues, stockTxs) {
 };
 
 // ——— 1. MASTER ITEM ————————————————————————————————————————
-function renderInventoryMaster() {
+window.renderInventoryMaster = async () => {
     const canEdit = getModulePermission('logistik').edit;
     renderBreadcrumb(['Stock', 'Master Items']);
     document.getElementById('pageTitle').innerText = 'Master Item';
     const mc = document.getElementById('main-content');
     
-    // Persist filters
-    window._inventoryFilters = window._inventoryFilters || { category: '', name: '' };
-    const f = window._inventoryFilters;
+    // Loading State
+    mc.innerHTML = `<div class="p-10 text-center"><i class="fas fa-spinner fa-spin text-3xl text-indigo-500"></i><p class="mt-4 text-slate-500 font-medium">Memuat Master Item...</p></div>`;
 
-    let items = (db.read('inventoryItems') || []).filter(it => it.status === 'ACTIVE');
-    
-    // Apply Filters
-    if (f.category) {
-        items = items.filter(it => it.category === f.category);
-    }
-    if (f.name) {
-        const q = f.name.toLowerCase();
-        items = items.filter(it => it.itemName.toLowerCase().includes(q) || it.itemCode.toLowerCase().includes(q));
-    }
+    try {
+        let items = await api.getInventoryItems();
+        window._tempInventoryItems = items; // Cache for modals
 
-    // Sort items: Gudang Jadi first, then others by logical order, then alphabetical
-    const catOrder = {
-        FINISHED_GOODS: 1,
-        RAW_MATERIAL: 2,
-        OVEN_BASAH_STOCK: 3,
-        OVEN_KERING_STOCK: 4,
-        BULK_STOCK: 5
-    };
-    items.sort((a, b) => {
-        const orderA = catOrder[a.category] || 99;
-        const orderB = catOrder[b.category] || 99;
-        if (orderA !== orderB) return orderA - orderB;
-        return (a.itemName || '').localeCompare(b.itemName || '');
-    });
+        // Persist filters
+        window._inventoryFilters = window._inventoryFilters || { category: '', name: '' };
+        const f = window._inventoryFilters;
 
-    const catOpts = Object.entries(CATEGORY_LABELS)
-        .map(([v, l]) => `<option value="${v}" ${f.category === v ? 'selected' : ''}>${l}</option>`)
-        .join('');
+        // Apply Filters
+        if (f.category) {
+            items = items.filter(it => it.category === f.category);
+        }
+        if (f.name) {
+            const q = f.name.toLowerCase();
+            items = items.filter(it => it.itemName.toLowerCase().includes(q) || it.itemCode.toLowerCase().includes(q));
+        }
+
+        // Sort items: Gudang Jadi first, then others by logical order, then alphabetical
+        const catOrder = {
+            FINISHED_GOODS: 1,
+            RAW_MATERIAL: 2,
+            OVEN_BASAH_STOCK: 3,
+            OVEN_KERING_STOCK: 4,
+            BULK_STOCK: 5
+        };
+        items.sort((a, b) => {
+            const orderA = catOrder[a.category] || 99;
+            const orderB = catOrder[b.category] || 99;
+            if (orderA !== orderB) return orderA - orderB;
+            return (a.itemName || '').localeCompare(b.itemName || '');
+        });
+
+        const catOpts = Object.entries(CATEGORY_LABELS)
+            .map(([v, l]) => `<option value="${v}" ${f.category === v ? 'selected' : ''}>${l}</option>`)
+            .join('');
 
     mc.innerHTML = `
     <div class="space-y-4 animate-in fade-in duration-500">
@@ -391,6 +396,9 @@ function renderInventoryMaster() {
             </div>
         </div>
     </div>`;
+    } catch (err) {
+        mc.innerHTML = `<div class="p-10 text-center text-red-500"><i class="fas fa-exclamation-triangle text-3xl mb-4"></i><p>${err.message}</p></div>`;
+    }
 }
 
 function renderInventoryRows(items) {
@@ -398,7 +406,7 @@ function renderInventoryRows(items) {
     if (items.length === 0) return '';
     
     return items.map(it => {
-        const stock = db.getInventoryStock(it.id);
+        const stock = it.currentStock || 0; // Menggunakan pre-calculated stock dari Backend API!
         const isLow = stock < (it.minStock || 0);
         const isActive = it.status !== 'INACTIVE';
         
@@ -655,7 +663,7 @@ window.invUpdateCodePreview = () => {
     }
 };
 
-window.saveInventoryItem = (id) => {
+window.saveInventoryItem = async (id) => {
     const name = document.getElementById('inv_name').value.trim();
     const category = document.getElementById('inv_category').value;
     const unit = document.getElementById('inv_unit').value;
@@ -664,138 +672,134 @@ window.saveInventoryItem = (id) => {
     const purchasePrice = parseFloat(document.getElementById('inv_price').value) || 0;
     if (!name || !category || !unit) { showToast('Nama, Kategori, dan Satuan wajib diisi', 'error'); return; }
 
-    if (id) {
-        const item = db.findById('inventoryItems', id);
-        let updatedFields = { itemName: name, category, unit, minStock, purchasePrice, status };
-        
-        // If category changed, check if prefix needs update
-        if (item && item.category !== category) {
-            const currentPrefix = item.itemCode ? item.itemCode.split('-')[0] : '';
-            const newPrefix = category === 'RAW_MATERIAL' ? 'RM' : (category === 'FINISH_GOODS' ? 'FG' : 'WIP');
-            if (currentPrefix !== newPrefix) {
-                updatedFields.itemCode = db.generateItemCode(category);
-                
-                // Update historical transactions as well
-                const txs = db.read('stockTransactions') || [];
-                let txModified = false;
-                txs.forEach(t => {
-                    if (t.itemId === id) {
-                        t.itemCode = updatedFields.itemCode;
-                        txModified = true;
-                    }
-                });
-                if (txModified) db.save('stockTransactions', txs);
-            }
+    const initialStock = parseFloat(document.getElementById('inv_initial_stock')?.value) || 0;
+
+    const btn = event.currentTarget || event.target;
+    const oldHtml = btn.innerHTML;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>Menyimpan...`;
+    btn.disabled = true;
+
+    try {
+        if (id) {
+            await api.updateInventoryItem(id, { itemName: name, category, unit, minStock, purchasePrice, status });
+            showToast('Item berhasil diperbarui');
+        } else {
+            await api.createInventoryItem({ itemName: name, category, unit, minStock, purchasePrice, status, initialStock });
+            showToast('Item baru berhasil ditambahkan');
         }
         
-        db.update('inventoryItems', id, updatedFields);
-        showToast('Item berhasil diperbarui');
-    } else {
-        const itemCode = db.generateItemCode(category);
-        const newItem = db.insert('inventoryItems', { itemCode, itemName: name, category, unit, minStock, purchasePrice, status: 'ACTIVE' });
-        
-        // Handle Initial Stock
-        const initialStock = parseFloat(document.getElementById('inv_initial_stock')?.value) || 0;
-        if (initialStock > 0) {
-            db.addInventoryTransaction(newItem.id, 'IN', initialStock, 'MANUAL', null, 'Initial stock on item creation');
-        }
-        
-        showToast('Item baru berhasil ditambahkan');
+        // Refresh hybrid cache transparently (in background) to keep other modules updated
+        api.read('inventoryItems').then(data => {
+            if (data && Array.isArray(data)) localStorage.setItem('unityerp_inventoryItems', JSON.stringify(data));
+        });
+
+        closeModal();
+        renderInventoryMaster();
+    } catch (err) {
+        showToast(err.message, 'error');
+        btn.innerHTML = oldHtml;
+        btn.disabled = false;
     }
-    closeModal();
-    renderInventoryMaster();
 };
 
-window.toggleInventoryItemStatus = (id) => {
-    const item = db.findById('inventoryItems', id);
+window.toggleInventoryItemStatus = async (id) => {
+    const item = (window._tempInventoryItems || []).find(it => it.id === id);
     if (!item) return;
     const newStatus = item.status === 'INACTIVE' ? 'ACTIVE' : 'INACTIVE';
-    db.update('inventoryItems', id, { status: newStatus });
-    showToast(`Item di-${newStatus === 'ACTIVE' ? 'aktifkan' : 'non-aktifkan'}`);
-    refreshStockMasterView();
+    
+    try {
+        await api.updateInventoryItem(id, { status: newStatus });
+        showToast(`Item di-${newStatus === 'ACTIVE' ? 'aktifkan' : 'non-aktifkan'}`);
+        renderInventoryMaster();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
 };
 
-window.deleteInventoryItem = (id) => {
-    const item = db.findById('inventoryItems', id);
+window.deleteInventoryItem = async (id) => {
+    const item = (window._tempInventoryItems || []).find(it => it.id === id);
     if (!item) return;
 
-    if (!confirm(`âš  HAPUS PERMANEN: ${item.itemName} (${item.itemCode})?\n\nSemua transaksi (Masuk/Keluar), history di Stock Card, item di SO/PO/RFQ, serta BOM yang menggunakan item ini di SELURUH departemen akan ikut TERHAPUS.\n\nLanjutkan?`)) return;
+    if (!confirm(`⚠️ HAPUS PERMANEN: ${item.itemName} (${item.itemCode})?\n\nSemua transaksi (Masuk/Keluar), history di Stock Card, item di SO/PO/RFQ, serta BOM yang menggunakan item ini di SELURUH departemen akan ikut TERHAPUS.\n\nLanjutkan?`)) return;
 
-    // 1. Array of all collections that might contain this item
-    const collections = [
-        'stockTransactions', 'stockCard', 'purchaseRFQs', 'purchaseOrders', 
-        'salesQuotations', 'salesOrders', 'productionOrders', 'inventoryBOM',
-        'salesInvoices', 'purchaseInvoices', 'deliveryOrders', 'salesReturns',
-        'productExchanges', 'inventoryShrinkage'
-    ];
+    try {
+        await api.deleteInventoryItem(id);
 
-    // 2. Deep clean across all collections
-    collections.forEach(col => {
-        let data = db.read(col) || [];
-        let modified = false;
+        // -- LOCAL CLEANUP --
+        // Keep the local deep clean for other modules that are not yet migrated to Phase 2
+        const collections = [
+            'stockTransactions', 'stockCard', 'purchaseRFQs', 'purchaseOrders', 
+            'salesQuotations', 'salesOrders', 'productionOrders', 'inventoryBOM',
+            'salesInvoices', 'purchaseInvoices', 'deliveryOrders', 'salesReturns',
+            'productExchanges', 'inventoryShrinkage'
+        ];
 
-        if (col === 'stockTransactions' || col === 'stockCard') {
-            const initialLen = data.length;
-            data = data.filter(t => t.itemId !== id);
-            if (data.length !== initialLen) modified = true;
-        } 
-        else if (col === 'productExchanges') {
-            const initialLen = data.length;
-            data = data.filter(t => t.fromItemId !== id && t.toItemId !== id);
-            if (data.length !== initialLen) modified = true;
-        }
-        else if (col === 'inventoryBOM') {
-            const initialLen = data.length;
-            // Remove the BOM if it's for this product
-            data = data.filter(b => b.parentId !== id);
-            // Also remove this product from components of other BOMs
-            data = data.map(b => {
-                if (b.components) {
-                    const cLen = b.components.length;
-                    b.components = b.components.filter(c => c.itemId !== id);
-                    if (b.components.length !== cLen) modified = true;
-                }
-                return b;
-            });
-            if (data.length !== initialLen) modified = true;
-        }
-        else {
-            // General structure: docs with "items" array
-            data = data.map(doc => {
-                if (doc.items) {
-                    const initialItemsLen = doc.items.length;
-                    doc.items = doc.items.filter(it => it.inventoryItemId !== id);
-                    if (doc.items.length !== initialItemsLen) {
-                        modified = true;
-                        // Recalculate totals if necessary (simplified)
-                        if (doc.totalAmount !== undefined) {
-                            const newDPP = doc.items.reduce((s, i) => s + (parseFloat(i.subtotal) || 0), 0);
-                            const taxRate = parseFloat(doc.taxRate) || 0;
-                            doc.dppAmount = newDPP;
-                            doc.taxAmount = Math.round(newDPP * taxRate / 100);
-                            doc.totalAmount = newDPP + doc.taxAmount;
+        collections.forEach(col => {
+            let data = JSON.parse(localStorage.getItem('unityerp_' + col) || '[]');
+            let modified = false;
+
+            if (col === 'stockTransactions' || col === 'stockCard') {
+                const initialLen = data.length;
+                data = data.filter(t => t.itemId !== id && t.item_id !== id);
+                if (data.length !== initialLen) modified = true;
+            } 
+            else if (col === 'productExchanges') {
+                const initialLen = data.length;
+                data = data.filter(t => t.fromItemId !== id && t.toItemId !== id);
+                if (data.length !== initialLen) modified = true;
+            }
+            else if (col === 'inventoryBOM') {
+                const initialLen = data.length;
+                data = data.filter(b => b.parentId !== id);
+                data = data.map(b => {
+                    if (b.components) {
+                        const cLen = b.components.length;
+                        b.components = b.components.filter(c => c.itemId !== id);
+                        if (b.components.length !== cLen) modified = true;
+                    }
+                    return b;
+                });
+                if (data.length !== initialLen) modified = true;
+            }
+            else {
+                data = data.map(doc => {
+                    if (doc.items) {
+                        const initialItemsLen = doc.items.length;
+                        doc.items = doc.items.filter(it => it.inventoryItemId !== id);
+                        if (doc.items.length !== initialItemsLen) {
+                            modified = true;
+                            if (doc.totalAmount !== undefined) {
+                                const newDPP = doc.items.reduce((s, i) => s + (parseFloat(i.subtotal) || 0), 0);
+                                const taxRate = parseFloat(doc.taxRate) || 0;
+                                doc.dppAmount = newDPP;
+                                doc.taxAmount = Math.round(newDPP * taxRate / 100);
+                                doc.totalAmount = newDPP + doc.taxAmount;
+                            }
                         }
                     }
-                }
-                return doc;
-            });
-            
-            // Optional: Remove parent documents if they now have 0 items (e.g. PO with no items is invalid)
-            const preFilterLen = data.length;
-            data = data.filter(doc => doc.items ? doc.items.length > 0 : true);
-            if (data.length !== preFilterLen) modified = true;
-        }
+                    return doc;
+                });
+                const preFilterLen = data.length;
+                data = data.filter(doc => doc.items ? doc.items.length > 0 : true);
+                if (data.length !== preFilterLen) modified = true;
+            }
 
-        if (modified) {
-            db.save(col, data);
-        }
-    });
+            if (modified) {
+                // Save locally but don't trigger background sync generic save
+                localStorage.setItem('unityerp_' + col, JSON.stringify(data));
+            }
+        });
 
-    // 3. Finally delete the item itself
-    db.delete('inventoryItems', id);
+        // Finally delete from local inventoryItems cache
+        let localItems = JSON.parse(localStorage.getItem('unityerp_inventoryItems') || '[]');
+        localItems = localItems.filter(i => i.id !== id);
+        localStorage.setItem('unityerp_inventoryItems', JSON.stringify(localItems));
 
-    showToast(`Barang ${item.itemName} dan seluruh data terkait telah dihapus dari sistem.`, 'success');
-    refreshStockMasterView();
+        showToast(`Barang ${item.itemName} dan seluruh data terkait telah dihapus dari sistem.`, 'success');
+        renderInventoryMaster();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
 };
 
 window.openStockAdjustmentModal = (itemId) => {
@@ -870,12 +874,13 @@ window.openStockAdjustmentModal = (itemId) => {
     showModal('Penyesuaian Stok', body, footer, 'max-w-md');
 };
 
-window.saveStockAdjustment = (itemId) => {
+window.saveStockAdjustment = async (itemId) => {
     const actualStock = parseFloat(document.getElementById('adj_physical_stock').value);
     const notes = document.getElementById('adj_notes').value.trim();
     if (isNaN(actualStock) || actualStock < 0) { showToast('Jumlah stok tidak valid', 'error'); return; }
 
-    const currentStock = db.getInventoryStock(itemId);
+    const item = (window._tempInventoryItems || []).find(it => it.id === itemId);
+    const currentStock = item ? (item.currentStock || 0) : 0;
     const diff = actualStock - currentStock;
 
     if (diff === 0) {
@@ -886,12 +891,34 @@ window.saveStockAdjustment = (itemId) => {
 
     const type = diff > 0 ? 'IN' : 'OUT';
     const absDiff = Math.abs(diff);
-    
-    db.addInventoryTransaction(itemId, type, absDiff, 'MANUAL', null, notes || 'Stock Adjustment (Manual Update)');
-    
-    showToast(`Stok berhasil disesuaikan (${type}: ${absDiff})`);
-    closeModal();
-    renderInventoryMaster();
+
+    const btn = event.currentTarget || event.target;
+    const oldHtml = btn.innerHTML;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>Menyimpan...`;
+    btn.disabled = true;
+
+    try {
+        await api.createInventoryTransaction({
+            itemId: itemId,
+            type: type,
+            qty: absDiff,
+            reference: 'MANUAL',
+            notes: notes || 'Stock Adjustment (Manual Update)'
+        });
+        
+        // Background sync transactions cache
+        api.read('stockTransactions').then(data => {
+            if (data && Array.isArray(data)) localStorage.setItem('unityerp_stockTransactions', JSON.stringify(data));
+        });
+
+        showToast(`Stok berhasil disesuaikan (${type}: ${absDiff})`);
+        closeModal();
+        renderInventoryMaster();
+    } catch (err) {
+        showToast(err.message, 'error');
+        btn.innerHTML = oldHtml;
+        btn.disabled = false;
+    }
 };
 
 // ——— 10. KONVERSI KEMASAN (REPACKING) —————————————————————————————
@@ -2504,11 +2531,15 @@ window.closePORForm = () => {
     renderInventoryPOReceipt();
 };
 
-window.confirmPOReceipt = (id) => {
+window.confirmPOReceipt = async (id) => {
     const po = db.findById('purchaseOrders', id);
     const updatedItems = JSON.parse(JSON.stringify(po.items || []));
     let anyReceived = false;
     let sumReceived = 0, sumTarget = 0;
+    const receivedItems = [];
+
+    const recvDate = document.getElementById('recv_date')?.value || new Date().toISOString().split('T')[0];
+    const recvNpb = document.getElementById('recv_npb')?.value || '';
 
     updatedItems.forEach((item, idx) => {
         sumTarget += item.qty;
@@ -2518,27 +2549,39 @@ window.confirmPOReceipt = (id) => {
         item.receivedQty = (item.receivedQty || 0) + recvQty;
         sumReceived += item.receivedQty;
         if (recvQty > 0) {
-            const stockItemId = item.inventoryItemId || item.productId || null;
-            if (stockItemId) {
-                try { db.addInventoryTransaction(stockItemId, 'IN', recvQty, 'PO', id, `Penerimaan PO ${po.poNumber}`); } catch (e) { console.warn(e); }
-            }
+            receivedItems.push({
+                index: idx,
+                prodText: item.prodText || item.itemName || '',
+                qty: recvQty,
+                unit: item.unit || '',
+                inventoryItemId: item.inventoryItemId || item.productId || null,
+                price: item.price || 0
+            });
             anyReceived = true;
         }
     });
 
     if (!anyReceived) { showToast('Tidak ada qty yang dimasukkan', 'error'); return; }
 
-    const done = sumReceived >= sumTarget;
-    db.update('purchaseOrders', id, {
-        status: done ? 'RECEIVED' : 'PARTIALLY RECEIVED',
-        receivedAt: new Date().toISOString(),
-        actualDeliveryDate: done ? new Date().toISOString().split('T')[0] : (po.actualDeliveryDate || null),
-        items: updatedItems
-    });
+    try {
+        // Use Phase 2 API for Atomic Transaction (Stock IN + Journal + Status Update)
+        const result = await api.receivePOGoods(id, {
+            receivedItems, recvDate, recvNpb, recvSj: '', recvNotes: ''
+        });
 
-    const sisa = sumTarget - sumReceived;
-    showToast(done ? 'Semua barang diterima! PO selesai.' : `Diterima sebagian. Sisa ${invFmt(sisa)} unit.`, done ? 'success' : 'info');
-    closePORForm();
+        // Optimistic UI update
+        db.update('purchaseOrders', id, {
+            status: result.newStatus,
+            receivedAt: new Date().toISOString(),
+            actualDeliveryDate: result.isCompleted ? new Date().toISOString().split('T')[0] : (po.actualDeliveryDate || null),
+            items: updatedItems
+        });
+
+        showToast(result.message, result.isCompleted ? 'success' : 'info');
+        closePORForm();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
 };
 
 window.viewPOReceiptDetails = (id) => {

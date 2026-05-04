@@ -577,6 +577,11 @@
                     if (!s || !s.userId) throw new Error();
                     // Inject user info in sidebar
                     window._session = s;
+
+                    // Background sync: Pull latest data from PostgreSQL
+                    if (window.api && typeof window.api.pullAll === 'function') {
+                        window.api.pullAll().catch(e => console.error('Sync error:', e));
+                    }
                 } catch (e) {
                     localStorage.removeItem('unityerp_session');
                     window.location.href = 'login.html';
@@ -590,6 +595,7 @@
         }
     </script>
     <script src="db.js"></script>
+    <script src="api.js"></script>
     <script src="data.js"></script>
     <script src="export.js"></script>
     <script src="inventory.js?v=3"></script>
@@ -610,10 +616,14 @@
             const roleEl = document.getElementById('sidebar-role');
             if (avatarEl) avatarEl.textContent = s.avatar || s.fullName?.slice(0, 2).toUpperCase() || '--';
             if (nameEl) nameEl.textContent = s.fullName || s.email || s.username;
-            // Get role name
-            const roles = db.read('roles');
-            const role = roles.find(r => r.id === s.roleId);
-            if (roleEl) roleEl.textContent = role ? role.name : 'User';
+            // Get role name — try db.read first (backward compat), fallback to roleId
+            try {
+                const roles = db.read('roles');
+                const role = roles.find(r => r.id === s.roleId);
+                if (roleEl) roleEl.textContent = role ? role.name : (s.roleId || 'User');
+            } catch(e) {
+                if (roleEl) roleEl.textContent = s.roleId || 'User';
+            }
             const headerUserEl = document.getElementById('header-user-name');
             if (headerUserEl && s.fullName) headerUserEl.textContent = s.fullName;
         })();

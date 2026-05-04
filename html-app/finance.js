@@ -361,7 +361,7 @@ window.openAccountModal = function (accountId = null) {
     showModal(acc ? 'Edit Akun' : 'Tambah Akun Baru', body, footer);
 };
 
-window.saveAccount = function () {
+window.saveAccount = async function () {
     const editId = document.getElementById('editAccountId')?.value;
     const code = document.getElementById('accCode').value;
     const name = document.getElementById('accName').value;
@@ -372,16 +372,14 @@ window.saveAccount = function () {
 
     if (!code || !name) return alert('Mohon isi kode dan nama akun.');
 
-    if (editId) {
-        db.update('accounts', editId, { code, name, type, description, openingBalance });
-        showToast('Akun berhasil diupdate');
-    } else {
-        db.insert('accounts', { code, name, type, description, status: 'ACTIVE', openingBalance });
-        showToast('Akun berhasil ditambahkan');
+    try {
+        await api.saveAccount({ id: editId, code, name, type, description, openingBalance, status: 'ACTIVE' });
+        showToast(editId ? 'Akun berhasil diupdate' : 'Akun berhasil ditambahkan');
+        closeModal();
+        renderFinanceAccounts();
+    } catch (err) {
+        showToast(err.message, 'error');
     }
-
-    closeModal();
-    renderFinanceAccounts();
 };
 
 window.editAccount = function(id) {
@@ -396,130 +394,86 @@ window.deleteAccount = function(id) {
     }
 };
 
-window.viewAccountMutasi = function(accountId, startDate = '', endDate = '') {
+window.viewAccountMutasi = async function(accountId, startDate = '', endDate = '') {
     const acc = db.findById('accounts', accountId);
     if (!acc) return;
     
-    const journalEntries = db.read('journalEntries').sort((a,b) => new Date(a.date) - new Date(b.date));
-    const ledger = [];
-    let runningBalance = parseFloat(acc.openingBalance) || 0;
-    
-    // Add Opening Balance as first entry
-    ledger.push({
-        date: acc.createdAt || new Date().toISOString(),
-        journalNo: '-',
-        description: 'Saldo Awal',
-        debit: 0,
-        credit: 0,
-        balance: runningBalance
-    });
-    
-    journalEntries.forEach(j => {
-        j.items.forEach(item => {
-            if (item.accountId === accountId) {
-                const debit = parseFloat(item.debit) || 0;
-                const credit = parseFloat(item.credit) || 0;
-                
-                // Normal Balance Logic: Assets/Expenses are +Debit, -Credit. Liability/Equity/Income are -Debit, +Credit.
-                if (acc.type === 'ASSET' || acc.type === 'EXPENSE') {
-                    runningBalance += (debit - credit);
-                } else {
-                    runningBalance += (credit - debit);
-                }
-                
-                ledger.push({
-                    date: j.date,
-                    journalNo: j.journalNo,
-                    description: j.description,
-                    debit: debit,
-                    credit: credit,
-                    balance: runningBalance
-                });
-            }
-        });
-    });
-    
-    // Filter by date if provided
-    let filteredLedger = ledger;
-    if (startDate) {
-        filteredLedger = filteredLedger.filter(l => l.date.slice(0, 10) >= startDate || l.description === 'Saldo Awal');
-    }
-    if (endDate) {
-        filteredLedger = filteredLedger.filter(l => l.date.slice(0, 10) <= endDate || l.description === 'Saldo Awal');
-    }
+    try {
+        const { ledger } = await api.getLedger(accountId, { startDate, endDate });
+        const filteredLedger = ledger;
 
-    // Sort reverse for display
-    filteredLedger.reverse();
-
-    const body = `
-        <div class="space-y-4">
-            <!-- Filter & Action Header -->
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-center p-4 bg-slate-50 border border-slate-200 rounded-xl gap-4 no-print">
-                <div class="flex flex-wrap items-center gap-3">
-                    <div class="flex flex-col">
-                        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Dari Tanggal</label>
-                        <input type="date" id="mutasi_start" value="${startDate}" class="border-2 border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold focus:border-blue-500 outline-none">
+        const body = `
+            <div class="space-y-4">
+                <!-- Filter & Action Header -->
+                <div class="flex flex-col md:flex-row justify-between items-start md:items-center p-4 bg-slate-50 border border-slate-200 rounded-xl gap-4 no-print">
+                    <div class="flex flex-wrap items-center gap-3">
+                        <div class="flex flex-col">
+                            <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Dari Tanggal</label>
+                            <input type="date" id="mutasi_start" value="${startDate}" class="border-2 border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold focus:border-blue-500 outline-none">
+                        </div>
+                        <div class="flex flex-col">
+                            <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Sampai Tanggal</label>
+                            <input type="date" id="mutasi_end" value="${endDate}" class="border-2 border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold focus:border-blue-500 outline-none">
+                        </div>
+                        <button onclick="applyMutasiFilter('${accountId}')" class="mt-4 bg-blue-600 hover:bg-slate-900 text-white px-5 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all">
+                            <i class="fas fa-filter mr-2"></i> FILTER
+                        </button>
                     </div>
-                    <div class="flex flex-col">
-                        <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Sampai Tanggal</label>
-                        <input type="date" id="mutasi_end" value="${endDate}" class="border-2 border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold focus:border-blue-500 outline-none">
+                    <div class="flex gap-2 w-full md:w-auto mt-2 md:mt-0">
+                        <button onclick="exportMutasiToPDF('${accountId}', '${startDate}', '${endDate}')" class="flex-1 md:flex-none bg-red-600 hover:bg-black text-white px-5 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2">
+                            <i class="fas fa-file-pdf"></i> CETAK PDF
+                        </button>
                     </div>
-                    <button onclick="applyMutasiFilter('${accountId}')" class="mt-4 bg-blue-600 hover:bg-slate-900 text-white px-5 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all">
-                        <i class="fas fa-filter mr-2"></i> FILTER
-                    </button>
                 </div>
-                <div class="flex gap-2 w-full md:w-auto mt-2 md:mt-0">
-                    <button onclick="exportMutasiToPDF('${accountId}', '${startDate}', '${endDate}')" class="flex-1 md:flex-none bg-red-600 hover:bg-black text-white px-5 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2">
-                        <i class="fas fa-file-pdf"></i> CETAK PDF
-                    </button>
-                </div>
-            </div>
 
-            <div class="flex justify-between items-center bg-white p-4 rounded-lg border-2 border-slate-100 shadow-sm">
-                <div>
-                    <h4 class="text-sm font-black text-slate-800 uppercase tracking-widest">${acc.code} - ${acc.name}</h4>
-                    <p class="text-[10px] text-gray-500 uppercase font-bold tracking-tight mt-1">Periode: <span class="text-blue-600">${startDate || 'Awal'} s/d ${endDate || 'Sekarang'}</span></p>
+                <div class="flex justify-between items-center bg-white p-4 rounded-lg border-2 border-slate-100 shadow-sm">
+                    <div>
+                        <h4 class="text-sm font-black text-slate-800 uppercase tracking-widest">${acc.code} - ${acc.name}</h4>
+                        <p class="text-[10px] text-gray-500 uppercase font-bold tracking-tight mt-1">Periode: <span class="text-blue-600">${startDate || 'Awal'} s/d ${endDate || 'Sekarang'}</span></p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-[10px] text-gray-400 uppercase font-black">Saldo Akhir Periode</p>
+                        <p class="text-lg font-black text-blue-600">${formatCurrency(Math.abs(filteredLedger[0]?.balance || 0))}</p>
+                    </div>
                 </div>
-                <div class="text-right">
-                    <p class="text-[10px] text-gray-400 uppercase font-black">Saldo Akhir Periode</p>
-                    <p class="text-lg font-black text-blue-600">${formatCurrency(Math.abs(filteredLedger[0]?.balance || 0))}</p>
-                </div>
-            </div>
 
-            <div class="overflow-x-auto border rounded-xl overflow-hidden shadow-sm bg-white">
-                <table id="mutasiTable" class="w-full text-left text-xs border-collapse">
-                    <thead class="bg-slate-800 text-white uppercase tracking-widest text-[9px]">
-                        <tr>
-                            <th class="px-4 py-3 border-r border-slate-700">Tanggal</th>
-                            <th class="px-4 py-3 border-r border-slate-700">Ref / Jurnal</th>
-                            <th class="px-4 py-3 border-r border-slate-700">Keterangan</th>
-                            <th class="px-4 py-3 text-right border-r border-slate-700 uppercase">Debit</th>
-                            <th class="px-4 py-3 text-right border-r border-slate-700 uppercase">Kredit</th>
-                            <th class="px-4 py-3 text-right uppercase">Saldo</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-100">
-                        ${filteredLedger.map(l => `
-                            <tr class="hover:bg-blue-50/50 transition-colors">
-                                <td class="px-4 py-3 text-gray-400 whitespace-nowrap font-medium">${l.date.slice(0, 10).split('-').reverse().join('/')}</td>
-                                <td class="px-4 py-3 font-bold text-slate-700 whitespace-nowrap">${l.journalNo}</td>
-                                <td class="px-4 py-3 text-gray-600 min-w-[200px] font-medium">${l.description}</td>
-                                <td class="px-4 py-3 text-right font-bold ${l.debit > 0 ? 'text-blue-600' : 'text-slate-100'}">${l.debit > 0 ? formatCurrency(l.debit).replace('Rp ', '') : '0,00'}</td>
-                                <td class="px-4 py-3 text-right font-bold ${l.credit > 0 ? 'text-red-500' : 'text-slate-100'}">${l.credit > 0 ? formatCurrency(l.credit).replace('Rp ', '') : '0,00'}</td>
-                                <td class="px-4 py-3 text-right font-black text-slate-800 bg-slate-50/50">${formatCurrency(Math.abs(l.balance)).replace('Rp ', '')}</td>
+                <div class="overflow-x-auto border rounded-xl overflow-hidden shadow-sm bg-white">
+                    <table id="mutasiTable" class="w-full text-left text-xs border-collapse">
+                        <thead class="bg-slate-800 text-white uppercase tracking-widest text-[9px]">
+                            <tr>
+                                <th class="px-4 py-3 border-r border-slate-700">Tanggal</th>
+                                <th class="px-4 py-3 border-r border-slate-700">Ref / Jurnal</th>
+                                <th class="px-4 py-3 border-r border-slate-700">Keterangan</th>
+                                <th class="px-4 py-3 text-right border-r border-slate-700 uppercase">Debit</th>
+                                <th class="px-4 py-3 text-right border-r border-slate-700 uppercase">Kredit</th>
+                                <th class="px-4 py-3 text-right uppercase">Saldo</th>
                             </tr>
-                        `).join('')}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            ${filteredLedger.map(l => `
+                                <tr class="hover:bg-blue-50/50 transition-colors">
+                                    <td class="px-4 py-3 text-gray-400 whitespace-nowrap font-medium">${l.date ? l.date.slice(0, 10).split('-').reverse().join('/') : '-'}</td>
+                                    <td class="px-4 py-3 font-bold text-slate-700 whitespace-nowrap">${l.journalNo}</td>
+                                    <td class="px-4 py-3 text-gray-600 min-w-[200px] font-medium">${l.description}</td>
+                                    <td class="px-4 py-3 text-right font-bold ${l.debit > 0 ? 'text-blue-600' : 'text-slate-100'}">${l.debit > 0 ? formatCurrency(l.debit).replace('Rp ', '') : '0,00'}</td>
+                                    <td class="px-4 py-3 text-right font-bold ${l.credit > 0 ? 'text-red-500' : 'text-slate-100'}">${l.credit > 0 ? formatCurrency(l.credit).replace('Rp ', '') : '0,00'}</td>
+                                    <td class="px-4 py-3 text-right font-black text-slate-800 bg-slate-50/50">${formatCurrency(Math.abs(l.balance)).replace('Rp ', '')}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
             </div>
-        </div>
-    `;
-    
-    const footer = `
-        <button onclick="closeModal()" class="px-8 py-2.5 bg-slate-900 text-white rounded-lg text-xs font-black uppercase tracking-widest hover:bg-black transition-all">Tutup</button>
-    `;
-    
-    showModal(`Mutasi Buku Besar: ${acc.name}`, body, footer, 'full');
+        `;
+        
+        const footer = `
+            <button onclick="closeModal()" class="px-8 py-2.5 bg-slate-900 text-white rounded-lg text-xs font-black uppercase tracking-widest hover:bg-black transition-all">Tutup</button>
+        `;
+        
+        showModal(`Mutasi Buku Besar: ${acc.name}`, body, footer, 'full');
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
 };
 
 window.applyMutasiFilter = function(accountId) {
@@ -918,40 +872,26 @@ window.openReceiptModal = function () {
     showModal('Catat Penerimaan Kas & Bank', body, footer, 'xl');
 };
 
-window.saveReceipt = function () {
+window.saveReceipt = async function () {
     const date = document.getElementById('recDate').value;
     const amountVal = document.getElementById('recAmount').value;
     const amount = parseAmountInput(amountVal);
-    const targetAccId = document.getElementById('recTargetAccount').value;
-    const sourceAccId = document.getElementById('recSourceAccount').value;
+    const targetAccountId = document.getElementById('recTargetAccount').value;
+    const sourceAccountId = document.getElementById('recSourceAccount').value;
     const method = document.getElementById('recMethod').value;
-    const desc = document.getElementById('recDesc').value;
+    const description = document.getElementById('recDesc').value;
 
     if (!amount || amount <= 0) return showToast('Mohon isi jumlah penerimaan.', 'error');
-    if (!sourceAccId) return showToast('Mohon pilih akun sumber (COA).', 'error');
+    if (!sourceAccountId) return showToast('Mohon pilih akun sumber (COA).', 'error');
 
-    const receiptNo = db.generateFinanceTxNo('RECEIPT');
-    const receipt = db.insert('receipts', {
-        date, receiptNo, amount, targetAccountId: targetAccId, sourceAccountId: sourceAccId, method, description: desc
-    });
-
-    // Create Journal Entry
-    // Debit: Cash/Bank (Target), Credit: Source COA
-    db.addJournalEntry({
-        date, 
-        journalNo: receiptNo, 
-        description: desc || `Penerimaan Kas - ${receiptNo}`, 
-        items: [
-            { accountId: targetAccId, debit: amount, credit: 0 },
-            { accountId: sourceAccId, debit: 0, credit: amount }
-        ], 
-        referenceType: 'RECEIPT', 
-        referenceId: receipt.id
-    });
-
-    closeModal();
-    showToast('Penerimaan berhasil dicatat', 'success');
-    renderFinanceReceipts();
+    try {
+        await api.saveReceipt({ date, amount, targetAccountId, sourceAccountId, method, description });
+        closeModal();
+        showToast('Penerimaan berhasil dicatat', 'success');
+        renderFinanceReceipts();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
 };
 
 window.openExpenseModal = function () {
@@ -1021,40 +961,26 @@ window.openExpenseModal = function () {
     showModal('Catat Pengeluaran Baru', body, footer, 'xl');
 };
 
-window.saveExpense = function () {
+window.saveExpense = async function () {
     const date = document.getElementById('expDate').value;
     const amountVal = document.getElementById('expAmount').value;
     const amount = parseAmountInput(amountVal);
-    const fromAccId = document.getElementById('expFromAccount').value;
-    const toAccId = document.getElementById('expToAccount').value;
-    const deptId = document.getElementById('expDept').value;
+    const fromAccountId = document.getElementById('expFromAccount').value;
+    const toAccountId = document.getElementById('expToAccount').value;
+    const departmentId = document.getElementById('expDept').value;
     const method = document.getElementById('expMethod').value;
-    const desc = document.getElementById('expDesc').value;
+    const description = document.getElementById('expDesc').value;
 
     if (!amount || amount <= 0) return showToast('Mohon isi jumlah pengeluaran.', 'error');
 
-    const expenseNo = db.generateFinanceTxNo('EXPENSE');
-    const expense = db.insert('expenses', {
-        date, expenseNo, amount, fromAccountId: fromAccId, toAccountId: toAccId, departmentId: deptId, description: desc, method: method
-    });
-
-    // Create Journal Entry
-    db.addJournalEntry({
-        date, 
-        journalNo: expenseNo, 
-        description: desc || `Pengeluaran - ${expenseNo}`, 
-        items: [
-            { accountId: toAccId, debit: amount, credit: 0 },
-            { accountId: fromAccId, debit: 0, credit: amount }
-        ], 
-        referenceType: 'EXPENSE', 
-        referenceId: expense.id, 
-        departmentId: deptId
-    });
-
-    closeModal();
-    showToast('Pengeluaran berhasil dicatat', 'success');
-    renderFinanceExpenses();
+    try {
+        await api.saveExpense({ date, amount, fromAccountId, toAccountId, departmentId, description, method });
+        closeModal();
+        showToast('Pengeluaran berhasil dicatat', 'success');
+        renderFinanceExpenses();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
 };
 
 window.renderFinanceJournal = function () {
@@ -1300,10 +1226,10 @@ window.updateJournalTotals = function() {
     }
 };
 
-window.saveManualJournal = function() {
+window.saveManualJournal = async function() {
     const date = document.getElementById('mj_date').value;
-    const desc = document.getElementById('mj_desc').value;
-    const deptId = document.getElementById('mj_dept').value;
+    const description = document.getElementById('mj_desc').value;
+    const departmentId = document.getElementById('mj_dept').value;
     const partnerId = document.getElementById('mj_partner').value;
     
     // Find partner name if exists
@@ -1316,16 +1242,16 @@ window.saveManualJournal = function() {
 
     const items = [];
     document.querySelectorAll('.mj-item-row').forEach(row => {
-        const accId = row.querySelector('.mj-acc-select').value;
+        const accountId = row.querySelector('.mj-acc-select').value;
         const debit = parseFloat(row.querySelector('.mj-debit').value || 0);
         const credit = parseFloat(row.querySelector('.mj-credit').value || 0);
         
-        if (accId && (debit > 0 || credit > 0)) {
-            items.push({ accountId: accId, debit, credit });
+        if (accountId && (debit > 0 || credit > 0)) {
+            items.push({ accountId, debit, credit });
         }
     });
 
-    if (!desc) return alert('Keterangan jurnal harus diisi');
+    if (!description) return alert('Keterangan jurnal harus diisi');
     if (items.length < 2) return alert('Minimal harus ada 2 akun (Debit & Kredit)');
     
     const totalDebit = items.reduce((s, i) => s + i.debit, 0);
@@ -1335,20 +1261,22 @@ window.saveManualJournal = function() {
         return alert('Total Debit dan Kredit tidak seimbang!');
     }
 
-    db.addJournalEntry({
-        date,
-        description: desc,
-        items,
-        referenceType: 'MANUAL',
-        departmentId: deptId,
-        // Custom fields injected into the record
-        partnerId,
-        partnerName
-    });
-
-    closeModal();
-    showToast('Jurnal berhasil diposting');
-    renderFinanceJournal();
+    try {
+        await api.createJournalEntry({
+            date,
+            description,
+            items,
+            referenceType: 'MANUAL',
+            departmentId,
+            partnerId,
+            partnerName
+        });
+        closeModal();
+        showToast('Jurnal berhasil diposting');
+        renderFinanceJournal();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
 };
 
 // --- Buku Besar Mitra (Partner Ledger) ---

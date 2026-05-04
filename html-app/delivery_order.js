@@ -1413,47 +1413,38 @@ window.openConfirmShipmentModal = function(id) {
     showModal('Persetujuan Pengeluaran Barang', body, footer, 'max-w-xl');
 };
 
-window.confirmShipment = function(id) {
+window.confirmShipment = async function(id) {
     const d = db.findById('deliveryOrders', id);
     if (!d) return;
 
     const driverName = document.getElementById('dos_track_driver')?.value || d.driverName;
     const vehicleNo = document.getElementById('dos_track_no')?.value || d.vehicleNo;
 
-    (d.items || []).forEach(item => {
-        if (item.inventoryItemId) {
-            db.addInventoryTransaction(item.inventoryItemId, 'OUT', item.qty, 'SALES_OUT', id, `Delivery Order ${d.doNumber}`, 'Admin Warehouse', 'WHS');
-            
-            if (typeof db.addJournalEntry === 'function') {
-                const invItem = db.findById('inventoryItems', item.inventoryItemId);
-                if (invItem && invItem.purchasePrice) {
-                    const totalCost = invItem.purchasePrice * item.qty;
-                    db.addJournalEntry({
-                        description: `HPP Pengiriman SJ ${d.doNumber} (${invItem.itemName})`,
-                        referenceId: d.id,
-                        referenceType: 'DO',
-                        items: [
-                            { accountId: 'acc_cogs', debit: totalCost, credit: 0 },
-                            { accountId: 'acc_inv_fg', debit: 0, credit: totalCost }
-                        ]
-                    });
-                }
-            }
+    try {
+        // Use Phase 2 API for Atomic Transaction (Stock Deduction + Journal HPP + Status Update)
+        await api.shipDeliveryOrder(id, { driverName, vehicleNo });
+        
+        // Optimistic UI updates
+        db.update('deliveryOrders', id, {
+            status: 'SHIPPED',
+            shippedAt: new Date().toISOString(),
+            driverName: driverName,
+            vehicleNo: vehicleNo
+        });
+
+        if (d.salesOrderId) db.update('salesOrders', d.salesOrderId, { status: 'DELIVERED' });
+        
+        showToast(`Pengiriman SJ ${d.doNumber} berhasil dikonfirmasi!`, 'success');
+        closeModal();
+        
+        if (typeof renderWarehouseDeliveryOrders === 'function') {
+            renderWarehouseDeliveryOrders();
+        } else if (typeof renderSalesDeliveryOrders === 'function') {
+            renderSalesDeliveryOrders();
         }
-    });
-
-    db.update('deliveryOrders', id, {
-        status: 'SHIPPED',
-        shippedAt: new Date().toISOString(),
-        driverName: driverName,
-        vehicleNo: vehicleNo
-    });
-
-    if (d.salesOrderId) db.update('salesOrders', d.salesOrderId, { status: 'DELIVERED' });
-    
-    showToast(`Pengiriman SJ ${d.doNumber} berhasil dikonfirmasi!`, 'success');
-    closeModal();
-    renderWarehouseDeliveryOrders();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
 };
 
 window.viewDO = (id) => {

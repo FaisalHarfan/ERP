@@ -802,7 +802,7 @@ window.loadBOMMaterialsToMO = () => {
     }
 };
 
-window.startMO = () => {
+window.startMO = async () => {
     const stage = document.getElementById('mo_stage')?.value;
     const date = document.getElementById('mo_date')?.value;
     const shift = document.getElementById('mo_shift')?.value;
@@ -958,14 +958,18 @@ window.startMO = () => {
         moData.inputQty = 0;
     }
 
-    db.insert('productionOrders', moData);
-    showToast(`MO ${moNumber} dimulai & stok bahan dikurangi!`, 'success');
-    // Ensure the list shows today's MO after submit
-    window._prodSearchPerformed = true;
-    const todayStr2 = new Date().toISOString().split('T')[0];
-    if (!window._prodFilters) window._prodFilters = {};
-    if (!window._prodFilters.end || window._prodFilters.end < todayStr2) window._prodFilters.end = todayStr2;
-    renderProductionMO();
+    try {
+        await api.startProductionOrder(moData);
+        showToast(`MO ${moNumber} dimulai!`, 'success');
+        // Ensure the list shows today's MO after submit
+        window._prodSearchPerformed = true;
+        const todayStr2 = new Date().toISOString().split('T')[0];
+        if (!window._prodFilters) window._prodFilters = {};
+        if (!window._prodFilters.end || window._prodFilters.end < todayStr2) window._prodFilters.end = todayStr2;
+        renderProductionMO();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
 };
 
 // --- STEP 2: SELESAIKAN MO (FINISH) ---------------------------
@@ -1327,7 +1331,7 @@ window.recalcOKShrinkage = (idx) => {
     if (pctEl) pctEl.textContent = shrinkPct + '%';
 };
 
-window.finalizeMO = (id) => {
+window.finalizeMO = async (id) => {
     const mo = db.findById('productionOrders', id);
     if (!mo) return;
 
@@ -1340,9 +1344,6 @@ window.finalizeMO = (id) => {
     };
 
     if (mo.stage === 'OVEN_BASAH') {
-        const outputLocation = 'OVEN_BASAH';
-        const stageLabelLog = 'Oven Basah';
-
         // --- Consume Raw Materials ---
         const actualRows = document.querySelectorAll('.mo_final_rm_actual');
         const updatedInputItems = [];
@@ -1368,7 +1369,6 @@ window.finalizeMO = (id) => {
             const itemUnit = row.getAttribute('data-item-unit');
             const qtyActual = parseFormattedNum(row.value);
             if (itemId && qtyActual > 0) {
-                db.addInventoryTransaction(itemId, 'OUT', qtyActual, 'PRODUCTION_OUT', null, `FINISH ${stageLabelLog} MO ${mo.moNumber}: Consumed for ${mo.productName}`, 'Admin', 'WHS');
                 updatedInputItems.push({ inventoryItemId: itemId, itemName, qty: qtyActual, unit: itemUnit });
                 totalInputActual += qtyActual;
             }
@@ -1398,29 +1398,13 @@ window.finalizeMO = (id) => {
             return;
         }
 
-        // Book stock IN for each output product (into WIP Oven Basah item)
-        let totalOutputSacks = 0;
-        outputProducts.forEach(op => {
-            // op.itemId is FINISHED_GOODS id — resolve to its WIP (Oven Basah) counterpart, auto-create if missing
-            const wipItemId = db.ensureWIPItem(op.itemId, 'Oven Basah', true);
-            const wipItem = wipItemId ? db.findById('inventoryItems', wipItemId) : null;
-            const targetId = wipItemId || op.itemId; // fallback to FG id if WIP not found
-            const targetName = wipItem?.itemName || op.itemName;
-            db.addInventoryTransaction(
-                targetId, 'IN', op.qty, 'PRODUCTION_IN', null,
-                `FINISH ${stageLabelLog} MO ${mo.moNumber}: ${targetName} (${op.qty} Kg)`,
-                'Admin', outputLocation
-            );
-            totalOutputSacks += op.qty;
-        });
-
-        updates.outputQty = totalOutputSacks;
-        updates.outputSacks = totalOutputSacks;
+        let totalOutputActual = outputProducts.reduce((sum, p) => sum + p.qty, 0);
+        updates.outputQty = totalOutputActual;
+        updates.outputSacks = totalOutputActual;
         updates.outputItemId = outputProducts[0]?.itemId || '';
         updates.outputProducts = outputProducts; // Save multi-product list to MO record
 
     } else if (mo.stage === 'OVEN_KERING') {
-        const stageLabelLog = 'Oven Kering';
         const tpList = mo.targetProducts || [];
         const resultInputs = document.querySelectorAll('.ok-result-qty');
         
@@ -1464,15 +1448,6 @@ window.finalizeMO = (id) => {
             return;
         }
 
-        tpList.forEach((tp, idx) => {
-            const inputWipItemId = db.ensureWIPItem(tp.itemId, 'Oven Basah', true);
-            const outputWipItemId = db.ensureWIPItem(tp.itemId, 'Oven Kering', true);
-            const outputQty = completedProducts[idx].outputQty;
-            
-            db.addInventoryTransaction(inputWipItemId, 'OUT', tp.qty, 'PRODUCTION_OUT', null, `FINISH ${stageLabelLog} MO ${mo.moNumber}: Consumed for ${tp.itemName}`, 'Admin', 'OVEN_BASAH');
-            db.addInventoryTransaction(outputWipItemId, 'IN', outputQty, 'PRODUCTION_IN', null, `FINISH ${stageLabelLog} MO ${mo.moNumber}: Produced ${tp.itemName}`, 'Admin', 'OVEN_KERING');
-        });
-
         updates.inputQty = totalInputActual;
         updates.outputQty = totalOutputActual;
         updates.shrinkageKg = totalShrinkageKg;
@@ -1493,7 +1468,7 @@ window.finalizeMO = (id) => {
         updates.outputSacks = outputQty; // Store Sack count as metadata
         updates.outputItemId = outputItemId;
 
-        // OUT: Deduct from source location
+        // Validation for input stock
         if (mo.inputItemId) {
             const srcLoc = 'OVEN_KERING';
             const stock = db.getInventoryStock(mo.inputItemId, srcLoc);
@@ -1501,32 +1476,24 @@ window.finalizeMO = (id) => {
                 showToast(`Stok ${mo.productName || 'Input'} di ${srcLoc} tidak cukup! (Sisa: ${prodFmt(stock)}, Butuh: ${prodFmt(inputQtyActual)})`, 'error');
                 return;
             }
-            db.addInventoryTransaction(mo.inputItemId, 'OUT', inputQtyActual, 'PRODUCTION_OUT', null, `FINISH Packing MO ${mo.moNumber}: Consumed ${inputQtyActual}`, 'Admin', srcLoc);
-        }
-
-        // IN: Record the transaction in Kg to the Finished Goods category
-        db.addInventoryTransaction(outputItemId, 'IN', inputQtyActual, 'PRODUCTION_IN', null, `FINISH Packing MO ${mo.moNumber}: Produced ${inputQtyActual} Kg (${outputQty} Sacks)`, 'Admin', 'WHS');
-
-        // Update the item's packaging breakdown if applicable
-        const targetItem = db.findById('inventoryItems', outputItemId);
-        if (targetItem) {
-            targetItem.packBreakdown = targetItem.packBreakdown || { qty25: 0, qtyOther: 0 };
-            targetItem.packBreakdown.qty25 = (parseFloat(targetItem.packBreakdown.qty25) || 0) + outputQty;
-            db.update('inventoryItems', outputItemId, { packBreakdown: targetItem.packBreakdown });
         }
 
         updates.shrinkagePct = 0;
         updates.shrinkageKg = 0;
     }
 
-    db.update('productionOrders', id, updates);
-    showToast(`Produksi ${mo.moNumber} selesai! Stok masuk diperbarui.`, 'success');
-    // Navigate back to MO list and keep it visible
-    window._prodSearchPerformed = true;
-    const todayStr3 = new Date().toISOString().split('T')[0];
-    if (!window._prodFilters) window._prodFilters = {};
-    if (!window._prodFilters.end || window._prodFilters.end < todayStr3) window._prodFilters.end = todayStr3;
-    renderProductionMO();
+    try {
+        await api.completeProductionOrder(id, updates);
+        showToast(`Produksi ${mo.moNumber} selesai!`, 'success');
+        // Navigate back to MO list and keep it visible
+        window._prodSearchPerformed = true;
+        const todayStr3 = new Date().toISOString().split('T')[0];
+        if (!window._prodFilters) window._prodFilters = {};
+        if (!window._prodFilters.end || window._prodFilters.end < todayStr3) window._prodFilters.end = todayStr3;
+        renderProductionMO();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
 };
 
 // --- HELPERS -------------------------------------------------
@@ -1910,13 +1877,18 @@ window.viewProductionMO = (id) => {
     showModal(`Detail MO - ${mo.moNumber}`, body, `<button onclick="closeModal()" class="btn-secondary">Tutup</button>`);
 };
 
-window.deleteMO = (id) => {
+window.deleteMO = async (id) => {
     const mo = db.findById('productionOrders', id);
     if (!mo) return;
     if (!confirm(`Hapus MO ${mo.moNumber}? Catatan: Stok bahan yang sudah dikurangi saat Start TIDAK akan otomatis dikembalikan. Lakukan penyusuaian stok manual jika perlu.`)) return;
-    db.delete('productionOrders', id);
-    showToast('MO berhasil dihapus', 'success');
-    renderProductionMO();
+    
+    try {
+        await api.deleteProductionOrder(id);
+        showToast('MO berhasil dihapus', 'success');
+        renderProductionMO();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
 };
 
 // â”€â”€â”€ LAPORAN PRODUKSI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

@@ -1,4 +1,4 @@
-// app.js - Main Application UI Logic
+﻿// app.js - Main Application UI Logic
 
 const CONFIG = {
     companyName: 'PT. Tana Subur Nusantara',
@@ -3583,14 +3583,13 @@ window.receiveGoodsPO = (id) => {
     formView.classList.remove('hidden');
 };
 
-window.confirmReceiveGoods = (id) => {
+window.confirmReceiveGoods = async (id) => {
     const po = db.findById('purchaseOrders', id);
     const updatedItems = JSON.parse(JSON.stringify(po.items || []));
     let anyReceived = false;
     let sumReceivedAll = 0;
     let sumTargetAll = 0;
     const receivedItems = [];
-    let totalValueReceived = 0;
 
     const recvDate = document.getElementById('recv_date')?.value || new Date().toISOString().split('T')[0];
     const recvNpb = document.getElementById('recv_npb')?.value || '';
@@ -3612,85 +3611,63 @@ window.confirmReceiveGoods = (id) => {
 
         if (recvQty > 0) {
             receivedItems.push({
+                index: idx,
                 prodText: item.prodText || item.itemName || '',
                 qty: recvQty,
                 unit: item.unit || '',
                 inventoryItemId: item.inventoryItemId,
                 price: item.price || 0
             });
-            totalValueReceived += (recvQty * (item.price || 0));
             anyReceived = true;
         }
     });
 
     if (!anyReceived) { showToast('Tidak ada barang tambahan yang dimasukkan', 'error'); return; }
 
-    const isCompleted = sumReceivedAll >= sumTargetAll;
-    const newStatus = isCompleted ? 'RECEIVED' : 'PARTIALLY RECEIVED';
-    const today = new Date().toISOString().split('T')[0];
+    try {
+        // Use Phase 2 API for Atomic Transaction (Stock IN + Journal + Status Update)
+        const result = await api.receivePOGoods(id, {
+            receivedItems, recvDate, recvNpb, recvSj, recvNotes
+        });
 
-    if (!po.receipts) po.receipts = [];
-    if (anyReceived) {
+        // Optimistic UI update
+        if (!po.receipts) po.receipts = [];
         po.receipts.push({
             id: Date.now().toString(),
             date: recvDate,
             npbNumber: recvNpb,
             suratJalan: recvSj,
-            npb: recvNpb, // kept for backward compatibility
+            npb: recvNpb,
             notes: recvNotes,
             items: receivedItems
         });
-    }
 
-    db.update('purchaseOrders', id, {
-        status: newStatus,
-        receivedAt: new Date(recvDate).toISOString(),
-        actualDeliveryDate: isCompleted ? recvDate : (po.actualDeliveryDate || null),
-        items: updatedItems,
-        receipts: po.receipts
-    });
-
-    // Otomatis buat Jurnal: Debit Persediaan (RM/FG), Kredit Hutang Usaha/Accrued
-    if (totalValueReceived > 0 && typeof db.addJournalEntry === 'function') {
-        // Asumsi default ke RM jika tidak spesifik, atau cek item pertama
-        let invAccount = 'acc_inv_rm';
-        if (receivedItems.length > 0) {
-            const firstItem = db.findById('inventoryItems', receivedItems[0].inventoryItemId);
-            if (firstItem && firstItem.category === 'FINISHED_GOODS') invAccount = 'acc_inv_fg';
-        }
-
-        db.addJournalEntry({
-            description: `Penerimaan Barang PO ${po.poNumber}${recvNpb ? ' ('+recvNpb+')' : ''}`,
-            referenceType: 'PO',
-            referenceId: id,
-            items: [
-                { accountId: invAccount, debit: totalValueReceived, credit: 0 },
-                { accountId: 'acc_ap', debit: 0, credit: totalValueReceived }
-            ]
+        db.update('purchaseOrders', id, {
+            status: result.newStatus,
+            receivedAt: new Date(recvDate).toISOString(),
+            actualDeliveryDate: result.isCompleted ? recvDate : (po.actualDeliveryDate || null),
+            items: updatedItems,
+            receipts: po.receipts
         });
-    }
 
-    if (typeof addNotification === 'function') {
-        const msg = isCompleted ? `PO ${po.poNumber} telah DITERIMA PENUH.` : `PO ${po.poNumber} DITERIMA SEBAGIAN - sisa ${sumTargetAll - sumReceivedAll} unit belum diterima.`;
-        addNotification('Barang Diterima', msg);
-    }
-
-    if (typeof syncInventoryFromPOReceipt === 'function') {
-        syncInventoryFromPOReceipt(id, po.poNumber, receivedItems);
-    }
-
-    const toastMsg = isCompleted
-        ? `âœ… Semua barang diterima! PO selesai.`
-        : `ðŸ“¦ Terima sebagian berhasil! Sisa ${sumTargetAll - sumReceivedAll} unit. Klik "Terima Barang" lagi untuk input sisanya.`;
-    showToast(toastMsg, isCompleted ? 'success' : 'info');
-    if (window.closeGRForm) window.closeGRForm();
-    else closeModal();
-    // Refresh the current view
-    const activeNav = document.querySelector('.nav-btn.active');
-    if (activeNav && activeNav.dataset.view === 'purchase-receiving') {
-        renderPurchaseReceiving();
-    } else {
-        renderPurchaseOrders();
+        if (typeof addNotification === 'function') {
+            const msg = result.isCompleted
+                ? `PO ${po.poNumber} telah DITERIMA PENUH.`
+                : `PO ${po.poNumber} DITERIMA SEBAGIAN - sisa ${result.remaining} unit.`;
+            addNotification('Barang Diterima', msg);
+        }
+        showToast(result.message, result.isCompleted ? 'success' : 'info');
+        if (window.closeGRForm) window.closeGRForm();
+        else closeModal();
+        // Refresh the current view
+        const activeNav = document.querySelector('.nav-btn.active');
+        if (activeNav && activeNav.dataset.view === 'purchase-receiving') {
+            renderPurchaseReceiving();
+        } else {
+            renderPurchaseOrders();
+        }
+    } catch (err) {
+        showToast(err.message, 'error');
     }
 };
 
@@ -4666,7 +4643,7 @@ window.updateSupPayAmount = () => {
     }
 };
 
-window.saveSupplierPayment = () => {
+window.saveSupplierPayment = async () => {
     const allInvoices = db.read('purchaseInvoices');
     const allPayments = db.read('supplierPayments');
     const invoiceId = document.getElementById('spay_inv').value;
@@ -4680,28 +4657,29 @@ window.saveSupplierPayment = () => {
     const paid = allPayments.filter(p => p.invoiceId === inv.id).reduce((s, p) => s + parseFloat(p.amount), 0);
     const balance = inv.totalAmount - paid;
     if (amount > balance + 1) { showToast(`Melebihi sisa hutang (${formatCurrency(balance)})`, 'error'); return; }
-    const payment = db.insert('supplierPayments', { paymentNumber: 'SPAY-' + Date.now().toString().slice(-6), invoiceId, date: new Date(date).toISOString(), method, referenceNote: ref, amount });
 
-    // Otomatis buat Jurnal: Debit Hutang Usaha, Kredit Kas/Bank
-    if (typeof db.addJournalEntry === 'function') {
-        let creditAccount = '11110'; // Default: Kas
-        if (method === 'Transfer Bank') creditAccount = '11110'; // Default: Bank BCA
-
-        db.addJournalEntry({
-            date: payment.date,
-            description: `Pembayaran Hutang INV ${inv.invoiceNumber} (${method})`,
-            reference: payment.paymentNumber,
-            items: [
-                { accountId: 'acc_ap', debit: amount, credit: 0 },
-                { accountId: payment.method === 'Transfer Bank' ? 'acc_bank' : 'acc_cash', debit: 0, credit: amount }
-            ]
+    try {
+        // Use Phase 2 API for Atomic Transaction (Payment + Journal + Invoice Status)
+        const result = await api.paySupplierInvoice(invoiceId, {
+            amount, method, referenceNote: ref, date: new Date(date).toISOString()
         });
+
+        // Optimistic UI update
+        db.insert('supplierPayments', {
+            paymentNumber: 'SPAY-' + Date.now().toString().slice(-6),
+            invoiceId, date: new Date(date).toISOString(), method, referenceNote: ref, amount
+        });
+
+        if (result.isPaid) {
+            db.update('purchaseInvoices', inv.id, { status: 'PAID' });
+        }
+
+        showToast(result.message, 'success');
+        window.currentSupPayInvoiceId = null;
+        closeModal(); renderSupplierPayments(invoiceId);
+    } catch (err) {
+        showToast(err.message, 'error');
     }
-    const newPaid = paid + amount;
-    if (newPaid >= inv.totalAmount - 1) { db.update('purchaseInvoices', inv.id, { status: 'PAID' }); showToast('Pembayaran berhasil! Invoice LUNAS.', 'success'); }
-    else showToast('Pembayaran berhasil dicatat.', 'success');
-    window.currentSupPayInvoiceId = null;
-    closeModal(); renderSupplierPayments(invoiceId);
 };
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ PURCHASE REPORTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -9237,32 +9215,32 @@ window.saveNewSO = () => {
 };
 
 
-window.updateSOStatus = (id, newStatus) => {
-    db.update('salesOrders', id, { status: newStatus });
-    const so = db.findById('salesOrders', id);
-    if (newStatus === 'CONFIRMED' && so) {
-        // Otomatis buat Jurnal: Debit Piutang, Kredit Pendapatan
-        if (typeof db.addJournalEntry === 'function') {
-            db.addJournalEntry({
-                date: so.date || new Date().toISOString(),
-                description: `Piutang Penjualan SO ${so.soNumber}`,
-                reference: so.soNumber,
-                items: [
-                    { accountId: 'acc_ar', debit: so.totalAmount, credit: 0 }, // Piutang Usaha
-                    { accountId: 'acc_sales', debit: 0, credit: so.totalAmount }  // Penjualan
-                ]
-            });
+window.updateSOStatus = async (id, newStatus) => {
+    try {
+        if (newStatus === 'CONFIRMED') {
+            // Use Phase 2 API for Atomic Transaction (creates Journal + updates Status)
+            await api.approveSalesOrder(id);
+            
+            // Optimistic UI update
+            db.update('salesOrders', id, { status: 'CONFIRMED' });
+            
+            if (typeof addNotification === 'function') {
+                const so = db.findById('salesOrders', id);
+                addNotification(
+                    'Pesanan Baru Siap Kirim',
+                    `SO ${so ? so.soNumber : id} telah di-konfirmasi Sales. Siap diproses kirim.`
+                );
+            }
+        } else {
+            // Fallback for other statuses (DRAFT, dll) via Hybrid Sync
+            db.update('salesOrders', id, { status: newStatus });
         }
-
-        if (typeof addNotification === 'function') {
-            addNotification(
-                'Pesanan Baru Siap Kirim',
-                `SO ${so.soNumber} telah di-konfirmasi Sales. Siap diproses kirim.`
-            );
-        }
+        
+        showToast(`SO status updated to ${newStatus} `);
+        renderSalesOrders();
+    } catch (err) {
+        showToast(err.message, 'error');
     }
-    showToast(`SO status updated to ${newStatus} `);
-    renderSalesOrders();
 };
 
 // Fungsi pengiriman SO dihapus dari Sales. Dialihkan ke Inventory (Surat Jalan/Pengiriman).

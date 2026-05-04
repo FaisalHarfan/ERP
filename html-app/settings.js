@@ -12,75 +12,82 @@ const MODULE_LABELS = {
 const MODULES = Object.keys(MODULE_LABELS);
 
 // ─── 1. USER MANAGEMENT ────────────────────────────────────────
-window.renderSettingsUsers = () => {
+window.renderSettingsUsers = async () => {
     document.getElementById('pageTitle').innerText = 'Manajemen Pengguna';
     const mc = document.getElementById('main-content');
-    const users = db.read('users');
-    const roles = db.read('roles');
+    mc.innerHTML = `<div class="p-10 text-center"><i class="fas fa-spinner fa-spin text-3xl text-blue-500"></i><p class="mt-4 text-gray-500">Memuat data pengguna...</p></div>`;
 
-    const rows = users.map(u => {
-        const role = roles.find(r => r.id === u.roleId) || { name: '-' };
-        const statusBadge = u.status === 'AKTIF'
-            ? `<span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full bg-green-100 text-green-700">Aktif</span>`
-            : `<span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full bg-red-100 text-red-600">Nonaktif</span>`;
+    try {
+        const users = await api.getUsers();
+        const roles = await api.getRoles();
+        window._tempUsers = users; // Cache for modals
+        window._tempRoles = roles;
 
-        const initials = (u.avatar || u.fullName.split(' ').map(w => w[0]).join('').slice(0, 2)).toUpperCase();
+        const rows = users.map(u => {
+            const role = roles.find(r => r.id === u.roleId) || { name: '-' };
+            const statusBadge = u.status === 'AKTIF'
+                ? `<span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full bg-green-100 text-green-700">Aktif</span>`
+                : `<span class="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full bg-red-100 text-red-600">Nonaktif</span>`;
 
-        const systemBadge = u.id === 'user_admin' ? `<span class="ml-1 text-[9px] text-blue-400 font-bold">(System)</span>` : '';
-        const editBtn = `<button onclick="openUserModal('${u.id}')" class="text-blue-500 hover:text-blue-700 mr-3" title="Edit"><i class="fas fa-pen text-xs"></i></button>`;
-        const toggleBtn = u.id !== 'user_admin'
-            ? `<button onclick="toggleUserStatus('${u.id}')" class="text-${u.status === 'AKTIF' ? 'orange' : 'green'}-500 hover:text-${u.status === 'AKTIF' ? 'orange' : 'green'}-700" title="${u.status === 'AKTIF' ? 'Nonaktifkan' : 'Aktifkan'}"><i class="fas fa-${u.status === 'AKTIF' ? 'user-slash' : 'user-check'} text-xs"></i></button>`
-            : `<span class="text-gray-300 text-xs italic">Super User</span>`;
+            const initials = (u.avatar || u.fullName.split(' ').map(w => w[0]).join('').slice(0, 2)).toUpperCase();
 
-        return `<tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-            <td class="py-3 px-4">
-                <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-black shadow-sm shrink-0">${initials}</div>
-                    <div>
-                        <p class="text-sm font-bold text-gray-800">${u.fullName}${systemBadge}</p>
-                        <p class="text-xs text-gray-400">${u.email || u.username || '-'}</p>
+            const systemBadge = u.id === 'user_admin' ? `<span class="ml-1 text-[9px] text-blue-400 font-bold">(System)</span>` : '';
+            const editBtn = `<button onclick="openUserModal('${u.id}')" class="text-blue-500 hover:text-blue-700 mr-3" title="Edit"><i class="fas fa-pen text-xs"></i></button>`;
+            const toggleBtn = u.id !== 'user_admin'
+                ? `<button onclick="toggleUserStatus('${u.id}')" class="text-${u.status === 'AKTIF' ? 'orange' : 'green'}-500 hover:text-${u.status === 'AKTIF' ? 'orange' : 'green'}-700" title="${u.status === 'AKTIF' ? 'Nonaktifkan' : 'Aktifkan'}"><i class="fas fa-${u.status === 'AKTIF' ? 'user-slash' : 'user-check'} text-xs"></i></button>`
+                : `<span class="text-gray-300 text-xs italic">Super User</span>`;
+
+            return `<tr class="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                <td class="py-3 px-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center text-white text-xs font-black shadow-sm shrink-0">${initials}</div>
+                        <div>
+                            <p class="text-sm font-bold text-gray-800">${u.fullName}${systemBadge}</p>
+                            <p class="text-xs text-gray-400">${u.email || u.username || '-'}</p>
+                        </div>
                     </div>
-                </div>
-            </td>
-            <td class="py-3 px-4 text-sm text-gray-600">${role.name}</td>
-            <td class="py-3 px-4">${statusBadge}</td>
-            <td class="py-3 px-4 text-right">${editBtn}${toggleBtn}</td>
-        </tr>`;
-    }).join('');
+                </td>
+                <td class="py-3 px-4 text-sm text-gray-600">${role.name}</td>
+                <td class="py-3 px-4">${statusBadge}</td>
+                <td class="py-3 px-4 text-right">${editBtn}${toggleBtn}</td>
+            </tr>`;
+        }).join('');
 
-    mc.innerHTML = `
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div class="p-5 border-b border-gray-100 flex justify-between items-center">
-                <div>
-                    <h2 class="text-lg font-bold text-gray-800 tracking-tight">Daftar Pengguna</h2>
-                    <p class="text-xs text-gray-400 mt-0.5">Kelola akun pengguna yang dapat mengakses sistem</p>
+        mc.innerHTML = `
+            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div class="p-5 border-b border-gray-100 flex justify-between items-center">
+                    <div>
+                        <h2 class="text-lg font-bold text-gray-800 tracking-tight">Daftar Pengguna</h2>
+                        <p class="text-xs text-gray-400 mt-0.5">Kelola akun pengguna yang dapat mengakses sistem</p>
+                    </div>
+                    <button onclick="openUserModal()" class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg font-bold transition-colors shadow-sm flex items-center gap-2">
+                        <i class="fas fa-plus"></i> Tambah Pengguna
+                    </button>
                 </div>
-                <button onclick="openUserModal()" class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded-lg font-bold transition-colors shadow-sm flex items-center gap-2">
-                    <i class="fas fa-plus"></i> Tambah Pengguna
-                </button>
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left">
-                    <thead><tr class="bg-gray-50 border-b border-gray-200">
-                        <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Pengguna</th>
-                        <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Peran</th>
-                        <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                        <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-right">Aksi</th>
-                    </tr></thead>
-                    <tbody>${rows || '<tr><td colspan="4" class="py-10 text-center text-gray-400">Belum ada pengguna.</td></tr>'}</tbody>
-                </table>
-            </div>
-        </div>`;
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead><tr class="bg-gray-50 border-b border-gray-200">
+                            <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Pengguna</th>
+                            <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Peran</th>
+                            <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                            <th class="py-3 px-4 text-[10px] font-bold text-gray-500 uppercase tracking-wider text-right">Aksi</th>
+                        </tr></thead>
+                        <tbody>${rows || '<tr><td colspan="4" class="py-10 text-center text-gray-400">Belum ada pengguna.</td></tr>'}</tbody>
+                    </table>
+                </div>
+            </div>`;
+    } catch (err) {
+        mc.innerHTML = `<div class="p-10 text-center text-red-500"><i class="fas fa-exclamation-triangle text-3xl mb-4"></i><p>${err.message}</p></div>`;
+    }
 };
 
 window.openUserModal = (userId = null) => {
-    const user = userId ? db.findById('users', userId) : null;
-    const roles = db.read('roles');
+    const user = userId ? (window._tempUsers || []).find(u => u.id === userId) : null;
+    const roles = window._tempRoles || [];
     const roleOpts = roles.map(r => `<option value="${r.id}" ${user?.roleId === r.id ? 'selected' : ''}>${r.name}</option>`).join('');
 
     // Get user's existing permissions or fall back to role defaults
-    const userRoles = db.read('roles');
-    const userRole = userRoles.find(r => r.id === (user?.roleId || ''));
+    const userRole = roles.find(r => r.id === (user?.roleId || ''));
     const existingPerms = user?.permissions || userRole?.permissions || {};
     const gp = (mod, type) => existingPerms[mod]?.[type] || false;
     const isAdmin = userId === 'user_admin' || userRole?.id === 'role_admin';
@@ -143,7 +150,7 @@ window.openUserModal = (userId = null) => {
     showModal(userId ? 'Edit Pengguna' : 'Tambah Pengguna Baru', body, footer);
 };
 
-window.saveUser = (userId) => {
+window.saveUser = async (userId) => {
     const fullName = document.getElementById('u_fullname').value.trim();
     const email = document.getElementById('u_email').value.trim().toLowerCase();
     const password = document.getElementById('u_password').value;
@@ -154,12 +161,6 @@ window.saveUser = (userId) => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showToast('Format email tidak valid', 'error'); return; }
     if (!userId && !password) { showToast('Password wajib diisi untuk pengguna baru', 'error'); return; }
     if (!userId && !roleId) { showToast('Pilih peran / role terlebih dahulu', 'error'); return; }
-
-    // Check email uniqueness
-    const existing = db.read('users').find(u => u.email === email && u.id !== userId);
-    if (existing) { showToast('Email sudah dipakai pengguna lain', 'error'); return; }
-
-    const avatar = fullName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 
     // Collect per-user permissions
     let permissions = null;
@@ -172,82 +173,103 @@ window.saveUser = (userId) => {
         });
     }
 
-    if (userId) {
-        const updates = { fullName, email, avatar, status };
-        if (userId !== 'user_admin') { updates.roleId = roleId; }
-        if (password) updates.password = password;
-        if (permissions !== null) updates.permissions = permissions;
-        db.update('users', userId, updates);
-        showToast('Data pengguna berhasil diperbarui', 'success');
-    } else {
-        db.insert('users', { fullName, email, password, roleId, status, avatar, permissions });
-        showToast('Pengguna baru berhasil dibuat', 'success');
-    }
+    const btn = event.currentTarget || event.target;
+    const oldHtml = btn.innerHTML;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>Menyimpan...`;
+    btn.disabled = true;
 
-    closeModal();
-    renderSettingsUsers();
+    try {
+        if (userId) {
+            const updates = { fullName, email, status };
+            if (userId !== 'user_admin') updates.roleId = roleId;
+            if (password) updates.password = password;
+            if (permissions !== null) updates.permissions = permissions;
+            await api.updateUser(userId, updates);
+            showToast('Data pengguna berhasil diperbarui', 'success');
+        } else {
+            await api.createUser({ fullName, email, password, roleId, status, permissions });
+            showToast('Pengguna baru berhasil dibuat', 'success');
+        }
+
+        closeModal();
+        renderSettingsUsers();
+    } catch (err) {
+        showToast(err.message, 'error');
+        btn.innerHTML = oldHtml;
+        btn.disabled = false;
+    }
 };
 
-window.toggleUserStatus = (userId) => {
-    const user = db.findById('users', userId);
+window.toggleUserStatus = async (userId) => {
+    const user = (window._tempUsers || []).find(u => u.id === userId);
     if (!user) return;
     const newStatus = user.status === 'AKTIF' ? 'NONAKTIF' : 'AKTIF';
-    db.update('users', userId, { status: newStatus });
-    showToast(`Pengguna ${newStatus === 'AKTIF' ? 'diaktifkan' : 'dinonaktifkan'}`, 'info');
-    renderSettingsUsers();
+    
+    try {
+        await api.updateUser(userId, { status: newStatus });
+        showToast(`Pengguna ${newStatus === 'AKTIF' ? 'diaktifkan' : 'dinonaktifkan'}`, 'info');
+        renderSettingsUsers();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
 };
 
-// ─── 2. ROLES & ACCESS MANAGEMENT ─────────────────────────────
-window.renderSettingsRoles = () => {
+window.renderSettingsRoles = async () => {
     document.getElementById('pageTitle').innerText = 'Peran & Hak Akses';
     const mc = document.getElementById('main-content');
-    const roles = db.read('roles');
+    mc.innerHTML = `<div class="p-10 text-center"><i class="fas fa-spinner fa-spin text-3xl text-blue-500"></i><p class="mt-4 text-gray-500">Memuat data peran...</p></div>`;
 
-    const cards = roles.map(role => {
-        const permRows = MODULES.map(mod => {
-            const perm = role.permissions?.[mod] || { view: false, edit: false };
-            const viewToggle = `<button onclick="togglePermission('${role.id}', '${mod}', 'view')" 
-                class="w-8 h-5 rounded-full transition-colors ${perm.view ? 'bg-blue-600' : 'bg-gray-200'} relative">
-                <span class="absolute top-0.5 ${perm.view ? 'right-0.5' : 'left-0.5'} w-4 h-4 bg-white rounded-full shadow-sm transition-all"></span>
-            </button>`;
-            const editToggle = `<button onclick="togglePermission('${role.id}', '${mod}', 'edit')" 
-                class="w-8 h-5 rounded-full transition-colors ${perm.edit ? 'bg-green-600' : 'bg-gray-200'} relative">
-                <span class="absolute top-0.5 ${perm.edit ? 'right-0.5' : 'left-0.5'} w-4 h-4 bg-white rounded-full shadow-sm transition-all"></span>
-            </button>`;
-            return `<tr class="border-b border-gray-100 text-sm">
-                <td class="py-2.5 px-4 text-gray-700 font-medium">${MODULE_LABELS[mod]}</td>
-                <td class="py-2.5 px-4 text-center">${viewToggle}</td>
-                <td class="py-2.5 px-4 text-center">${editToggle}</td>
-            </tr>`;
+    try {
+        const [roles, users] = await Promise.all([api.getRoles(), api.getUsers()]);
+        window._tempRoles = roles;
+        window._tempUsers = users;
+
+        const cards = roles.map(role => {
+            const permRows = MODULES.map(mod => {
+                const perm = role.permissions?.[mod] || { view: false, edit: false };
+                const viewToggle = `<button onclick="togglePermission('${role.id}', '${mod}', 'view')" 
+                    class="w-8 h-5 rounded-full transition-colors ${perm.view ? 'bg-blue-600' : 'bg-gray-200'} relative">
+                    <span class="absolute top-0.5 ${perm.view ? 'right-0.5' : 'left-0.5'} w-4 h-4 bg-white rounded-full shadow-sm transition-all"></span>
+                </button>`;
+                const editToggle = `<button onclick="togglePermission('${role.id}', '${mod}', 'edit')" 
+                    class="w-8 h-5 rounded-full transition-colors ${perm.edit ? 'bg-green-600' : 'bg-gray-200'} relative">
+                    <span class="absolute top-0.5 ${perm.edit ? 'right-0.5' : 'left-0.5'} w-4 h-4 bg-white rounded-full shadow-sm transition-all"></span>
+                </button>`;
+                return `<tr class="border-b border-gray-100 text-sm">
+                    <td class="py-2.5 px-4 text-gray-700 font-medium">${MODULE_LABELS[mod]}</td>
+                    <td class="py-2.5 px-4 text-center">${viewToggle}</td>
+                    <td class="py-2.5 px-4 text-center">${editToggle}</td>
+                </tr>`;
+            }).join('');
+
+            const isSystem = role.isSystem;
+            const userCount = users.filter(u => u.roleId === role.id).length;
+
+            return `<div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div class="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/30">
+                    <div class="flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-black shadow-sm">${role.name.slice(0, 2).toUpperCase()}</div>
+                        <div>
+                            <p class="font-bold text-gray-800 text-sm">${role.name}</p>
+                            <p class="text-[10px] text-gray-400">${userCount} pengguna</p>
+                        </div>
+                    </div>
+                    ${!isSystem ? `<button onclick="deleteRole('${role.id}')" class="text-red-400 hover:text-red-600 text-xs"><i class="fas fa-trash"></i></button>` : '<span class="text-[9px] text-blue-400 font-bold border border-blue-100 bg-blue-50 px-2 py-0.5 rounded">SYSTEM</span>'}
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left">
+                        <thead><tr class="bg-gray-50/50 border-b border-gray-100">
+                            <th class="py-2 px-4 text-[9px] font-bold text-gray-400 uppercase tracking-wider">Modul</th>
+                            <th class="py-2 px-4 text-[9px] font-bold text-gray-400 uppercase tracking-wider text-center">Lihat</th>
+                            <th class="py-2 px-4 text-[9px] font-bold text-gray-400 uppercase tracking-wider text-center">Edit</th>
+                        </tr></thead>
+                        <tbody>${permRows}</tbody>
+                    </table>
+                </div>
+            </div>`;
         }).join('');
 
-        const isSystem = role.id === 'role_admin';
-
-        return `<div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div class="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/30">
-                <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-xs font-black shadow-sm">${role.name.slice(0, 2).toUpperCase()}</div>
-                    <div>
-                        <p class="font-bold text-gray-800 text-sm">${role.name}</p>
-                        <p class="text-[10px] text-gray-400">${role.department || 'Umum'} · ${db.read('users').filter(u => u.roleId === role.id).length} pengguna</p>
-                    </div>
-                </div>
-                ${!isSystem ? `<button onclick="deleteRole('${role.id}')" class="text-red-400 hover:text-red-600 text-xs"><i class="fas fa-trash"></i></button>` : '<span class="text-[9px] text-blue-400 font-bold border border-blue-100 bg-blue-50 px-2 py-0.5 rounded">SYSTEM</span>'}
-            </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left">
-                    <thead><tr class="bg-gray-50/50 border-b border-gray-100">
-                        <th class="py-2 px-4 text-[9px] font-bold text-gray-400 uppercase tracking-wider">Modul</th>
-                        <th class="py-2 px-4 text-[9px] font-bold text-gray-400 uppercase tracking-wider text-center">Lihat</th>
-                        <th class="py-2 px-4 text-[9px] font-bold text-gray-400 uppercase tracking-wider text-center">Edit</th>
-                    </tr></thead>
-                    <tbody>${permRows}</tbody>
-                </table>
-            </div>
-        </div>`;
-    }).join('');
-
-    mc.innerHTML = `
+        mc.innerHTML = `
         <div class="flex justify-between items-center mb-5">
             <div>
                 <h2 class="text-lg font-bold text-gray-800 tracking-tight">Peran & Hak Akses</h2>
@@ -258,21 +280,29 @@ window.renderSettingsRoles = () => {
             </button>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">${cards}</div>`;
+    } catch (err) {
+        mc.innerHTML = `<div class="p-10 text-center text-red-500"><i class="fas fa-exclamation-triangle text-3xl mb-4"></i><p>${err.message}</p></div>`;
+    }
 };
 
-window.togglePermission = (roleId, module, type) => {
-    const roles = db.read('roles');
-    const role = roles.find(r => r.id === roleId);
-    if (!role || roleId === 'role_admin') { showToast('Peran Administrator tidak bisa diubah', 'error'); return; }
-    if (!role.permissions) role.permissions = {};
-    if (!role.permissions[module]) role.permissions[module] = { view: false, edit: false };
-    role.permissions[module][type] = !role.permissions[module][type];
-    // If turning off view, also turn off edit
-    if (type === 'view' && !role.permissions[module].view) role.permissions[module].edit = false;
-    // If turning on edit, also turn on view
-    if (type === 'edit' && role.permissions[module].edit) role.permissions[module].view = true;
-    db.update('roles', roleId, { permissions: role.permissions });
-    renderSettingsRoles();
+window.togglePermission = async (roleId, module, type) => {
+    const role = (window._tempRoles || []).find(r => r.id === roleId);
+    if (!role) return;
+    if (role.isSystem) { showToast('Peran sistem tidak bisa diubah', 'error'); return; }
+
+    const newPerms = JSON.parse(JSON.stringify(role.permissions || {}));
+    if (!newPerms[module]) newPerms[module] = { view: false, edit: false };
+    
+    newPerms[module][type] = !newPerms[module][type];
+    if (type === 'view' && !newPerms[module].view) newPerms[module].edit = false;
+    if (type === 'edit' && newPerms[module].edit) newPerms[module].view = true;
+    
+    try {
+        await api.updateRole(roleId, { permissions: newPerms });
+        renderSettingsRoles();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
 };
 
 window.openRoleModal = () => {
@@ -312,9 +342,8 @@ window.openRoleModal = () => {
     showModal('Tambah Peran Baru', body, footer);
 };
 
-window.saveRole = () => {
+window.saveRole = async () => {
     const name = document.getElementById('role_name').value.trim();
-    const department = document.getElementById('role_department').value.trim();
     if (!name) { showToast('Nama peran wajib diisi', 'error'); return; }
 
     const permissions = {};
@@ -324,22 +353,32 @@ window.saveRole = () => {
         permissions[mod] = { view, edit };
     });
 
-    db.insert('roles', { name, department, isSystem: false, permissions });
-    showToast('Peran baru berhasil dibuat', 'success');
-    closeModal();
-    renderSettingsRoles();
+    const btn = event.currentTarget || event.target;
+    const oldHtml = btn.innerHTML;
+    btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>Menyimpan...`;
+    btn.disabled = true;
+
+    try {
+        await api.createRole({ name, permissions });
+        showToast('Peran baru berhasil dibuat', 'success');
+        closeModal();
+        renderSettingsRoles();
+    } catch (err) {
+        showToast(err.message, 'error');
+        btn.innerHTML = oldHtml;
+        btn.disabled = false;
+    }
 };
 
-window.deleteRole = (roleId) => {
-    const usersWithRole = db.read('users').filter(u => u.roleId === roleId);
-    if (usersWithRole.length > 0) {
-        showToast(`Tidak bisa hapus: ada ${usersWithRole.length} pengguna dengan peran ini`, 'error');
-        return;
-    }
+window.deleteRole = async (roleId) => {
     if (!confirm('Yakin hapus peran ini?')) return;
-    db.delete('roles', roleId);
-    showToast('Peran berhasil dihapus', 'success');
-    renderSettingsRoles();
+    try {
+        await api.deleteRole(roleId);
+        showToast('Peran berhasil dihapus', 'success');
+        renderSettingsRoles();
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
 };
 
 // ─── 3. COMPANY SETTINGS ───────────────────────────────────────

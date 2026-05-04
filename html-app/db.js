@@ -53,11 +53,17 @@ const db = {
         const data = db.read(table);
         const newRecord = {
             ...record,
-            id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-            createdAt: new Date().toISOString()
+            id: record.id || Date.now().toString() + Math.random().toString(36).substr(2, 5),
+            createdAt: record.createdAt || new Date().toISOString()
         };
         data.push(newRecord);
         db.save(table, data);
+
+        // Background sync to PostgreSQL (if api is available)
+        if (window.api) {
+            window.api.insert(table, newRecord).catch(e => console.error(`Sync insert failed for ${table}:`, e));
+        }
+
         return newRecord;
     },
 
@@ -67,6 +73,12 @@ const db = {
         if (index > -1) {
             data[index] = { ...data[index], ...updates, updatedAt: new Date().toISOString() };
             db.save(table, data);
+
+            // Background sync to PostgreSQL
+            if (window.api) {
+                window.api.update(table, id, updates).catch(e => console.error(`Sync update failed for ${table}:`, e));
+            }
+
             return data[index];
         }
         return null;
@@ -76,6 +88,11 @@ const db = {
         const data = db.read(table);
         const filtered = data.filter(item => item.id !== id);
         db.save(table, filtered);
+
+        // Background sync to PostgreSQL
+        if (window.api) {
+            window.api.delete(table, id).catch(e => console.error(`Sync delete failed for ${table}:`, e));
+        }
     },
 
     findById: (table, id) => {

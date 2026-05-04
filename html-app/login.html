@@ -13,7 +13,7 @@
             theme: { extend: { fontFamily: { sans: ['Inter', 'sans-serif'] } } }
         }
     </script>
-    <script src="db.js"></script>
+    <script src="api.js"></script>
     <style>
         body {
             font-family: 'Inter', sans-serif;
@@ -158,7 +158,7 @@
             el.classList.remove('hidden');
         }
 
-        function doLogin() {
+        async function doLogin() {
             const email = document.getElementById('login_email').value.trim().toLowerCase();
             const password = document.getElementById('login_password').value.trim();
 
@@ -169,49 +169,48 @@
                 return;
             }
 
-            const users = db.read('users');
-            // Support both email and legacy username for backward compat
-            const user = users.find(u => (u.email === email || u.username === email) && u.password === password);
-
-            if (!user) {
-                showError('login_error', 'Email atau password salah.');
-                return;
-            }
-            if (user.status === 'NONAKTIF') {
-                showError('login_error', 'Akun Anda telah dinonaktifkan. Hubungi Administrator.');
-                return;
-            }
-
-            // Save session
-            localStorage.setItem('unityerp_session', JSON.stringify({
-                userId: user.id,
-                email: user.email || user.username,
-                fullName: user.fullName,
-                avatar: user.avatar || user.fullName.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase(),
-                roleId: user.roleId,
-                loginAt: new Date().toISOString()
-            }));
-
-            // Optional: Backup legacy session removal
-            localStorage.removeItem('nexerp_session');
-
-            window.location.href = 'index.html';
-        }
-
-        // Check if already logged in
-        // Support migration for the very first time
-        if (!localStorage.getItem('unityerp_session') && localStorage.getItem('nexerp_session')) {
-            localStorage.setItem('unityerp_session', localStorage.getItem('nexerp_session'));
-            localStorage.removeItem('nexerp_session');
-        }
-
-        const existingSession = localStorage.getItem('unityerp_session');
-        if (existingSession) {
             try {
-                const s = JSON.parse(existingSession);
-                if (s.userId) window.location.href = 'index.html';
-            } catch (e) { localStorage.removeItem('nexerp_session'); }
+                // Call backend API for authentication
+                const result = await api.login(email, password);
+
+                // Save session with JWT token
+                localStorage.setItem('unityerp_session', JSON.stringify({
+                    token: result.token,
+                    userId: result.user.userId,
+                    email: result.user.email,
+                    fullName: result.user.fullName,
+                    avatar: result.user.avatar,
+                    roleId: result.user.roleId,
+                    loginAt: result.user.loginAt
+                }));
+
+                window.location.href = 'index.html';
+            } catch (err) {
+                showError('login_error', err.message || 'Email atau password salah.');
+            }
         }
+
+        // Check if already logged in with valid token
+        (async function() {
+            const existingSession = localStorage.getItem('unityerp_session');
+            if (existingSession) {
+                try {
+                    const s = JSON.parse(existingSession);
+                    if (s.token && s.userId) {
+                        // Verify token with backend
+                        const valid = await api.verifySession();
+                        if (valid) {
+                            window.location.href = 'index.html';
+                            return;
+                        }
+                    }
+                    // Token invalid/expired — clear it
+                    localStorage.removeItem('unityerp_session');
+                } catch (e) {
+                    localStorage.removeItem('unityerp_session');
+                }
+            }
+        })();
     </script>
 </body>
 

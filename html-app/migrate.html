@@ -1,0 +1,172 @@
+// migrate.js — Migration page to move LocalStorage data to PostgreSQL
+// Open this page in the browser after starting the new backend server
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UnityERP — Data Migration Tool</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>body { font-family: 'Inter', sans-serif; }</style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex items-center justify-center p-4">
+    <div class="bg-gray-800 rounded-2xl shadow-2xl max-w-2xl w-full p-8">
+        <h1 class="text-2xl font-black mb-2">🔄 Data Migration Tool</h1>
+        <p class="text-gray-400 text-sm mb-6">Migrasi data dari LocalStorage browser ke PostgreSQL server.</p>
+
+        <div class="bg-yellow-900/30 border border-yellow-600/30 rounded-xl p-4 mb-6">
+            <p class="text-yellow-300 text-sm font-bold">⚠️ Pastikan backend server sudah berjalan di <code>http://localhost:3000</code></p>
+        </div>
+
+        <div id="status" class="space-y-2 mb-6 max-h-80 overflow-y-auto"></div>
+
+        <div class="flex gap-3">
+            <button onclick="startMigration()" id="migrateBtn"
+                class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold transition-all flex-1">
+                🚀 Mulai Migrasi
+            </button>
+            <button onclick="checkHealth()"
+                class="bg-gray-700 hover:bg-gray-600 text-gray-300 px-4 py-3 rounded-xl font-bold transition-all">
+                🔍 Cek Server
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const DB_PREFIX = 'unityerp_';
+        const API_BASE = '/api';
+        const TABLES = [
+            'units', 'products', 'warehouses', 'suppliers', 'customers',
+            'purchaseRequests', 'purchaseOrders', 'purchaseInvoices', 'supplierPayments',
+            'salesQuotations', 'purchaseRFQs', 'salesOrders', 'salesInvoices', 'payments',
+            'boms', 'productionOrders', 'stockMovements',
+            'inventoryItems', 'stockTransactions', 'notifications',
+            'machines', 'bomHeaders', 'bomMaterials', 'manufacturingOrders',
+            'dailyProductionLogs', 'productionLineBatches',
+            'accounts', 'expenses', 'journalEntries', 'bankAccounts', 'departments',
+            'creditNotes', 'debitNotes',
+            'salesReturns', 'productExchanges', 'deliveryOrders',
+            'inventoryJudgments', 'inventoryConversions', 'packBreakdowns',
+            'users', 'roles', 'systemLogs'
+        ];
+
+        function log(msg, type = 'info') {
+            const el = document.getElementById('status');
+            const colors = { info: 'text-gray-300', success: 'text-green-400', error: 'text-red-400', warn: 'text-yellow-400' };
+            el.innerHTML += `<div class="${colors[type]} text-sm font-mono">→ ${msg}</div>`;
+            el.scrollTop = el.scrollHeight;
+        }
+
+        async function checkHealth() {
+            try {
+                const res = await fetch(`${API_BASE}/health`);
+                const data = await res.json();
+                log(`Server OK: ${JSON.stringify(data)}`, 'success');
+            } catch (err) {
+                log(`Server tidak bisa dihubungi: ${err.message}`, 'error');
+            }
+        }
+
+        async function loginAsAdmin() {
+            // First try to login to get a token
+            try {
+                const res = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: 'admin@tanasubur.co.id', password: 'admin123' })
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    return data.token;
+                }
+            } catch {}
+            return null;
+        }
+
+        async function startMigration() {
+            document.getElementById('migrateBtn').disabled = true;
+            document.getElementById('migrateBtn').textContent = '⏳ Migrasi berjalan...';
+            document.getElementById('status').innerHTML = '';
+
+            log('Mengecek koneksi ke server...');
+            try {
+                await (await fetch(`${API_BASE}/health`)).json();
+                log('Server terhubung ✅', 'success');
+            } catch {
+                log('GAGAL: Server tidak bisa dihubungi!', 'error');
+                document.getElementById('migrateBtn').disabled = false;
+                document.getElementById('migrateBtn').textContent = '🚀 Mulai Migrasi';
+                return;
+            }
+
+            // Login to get token
+            log('Login sebagai admin...');
+            const token = await loginAsAdmin();
+            if (!token) {
+                log('GAGAL login sebagai admin. Pastikan seed data sudah berjalan.', 'error');
+                document.getElementById('migrateBtn').disabled = false;
+                document.getElementById('migrateBtn').textContent = '🚀 Mulai Migrasi';
+                return;
+            }
+            log('Login berhasil ✅', 'success');
+
+            const headers = {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            };
+
+            // Skip users & roles (already seeded by backend)
+            const skipTables = ['users', 'roles'];
+            let totalMigrated = 0;
+
+            for (const table of TABLES) {
+                if (skipTables.includes(table)) {
+                    log(`⏭️ Skip '${table}' (sudah di-seed oleh server)`, 'warn');
+                    continue;
+                }
+
+                const raw = localStorage.getItem(DB_PREFIX + table);
+                if (!raw) {
+                    log(`'${table}': tidak ada data di LocalStorage`, 'info');
+                    continue;
+                }
+
+                let records;
+                try { records = JSON.parse(raw); } catch { continue; }
+                if (!Array.isArray(records) || records.length === 0) {
+                    log(`'${table}': kosong (0 records)`, 'info');
+                    continue;
+                }
+
+                log(`'${table}': migrasi ${records.length} records...`);
+
+                try {
+                    const res = await fetch(`${API_BASE}/data/${table}/bulk`, {
+                        method: 'POST', headers,
+                        body: JSON.stringify(records)
+                    });
+
+                    if (res.ok) {
+                        const result = await res.json();
+                        log(`'${table}': ${result.inserted} records berhasil ✅`, 'success');
+                        totalMigrated += result.inserted;
+                    } else {
+                        const err = await res.json();
+                        log(`'${table}': GAGAL — ${err.error}`, 'error');
+                    }
+                } catch (err) {
+                    log(`'${table}': ERROR — ${err.message}`, 'error');
+                }
+            }
+
+            log(`\n════════════════════════════════════`, 'success');
+            log(`✅ MIGRASI SELESAI: ${totalMigrated} total records berhasil dipindahkan`, 'success');
+            log(`Data Anda sekarang tersimpan di PostgreSQL!`, 'success');
+
+            document.getElementById('migrateBtn').textContent = '✅ Migrasi Selesai';
+        }
+    </script>
+</body>
+</html>
