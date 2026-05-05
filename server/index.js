@@ -53,8 +53,8 @@ async function start() {
         await sequelize.authenticate();
         console.log('✅ Database connected successfully');
 
-        // Sync tables (create if not exist)
-        await sequelize.sync({ alter: false });
+        // Sync tables (create if not exist, update if changed)
+        await sequelize.sync({ alter: true });
         console.log('✅ Database tables synced');
 
         // Seed default data

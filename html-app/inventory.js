@@ -1,4 +1,4 @@
-﻿// inventory.js - Inventory Module for Unity ERP
+// inventory.js - Inventory Module for Unity ERP
 
 // â”€â”€â”€ HELPERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const CATEGORY_LABELS = {
@@ -361,8 +361,8 @@ window.renderInventoryMaster = async () => {
         </div>
 
         <!-- Master Item Table Card -->
-        <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-            <div class="overflow-x-auto">
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-visible">
+            <div class="overflow-visible">
                 <table class="w-full text-left" id="inventory_table">
                     <thead class="bg-slate-50/50 border-b border-slate-100">
                         <tr>
@@ -442,15 +442,14 @@ function renderInventoryRows(items) {
                     <span class="text-[10px] font-bold ${isActive ? 'text-green-600' : 'text-slate-400'} uppercase tracking-widest">${isActive ? 'Active' : 'Non-Active'}</span>
                 </div>
             </td>
-            <td class="py-4 px-5 text-right">
-                ${canEdit ? `
-                <div class="flex justify-end">
-                    <div class="relative" onmouseenter="this.querySelector('.dropdown-menu').classList.remove('hidden')" onmouseleave="this.querySelector('.dropdown-menu').classList.add('hidden')">
-                        <button class="flex items-center gap-2 px-3 py-1.5 rounded-[10px] border border-slate-200 text-slate-700 bg-[#f8fafc] hover:bg-slate-100 transition-colors text-[12px] font-bold shadow-sm whitespace-nowrap">
+            <td class="py-4 px-5 text-right overflow-visible">
+                <div class="flex justify-end overflow-visible">
+                    <div class="relative dropdown-container" style="z-index: 1000;">
+                        <button onclick="this.nextElementSibling.classList.toggle('hidden')" class="flex items-center gap-2 px-3 py-1.5 rounded-[10px] border border-slate-200 text-slate-700 bg-[#f8fafc] hover:bg-slate-100 transition-colors text-[12px] font-bold shadow-sm whitespace-nowrap">
                             Pilih Aksi...
                             <i class="fas fa-chevron-down text-[10px] text-slate-400"></i>
                         </button>
-                        <div class="dropdown-menu hidden absolute right-0 top-full mt-1 w-40 bg-white rounded-xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.1)] border border-slate-100 z-[99] overflow-hidden text-left">
+                        <div class="dropdown-menu hidden absolute right-0 top-full mt-1 w-40 bg-white rounded-xl shadow-[0_10px_25px_-5px_rgba(0,0,0,0.1),0_8px_10px_-6px_rgba(0,0,0,0.1)] border border-slate-100 z-[1001] overflow-hidden text-left">
                             <div class="py-1 flex flex-col">
                                 <button onclick="renderInventoryItemForm('${it.id}')" class="text-left px-4 py-2 text-xs font-bold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50/50 flex items-center gap-2 transition-colors">
                                     <i class="fas fa-edit w-4"></i> Edit Item
@@ -468,7 +467,6 @@ function renderInventoryRows(items) {
                         </div>
                     </div>
                 </div>
-                ` : ''}
             </td>
         </tr>`;
     }).join('');
@@ -516,119 +514,84 @@ window.renderInventoryItemForm = (id = null) => {
     const mc = document.getElementById('main-content');
 
     mc.innerHTML = `
-    <div class="w-full space-y-6 animate-fade-in pb-20">
-        <!-- Header Section -->
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-            <div class="flex justify-between items-center mb-6">
-                <div class="flex items-center gap-4">
-                    <div class="w-12 h-12 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
-                        <i class="fas fa-boxes text-xl"></i>
-                    </div>
-                    <div>
-                        <h2 class="text-xl font-bold text-slate-800">${id ? 'Edit Item Master' : 'Tambah Item Baru'}</h2>
-                        <p class="text-xs text-slate-500">Lengkapi detail informasi produk/barang inventaris.</p>
-                    </div>
-                </div>
-                <div class="flex gap-3">
-                    <button onclick="renderInventoryMaster()" class="px-6 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all">Batal</button>
-                    <button onclick="saveInventoryItem('${id || ''}')" class="px-8 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20">Simpan Item</button>
-                </div>
+    <div class="animate-in fade-in slide-in-from-bottom-2 duration-400 -m-4 sm:-m-6 h-[calc(100vh-64px)] flex flex-col overflow-hidden bg-white">
+        <!-- Sticky Action Bar -->
+        <div class="sticky top-0 z-40 bg-white border-b border-slate-100 px-8 py-4 flex items-center justify-between shrink-0 shadow-sm">
+            <div></div>
+            <div class="flex items-center gap-3">
+                <button onclick="renderInventoryMaster()" class="px-6 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95">Batal</button>
+                <button onclick="saveInventoryItem('${id || ''}')" class="px-8 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg active:scale-95 flex items-center gap-2">
+                    <i class="fas fa-check-circle text-[10px]"></i> Simpan Data Item
+                </button>
             </div>
+        </div>
 
-            <div class="space-y-8">
-                <!-- Basic Info Card -->
-                <div class="bg-slate-50/50 p-6 rounded-2xl border border-slate-100 relative group transition-all hover:bg-white hover:shadow-md">
-                    <div class="flex justify-between items-center mb-6">
-                        <div>
-                            <h4 class="text-[11px] font-black text-indigo-600 uppercase tracking-widest">Informasi Dasar</h4>
-                            <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Identitas Produk & Klasifikasi</p>
+        <!-- Scrollable Content -->
+        <div class="flex-1 overflow-y-auto bg-slate-50/50 custom-scrollbar pb-32">
+            <div class="w-full p-8 space-y-8">
+                
+                <!-- Informasi Dasar -->
+                <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-6">
+                    <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                        <i class="fas fa-info-circle text-indigo-600"></i> Informasi Dasar
+                    </h3>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-semibold text-slate-600 mb-2">Nama Item / Produk <span class="text-red-400">*</span></label>
+                            <input type="text" id="inv_name" value="${item?.itemName || ''}" 
+                                class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 outline-none" placeholder="">
                         </div>
-                        <div class="px-4 py-2 bg-white border border-slate-200 rounded-xl shadow-sm text-center min-w-[120px]">
-                            <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest block mb-1">Item Code</span>
-                            <span class="text-sm font-black text-slate-700 block font-mono" id="inv_code_preview_label">${previewCode}</span>
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-600 mb-2">Kategori <span class="text-red-400">*</span></label>
+                            <select id="inv_category" onchange="invUpdateCodePreview()" 
+                                class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
+                                <option value="">-- Pilih Kategori --</option>
+                                ${catOpts}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-600 mb-2">Item Code</label>
+                            <div class="px-4 py-3 bg-slate-200/50 rounded-xl font-mono font-bold text-slate-500 text-center" id="inv_code_preview_label">
+                                ${previewCode}
+                            </div>
                             <input type="hidden" id="inv_code_preview" value="${previewCode}">
                         </div>
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div class="md:col-span-2">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Nama Item / Produk <span class="text-red-500">*</span></label>
-                            <input type="text" id="inv_name" value="${item?.itemName || ''}" class="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 focus:ring-4 focus:ring-indigo-500/5 focus:border-indigo-400 outline-none transition-all shadow-sm" placeholder="cth: Semen Padang 50kg">
-                        </div>
-
                         <div>
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Kategori <span class="text-red-500">*</span></label>
+                            <label class="block text-sm font-semibold text-slate-600 mb-2">Satuan Dasar <span class="text-red-400">*</span></label>
+                            <select id="inv_unit" class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
+                                ${unitOpts}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-600 mb-2">Harga Beli Rata-rata</label>
                             <div class="relative">
-                                <select id="inv_category" onchange="invUpdateCodePreview()" class="w-full bg-white border border-slate-200 rounded-xl pl-4 pr-10 py-3 text-sm font-bold text-slate-700 focus:border-indigo-400 outline-none transition-all appearance-none cursor-pointer shadow-sm">
-                                    <option value="">-- Pilih Kategori --</option>${catOpts}
-                                </select>
-                                <i class="fas fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none text-xs"></i>
+                                <span class="absolute left-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">Rp</span>
+                                <input type="number" id="inv_price" value="${item?.purchasePrice ?? 0}" min="0" step="0.01" 
+                                    class="w-full border-none rounded-xl pl-10 pr-4 py-3 bg-slate-100/80 font-bold text-slate-800 outline-none">
                             </div>
                         </div>
-
                         <div>
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Satuan Dasar <span class="text-red-500">*</span></label>
-                            <div class="relative">
-                                <select id="inv_unit" class="w-full bg-white border border-slate-200 rounded-xl pl-4 pr-10 py-3 text-sm font-bold text-slate-700 focus:border-indigo-400 outline-none transition-all appearance-none cursor-pointer shadow-sm">
-                                    ${unitOpts}
-                                </select>
-                                <i class="fas fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none text-xs"></i>
-                            </div>
+                            <label class="block text-sm font-semibold text-slate-600 mb-2">Safety Stock (Min. Stok)</label>
+                            <input type="number" id="inv_min_stock" value="${item?.minStock ?? 0}" min="0" 
+                                class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 outline-none">
                         </div>
-                    </div>
-                </div>
-
-                <!-- Parameters Card -->
-                <div class="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm relative group transition-all hover:shadow-lg">
-                    <div class="mb-6">
-                        <h4 class="text-[11px] font-black text-orange-600 uppercase tracking-widest">Parameter Stok & Harga</h4>
-                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Estimasi biaya dan ambang batas stok</p>
-                    </div>
-
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Harga Beli Rata-rata (Avg Cost)</label>
-                            <div class="relative">
-                                <span class="absolute left-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-300">Rp</span>
-                                <input type="number" id="inv_price" value="${item?.purchasePrice ?? 0}" min="0" step="0.01" class="w-full bg-slate-50 border border-slate-100 rounded-xl pl-10 pr-4 py-3 text-sm font-bold text-slate-700 focus:ring-4 focus:ring-orange-500/5 focus:border-orange-300 outline-none transition-all">
-                            </div>
+                            <label class="block text-sm font-semibold text-slate-600 mb-2">Status</label>
+                            <select id="inv_status" class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
+                                <option value="ACTIVE" ${(!item || item.status !== 'INACTIVE') ? 'selected' : ''}>Active</option>
+                                <option value="INACTIVE" ${item?.status === 'INACTIVE' ? 'selected' : ''}>Non-Active</option>
+                            </select>
                         </div>
-
-                        <div>
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Safety Stock (Min. Stok)</label>
-                            <div class="relative">
-                                <input type="number" id="inv_min_stock" value="${item?.minStock ?? 0}" min="0" class="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:ring-4 focus:ring-orange-500/5 focus:border-orange-300 outline-none transition-all">
-                                <span class="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-300 uppercase">${item?.unit || 'Unit'}</span>
-                            </div>
-                        </div>
-
-                        <div>
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Status Ketersediaan</label>
-                            <div class="relative">
-                                <select id="inv_status" class="w-full bg-slate-50 border border-slate-100 rounded-xl pl-4 pr-10 py-3 text-sm font-bold text-slate-700 focus:border-indigo-400 outline-none transition-all appearance-none cursor-pointer">
-                                    <option value="ACTIVE" ${(!item || item.status !== 'INACTIVE') ? 'selected' : ''}>Active</option>
-                                    <option value="INACTIVE" ${item?.status === 'INACTIVE' ? 'selected' : ''}>Non-Active</option>
-                                </select>
-                                <i class="fas fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none text-xs"></i>
-                            </div>
-                        </div>
-
                         ${(!id && isCurrentUserAdmin()) ? `
                         <div>
-                            <label class="block text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-2 ml-1 font-bold">Stok Awal (Initial Balance)</label>
-                            <div class="relative">
-                                <input type="number" id="inv_initial_stock" value="0" min="0" class="w-full bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3 text-sm font-black text-indigo-700 focus:border-indigo-400 outline-none transition-all">
-                                <i class="fas fa-warehouse absolute right-4 top-1/2 -translate-y-1/2 text-indigo-200"></i>
-                            </div>
+                            <label class="block text-sm font-semibold text-indigo-600 mb-2">Stok Awal</label>
+                            <input type="number" id="inv_initial_stock" value="0" min="0" 
+                                class="w-full border-none rounded-xl px-4 py-3 bg-indigo-50 font-black text-indigo-700 outline-none">
                         </div>` : ''}
                     </div>
                 </div>
-            </div>
 
-            <!-- Bottom Actions -->
-            <div class="mt-10 pt-8 border-t border-slate-100 flex justify-end gap-3">
-                <button onclick="renderInventoryMaster()" class="px-8 py-3 bg-slate-100 text-slate-600 rounded-xl text-sm font-bold hover:bg-slate-200 transition-all">Batal</button>
-                <button onclick="saveInventoryItem('${id || ''}')" class="px-12 py-3 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/25">Simpan Data Item</button>
             </div>
         </div>
     </div>`;

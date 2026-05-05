@@ -1,4 +1,4 @@
-﻿// app.js - Main Application UI Logic
+// app.js - Main Application UI Logic
 
 const CONFIG = {
     companyName: 'PT. Tana Subur Nusantara',
@@ -317,11 +317,10 @@ const MODULE_VIEW_MAP = {
 window.isCurrentUserAdmin = function () {
     try {
         const sess = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
-        if (!sess.userId) return false;
-        const user = db.findById('users', sess.userId);
-        if (!user) return false;
-        const role = db.findById('roles', user.roleId);
-        return user.id === 'user_admin' || (role && role.id === 'role_admin');
+        // User admin has ID 'user_admin' or role 'role_admin' (case-insensitive)
+        const userId = (sess.userId || '').toLowerCase();
+        const roleId = (sess.roleId || '').toLowerCase();
+        return userId === 'user_admin' || roleId === 'role_admin';
     } catch (e) {
         return false;
     }
@@ -504,7 +503,7 @@ window.printHTML = (htmlContent, title, forceHideHeader = false) => {
     printWindow.document.close();
 };
 
-function navigateTo(viewId, isBack = false) {
+async function navigateTo(viewId, isBack = false) {
     // If a modal is open, close it automatically when navigating to a new page
     if (window._isModalOpen) {
         window._isModalOpen = false;
@@ -598,9 +597,40 @@ function navigateTo(viewId, isBack = false) {
 
     // Access Control Check
     const requiredModule = MODULE_VIEW_MAP[viewId];
+    
+    // --- DATABASE SYNC ---
+    // Sync necessary tables before rendering
+    const tableSyncMap = {
+        'inventory-master': ['inventoryItems', 'stockTransactions'],
+        'sales-customers': ['customers', 'inventoryItems', 'stockTransactions'],
+        'sales-quotations': ['salesQuotations', 'customers', 'inventoryItems'],
+        'sales-orders': ['salesOrders', 'customers', 'inventoryItems'],
+        'sales-invoices': ['salesInvoices', 'customers', 'inventoryItems'],
+        'master-suppliers': ['suppliers'],
+        'purchase-orders': ['purchaseOrders', 'suppliers', 'inventoryItems'],
+        'production-stock': ['inventoryItems', 'stockTransactions'],
+        'production-bom': ['bomHeaders', 'bomMaterials', 'inventoryItems'],
+        'production-mo': ['manufacturingOrders', 'inventoryItems', 'bomHeaders'],
+        'finance-accounts': ['accounts'],
+        'settings-users': ['users', 'roles'],
+        'settings-roles': ['roles']
+    };
+    
+    const tablesToSync = tableSyncMap[viewId] || [];
+    if (tablesToSync.length > 0) {
+        // Show loading state if needed, or just sync silently
+        for (const table of tablesToSync) {
+            await db.sync(table);
+        }
+    }
+
     if (requiredModule) {
         try {
             const sess = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
+            // Ensure users and roles are synced for permission checks
+            await db.sync('users');
+            await db.sync('roles');
+            
             const user = db.findById('users', sess.userId);
             if (user && user.id !== 'user_admin') {
                 const roles = db.read('roles');
@@ -1851,7 +1881,7 @@ function renderCustomerData() {
     const customers = db.read('customers') || [];
 
     mainContent.innerHTML = `
-        <div class="space-y-4">
+        <div id="cust-list-view" class="space-y-4 animate-in fade-in duration-300">
             <!-- Structured Filter Bar -->
             <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
                 <div class="flex flex-wrap items-center gap-4">
@@ -1859,26 +1889,26 @@ function renderCustomerData() {
                     <div class="flex-1 min-w-[250px] relative group">
                         <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors"></i>
                         <input type="text" id="cust_search" onkeyup="filterCustomerList()" placeholder="Search Name, Phone, Email..." 
-                            class="w-full pl-12 pr-4 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-semibold text-slate-700 placeholder:text-slate-300 focus:bg-white focus:border-blue-300 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all">
+                            class="w-full pl-12 pr-4 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-semibold text-slate-700 placeholder:text-slate-300 focus:bg-white focus:border-blue-300 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all shadow-sm">
                     </div>
 
                     <!-- Region Filter -->
                     <div class="min-w-[160px]">
                         <select id="cust_filter_region" onchange="filterCustomerList()" 
-                            class="w-full px-4 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-semibold text-slate-700 focus:bg-white focus:border-blue-300 outline-none transition-all cursor-pointer">
+                            class="w-full px-4 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-semibold text-slate-700 focus:bg-white focus:border-blue-300 outline-none transition-all cursor-pointer shadow-sm">
                             <option value="">All Regions</option>
-                            ${[...new Set(customers.map(c => c.region).filter(Boolean))].map(r => `<option value="${r}">${r}</option>`).join('')}
+                            ${[...new Set(customers.filter(c => c && c.region).map(c => c.region))].map(r => `<option value="${r}">${r}</option>`).join('')}
                         </select>
                     </div>
 
                     <!-- Actions -->
                     <div class="flex gap-3 ml-auto">
                         ${canEdit ? `
-                        <button onclick="openCustomerModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl transition-all text-sm font-bold shadow-lg shadow-blue-500/20 flex items-center gap-2">
+                        <button onclick="openCustomerModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl transition-all text-sm font-bold shadow-lg shadow-blue-500/20 flex items-center gap-2 active:scale-95">
                             <i class="fas fa-plus"></i> New Customer
                         </button>
                         ` : ''}
-                        <button onclick="exportCustomerCsv()" class="bg-white border border-slate-200 text-slate-600 px-5 py-2.5 rounded-xl hover:bg-slate-50 transition-all text-sm font-bold">
+                        <button onclick="exportCustomerCsv()" class="bg-white border border-slate-200 text-slate-600 px-5 py-2.5 rounded-xl hover:bg-slate-50 transition-all text-sm font-bold shadow-sm active:scale-95">
                             <i class="fas fa-download mr-2"></i> Export
                         </button>
                     </div>
@@ -1886,8 +1916,8 @@ function renderCustomerData() {
             </div>
 
             <!-- Customer Table Card -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-                <div class="overflow-x-auto">
+            <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-visible">
+                <div class="overflow-visible">
                     <table class="w-full text-left" id="customer_table">
                         <thead class="bg-slate-50/50 border-b border-slate-100">
                             <tr>
@@ -1903,7 +1933,7 @@ function renderCustomerData() {
                         </tbody>
                     </table>
                 </div>
-                <div id="customer_empty_state" class="hidden py-20 flex flex-col items-center justify-center text-center">
+                <div id="customer_empty_state" class="${customers.length === 0 ? '' : 'hidden'} py-20 flex flex-col items-center justify-center text-center">
                     <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-300 mb-4 text-2xl">
                         <i class="fas fa-users"></i>
                     </div>
@@ -1911,6 +1941,7 @@ function renderCustomerData() {
                 </div>
             </div>
         </div>
+        <div id="cust-form-view" class="hidden animate-in fade-in slide-in-from-bottom-4 duration-500"></div>
     `;
 }
 
@@ -1918,12 +1949,12 @@ function renderCustomerRows(customers) {
     const canEdit = getModulePermission('penjualan').edit;
     if (customers.length === 0) return '';
     
-    return customers.map(c => `
+    return customers.filter(c => c && c.name).map(c => `
         <tr class="hover:bg-slate-50/80 transition-colors group">
             <td class="py-4 px-5">
                 <div class="flex items-center gap-3">
                     <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-xs font-bold shrink-0">
-                        ${c.name.substring(0,2).toUpperCase()}
+                        ${(c.name || '??').substring(0,2).toUpperCase()}
                     </div>
                     <div>
                         <div class="text-sm font-bold text-slate-800">${c.name}</div>
@@ -1999,146 +2030,207 @@ window.exportCustomerCsv = () => {
     a.click();
 };
 
-window.openCustomerModal = (id = null, afterView = null) => {
+window.openCustomerModal = async (id = null, afterView = null) => {
     window._afterCustomerSave = afterView;
-    let customer = { name: '', phone: '', email: '', address: '', contactPerson: '', shippingAddress: '' };
+    let customer = { name: '', phone: '', email: '', address: '', contactPerson: '', region: '', city: '', paymentTerm: '', ppn: 11, shippingAddress: '' };
     if (id) {
-        customer = db.findById('customers', id);
+        const found = db.findById('customers', id);
+        if (found) customer = found;
     }
 
-    const body = `
-        <div class="space-y-4 font-sans max-h-[70vh] overflow-y-auto pr-2 custom-scrollbar">
-            <!-- Top Level -->
-            <div class="grid grid-cols-1 gap-6">
-                <div>
-                    <label class="block text-sm font-medium text-slate-600 mb-1">Customer / Company Name <span class="text-red-400">*</span></label>
-                    <input type="text" id="cust_name" value="${customer.name}" class="w-full bg-slate-100 border-none rounded-lg px-4 py-2.5 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all">
+    const listView = document.getElementById('cust-list-view');
+    const formView = document.getElementById('cust-form-view');
+    
+    // If not on customers page, navigate first
+    if (!listView || !formView) {
+        await navigateTo('sales-customers');
+    }
+    
+    const lv = document.getElementById('cust-list-view');
+    const fv = document.getElementById('cust-form-view');
+    if (!lv || !fv) return;
+
+    lv.classList.add('hidden');
+    fv.classList.remove('hidden');
+
+    fv.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden -m-4 sm:-m-6 h-[calc(100vh-64px)] flex flex-col">
+            <!-- Form Header -->
+            <div class="px-8 py-5 border-b border-slate-100 flex items-center justify-between bg-white shrink-0 shadow-sm z-10">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600">
+                        <i class="fas fa-user-plus"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-black text-slate-800 tracking-tight">${id ? 'Edit Customer' : 'Tambah Customer Baru'}</h3>
+                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Lengkapi informasi detail pelanggan</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button type="button" onclick="renderCustomerData()" class="px-6 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95">
+                        Batal
+                    </button>
+                    <button type="button" onclick="saveCustomer('${id || ''}')" class="px-8 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95 flex items-center gap-2">
+                        <i class="fas fa-check-circle"></i> Simpan Data Pelanggan
+                    </button>
                 </div>
             </div>
 
-            <!-- Contact Section -->
-            <div class="pt-5 mt-2 border-t border-slate-100">
-                <h4 class="text-sm font-semibold text-slate-800 mb-4 flex items-center gap-2 cursor-pointer group">
-                    <span>Primary Contact Details</span>
-                    <i class="fas fa-chevron-down text-[10px] text-slate-400 group-hover:text-slate-600 transition-colors"></i>
-                </h4>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
-                    <div>
-                        <label class="block text-sm font-medium text-slate-600 mb-1">Contact Person <span class="text-red-400">*</span></label>
-                        <input type="text" id="cust_cp" value="${customer.contactPerson || ''}" class="w-full bg-slate-100 border-none rounded-lg px-4 py-2.5 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-slate-600 mb-1">Email Address <span class="text-red-400">*</span></label>
-                        <input type="email" id="cust_email" value="${customer.email || ''}" class="w-full bg-slate-100 border-none rounded-lg px-4 py-2.5 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-slate-600 mb-1">Phone Number <span class="text-red-400">*</span></label>
-                        <input type="text" id="cust_phone" value="${customer.phone}" class="w-full bg-slate-100 border-none rounded-lg px-4 py-2.5 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all">
-                    </div>
-                </div>
-            </div>
-
-            <!-- Address Section -->
-            <div class="pt-5 mt-2 border-t border-slate-100">
-                <h4 class="text-sm font-semibold text-slate-800 mb-4 flex items-center gap-2 cursor-pointer group">
-                    <span>Primary Address Details</span>
-                    <i class="fas fa-chevron-down text-[10px] text-slate-400 group-hover:text-slate-600 transition-colors"></i>
-                </h4>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
-                    <div>
-                        <label class="block text-sm font-medium text-slate-600 mb-1">Wilayah / Daerah <span class="text-red-400">*</span></label>
-                        <input type="text" id="cust_region" value="${customer.region || ''}" class="w-full bg-slate-100 border-none rounded-lg px-4 py-2.5 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-slate-600 mb-1">Kota <span class="text-red-400">*</span></label>
-                        <input type="text" id="cust_city" value="${customer.city || ''}" class="w-full bg-slate-100 border-none rounded-lg px-4 py-2.5 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all">
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-slate-600 mb-1">Billing Address <span class="text-red-400">*</span></label>
-                        <textarea id="cust_address" class="w-full bg-slate-100 border-none rounded-lg px-4 py-2.5 h-20 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all resize-none">${customer.address}</textarea>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-slate-600 mb-1">Shipping Address <span class="text-red-400">*</span></label>
-                        <textarea id="cust_shipping" class="w-full bg-slate-100 border-none rounded-lg px-4 py-2.5 h-20 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all resize-none">${customer.shippingAddress || customer.address}</textarea>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Payment Section -->
-            <div class="pt-5 mt-2 border-t border-slate-100">
-                <h4 class="text-sm font-semibold text-slate-800 mb-4 flex items-center gap-2 cursor-pointer group">
-                    <span>Payment & Tax Details</span>
-                    <i class="fas fa-chevron-down text-[10px] text-slate-400 group-hover:text-slate-600 transition-colors"></i>
-                </h4>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
-                    <div>
-                        <label class="block text-sm font-medium text-slate-600 mb-1">Sistem Pembayaran (Payment Term) <span class="text-red-400">*</span></label>
-                        <select id="cust_payment_term" class="w-full bg-slate-100 border-none rounded-lg px-4 py-2.5 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500/20 outline-none cursor-pointer transition-all">
-                            <option value="" ${!customer.paymentTerm ? 'selected' : ''}>-- Pilih Term --</option>
-                            <option value="Cash" ${customer.paymentTerm === 'Cash' ? 'selected' : ''}>Cash</option>
-                            <option value="Tempo 7 S/d 10 Hari" ${customer.paymentTerm === 'Tempo 7 S/d 10 Hari' ? 'selected' : ''}>Tempo 7 S/d 10 Hari</option>
-                            <option value="30 Hari" ${customer.paymentTerm === '30 Hari' ? 'selected' : ''}>30 Hari</option>
-                            <option value="45 Hari" ${customer.paymentTerm === '45 Hari' ? 'selected' : ''}>45 Hari</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-sm font-medium text-slate-600 mb-1">Pajak (PPN %)</label>
-                        <select id="cust_ppn" class="w-full bg-slate-100 border-none rounded-lg px-4 py-2.5 text-sm text-slate-800 focus:ring-2 focus:ring-blue-500/20 outline-none cursor-pointer transition-all">
-                            <option value="0" ${customer.ppn == 0 ? 'selected' : ''}>0% (Tanpa Pajak)</option>
-                            <option value="11" ${(customer.ppn == 11 || customer.ppn === undefined) ? 'selected' : ''}>11% (PPN)</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-            
-            <!-- Special Product Prices Section -->
-            <div class="pt-5 mt-2 border-t border-slate-100">
-                <h4 class="text-sm font-semibold text-slate-800 mb-4 flex items-center gap-2 cursor-pointer group">
-                    <span>Special Prices & Products</span>
-                    <i class="fas fa-chevron-down text-[10px] text-slate-400 group-hover:text-slate-600 transition-colors"></i>
-                </h4>
-                <div class="bg-slate-50 p-4 rounded-xl border border-slate-100">
-                    <div class="flex gap-2 mb-4">
-                        <div class="flex-1 relative">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Pilih Produk</label>
-                            <div id="cust_cp_trigger" onclick="openProductSearch('cust_cp', 'FINISHED_GOODS')" class="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs text-slate-400 cursor-pointer hover:bg-slate-50 transition-all flex justify-between items-center group h-[38px]">
-                                <span id="cust_cp_label" class="truncate pr-2">-- Cari Kode atau Nama Produk --</span>
-                                <i class="fas fa-chevron-down text-[10px] text-slate-300 group-hover:text-slate-400 transition-colors"></i>
+            <!-- Form Body -->
+            <div class="flex-1 overflow-y-auto p-8 bg-slate-50/30 custom-scrollbar pb-20">
+                <div class="max-w-5xl mx-auto space-y-8">
+                    <!-- General Info -->
+                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-6">
+                        <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                            <i class="fas fa-info-circle text-blue-600"></i> Informasi Perusahaan
+                        </h4>
+                        <div class="grid grid-cols-1 gap-6">
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Customer / Company Name <span class="text-red-400">*</span></label>
+                                <input type="text" id="cust_name" value="${customer.name}" placeholder="Masukkan nama lengkap perusahaan atau individu" class="w-full bg-slate-50 border-2 border-transparent rounded-xl px-4 py-3 text-sm font-bold text-slate-800 focus:bg-white focus:border-blue-400 outline-none transition-all">
                             </div>
-                            <input type="hidden" id="cust_cp_item">
-                            <div id="cust_cp_results_container" class="absolute z-[100] top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-[0_15px_40px_rgba(0,0,0,0.12)] hidden border border-slate-100 overflow-hidden min-w-[320px]">
-                                <div class="p-3 border-b border-slate-50">
-                                    <div class="relative">
-                                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
-                                        <input type="text" id="cust_cp_search_input" placeholder="Ketik kode atau nama..." class="w-full bg-slate-50 border border-blue-100 rounded-lg pl-9 pr-3 py-2 text-xs focus:border-blue-400 outline-none transition-all font-medium">
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Contact Person <span class="text-red-400">*</span></label>
+                                <input type="text" id="cust_cp" value="${customer.contactPerson || ''}" placeholder="Nama PIC" class="w-full bg-slate-50 border-2 border-transparent rounded-xl px-4 py-3 text-sm font-bold text-slate-800 focus:bg-white focus:border-blue-400 outline-none transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Email Address <span class="text-red-400">*</span></label>
+                                <input type="email" id="cust_email" value="${customer.email || ''}" placeholder="email@perusahaan.com" class="w-full bg-slate-50 border-2 border-transparent rounded-xl px-4 py-3 text-sm font-bold text-slate-800 focus:bg-white focus:border-blue-400 outline-none transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Phone Number <span class="text-red-400">*</span></label>
+                                <input type="text" id="cust_phone" value="${customer.phone}" placeholder="081x xxxx xxxx" class="w-full bg-slate-50 border-2 border-transparent rounded-xl px-4 py-3 text-sm font-bold text-slate-800 focus:bg-white focus:border-blue-400 outline-none transition-all">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Address & Location -->
+                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-6">
+                        <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                            <i class="fas fa-map-marker-alt text-red-500"></i> Lokasi & Alamat
+                        </h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Wilayah / Daerah <span class="text-red-400">*</span></label>
+                                <input type="text" id="cust_region" value="${customer.region || ''}" placeholder="Contoh: Jawa Barat" class="w-full bg-slate-50 border-2 border-transparent rounded-xl px-4 py-3 text-sm font-bold text-slate-800 focus:bg-white focus:border-blue-400 outline-none transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Kota <span class="text-red-400">*</span></label>
+                                <input type="text" id="cust_city" value="${customer.city || ''}" placeholder="Contoh: Bandung" class="w-full bg-slate-50 border-2 border-transparent rounded-xl px-4 py-3 text-sm font-bold text-slate-800 focus:bg-white focus:border-blue-400 outline-none transition-all">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Alamat Penagihan (Billing) <span class="text-red-400">*</span></label>
+                                <textarea id="cust_address" placeholder="Masukkan alamat lengkap penagihan..." class="w-full bg-slate-50 border-2 border-transparent rounded-xl px-4 py-3 h-24 text-sm font-bold text-slate-800 focus:bg-white focus:border-blue-400 outline-none transition-all resize-none">${customer.address}</textarea>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Alamat Pengiriman (Shipping) <span class="text-red-400">*</span></label>
+                                <textarea id="cust_shipping" placeholder="Masukkan alamat lengkap pengiriman..." class="w-full bg-slate-50 border-2 border-transparent rounded-xl px-4 py-3 h-24 text-sm font-bold text-slate-800 focus:bg-white focus:border-blue-400 outline-none transition-all resize-none">${customer.shippingAddress || customer.address}</textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Payment & Taxes -->
+                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-6">
+                        <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                            <i class="fas fa-credit-card text-green-500"></i> Ketentuan Pembayaran & Pajak
+                        </h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Sistem Pembayaran (Payment Term) <span class="text-red-400">*</span></label>
+                                <select id="cust_payment_term" class="w-full bg-slate-50 border-2 border-transparent rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:bg-white focus:border-blue-400 outline-none cursor-pointer transition-all appearance-none">
+                                    <option value="" ${!customer.paymentTerm ? 'selected' : ''}>-- Pilih Term --</option>
+                                    <option value="Cash" ${customer.paymentTerm === 'Cash' ? 'selected' : ''}>Cash</option>
+                                    <option value="Tempo 7 S/d 10 Hari" ${customer.paymentTerm === 'Tempo 7 S/d 10 Hari' ? 'selected' : ''}>Tempo 7 S/d 10 Hari</option>
+                                    <option value="30 Hari" ${customer.paymentTerm === '30 Hari' ? 'selected' : ''}>30 Hari</option>
+                                    <option value="45 Hari" ${customer.paymentTerm === '45 Hari' ? 'selected' : ''}>45 Hari</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Pajak (PPN %)</label>
+                                <select id="cust_ppn" class="w-full bg-slate-50 border-2 border-transparent rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:bg-white focus:border-blue-400 outline-none cursor-pointer transition-all appearance-none">
+                                    <option value="0" ${customer.ppn == 0 ? 'selected' : ''}>0% (Tanpa Pajak)</option>
+                                    <option value="11" ${(customer.ppn == 11 || customer.ppn === undefined) ? 'selected' : ''}>11% (PPN)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Special Product Prices Section -->
+                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-6">
+                        <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                            <i class="fas fa-tags text-orange-500"></i> Special Prices & Products
+                        </h4>
+                        <div class="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                            <div class="flex flex-wrap gap-4 mb-6">
+                                <div class="flex-1 min-w-[300px] relative">
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Pilih Produk</label>
+                                    <div id="cust_cp_trigger" onclick="toggleItemProductDropdown('cust_cp')" class="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-400 cursor-pointer hover:bg-slate-50 transition-all flex justify-between items-center group h-[46px] shadow-sm">
+                                        <span id="cust_cp_label" class="truncate pr-2">-- Cari Kode atau Nama Produk --</span>
+                                        <i class="fas fa-chevron-down text-[10px] text-slate-300 group-hover:text-slate-400 transition-colors"></i>
+                                    </div>
+                                    <input type="hidden" id="cust_cp_item">
+                                    
+                                    <div id="cust_cp_item_dropdown" class="absolute z-[100] top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-2xl hidden border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                        <div class="p-3 border-b border-slate-50 bg-slate-50/50">
+                                            <input type="text" id="cust_cp_item_dropdown_search" placeholder="Ketik kode atau nama..." onkeyup="filterItemProductList('cust_cp', this.value)" class="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:border-blue-400 transition-all">
+                                        </div>
+                                        <div class="max-h-60 overflow-y-auto p-1 custom-scrollbar" id="cust_cp_list_results">
+                                            <!-- List will be populated here -->
+                                        </div>
+                                        <div class="p-2 border-t border-slate-50 bg-slate-50/10 space-y-1">
+                                            <button type="button" onclick="renderMasterProducts()" class="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-black text-slate-500 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-all uppercase tracking-widest">
+                                                <div class="w-7 h-7 flex items-center justify-center bg-slate-100 rounded-lg">
+                                                    <i class="fas fa-plus text-[10px]"></i>
+                                                </div>
+                                                Create a new Product
+                                            </button>
+                                            <button type="button" onclick="openAdvancedProductSearch('cust_cp')" class="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-black text-slate-500 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-all uppercase tracking-widest">
+                                                <div class="w-7 h-7 flex items-center justify-center bg-slate-100 rounded-lg">
+                                                    <i class="fas fa-search text-[10px]"></i>
+                                                </div>
+                                                Advanced Search
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
-                                <div id="cust_cp_results" class="max-h-[300px] overflow-y-auto custom-scrollbar"></div>
+                                <div class="w-48">
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Harga Kesepakatan (Rp)</label>
+                                    <input type="number" id="cust_cp_price" placeholder="Harga (Rp)" min="0" class="w-full bg-white border border-slate-200 rounded-xl px-4 h-[46px] text-sm focus:border-blue-400 outline-none transition-all font-bold shadow-sm">
+                                </div>
+                                <div class="flex items-end">
+                                    <button type="button" onclick="addCustomerProduct()" class="bg-blue-600 hover:bg-blue-700 text-white w-[46px] h-[46px] rounded-xl text-lg font-medium transition-all shadow-lg active:scale-95 flex items-center justify-center">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="bg-white rounded-xl border border-slate-100 overflow-hidden shadow-sm">
+                                <table class="w-full text-sm text-left border-collapse">
+                                    <thead class="bg-slate-50/50 border-b border-slate-100">
+                                        <tr>
+                                            <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Produk / Barang</th>
+                                            <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Harga (Rp)</th>
+                                            <th class="py-3 px-4 w-16"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="cust_cp_list" class="divide-y divide-slate-50">
+                                        <!-- Items will be populated here -->
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
-                        <div class="flex items-end gap-2">
-                            <input type="number" id="cust_cp_price" placeholder="Harga (Rp)" min="0" class="w-40 bg-white border border-slate-200 rounded-xl px-4 h-[38px] text-xs focus:ring-2 focus:ring-blue-500/20 outline-none transition-all font-bold">
-                            <button type="button" onclick="addCustomerProduct()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 h-[38px] rounded-xl text-sm font-medium transition-colors shadow-sm flex items-center justify-center"><i class="fas fa-plus"></i></button>
-                        </div>
                     </div>
-                    <table class="w-full text-sm text-left">
-                        <thead class="text-slate-500 border-b border-slate-200">
-                            <tr><th class="pb-2 font-medium">Produk</th><th class="pb-2 font-medium text-right">Harga (Rp)</th><th class="w-10"></th></tr>
-                        </thead>
-                        <tbody id="cust_cp_list"></tbody>
-                    </table>
                 </div>
             </div>
         </div>
     `;
 
-    const footer = `
-        <button type="button" onclick="saveCustomer('${id || ''}')" class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-white font-medium focus:outline-none sm:ml-3 sm:w-auto sm:text-sm">Simpan</button>
-        <button type="button" onclick="window._afterCustomerSave ? (window._afterCustomerSave === 'SO' ? openSOModal() : (window._afterCustomerSave === 'QT' ? openQTModal() : closeModal())) : closeModal()" class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-gray-700 font-medium sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm">Batal</button>
-    `;
-
     window.tempCustomerProducts = customer.commonProducts ? [...customer.commonProducts] : [];
-    showModal(id ? 'Edit Customer' : 'Tambah Customer Baru', body, footer, 'xl');
+    renderBreadcrumb(['Sales', 'Customers', id ? 'Edit Customer' : 'Tambah Customer Baru']);
     refreshCustomerProductsTable();
 };
 
@@ -2164,7 +2256,7 @@ window.refreshCustomerProductsTable = () => {
 window.addCustomerProduct = () => {
     const itemId = document.getElementById('cust_cp_item').value;
     const priceInput = document.getElementById('cust_cp_price');
-    const searchInput = document.getElementById('cust_cp_item_search');
+    const label = document.getElementById('cust_cp_label');
     const price = parseFloat(priceInput.value) || 0;
     
     if (!itemId) { showToast('Pilih produk', 'error'); return; }
@@ -2179,10 +2271,13 @@ window.addCustomerProduct = () => {
         window.tempCustomerProducts[exists].price = price;
     }
     
-    // Clear inputs
+    // Clear inputs & Reset Label
     document.getElementById('cust_cp_item').value = '';
-    searchInput.value = '';
+    label.innerText = '-- Cari Kode atau Nama Produk --';
+    label.classList.remove('text-slate-800', 'font-bold');
+    label.classList.add('text-slate-400');
     priceInput.value = '';
+    
     refreshCustomerProductsTable();
 };
 
@@ -2191,7 +2286,7 @@ window.removeCustomerProduct = (idx) => {
     refreshCustomerProductsTable();
 };
 
-window.saveCustomer = (id) => {
+window.saveCustomer = async (id) => {
     const name = document.getElementById('cust_name').value.trim();
     const phone = document.getElementById('cust_phone').value.trim();
     const email = document.getElementById('cust_email').value.trim();
@@ -2216,23 +2311,33 @@ window.saveCustomer = (id) => {
 
     const data = { name, phone, email, address, contactPerson, shippingAddress, paymentTerm, region, city, ppn, commonProducts };
 
-    if (id) {
-        db.update('customers', id, data);
-        showToast('Data customer berhasil diperbarui');
-    } else {
-        db.insert('customers', data);
-        showToast('Customer baru berhasil ditambahkan');
-    }
+    try {
+        if (id) {
+            await db.update('customers', id, data);
+            // Don't show toast yet, wait until everything is done
+        } else {
+            await db.insert('customers', data);
+        }
 
-    closeModal();
-    if (window._afterCustomerSave === 'SO') {
-        openSOModal();
-    } else if (window._afterCustomerSave === 'QT') {
-        openQTModal();
-    } else {
-        renderCustomerData();
+        // Only navigate/refresh if the DB operation succeeded
+        if (window._afterCustomerSave === 'SO') {
+            await openSOModal();
+        } else if (window._afterCustomerSave === 'QT') {
+            await openQTModal();
+        } else {
+            renderCustomerData();
+        }
+        
+        // Show success toast ONLY after successful render/nav
+        showToast(id ? 'Data customer berhasil diperbarui' : 'Customer baru berhasil ditambahkan', 'success');
+        window._afterCustomerSave = null;
+        
+    } catch (err) {
+        console.error('Save customer error:', err);
+        showToast('Gagal menyimpan data: ' + err.message, 'error');
+        // We stay on the current view because we didn't call renderCustomerData() yet in case of early DB error
+        // Or if renderCustomerData() failed, we already crashed but at least we know why.
     }
-    window._afterCustomerSave = null;
 };
 
 // ============================================================
@@ -3018,27 +3123,22 @@ window.saveQuickSupplier = (context) => {
     phoneInput.value = '';
 };
 
-window.navigateToSupplierPage = () => {
-    closeModal();
-    navigateTo('master-suppliers');
-    setTimeout(() => {
-        if (typeof renderSupplierForm === 'function') {
-            renderSupplierForm();
-        }
-    }, 300);
-};
-
-
-
-
-window.openPOForm = (fromPrId = null, fromRfqId = null) => {
-    if (window.navigateTo) navigateTo('purchase-orders');
+window.openPOForm = async (fromPrId = null, fromRfqId = null) => {
+    // Only navigate if we're not already on the purchase orders page
     const listView = document.getElementById('po-list-view');
     const formView = document.getElementById('po-form-view');
-    if (!listView || !formView) { renderPurchaseOrders(); setTimeout(() => openPOForm(fromPrId, fromRfqId), 80); return; }
+    
+    if (!listView || !formView) {
+        if (window.navigateTo) await navigateTo('purchase-orders');
+    }
+    
+    // Re-select after navigation
+    const lv = document.getElementById('po-list-view');
+    const fv = document.getElementById('po-form-view');
+    if (!lv || !fv) return;
 
-    listView.classList.add('hidden');
-    formView.classList.remove('hidden');
+    lv.classList.add('hidden');
+    fv.classList.remove('hidden');
 
     if (!window.tempPOItems) window.tempPOItems = [];
     if (!fromPrId && !fromRfqId) { window.tempPOItems = []; window.tempPOFromPR = null; window.tempPOFromRFQ = null; }
@@ -3047,23 +3147,21 @@ window.openPOForm = (fromPrId = null, fromRfqId = null) => {
 
     renderBreadcrumb(['Purchasing', 'Purchase Orders', 'Buat PO Baru']);
 
-    const suppliers = db.read('suppliers');
-    const supOpts = suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+    const suppliers = db.read('suppliers') || [];
     const todayStr = new Date().toISOString().split('T')[0];
-    const inventoryItems = db.read('inventoryItems').filter(i => i.status !== 'INACTIVE');
-    const itemOpts = inventoryItems.length
-        ? inventoryItems.map(i => `<option value="${i.id}" data-name="${i.itemName}" data-unit="${i.unit}">${i.itemCode} — ${i.itemName}</option>`).join('')
-        : '<option disabled>Belum ada item di gudang</option>';
 
-    formView.innerHTML = `
+    // Data handling for number generation
+    const poNumberStr = generatePurchaseOrderNumber(false, todayStr);
+
+    fv.innerHTML = `
         <div class="animate-in fade-in slide-in-from-bottom-2 duration-400 -m-4 sm:-m-6 h-[calc(100vh-64px)] flex flex-col overflow-hidden bg-white">
             <!-- Sticky Action Bar -->
             <div class="sticky top-0 z-40 bg-white border-b border-slate-100 px-8 py-4 flex items-center justify-between shrink-0 shadow-sm">
                 <div></div>
                 <div class="flex items-center gap-3">
                     <button type="button" onclick="closePOForm()" class="px-6 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95">Batal</button>
-                    <button type="button" onclick="savePO()" class="px-8 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95 flex items-center gap-2">
-                        <i class="fas fa-check-circle text-[10px]"></i> Simpan Draft PO
+                    <button type="button" onclick="saveNewPurchaseOrder()" class="px-8 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95 flex items-center gap-2">
+                        <i class="fas fa-check-circle text-[10px]"></i> Simpan Purchase Order
                     </button>
                 </div>
             </div>
@@ -3073,21 +3171,21 @@ window.openPOForm = (fromPrId = null, fromRfqId = null) => {
                 <div class="w-full p-8 space-y-8">
 
                     <!-- Informasi Dasar -->
-                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-6">
+                    <div class="bg-white rounded-xl p-6 border border-slate-100 shadow-sm space-y-5">
                         <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
                             <i class="fas fa-info-circle text-blue-600"></i> Informasi Dasar
                         </h3>
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                        <div class="grid grid-cols-1 sm:grid-cols-4 gap-x-4 gap-y-6">
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">No. Purchase Order <span class="text-red-400">*</span></label>
                                 <div class="flex">
-                                    <select id="po_tax_type" onchange="document.getElementById('po_number').value=generatePurchaseOrderNumber(this.value==='A', document.getElementById('po_date').value)"
-                                        class="border-none rounded-l-xl px-3 py-3 bg-slate-200 text-xs font-black text-slate-600 outline-none cursor-pointer">
-                                        <option value="B">NT</option>
+                                     <select id="po_tax_type" onchange="document.getElementById('po_number').value = generatePurchaseOrderNumber(this.value==='A', document.getElementById('po_date').value); renderPOItemsList()"
+                                        class="border-none rounded-l-xl px-3 py-3 bg-slate-100 text-xs font-black text-slate-700 outline-none cursor-pointer">
                                         <option value="A">TAX</option>
-                                    </select>
-                                    <input id="po_number" value="${generatePurchaseOrderNumber(false, todayStr)}"
-                                        class="flex-1 border-none rounded-r-xl px-4 py-3 bg-slate-100/80 font-bold font-mono text-slate-800 outline-none" readonly>
+                                        <option value="B" selected>NT</option>
+                                     </select>
+                                     <input type="text" id="po_number" value="${poNumberStr}" 
+                                        class="w-full border-none rounded-r-xl px-4 py-3 bg-slate-50 font-bold text-slate-400 outline-none" readonly>
                                 </div>
                             </div>
                             <div>
@@ -3096,7 +3194,7 @@ window.openPOForm = (fromPrId = null, fromRfqId = null) => {
                                     <input type="text" id="po_supplier_display" value="-- Pilih Supplier --" readonly
                                         onclick="toggleSupplierDropdown('po_supplier_dropdown')"
                                         class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
-                                    <input type="hidden" id="po_supplier" value="">
+                                    <input type="hidden" id="po_supplier_id" value="">
                                     <div id="po_supplier_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden min-w-full animate-in fade-in zoom-in-95 duration-200">
                                         <div class="max-h-56 overflow-y-auto p-1">
                                             ${suppliers.map(s => `
@@ -3114,33 +3212,6 @@ window.openPOForm = (fromPrId = null, fromRfqId = null) => {
                                                 </div>
                                                 Tambah Supplier Baru
                                             </button>
-                                            <button type="button" onclick="openAdvancedSupplierSearch('PO')"
-                                                class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
-                                                <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shrink-0">
-                                                    <i class="fas fa-search text-xs"></i>
-                                                </div>
-                                                Advanced Search
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-semibold text-slate-600 mb-2">Kategori <span class="text-red-400">*</span></label>
-                                <div class="relative" id="po_category_container">
-                                    <input type="text" id="po_category_display" value="-- Pilih Kategori --" readonly
-                                        onclick="toggleCategoryDropdown('po_category_dropdown')"
-                                        class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
-                                    <input type="hidden" id="po_category" value="">
-                                    <div id="po_category_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden min-w-full animate-in fade-in zoom-in-95 duration-200">
-                                        <div class="max-h-56 overflow-y-auto p-1">
-                                            <div onclick="selectPurchaseCategory('PO', 'Bahan Baku')" class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">Bahan Baku</div>
-                                            <div onclick="selectPurchaseCategory('PO', 'Packaging')" class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">Packaging</div>
-                                            <div onclick="selectPurchaseCategory('PO', 'Perlengkapan')" class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">Perlengkapan</div>
-                                            <div onclick="selectPurchaseCategory('PO', 'Service')" class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">Service</div>
-                                            <div onclick="selectPurchaseCategory('PO', 'Sparepart')" class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">Sparepart</div>
-                                            <div onclick="selectPurchaseCategory('PO', 'Aktiva ( tetap )')" class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">Aktiva ( tetap )</div>
-                                            <div onclick="selectPurchaseCategory('PO', 'Gas')" class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">Gas</div>
                                         </div>
                                     </div>
                                 </div>
@@ -3151,6 +3222,22 @@ window.openPOForm = (fromPrId = null, fromRfqId = null) => {
                                     onchange="updatePODueDate(); if(!window._editingPOId) document.getElementById('po_number').value = generatePurchaseOrderNumber(document.getElementById('po_tax_type').value==='A', this.value)"
                                     class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 outline-none">
                             </div>
+
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Kategori <span class="text-red-400">*</span></label>
+                                <select id="po_category" class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
+                                    <option value="" disabled selected>-- Pilih Kategori --</option>
+                                    <option value="Bahan Baku">Bahan Baku</option>
+                                    <option value="Packaging">Packaging</option>
+                                    <option value="Perlengkapan">Perlengkapan</option>
+                                    <option value="Service">Service</option>
+                                    <option value="Sparepart">Sparepart</option>
+                                    <option value="Aktiva ( tetap )">Aktiva ( tetap )</option>
+                                    <option value="Gas">Gas</option>
+                                </select>
+                            </div>
+
+
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Term Pembayaran <span class="text-red-400">*</span></label>
                                 <select id="po_payment_terms" onchange="updatePODueDate()"
@@ -3306,58 +3393,81 @@ window.addPOItem = () => {
 
 function renderPOItemsList() {
     const el = document.getElementById('po_items_list');
-    const totEl = document.getElementById('po_total_display');
+    const totalNettoEl = document.getElementById('po_total_netto');
+    const totalTaxEl = document.getElementById('po_total_tax');
+    const grandTotalEl = document.getElementById('po_grand_total');
+
     if (!el) return;
-    if (!(window.tempPOItems || []).length) { el.innerHTML = ''; if (totEl) totEl.innerHTML = ''; return; }
+
+    if (!(window.tempPOItems || []).length) {
+        el.innerHTML = `
+            <div class="p-12 text-center">
+                <div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-300">
+                    <i class="fas fa-shopping-cart text-2xl"></i>
+                </div>
+                <p class="text-slate-400 font-bold text-xs uppercase tracking-widest">Belum ada item ditambahkan</p>
+            </div>
+        `;
+        if (totalNettoEl) totalNettoEl.innerText = 'Rp 0';
+        if (totalTaxEl) totalTaxEl.innerText = 'Rp 0';
+        if (grandTotalEl) grandTotalEl.innerText = 'Rp 0';
+        return;
+    }
+
     el.innerHTML = `
-        <table class="w-full border-collapse mt-1">
-            <thead><tr class="bg-blue-50 text-xs text-blue-700 uppercase">
-                <th class="py-2 px-3 text-left">#</th>
-                <th class="py-2 px-3 text-left">Nama Barang</th>
-                <th class="py-2 px-3 text-center">Satuan</th>
-                <th class="py-2 px-3 text-right">Qty</th>
-                <th class="py-2 px-3 text-right">Harga/unit</th>
-                <th class="py-2 px-3 text-right">Subtotal</th>
-                <th class="py-2 px-3"></th>
-            </tr></thead>
-            <tbody>${(window.tempPOItems || []).map((i, idx) => `
-                <tr class="border-b border-gray-100 hover:bg-gray-50">
-                    <td class="py-2 px-3 text-gray-400 text-sm">${idx + 1}</td>
-                    <td class="py-2 px-3 text-sm font-medium text-gray-800">${i.name || i.prodText}</td>
-                    <td class="py-2 px-3 text-sm text-center text-gray-600">${i.unit || i.prodUnit || '-'}</td>
-                    <td class="py-2 px-3 text-sm text-right">
-                        <input type="number" step="0.01" value="${i.qty}" 
-                            onchange="updatePOItemInline(${idx}, 'qty', this.value)"
-                            class="w-20 border border-gray-300 rounded px-1 py-1 text-right focus:ring-1 focus:ring-blue-500 outline-none">
-                    </td>
-                    <td class="py-2 px-3 text-sm text-right">
-                        <input type="number" step="1" value="${i.price}" 
-                            onchange="updatePOItemInline(${idx}, 'price', this.value)"
-                            class="w-32 border border-gray-300 rounded px-1 py-1 text-right focus:ring-1 focus:ring-blue-500 outline-none">
-                    </td>
-                    <td class="py-2 px-3 text-sm text-right font-bold text-blue-600">${formatCurrency(i.subtotal)}</td>
-                    <td class="py-2 px-3 text-center"><button onclick="removePOItem(${idx})" class="text-red-400 hover:text-red-600 p-2"><i class="fas fa-trash-alt"></i></button></td>
-                </tr>`).join('')}
+        <table class="w-full text-sm text-left border-collapse">
+            <thead>
+                <tr class="bg-slate-50 border-b border-slate-100 text-slate-400 text-[9px] uppercase font-black tracking-widest">
+                    <th class="py-4 px-6 w-12 text-center">#</th>
+                    <th class="py-4 px-6">Item Code / Product</th>
+                    <th class="py-4 px-6 text-center">Qty</th>
+                    <th class="py-4 px-6 text-center">Unit</th>
+                    <th class="py-4 px-6 text-right">Unit Price</th>
+                    <th class="py-4 px-6 text-right">Subtotal</th>
+                    <th class="py-4 px-6 w-12 text-center"><i class="fas fa-cog"></i></th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-50">
+                ${(window.tempPOItems || []).map((i, idx) => `
+                    <tr class="group hover:bg-slate-50/50 transition-colors">
+                        <td class="py-4 px-6 text-center text-slate-400 font-bold text-xs">${idx + 1}</td>
+                        <td class="py-4 px-6">
+                            <div class="font-bold text-slate-700">${i.prodText || i.name}</div>
+                            <div class="text-[10px] text-slate-400 font-medium">${i.inventoryItemId || 'Non-Inventory'}</div>
+                        </td>
+                        <td class="py-4 px-6 text-center">
+                            <input type="number" step="0.01" value="${i.qty}" 
+                                onchange="updatePOItemInline(${idx}, 'qty', this.value)"
+                                class="w-20 border-none bg-slate-100/50 rounded-lg px-2 py-1.5 text-center font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 transition-all">
+                        </td>
+                        <td class="py-4 px-6 text-center text-slate-500 font-bold text-xs">${i.unit || '-'}</td>
+                        <td class="py-4 px-6 text-right">
+                            <input type="number" step="1" value="${i.price}" 
+                                onchange="updatePOItemInline(${idx}, 'price', this.value)"
+                                class="w-32 border-none bg-slate-100/50 rounded-lg px-3 py-1.5 text-right font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500/20 transition-all">
+                        </td>
+                        <td class="py-4 px-6 text-right font-black text-slate-800">${formatCurrency(i.subtotal)}</td>
+                        <td class="py-4 px-6 text-center">
+                            <button onclick="removePOItem(${idx})" class="w-8 h-8 flex items-center justify-center rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-all">
+                                <i class="fas fa-trash-alt text-xs"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `).join('')}
             </tbody>
-        </table>`;
+        </table>
+    `;
+
+    // Calculations
     const dpp = (window.tempPOItems || []).reduce((s, i) => s + i.subtotal, 0);
     const taxRateVal = document.getElementById('po_tax_rate')?.value || '0';
-    let taxPct = parseFloat(taxRateVal) || 0;
-    let taxLabel = `${taxPct}% (PPN)`;
-    if (taxRateVal === '11_ppn_pemungut') { taxPct = 11; taxLabel = '11% Pemungut PPN'; }
-    else if (taxRateVal === '20') { taxPct = 20; taxLabel = '20% (STLG)'; }
-
+    const taxPct = parseFloat(taxRateVal) || 0;
     const taxAmount = Math.round(dpp * taxPct / 100);
     const grandTotal = dpp + taxAmount;
 
-    if (totEl) {
-        totEl.innerHTML = `
-            <div class="space-y-1">
-                <div class="flex justify-end gap-4"><span class="text-gray-500">DPP:</span><span class="w-28">${formatCurrency(dpp)}</span></div>
-                <div class="flex justify-end gap-4"><span class="text-gray-500">${taxLabel}:</span><span class="w-28 text-orange-600">${formatCurrency(taxAmount)}</span></div>
-                <div class="flex justify-end gap-4 border-t pt-1 font-bold text-lg"><span class="text-gray-800">Grand Total:</span><span class="w-28 text-blue-700">${formatCurrency(grandTotal)}</span></div>
-            </div>`;
-    }
+    if (totalNettoEl) totalNettoEl.innerText = formatCurrency(dpp);
+    if (totalTaxEl) totalTaxEl.innerText = formatCurrency(taxAmount);
+    if (grandTotalEl) grandTotalEl.innerText = formatCurrency(grandTotal);
 }
 
 window.updatePOItemInline = (idx, field, value) => {
@@ -4943,7 +5053,7 @@ function renderMasterProducts() {
     const allItems = db.read('inventoryItems') || [];
     const products = allItems.filter(i => {
         const cat = (i.category || '').toUpperCase();
-        return (cat.includes('FINISH') || cat.includes('PRODUK_JADI') || cat.includes('GUDANG_JADI') || cat.includes('FG')) && i.status !== 'INACTIVE';
+        return (cat.includes('FINISH') || cat.includes('JADI') || cat.includes('FG')) && i.status !== 'INACTIVE';
     });
 
     let rows = products.map(p => {
@@ -5272,14 +5382,14 @@ function renderPurchaseOrders() {
         'RECEIVED': 4,
         'CANCELLED': 5
     };
-    let pos = db.read('purchaseOrders').sort((a, b) => {
+    let pos = (db.read('purchaseOrders') || []).sort((a, b) => {
         const orderA = statusOrder[a.status] || 99;
         const orderB = statusOrder[b.status] || 99;
         if (orderA !== orderB) return orderA - orderB;
-        return new Date(b.date) - new Date(a.date);
+        return new Date(b.date || 0) - new Date(a.date || 0);
     });
-    let filters = window.currentFilters.purchaseOrders;
-    const suppliers = db.read('suppliers');
+    let filters = window.currentFilters.purchaseOrders || {};
+    const suppliers = db.read('suppliers') || [];
 
     // Filter Logic
     if (filters.start) { const d = new Date(filters.start); d.setHours(0, 0, 0, 0); pos = pos.filter(po => new Date(po.date) >= d); }
@@ -6420,16 +6530,23 @@ function generateQTNumber(customDate = null) {
     return finalNumber;
 }
 
-window.openQTModal = (qtId = null) => {
-    // Sync navigation context
-    if (window.navigateTo) navigateTo('sales-quotations');
-    
+window.openQTModal = async (qtId = null) => {
+    // Only navigate if we're not already on the quotations page
+    // This prevents redundant re-rendering when clicking the button on the same page
     const listView = document.getElementById('qt-list-view');
     const formView = document.getElementById('qt-form-view');
-    if (!listView || !formView) return;
+    
+    if (!listView || !formView) {
+        if (window.navigateTo) await navigateTo('sales-quotations');
+    }
+    
+    // Re-select after navigation
+    const lv = document.getElementById('qt-list-view');
+    const fv = document.getElementById('qt-form-view');
+    if (!lv || !fv) return;
 
-    listView.classList.add('hidden');
-    formView.classList.remove('hidden');
+    lv.classList.add('hidden');
+    fv.classList.remove('hidden');
 
     window._editingQTId = qtId;
     const qt = qtId ? db.findById('salesQuotations', qtId) : null;
@@ -7110,36 +7227,33 @@ window.onRFQCategoryChange = () => {
     // Legacy function. Item clearing is now handled directly in selectPurchaseCategory.
 };
 
-window.openRFQForm = (rfqId = null) => {
-    if (window.navigateTo) navigateTo('purchase-rfqs');
+window.openRFQForm = async (rfqId = null) => {
+    // Navigate if needed
     const listView = document.getElementById('rfq-list-view');
     const formView = document.getElementById('rfq-form-view');
-    if (!listView || !formView) { renderPurchaseRFQs(); setTimeout(() => openRFQForm(rfqId), 80); return; }
-
-    listView.classList.add('hidden');
-    formView.classList.remove('hidden');
-
-    let rfq = null;
-    window._editingRFQId = null;
-
-    if (rfqId) {
-        rfq = db.findById('purchaseRFQs', rfqId);
-        if (rfq) {
-            window._editingRFQId = rfqId;
-            window.tempRFQItems = [...rfq.items];
-            renderBreadcrumb(['Purchasing', 'Request For Quotation', 'Edit RFQ']);
-        }
-    } else {
-        window.tempRFQItems = [];
-        renderBreadcrumb(['Purchasing', 'Request For Quotation', 'Buat RFQ Baru']);
+    
+    if (!listView || !formView) {
+        if (window.navigateTo) await navigateTo('purchase-rfq');
     }
+    
+    const lv = document.getElementById('rfq-list-view');
+    const fv = document.getElementById('rfq-form-view');
+    if (!lv || !fv) return;
 
-    const suppliers = db.read('suppliers');
-    const supOpts = suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
-    const todayStr = rfq ? rfq.date.split('T')[0] : new Date().toISOString().split('T')[0];
+    lv.classList.add('hidden');
+    fv.classList.remove('hidden');
+
+    const rfq = rfqId ? db.findById('purchaseRFQs', rfqId) : null;
+    window._editingRFQId = rfqId;
+    window.tempRFQItems = rfq ? [...rfq.items] : [];
+
+    renderBreadcrumb(['Purchasing', 'Request For Quotation', rfqId ? 'Edit RFQ' : 'Buat RFQ Baru']);
+
+    const suppliers = db.read('suppliers') || [];
+    const todayStr = new Date().toISOString().split('T')[0];
     const rfqNumberStr = rfq ? rfq.rfqNumber : generatePurchaseRFQNumber(todayStr);
 
-    formView.innerHTML = `
+    fv.innerHTML = `
         <div class="animate-in fade-in slide-in-from-bottom-2 duration-400 -m-4 sm:-m-6 h-[calc(100vh-64px)] flex flex-col overflow-hidden bg-white">
             <!-- Sticky Action Bar -->
             <div class="sticky top-0 z-40 bg-white border-b border-slate-100 px-8 py-4 flex items-center justify-between shrink-0 shadow-sm">
@@ -7191,56 +7305,38 @@ window.openRFQForm = (rfqId = null) => {
                                                 </div>
                                                 Tambah Supplier Baru
                                             </button>
-                                            <button type="button" onclick="openAdvancedSupplierSearch('RFQ')"
-                                                class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
-                                                <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shrink-0">
-                                                    <i class="fas fa-search text-xs"></i>
-                                                </div>
-                                                Advanced Search
-                                            </button>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Tanggal RFQ <span class="text-red-400">*</span></label>
-                                <input type="date" id="rfq_date" value="${todayStr}"
+                                <input type="date" id="rfq_date" value="${rfq ? rfq.date : todayStr}"
                                     onchange="if(!window._editingRFQId) document.getElementById('rfq_number').value = generatePurchaseRFQNumber(this.value)"
                                     class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 outline-none">
                             </div>
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Kategori <span class="text-red-400">*</span></label>
-                                <div class="relative" id="rfq_category_container">
-                                    <input type="text" id="rfq_category_display" value="${rfq && rfq.category ? rfq.category : '-- Pilih Kategori --'}" readonly
-                                        onclick="toggleCategoryDropdown('rfq_category_dropdown')"
-                                        class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
-                                    <input type="hidden" id="rfq_category" value="${rfq && rfq.category ? rfq.category : ''}">
-                                    <div id="rfq_category_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden min-w-full animate-in fade-in zoom-in-95 duration-200">
-                                        <div class="max-h-56 overflow-y-auto p-1">
-                                            <div onclick="selectPurchaseCategory('RFQ', 'Bahan Baku')" class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">Bahan Baku</div>
-                                            <div onclick="selectPurchaseCategory('RFQ', 'Packaging')" class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">Packaging</div>
-                                            <div onclick="selectPurchaseCategory('RFQ', 'Perlengkapan')" class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">Perlengkapan</div>
-                                            <div onclick="selectPurchaseCategory('RFQ', 'Service')" class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">Service</div>
-                                            <div onclick="selectPurchaseCategory('RFQ', 'Sparepart')" class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">Sparepart</div>
-                                            <div onclick="selectPurchaseCategory('RFQ', 'Aktiva ( tetap )')" class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">Aktiva ( tetap )</div>
-                                            <div onclick="selectPurchaseCategory('RFQ', 'Gas')" class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">Gas</div>
-                                        </div>
-                                    </div>
-                                </div>
+                                <select id="rfq_category" class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
+                                    <option value="" disabled ${!rfq ? 'selected' : ''}>-- Pilih Kategori --</option>
+                                    <option value="Bahan Baku" ${rfq?.category === 'Bahan Baku' ? 'selected' : ''}>Bahan Baku</option>
+                                    <option value="Packaging" ${rfq?.category === 'Packaging' ? 'selected' : ''}>Packaging</option>
+                                    <option value="Perlengkapan" ${rfq?.category === 'Perlengkapan' ? 'selected' : ''}>Perlengkapan</option>
+                                    <option value="Service" ${rfq?.category === 'Service' ? 'selected' : ''}>Service</option>
+                                    <option value="Sparepart" ${rfq?.category === 'Sparepart' ? 'selected' : ''}>Sparepart</option>
+                                    <option value="Aktiva ( tetap )" ${rfq?.category === 'Aktiva ( tetap )' ? 'selected' : ''}>Aktiva ( tetap )</option>
+                                    <option value="Gas" ${rfq?.category === 'Gas' ? 'selected' : ''}>Gas</option>
+                                </select>
                             </div>
                         </div>
                     </div>
 
                     <!-- Manifest Barang -->
                     <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-6">
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
-                                <i class="fas fa-boxes text-blue-600"></i> Manifest Barang
-                            </h3>
-                        </div>
-
-                        <!-- Add row -->
-                        <div class="bg-slate-50 p-6 rounded-2xl border border-slate-100 flex flex-wrap items-end gap-4 mb-6">
+                        <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                            <i class="fas fa-boxes text-blue-600"></i> Manifest Barang
+                        </h3>
+                        <div class="flex flex-wrap gap-4 items-end">
                             <div class="flex-1 min-w-[300px] relative">
                                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Pilih Produk</label>
                                 <input type="text" id="rfq_item_search" placeholder="-- Cari Kode atau Nama Produk --" autocomplete="off"
@@ -7254,20 +7350,16 @@ window.openRFQForm = (rfqId = null) => {
                                     </div>
                                     <div class="max-h-60 overflow-y-auto p-1" id="rfq_item_list"></div>
                                     <div class="p-2 border-t border-slate-50 bg-slate-50/10 space-y-1">
-                                        <button onclick="renderMasterProducts()" class="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-black text-slate-500 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-all uppercase tracking-widest">
+                                        <button type="button" onclick="renderMasterProducts()" class="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-black text-slate-500 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-all uppercase tracking-widest">
                                             <div class="w-7 h-7 flex items-center justify-center bg-slate-100 rounded-lg"><i class="fas fa-plus text-[10px]"></i></div>
-                                            Create a new Product
-                                        </button>
-                                        <button onclick="openAdvancedProductSearch('rfq')" class="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-black text-slate-500 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-all uppercase tracking-widest">
-                                            <div class="w-7 h-7 flex items-center justify-center bg-slate-100 rounded-lg"><i class="fas fa-search text-[10px]"></i></div>
-                                            Advanced Search
+                                            Tambah Produk Baru
                                         </button>
                                     </div>
                                 </div>
                             </div>
                             <div class="w-24">
                                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Qty</label>
-                                <input type="number" id="rfq_item_qty" placeholder="0" min="1" class="w-full border-none rounded-xl px-4 py-2.5 bg-white font-bold text-slate-700 shadow-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all">
+                                <input type="number" id="rfq_item_qty" value="1" min="1" class="w-full border-none rounded-xl px-4 py-2.5 bg-white font-bold text-slate-700 shadow-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all">
                             </div>
                             <button type="button" onclick="addPurchaseRFQItemRow()"
                                 class="h-[46px] px-6 bg-blue-600 border border-blue-500 text-white rounded-xl flex items-center gap-2 font-black text-[10px] uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95">
@@ -7293,12 +7385,11 @@ window.openRFQForm = (rfqId = null) => {
 
                         <!-- Notes -->
                         <div class="pt-4 border-t border-dashed border-slate-100">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Catatan / Keterangan</label>
-                            <textarea id="rfq_notes" rows="3" placeholder="Tambahkan catatan atau instruksi khusus..."
-                                class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 text-sm text-slate-700 outline-none resize-none">${rfq && rfq.notes ? rfq.notes : ''}</textarea>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Catatan / Keterangan</label>
+                            <textarea id="rfq_notes" rows="3" placeholder="Tambahkan instruksi pengiriman, spesifikasi teknis, atau catatan lainnya..."
+                                class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 text-sm text-slate-700 outline-none resize-none shadow-sm transition-all">${rfq && rfq.notes ? rfq.notes : ''}</textarea>
                         </div>
                     </div>
-
                 </div>
             </div>
         </div>
@@ -8666,41 +8757,55 @@ window.onQTItemSelect = () => {
     // Pricing is manual now per requirement
 };
 
-window.onSalesCustomerSelect = (selectId, mode) => {
+window.onSalesCustomerSelect = async (selectId, mode) => {
     const custId = document.getElementById(selectId).value;
+    console.log(`[Debug] Selecting customer for ${mode}, ID: ${custId}`);
     if (!custId) return;
+    
+    // Force a sync for this specific customer record to be sure
+    await db.sync('customers');
+    
     const cust = db.findById('customers', custId);
+    console.log(`[Debug] Customer data found:`, cust);
     if (!cust) return;
 
     // Set PPN
     const taxRateEl = document.getElementById(mode === 'QT' ? 'qt_tax_rate' : 'so_tax_rate');
-    if (taxRateEl && cust.ppn !== undefined) {
-        taxRateEl.value = cust.ppn;
+    if (taxRateEl) {
+        const ppnVal = cust.ppn !== undefined ? cust.ppn : (cust.tax_rate !== undefined ? cust.tax_rate : 11);
+        taxRateEl.value = ppnVal;
+        console.log(`[Debug] Set PPN to: ${ppnVal}`);
         if (mode === 'SO' && window.recalcSOTotal) recalcSOTotal();
         if (mode === 'QT' && window.refreshQTItemsTable) refreshQTItemsTable();
     }
 
     // Set Payment Terms (for SO and QT)
+    const pTerm = cust.paymentTerm || cust.payment_term;
+    console.log(`[Debug] Payment term found: ${pTerm}`);
     if (mode === 'SO') {
         const termEl = document.getElementById('so_payment_terms');
-        if (termEl && cust.paymentTerm) {
-            termEl.value = cust.paymentTerm;
+        if (termEl && pTerm) {
+            termEl.value = pTerm;
+            console.log(`[Debug] Set SO Payment Term to: ${pTerm}`);
             if(window.updateSODueDate) updateSODueDate();
         }
     } else if (mode === 'QT') {
         const termEl = document.getElementById('qt_payment_term');
-        if (termEl && cust.paymentTerm) {
-            termEl.value = cust.paymentTerm;
+        if (termEl && pTerm) {
+            termEl.value = pTerm;
+            console.log(`[Debug] Set QT Payment Term to: ${pTerm}`);
         }
     }
 
     // Set Common Products & Special Prices (otomatis tanpa konfirmasi)
-    if (cust.commonProducts && cust.commonProducts.length > 0) {
+    const cProds = cust.commonProducts || cust.common_products;
+    console.log(`[Debug] Common products found:`, cProds);
+    if (cProds && Array.isArray(cProds) && cProds.length > 0) {
         const inventory = db.read('inventoryItems');
         const newItems = [];
         
-        for (const cp of cust.commonProducts) {
-            const i = inventory.find(x => x.id === cp.itemId);
+        for (const cp of cProds) {
+            const i = inventory.find(x => x.id == cp.itemId || x.id == cp.item_id);
             if (i) {
                 newItems.push({
                     id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
@@ -8708,13 +8813,15 @@ window.onSalesCustomerSelect = (selectId, mode) => {
                     itemCode: i.itemCode || '',
                     productId: null,
                     prodText: i.itemName,
-                    prodUnit: i.unit || 'PCS',
+                    prodUnit: i.unit || 'Kg',
                     qty: 1,
-                    price: cp.price,
-                    subtotal: 1 * cp.price
+                    price: parseFloat(cp.price) || 0,
+                    subtotal: parseFloat(cp.price) || 0
                 });
             }
         }
+        
+        console.log(`[Debug] Final items to load:`, newItems);
 
         if (mode === 'QT') {
             window.tempQTItems = newItems;
@@ -8724,11 +8831,16 @@ window.onSalesCustomerSelect = (selectId, mode) => {
             if(window.refreshSOItemsTable) refreshSOItemsTable();
         }
         showToast('Produk & harga khusus berhasil dimuat.', 'success');
+    } else {
+        console.log(`[Debug] No common products to load for this customer.`);
     }
 };
 
 window.toggleItemProductDropdown = function (prefix) {
-    const dropId = prefix === 'qt' ? 'qt_item_dropdown' : prefix === 'rfq' ? 'rfq_item_dropdown' : prefix === 'po' ? 'po_item_dropdown' : 'so_inv_item_dropdown';
+    let dropId = `${prefix}_item_dropdown`;
+    // Compatibility for older hardcoded prefixes
+    if (prefix === 'so') dropId = 'so_inv_item_dropdown';
+    
     const dropdown = document.getElementById(dropId);
     if (!dropdown) return;
     const isOpen = !dropdown.classList.contains('hidden');
@@ -8740,7 +8852,9 @@ window.toggleItemProductDropdown = function (prefix) {
 
     if (!isOpen) {
         dropdown.classList.remove('hidden');
-        const searchId = prefix === 'qt' ? 'qt_item_dropdown_search' : prefix === 'rfq' ? 'rfq_item_dropdown_search' : prefix === 'po' ? 'po_item_dropdown_search' : 'so_inv_item_dropdown_search';
+        let searchId = `${prefix}_item_dropdown_search`;
+        if (prefix === 'so') searchId = 'so_inv_item_dropdown_search';
+        
         const searchInput = document.getElementById(searchId);
         if (searchInput) { searchInput.value = ''; searchInput.focus(); }
         filterItemProductList(prefix, '');
@@ -8757,7 +8871,10 @@ window.toggleItemProductDropdown = function (prefix) {
 };
 
 window.filterItemProductList = function (prefix, val) {
-    const containerId = prefix === 'qt' ? 'qt_item_list' : prefix === 'rfq' ? 'rfq_item_list' : prefix === 'po' ? 'po_item_list' : 'so_inv_item_list';
+    let containerId = `${prefix}_item_list`;
+    if (prefix === 'so') containerId = 'so_inv_item_list';
+    if (prefix === 'cust_cp') containerId = 'cust_cp_list_results'; // Match the ID in Customer template
+
     const container = document.getElementById(containerId);
     if (!container) return;
     const search = val.toLowerCase();
@@ -8798,7 +8915,7 @@ window.filterItemProductList = function (prefix, val) {
         // For sales: show finished goods
         products = allItems.filter(i => {
             const cat = (i.category || '').toUpperCase();
-            return (cat.includes('FINISH') || cat.includes('PRODUK_JADI') || cat.includes('GUDANG_JADI') || cat.includes('FG')) && i.status !== 'INACTIVE';
+            return (cat.includes('FINISH') || cat.includes('JADI') || cat.includes('FG')) && i.status !== 'INACTIVE';
         });
     }
     
@@ -8882,6 +8999,7 @@ window.openAdvancedProductSearch = function (prefix, subId = null) {
     else if (prefix === 'rfq') document.getElementById('rfq_item_dropdown')?.classList.add('hidden');
     else if (prefix === 'po') document.getElementById('po_item_dropdown')?.classList.add('hidden');
     else if (prefix === 'so') document.getElementById('so_inv_item_dropdown')?.classList.add('hidden');
+    else if (prefix === 'cust_cp') document.getElementById('cust_cp_item_dropdown')?.classList.add('hidden');
     else if (prefix === 'sj_kosong' && subId) document.getElementById(`doi_dropdown_${subId}`)?.classList.add('hidden');
 
     const allItems = db.read('inventoryItems') || [];
@@ -8910,7 +9028,7 @@ window.openAdvancedProductSearch = function (prefix, subId = null) {
     } else {
         products = allItems.filter(i => {
             const cat = (i.category || '').toUpperCase();
-            return (cat.includes('FINISH') || cat.includes('PRODUK_JADI') || cat.includes('GUDANG_JADI') || cat.includes('FG')) && i.status !== 'INACTIVE';
+            return (cat.includes('FINISH') || cat.includes('JADI') || cat.includes('FG')) && i.status !== 'INACTIVE';
         });
     }
 
@@ -8998,6 +9116,13 @@ window.selectItemProduct = function (prefix, id, displayText, price, unit, stock
         document.getElementById('po_price').value = price;
         document.getElementById('po_item_dropdown').classList.add('hidden');
         document.getElementById('po_qty').focus();
+    } else if (prefix === 'cust_cp') {
+        document.getElementById('cust_cp_item').value = id;
+        document.getElementById('cust_cp_label').innerText = displayText;
+        document.getElementById('cust_cp_label').classList.remove('text-slate-400');
+        document.getElementById('cust_cp_label').classList.add('text-slate-800', 'font-bold');
+        document.getElementById('cust_cp_price').value = price;
+        document.getElementById('cust_cp_item_dropdown').classList.add('hidden');
     } else {
         document.getElementById('so_inv_item').value = id;
         document.getElementById('so_inv_item_search').value = displayText;

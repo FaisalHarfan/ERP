@@ -1,6 +1,8 @@
 // data.js - Seed data for initial run
 
 const seedData = () => {
+    // Disabled as per user request - use system UI for manual entry
+    return;
     // Check if products already exist, if so skip seeding
     const unitsData = db.read('units');
     if (unitsData.length > 0) return;

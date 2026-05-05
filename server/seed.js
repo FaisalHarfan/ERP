@@ -96,18 +96,6 @@ async function seedDefaults() {
         console.log('  ✅ Bank Accounts seeded');
     }
 
-    // 6. Machines
-    const existingMachines = await models.Machine.count();
-    if (existingMachines === 0) {
-        await models.Machine.bulkCreate([
-            { id: 'mch_01', code: 'MCH-001', name: 'Mesin 01', type: 'MACHINE', status: 'ACTIVE' },
-            { id: 'mch_02', code: 'MCH-002', name: 'Mesin 02', type: 'MACHINE', status: 'ACTIVE' },
-            { id: 'mch_03', code: 'OVN-001', name: 'Oven 01', type: 'OVEN', status: 'ACTIVE' },
-            { id: 'mch_04', code: 'OVN-002', name: 'Oven 02', type: 'OVEN', status: 'ACTIVE' }
-        ]);
-        console.log('  ✅ Machines seeded');
-    }
-
     console.log('🌱 Seeding complete!');
 }
 

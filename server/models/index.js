@@ -48,11 +48,15 @@ const Customer = sequelize.define('customers', {
     name: { type: DataTypes.STRING(200), allowNull: false },
     phone: DataTypes.STRING(50),
     address: DataTypes.TEXT,
+    shipping_address: DataTypes.TEXT,
     email: DataTypes.STRING(200),
     contact_person: DataTypes.STRING(200),
+    region: DataTypes.STRING(100),
+    city: DataTypes.STRING(100),
     npwp: DataTypes.STRING(50),
-    payment_terms: DataTypes.STRING(100),
-    default_tax: DataTypes.DECIMAL(5, 2)
+    payment_term: DataTypes.STRING(100),
+    ppn: DataTypes.DECIMAL(5, 2),
+    common_products: { type: DataTypes.JSONB, defaultValue: [] }
 });
 
 const Supplier = sequelize.define('suppliers', {
@@ -63,7 +67,7 @@ const Supplier = sequelize.define('suppliers', {
     email: DataTypes.STRING(200),
     contact_person: DataTypes.STRING(200),
     npwp: DataTypes.STRING(50),
-    payment_terms: DataTypes.STRING(100),
+    payment_term: DataTypes.STRING(100),
     category: DataTypes.STRING(100)
 });
 
@@ -88,7 +92,7 @@ const InventoryItem = sequelize.define('inventory_items', {
     item_name: { type: DataTypes.STRING(200), allowNull: false },
     category: DataTypes.STRING(50), // RAW_MATERIAL, FINISHED_GOODS, WIP, OVEN_BASAH_STOCK, OVEN_KERING_STOCK
     unit: DataTypes.STRING(20),
-    base_price: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
+    purchase_price: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
     min_stock: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
     status: { type: DataTypes.STRING(20), defaultValue: 'ACTIVE' },
     description: DataTypes.TEXT
@@ -421,7 +425,8 @@ const models = {
     Machine, BOMHeader, BOMMaterial, ManufacturingOrder, DailyProductionLog,
     ProductionLineBatch, ProductionOrder, BOM,
     Account, JournalEntry, Expense, Receipt, BankAccount, CreditNote, DebitNote,
-    Notification, PackBreakdown
+    Notification, PackBreakdown,
+    sequelize
 };
 
 // Helper: map LocalStorage table names → Sequelize model

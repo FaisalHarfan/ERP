@@ -1,11 +1,60 @@
-// db.js - LocalStorage Database Wrapper Simulator
-
 const DB_PREFIX = 'unityerp_';
-const OLD_PREFIX = 'nexerp_';
+const _dbCache = {}; // In-memory cache for fast synchronous reading
 
-// Core DB Functions
 const db = {
-    // Basic CRUD Operations
+    // New: Sync a table from PostgreSQL to memory cache
+    sync: async (table) => {
+        try {
+            if (!window.api) return [];
+            const data = await window.api.read(table);
+            _dbCache[table] = data;
+            return data;
+        } catch (e) {
+            console.error(`Failed to sync table ${table}:`, e);
+            return _dbCache[table] || [];
+        }
+    },
+
+    read: (table) => {
+        // Now reads from memory cache which is synced from PostgreSQL
+        return _dbCache[table] || [];
+    },
+
+    insert: async (table, record) => {
+        if (!window.api) return null;
+        const result = await window.api.insert(table, record);
+        if (result) {
+            if (!_dbCache[table]) _dbCache[table] = [];
+            _dbCache[table].push(result);
+        }
+        return result;
+    },
+
+    update: async (table, id, updates) => {
+        if (!window.api) return null;
+        const result = await window.api.update(table, id, updates);
+        // Update local cache
+        if (result && _dbCache[table]) {
+            const idx = _dbCache[table].findIndex(item => item.id === id);
+            if (idx > -1) _dbCache[table][idx] = result;
+        }
+        return result;
+    },
+
+    delete: async (table, id) => {
+        if (!window.api) return null;
+        await window.api.delete(table, id);
+        // Update local cache
+        if (_dbCache[table]) {
+            _dbCache[table] = _dbCache[table].filter(item => item.id !== id);
+        }
+    },
+
+    findById: (table, id) => {
+        const data = db.read(table);
+        return data.find(item => item.id == id) || null;
+    },
+
     getTables: () => {
         return ['units', 'products', 'warehouses', 'suppliers', 'customers',
             'purchaseRequests', 'purchaseOrders', 'purchaseInvoices', 'supplierPayments',
@@ -13,8 +62,8 @@ const db = {
             'boms', 'productionOrders', 'stockMovements',
             'inventoryItems', 'stockTransactions', 'notifications',
             'machines', 'bomHeaders', 'bomMaterials', 'manufacturingOrders', 'dailyProductionLogs', 'productionLineBatches',
-            'accounts', 'expenses', 'journalEntries', 'bankAccounts', 'departments', 'creditNotes', 'debitNotes', // Finance Tables
-            'salesReturns', 'productExchanges', 'deliveryOrders', 'inventoryJudgments', 'inventoryConversions', 'packBreakdowns', // Sales Return, Exchange, Delivery, Conversion & Pack Breakdown Tables
+            'accounts', 'expenses', 'journalEntries', 'bankAccounts', 'departments', 'creditNotes', 'debitNotes',
+            'salesReturns', 'productExchanges', 'deliveryOrders', 'inventoryJudgments', 'inventoryConversions', 'packBreakdowns',
             'users', 'roles', 'systemLogs'];
     },
 
@@ -22,82 +71,13 @@ const db = {
         return Date.now().toString() + Math.random().toString(36).substr(2, 5);
     },
 
-    // Initialize empty arrays for all tables if not exist
-    init: () => {
-        // One-time Migration from nexerp_ to unityerp_
-        db.getTables().forEach(table => {
-            const oldData = localStorage.getItem(OLD_PREFIX + table);
-            const newData = localStorage.getItem(DB_PREFIX + table);
-            if (oldData && !newData) {
-                localStorage.setItem(DB_PREFIX + table, oldData);
-            }
-        });
-
-        db.getTables().forEach(table => {
-            if (!localStorage.getItem(DB_PREFIX + table)) {
-                localStorage.setItem(DB_PREFIX + table, JSON.stringify([]));
-            }
-        });
+    init: async () => {
+        console.log("🚀 UnityERP: Database layer initialized (API Mode)");
+        // Pre-sync essential tables
+        await db.sync('users');
+        await db.sync('roles');
     },
 
-    read: (table) => {
-        const data = localStorage.getItem(DB_PREFIX + table);
-        return data ? JSON.parse(data) : [];
-    },
-
-    save: (table, data) => {
-        localStorage.setItem(DB_PREFIX + table, JSON.stringify(data));
-    },
-
-    insert: (table, record) => {
-        const data = db.read(table);
-        const newRecord = {
-            ...record,
-            id: record.id || Date.now().toString() + Math.random().toString(36).substr(2, 5),
-            createdAt: record.createdAt || new Date().toISOString()
-        };
-        data.push(newRecord);
-        db.save(table, data);
-
-        // Background sync to PostgreSQL (if api is available)
-        if (window.api) {
-            window.api.insert(table, newRecord).catch(e => console.error(`Sync insert failed for ${table}:`, e));
-        }
-
-        return newRecord;
-    },
-
-    update: (table, id, updates) => {
-        const data = db.read(table);
-        const index = data.findIndex(item => item.id === id);
-        if (index > -1) {
-            data[index] = { ...data[index], ...updates, updatedAt: new Date().toISOString() };
-            db.save(table, data);
-
-            // Background sync to PostgreSQL
-            if (window.api) {
-                window.api.update(table, id, updates).catch(e => console.error(`Sync update failed for ${table}:`, e));
-            }
-
-            return data[index];
-        }
-        return null;
-    },
-
-    delete: (table, id) => {
-        const data = db.read(table);
-        const filtered = data.filter(item => item.id !== id);
-        db.save(table, filtered);
-
-        // Background sync to PostgreSQL
-        if (window.api) {
-            window.api.delete(table, id).catch(e => console.error(`Sync delete failed for ${table}:`, e));
-        }
-    },
-
-    findById: (table, id) => {
-        return db.read(table).find(item => item.id === id);
-    },
 
     logSystemActivity: (action, details = '') => {
         const sess = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
@@ -636,8 +616,8 @@ mchs.forEach(m => {
 });
 if (mchChanged) db.save('machines', mchs);
 
-db.seedDefaultFinanceData();
-db.seedDefaultUsersAndRoles();
+// db.seedDefaultFinanceData();
+// db.seedDefaultUsersAndRoles();
 
 // Migrate legacy users: add email if missing
 (function migrateUsersToEmail() {
