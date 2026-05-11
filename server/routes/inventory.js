@@ -31,13 +31,13 @@ async function generateItemCode(category) {
     // Find all items with this prefix
     const items = await InventoryItem.findAll({
         where: {
-            item_code: { [Op.like]: `${prefix}-%` }
+            itemCode: { [Op.like]: `${prefix}-%` }
         }
     });
 
     let maxSeq = 0;
     items.forEach(item => {
-        const parts = item.item_code.split('-');
+        const parts = (item.itemCode || '').split('-');
         if (parts.length >= 2) {
             const seq = parseInt(parts[1]);
             if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
