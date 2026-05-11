@@ -68,7 +68,9 @@ const Supplier = sequelize.define('suppliers', {
     contact_person: DataTypes.STRING(200),
     npwp: DataTypes.STRING(50),
     payment_term: DataTypes.STRING(100),
-    category: DataTypes.STRING(100)
+    ppn: { type: DataTypes.DECIMAL(5, 2), defaultValue: 0 },
+    category: DataTypes.STRING(100),
+    common_products: { type: DataTypes.JSONB, defaultValue: [] }
 });
 
 const Warehouse = sequelize.define('warehouses', {
@@ -88,42 +90,42 @@ const Department = sequelize.define('departments', {
 // ═══════════════════════════════════════════════
 const InventoryItem = sequelize.define('inventory_items', {
     id: { type: DataTypes.STRING(50), primaryKey: true },
-    item_code: { type: DataTypes.STRING(50), unique: true },
-    item_name: { type: DataTypes.STRING(200), allowNull: false },
+    itemCode: { type: DataTypes.STRING(50), unique: true, field: 'item_code' },
+    itemName: { type: DataTypes.STRING(200), allowNull: false, field: 'item_name' },
     category: DataTypes.STRING(50), // RAW_MATERIAL, FINISHED_GOODS, WIP, OVEN_BASAH_STOCK, OVEN_KERING_STOCK
     unit: DataTypes.STRING(20),
-    purchase_price: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
-    min_stock: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
+    purchasePrice: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0, field: 'purchase_price' },
+    minStock: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0, field: 'min_stock' },
     status: { type: DataTypes.STRING(20), defaultValue: 'ACTIVE' },
     description: DataTypes.TEXT
 });
 
 const StockTransaction = sequelize.define('stock_transactions', {
     id: { type: DataTypes.STRING(50), primaryKey: true },
-    tx_no: DataTypes.STRING(50),
+    txNo: { type: DataTypes.STRING(50), field: 'tx_no' },
     date: DataTypes.DATE,
-    item_id: DataTypes.STRING(50),
-    item_code: DataTypes.STRING(50),
-    item_name: DataTypes.STRING(200),
+    itemId: { type: DataTypes.STRING(50), field: 'item_id' },
+    itemCode: { type: DataTypes.STRING(50), field: 'item_code' },
+    itemName: { type: DataTypes.STRING(200), field: 'item_name' },
     type: DataTypes.STRING(30), // IN, OUT, ADJUST_IN, ADJUST_OUT, PRODUCTION_IN, etc.
     qty: DataTypes.DECIMAL(15, 2),
     reference: DataTypes.STRING(50),
-    reference_id: DataTypes.STRING(50),
+    referenceId: { type: DataTypes.STRING(50), field: 'reference_id' },
     notes: DataTypes.TEXT,
-    created_by: DataTypes.STRING(100),
+    createdBy: { type: DataTypes.STRING(100), field: 'created_by' },
     location: DataTypes.STRING(50)
 });
 
 const StockMovement = sequelize.define('stock_movements', {
     id: { type: DataTypes.STRING(50), primaryKey: true },
     date: DataTypes.DATE,
-    product_id: DataTypes.STRING(50),
+    productId: { type: DataTypes.STRING(50), field: 'product_id' },
     type: DataTypes.STRING(10),
     qty: DataTypes.DECIMAL(15, 2),
-    reference_type: DataTypes.STRING(50),
-    reference_id: DataTypes.STRING(50),
+    referenceType: { type: DataTypes.STRING(50), field: 'reference_type' },
+    referenceId: { type: DataTypes.STRING(50), field: 'reference_id' },
     notes: DataTypes.TEXT,
-    created_by: DataTypes.STRING(100)
+    createdBy: { type: DataTypes.STRING(100), field: 'created_by' }
 });
 
 const InventoryJudgment = sequelize.define('inventory_judgments', {
@@ -173,9 +175,9 @@ const SalesOrder = sequelize.define('sales_orders', {
 
 const SalesInvoice = sequelize.define('sales_invoices', {
     id: { type: DataTypes.STRING(50), primaryKey: true },
-    inv_number: DataTypes.STRING(50),
+    invoice_number: DataTypes.STRING(50),
     customer_id: DataTypes.STRING(50),
-    so_id: DataTypes.STRING(50),
+    sales_order_id: DataTypes.STRING(50),
     date: DataTypes.DATE,
     due_date: DataTypes.DATE,
     status: { type: DataTypes.STRING(30), defaultValue: 'UNPAID' },
@@ -185,6 +187,13 @@ const SalesInvoice = sequelize.define('sales_invoices', {
     tax_type: DataTypes.STRING(30),
     tax_rate: { type: DataTypes.DECIMAL(5, 2), defaultValue: 0 },
     total_amount: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
+    discount_type: DataTypes.STRING(50),
+    discount_value: DataTypes.STRING(50),
+    discount_amount: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
+    discount_description: DataTypes.STRING(255),
+    subsidy_amount: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
+    subsidy_description: DataTypes.STRING(255),
+    nsfp: DataTypes.STRING(100),
     notes: DataTypes.TEXT
 });
 
@@ -201,16 +210,64 @@ const Payment = sequelize.define('payments', {
 
 const DeliveryOrder = sequelize.define('delivery_orders', {
     id: { type: DataTypes.STRING(50), primaryKey: true },
-    data: { type: DataTypes.JSONB, defaultValue: {} }
+    do_number: DataTypes.STRING(50),
+    date: DataTypes.DATE,
+    status: { type: DataTypes.STRING(30), defaultValue: 'PENDING' },
+    type: DataTypes.STRING(30),
+    recipient_name: DataTypes.STRING(100),
+    address: DataTypes.TEXT,
+    driver_name: DataTypes.STRING(100),
+    vehicle_no: DataTypes.STRING(50),
+    items: { type: DataTypes.JSONB, defaultValue: [] },
+    notes: DataTypes.TEXT,
+    invoice_id: DataTypes.STRING(50),
+    invoice_number: DataTypes.STRING(50),
+    sales_order_id: DataTypes.STRING(50),
+    so_number: DataTypes.STRING(50)
 });
 
 const SalesReturn = sequelize.define('sales_returns', {
     id: { type: DataTypes.STRING(50), primaryKey: true },
+    return_number: DataTypes.STRING(50),
+    date: DataTypes.DATE,
+    so_id: DataTypes.STRING(50),
+    so_number: DataTypes.STRING(50),
+    customer_id: DataTypes.STRING(50),
+    product_id: DataTypes.STRING(50),
+    product_name: DataTypes.STRING(200),
+    qty_returned: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
+    unit_price: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
+    total_refund: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
+    condition: DataTypes.STRING(50),
+    refund_method: DataTypes.STRING(50),
+    reason: DataTypes.TEXT,
+    notes: DataTypes.TEXT,
+    status: { type: DataTypes.STRING(30), defaultValue: 'PENDING' },
+    received_at: DataTypes.DATE,
+    received_qty: DataTypes.DECIMAL(15, 2),
+    received_condition: DataTypes.STRING(50),
+    received_notes: DataTypes.TEXT,
     data: { type: DataTypes.JSONB, defaultValue: {} }
 });
 
 const ProductExchange = sequelize.define('product_exchanges', {
     id: { type: DataTypes.STRING(50), primaryKey: true },
+    exchange_number: DataTypes.STRING(50),
+    date: DataTypes.DATE,
+    so_id: DataTypes.STRING(50),
+    so_number: DataTypes.STRING(50),
+    customer_id: DataTypes.STRING(50),
+    returned_product_id: DataTypes.STRING(50),
+    returned_product_name: DataTypes.STRING(200),
+    returned_qty: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
+    replacement_product_id: DataTypes.STRING(50),
+    replacement_product_name: DataTypes.STRING(200),
+    replacement_qty: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
+    price_difference: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
+    reason: DataTypes.TEXT,
+    status: { type: DataTypes.STRING(30), defaultValue: 'PENDING' },
+    received_at: DataTypes.DATE,
+    shipped_at: DataTypes.DATE,
     data: { type: DataTypes.JSONB, defaultValue: {} }
 });
 
@@ -219,35 +276,57 @@ const ProductExchange = sequelize.define('product_exchanges', {
 // ═══════════════════════════════════════════════
 const PurchaseRFQ = sequelize.define('purchase_rfqs', {
     id: { type: DataTypes.STRING(50), primaryKey: true },
-    data: { type: DataTypes.JSONB, defaultValue: {} }
+    rfq_number: DataTypes.STRING(50),
+    supplier_id: DataTypes.STRING(50),
+    date: DataTypes.DATE,
+    category: DataTypes.STRING(100),
+    status: { type: DataTypes.STRING(30), defaultValue: 'DRAFT' },
+    items: { type: DataTypes.JSONB, defaultValue: [] },
+    notes: DataTypes.TEXT
 });
 
 const PurchaseOrder = sequelize.define('purchase_orders', {
     id: { type: DataTypes.STRING(50), primaryKey: true },
     po_number: DataTypes.STRING(50),
     supplier_id: DataTypes.STRING(50),
+    request_id: DataTypes.STRING(50),
     date: DataTypes.DATE,
     status: { type: DataTypes.STRING(30), defaultValue: 'DRAFT' },
     items: { type: DataTypes.JSONB, defaultValue: [] },
+    receipts: { type: DataTypes.JSONB, defaultValue: [] },
     subtotal: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
+    dpp_amount: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
+    tax_rate: DataTypes.DECIMAL(5, 2),
     tax_amount: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
     total_amount: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
-    notes: DataTypes.TEXT
+    notes: DataTypes.TEXT,
+    payment_terms: DataTypes.STRING(100),
+    due_date: DataTypes.DATE,
+    etd: DataTypes.DATE,
+    category: DataTypes.STRING(100),
+    tax_type: DataTypes.STRING(10),
+    actual_delivery_date: DataTypes.DATE
 });
 
 const PurchaseInvoice = sequelize.define('purchase_invoices', {
     id: { type: DataTypes.STRING(50), primaryKey: true },
     inv_number: DataTypes.STRING(50),
     supplier_id: DataTypes.STRING(50),
-    po_id: DataTypes.STRING(50),
+    purchase_order_id: DataTypes.STRING(50),
+    receipt_id: DataTypes.STRING(50),
     date: DataTypes.DATE,
     due_date: DataTypes.DATE,
     status: { type: DataTypes.STRING(30), defaultValue: 'UNPAID' },
     items: { type: DataTypes.JSONB, defaultValue: [] },
     subtotal: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
+    dpp_amount: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
+    tax_rate: DataTypes.DECIMAL(5, 2),
     tax_amount: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
     total_amount: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
-    notes: DataTypes.TEXT
+    notes: DataTypes.TEXT,
+    bank_name: DataTypes.STRING(100),
+    bank_account: DataTypes.STRING(100),
+    bank_holder: DataTypes.STRING(200)
 });
 
 const SupplierPayment = sequelize.define('supplier_payments', {
@@ -281,9 +360,9 @@ const Machine = sequelize.define('machines', {
 
 const BOMHeader = sequelize.define('bom_headers', {
     id: { type: DataTypes.STRING(50), primaryKey: true },
-    bom_code: DataTypes.STRING(50),
-    product_id: DataTypes.STRING(50),
-    product_name: DataTypes.STRING(200),
+    bomCode: { type: DataTypes.STRING(50), field: 'bom_code' },
+    productId: { type: DataTypes.STRING(50), field: 'product_id' },
+    productName: { type: DataTypes.STRING(200), field: 'product_name' },
     qty: DataTypes.DECIMAL(15, 2),
     unit: DataTypes.STRING(20),
     status: { type: DataTypes.STRING(20), defaultValue: 'ACTIVE' },
@@ -292,9 +371,9 @@ const BOMHeader = sequelize.define('bom_headers', {
 
 const BOMMaterial = sequelize.define('bom_materials', {
     id: { type: DataTypes.STRING(50), primaryKey: true },
-    bom_id: DataTypes.STRING(50),
-    item_id: DataTypes.STRING(50),
-    item_name: DataTypes.STRING(200),
+    bomId: { type: DataTypes.STRING(50), field: 'bom_id' },
+    itemId: { type: DataTypes.STRING(50), field: 'item_id' },
+    itemName: { type: DataTypes.STRING(200), field: 'item_name' },
     qty: DataTypes.DECIMAL(15, 2),
     unit: DataTypes.STRING(20)
 });

@@ -25,6 +25,10 @@ router.get('/:table', authenticateToken, async (req, res) => {
         // Transform to match frontend expected format (camelCase)
         const data = records.map(r => {
             const raw = r.toJSON();
+            if (raw.data && typeof raw.data === 'object') {
+                const { data: jsonData, ...rest } = raw;
+                return toCamelCase({ ...jsonData, ...rest });
+            }
             return toCamelCase(raw);
         });
 
@@ -44,7 +48,16 @@ router.get('/:table/:id', authenticateToken, async (req, res) => {
         const record = await model.findByPk(req.params.id);
         if (!record) return res.status(404).json({ error: 'Record tidak ditemukan' });
 
-        res.json(toCamelCase(record.toJSON()));
+        const raw = record.toJSON();
+        let responseData;
+        if (raw.data && typeof raw.data === 'object') {
+            const { data: jsonData, ...rest } = raw;
+            responseData = toCamelCase({ ...jsonData, ...rest });
+        } else {
+            responseData = toCamelCase(raw);
+        }
+
+        res.json(responseData);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

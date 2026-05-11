@@ -10,8 +10,22 @@ function generateId() {
 
 // Auto-generate Item Code based on category
 async function generateItemCode(category) {
-    const stageCats = ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK', 'WIP'];
-    const prefix = category === 'RAW_MATERIAL' ? 'RM' : (category === 'FINISHED_GOODS' ? 'FG' : (stageCats.includes(category) ? 'WIP' : 'FG'));
+    const prefixes = {
+        RAW_MATERIAL: 'RM',
+        FINISHED_GOODS: 'FG',
+        SPAREPART: 'SP',
+        PACKAGING: 'PK',
+        SERVICE: 'SV',
+        GAS: 'GAS',
+        ASSET: 'AKT',
+        SUPPLIES: 'SUP',
+        OVEN_BASAH_STOCK: 'OB',
+        OVEN_KERING_STOCK: 'OK',
+        BULK_STOCK: 'BK',
+        WIP: 'WIP'
+    };
+    
+    const prefix = prefixes[category] || 'ITM';
     
     // Find all items with this prefix
     const items = await InventoryItem.findAll({
@@ -160,7 +174,21 @@ router.put('/items/:id', authenticateToken, requirePermission('logistik', 'edit'
         // Jika kategori berubah, item code harus digenerate ulang (business rule lama)
         if (category !== undefined && category !== item.category) {
             updates.category = category;
-            const newPrefix = category === 'RAW_MATERIAL' ? 'RM' : (category === 'FINISHED_GOODS' ? 'FG' : 'WIP');
+            const prefixes = {
+                RAW_MATERIAL: 'RM',
+                FINISHED_GOODS: 'FG',
+                SPAREPART: 'SP',
+                PACKAGING: 'PK',
+                SERVICE: 'SV',
+                GAS: 'GAS',
+                ASSET: 'AKT',
+                SUPPLIES: 'SUP',
+                OVEN_BASAH_STOCK: 'OB',
+                OVEN_KERING_STOCK: 'OK',
+                BULK_STOCK: 'BK',
+                WIP: 'WIP'
+            };
+            const newPrefix = prefixes[category] || 'ITM';
             const oldPrefix = item.item_code ? item.item_code.split('-')[0] : '';
             if (oldPrefix !== newPrefix) {
                 updates.item_code = await generateItemCode(category);

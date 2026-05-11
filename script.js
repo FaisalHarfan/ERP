@@ -1,0 +1,1 @@
+const { Client } = require('pg'); const client = new Client({user: 'postgres', password: 'Faisal2807', database: 'tanasubur'}); client.connect().then(() => client.query('SELECT table_name FROM information_schema.tables WHERE table_schema=''public''')).then(res => console.log(res.rows.map(r => r.table_name))).catch(console.error).finally(() => client.end());

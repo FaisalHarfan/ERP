@@ -126,8 +126,14 @@ window.updatePurchaseAnalytics = () => {
     const purchaseRFQs = db.read('purchaseRFQs') || [];
     const suppliers = db.read('suppliers') || [];
 
-    const getDocDate = (doc) => doc.date || doc.createdAt || '';
-    const getDocValue = (doc) => (doc.totalAmount || doc.grandTotal || 0);
+    const getDocDate  = (doc) => doc.date || doc.createdAt || '';
+    const getDocQty   = (doc) => (doc.items || []).reduce((sum, it) => sum + parseFloat(it.qty || it.receivedQty || 0), 0);
+    const getDocAmt   = (doc) => parseFloat(doc.totalAmount || doc.grandTotal || 0);
+    const isSupplier  = basedOn === 'Supplier';
+    const getValue    = isSupplier ? getDocAmt : getDocQty;
+    const getItemVal  = (it) => isSupplier ? parseFloat(it.subtotal || (it.qty * (it.price||0)) || 0) : parseFloat(it.qty || it.receivedQty || 0);
+    const unit        = isSupplier ? '' : ' KG';
+    const fmtVal      = (v) => isSupplier ? 'Rp ' + formatNumber(v) : formatNumber(v) + ' KG';
 
     const filterByRange = (docs) => docs.filter(doc => {
         const d = new Date(getDocDate(doc));
@@ -147,35 +153,34 @@ window.updatePurchaseAnalytics = () => {
         const totals = {};
         targetDocs.forEach(d => {
             const name = suppliers.find(s => s.id === d.supplierId)?.name || 'Unknown';
-            totals[name] = (totals[name] || 0) + getDocValue(d);
+            totals[name] = (totals[name] || 0) + getValue(d);
         });
-        groups = Object.keys(totals).sort((a,b) => totals[b] - totals[a]).slice(0, 5);
+        groups = Object.keys(totals).sort((a,b) => totals[b] - totals[a]).slice(0, 10);
         if (groups.length === 0) groups = ['Overall'];
-    } else if (basedOn === 'Item') {
-        const totals = {};
         targetDocs.forEach(d => {
             (d.items || []).forEach(it => {
                 const name = it.itemName || it.prodText || 'Unknown';
-                totals[name] = (totals[name] || 0) + (parseFloat(it.subtotal) || 0);
+                totals[name] = (totals[name] || 0) + getItemVal(it);
             });
         });
-        groups = Object.keys(totals).sort((a,b) => totals[b] - totals[a]).slice(0, 5);
+        groups = Object.keys(totals).sort((a,b) => totals[b] - totals[a]).slice(0, 10);
         if (groups.length === 0) groups = ['Overall'];
     }
 
+    const chartColors = ['#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899', '#84cc16', '#14b8a6', '#6366f1'];
     const datasets = groups.map((g, idx) => {
-        const color = ['#6366f1', '#f472b6', '#34d399', '#fbbf24', '#a78bfa'][idx];
+        const color = chartColors[idx % chartColors.length];
         const bucketData = buckets.map(b => {
             let sum = 0;
             targetDocs.forEach(d => {
                 const dt = new Date(getDocDate(d));
                 if (dt >= b.start && dt <= b.end) {
-                    if (g === 'Overall') sum += getDocValue(d);
+                    if (g === 'Overall') sum += getValue(d);
                     else if (basedOn === 'Supplier') {
                         const sName = suppliers.find(s => s.id === d.supplierId)?.name || 'Unknown';
-                        if (sName === g) sum += getDocValue(d);
+                        if (sName === g) sum += getValue(d);
                     } else if (basedOn === 'Item') {
-                        (d.items || []).forEach(it => { if ((it.itemName || it.prodText) === g) sum += (parseFloat(it.subtotal) || 0); });
+                        (d.items || []).forEach(it => { if ((it.itemName || it.prodText) === g) sum += getItemVal(it); });
                     }
                 }
             });
@@ -215,11 +220,11 @@ window.updatePurchaseAnalytics = () => {
                 interaction: { mode: 'index', intersect: false },
                 plugins: {
                     legend: { display: groups.length > 1, position: 'top', align: 'end', labels: { boxWidth: 10, font: { size: 10, weight: 'bold' } } },
-                    tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: Rp ${formatNumber(ctx.parsed.y)}` } }
+                    tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmtVal(ctx.parsed.y)}` } }
                 },
                 scales: {
                     x: { grid: { color: 'rgba(51, 65, 85, 0.05)' }, ticks: { color: '#94a3b8', font: { size: 10 } } },
-                    y: { grid: { color: 'rgba(51, 65, 85, 0.05)' }, ticks: { color: '#94a3b8', font: { size: 10 }, callback: v => formatNumber(v) } }
+                    y: { grid: { color: 'rgba(51, 65, 85, 0.05)' }, ticks: { color: '#94a3b8', font: { size: 10 }, callback: v => isSupplier ? formatNumber(v) : formatNumber(v) + ' KG' } }
                 }
             }
         });
@@ -230,7 +235,7 @@ window.updatePurchaseAnalytics = () => {
     if (thead && tbody) {
         thead.innerHTML = `
             <th class="px-6 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Period</th>
-            <th class="px-6 py-3 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Value (Rp)</th>
+            <th class="px-6 py-3 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Total ${isSupplier ? 'Value (Rp)' : 'Qty (KG)'}</th>
         `;
         
         const overallData = buckets.map((b, i) => datasets.reduce((sum, ds) => sum + ds.data[i], 0));
@@ -239,12 +244,12 @@ window.updatePurchaseAnalytics = () => {
         tbody.innerHTML = buckets.map((b, i) => `
             <tr class="hover:bg-slate-50 transition-colors">
                 <td class="px-6 py-3 text-sm text-slate-600 font-semibold">${b.label}</td>
-                <td class="px-6 py-3 text-sm text-slate-800 font-mono text-right">${formatNumber(overallData[i])}</td>
+                <td class="px-6 py-3 text-sm text-slate-800 font-mono text-right">${fmtVal(overallData[i])}</td>
             </tr>
         `).join('') + `
             <tr class="bg-blue-50/30 border-t-2 border-blue-100 font-black">
                 <td class="px-6 py-4 text-sm text-blue-800 uppercase tracking-widest">Total Summary</td>
-                <td class="px-6 py-4 text-sm text-right text-blue-700 font-mono">Rp ${formatNumber(grandTotal)}</td>
+                <td class="px-6 py-4 text-sm text-right text-blue-700 font-mono">${fmtVal(grandTotal)}</td>
             </tr>
         `;
     }
@@ -310,15 +315,16 @@ window.updatePurchaseInvoiceTrends = () => {
     else if (period === 'Yearly') periods = [year.toString()];
     
     const invoices = db.read('purchaseInvoices').filter(inv => {
-        const d = new Date(inv.date);
+        const d = new Date(inv.date || inv.createdAt);
         return d.getFullYear() === year;
     });
 
-    const chartTotalAmt = Array(periods.length).fill(0);
+    const isSupplier = basedOn === 'Supplier';
+    const chartTotal = Array(periods.length).fill(0);
     const pivot = {};
 
     invoices.forEach(inv => {
-        const date = new Date(inv.date);
+        const date = new Date(inv.date || inv.createdAt);
         const monthIdx = date.getMonth();
         let pIdx = 0;
         
@@ -327,14 +333,54 @@ window.updatePurchaseInvoiceTrends = () => {
         else if (period === 'Half-Yearly') pIdx = Math.floor(monthIdx / 6);
         else if (period === 'Yearly') pIdx = 0;
         
-        chartTotalAmt[pIdx] += (inv.totalAmount || 0);
+        const invQty = (inv.items || []).reduce((s, it) => s + parseFloat(it.qty || 0), 0);
+        const invAmt = parseFloat(inv.totalAmount || inv.grandTotal || 0);
+        const val = isSupplier ? invAmt : invQty;
 
-        const supplier = db.findById('suppliers', inv.supplierId);
-        const label = supplier ? supplier.name : 'Unknown';
-        const key = inv.supplierId || 'unknown';
+        chartTotal[pIdx] += val;
 
-        if (!pivot[key]) pivot[key] = { label, periods: Array(periods.length).fill(0) };
-        pivot[key].periods[pIdx] += (inv.totalAmount || 0);
+        if (isSupplier) {
+            const supplier = db.read('suppliers')?.find(s => s.id === inv.supplierId);
+            const label = supplier ? supplier.name : (inv.supplierName || 'Unknown');
+            const key = inv.supplierId || label;
+            if (!pivot[key]) pivot[key] = { label, periods: Array(periods.length).fill(0) };
+            pivot[key].periods[pIdx] += val;
+        } else {
+            (inv.items || []).forEach(it => {
+                const label = it.itemName || it.prodText || 'Unknown';
+                const key = it.inventoryItemId || it.productId || label;
+                if (!pivot[key]) pivot[key] = { label, periods: Array(periods.length).fill(0) };
+                pivot[key].periods[pIdx] += parseFloat(it.qty || 0);
+            });
+        }
+    });
+
+    const chartColors = ['#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899', '#84cc16', '#14b8a6', '#6366f1'];
+    const datasets = [{
+        label: `Total ${isSupplier ? 'Value' : 'Qty'}`,
+        data: chartTotal,
+        borderColor: '#9ca3af',
+        borderDash: [5, 5],
+        backgroundColor: 'transparent',
+        pointBackgroundColor: '#9ca3af',
+        borderWidth: 2,
+        pointRadius: 3,
+        tension: 0.3
+    }];
+
+    const sortedRows = Object.values(pivot).sort((a, b) => b.periods.reduce((sum, v) => sum + v, 0) - a.periods.reduce((sum, v) => sum + v, 0));
+    sortedRows.slice(0, 10).forEach((row, i) => {
+        const color = chartColors[i % chartColors.length];
+        datasets.push({
+            label: row.label,
+            data: row.periods,
+            borderColor: color,
+            backgroundColor: 'transparent',
+            pointBackgroundColor: color,
+            borderWidth: 2,
+            pointRadius: 3,
+            tension: 0.3
+        });
     });
 
     const ctx = document.getElementById('pit_chart');
@@ -342,23 +388,16 @@ window.updatePurchaseInvoiceTrends = () => {
         if (window._pitChart) window._pitChart.destroy();
         window._pitChart = new Chart(ctx, {
             type: 'line',
-            data: {
-                labels: periods,
-                datasets: [{
-                    label: 'Total Purchase Invoice Value',
-                    data: chartTotalAmt,
-                    borderColor: '#6366f1',
-                    backgroundColor: 'rgba(99, 102, 241, 0.1)',
-                    fill: true,
-                    tension: 0.4
-                }]
-            },
+            data: { labels: periods, datasets: datasets },
             options: {
-                responsive: true,
-                maintainAspectRatio: false,
+                responsive: true, maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
                 plugins: {
-                    legend: { display: false },
-                    tooltip: { callbacks: { label: ctx => ` Rp ${formatNumber(ctx.parsed.y)}` } }
+                    legend: { display: true, position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, font: { size: 10 } } },
+                    tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${isSupplier ? 'Rp ' : ''}${formatNumber(ctx.parsed.y)}${isSupplier ? '' : ' KG'}` } }
+                },
+                scales: {
+                    y: { ticks: { callback: v => (isSupplier ? 'Rp ' : '') + formatNumber(v) + (isSupplier ? '' : ' KG') } }
                 }
             }
         });
@@ -373,14 +412,22 @@ window.updatePurchaseInvoiceTrends = () => {
         `;
 
         const rows = Object.values(pivot);
+        const grandTotals = Array(periods.length).fill(0);
+        rows.forEach(r => r.periods.forEach((v, i) => grandTotals[i] += v));
+
         tbody.innerHTML = rows.length === 0
             ? `<tr><td colspan="${1 + periods.length}" class="text-center py-10 text-gray-400">No data available</td></tr>`
-            : rows.map(row => `
-                <tr>
+            : sortedRows.map(row => `
+                <tr class="hover:bg-gray-50">
                     <td class="px-4 py-2 border-r border-gray-200 font-semibold">${row.label}</td>
-                    ${row.periods.map(amt => `<td class="px-4 py-2 border-r border-gray-200 text-right font-mono">${formatNumber(amt)}</td>`).join('')}
+                    ${row.periods.map(v => `<td class="px-4 py-2 border-r border-gray-200 text-right font-mono">${isSupplier ? 'Rp ' : ''}${formatNumber(v)}${isSupplier ? '' : ' KG'}</td>`).join('')}
                 </tr>
-            `).join('');
+            `).join('') + `
+                <tr class="bg-gray-100 font-bold border-t-2 border-gray-300">
+                    <td class="px-4 py-2 border-r border-gray-200">Total</td>
+                    ${grandTotals.map(v => `<td class="px-4 py-2 border-r border-gray-200 text-right font-mono">${isSupplier ? 'Rp ' : ''}${formatNumber(v)}${isSupplier ? '' : ' KG'}</td>`).join('')}
+                </tr>
+            `;
     }
 };
 
@@ -434,19 +481,59 @@ window.updatePurchaseRFQTrends = () => {
     
     let periods = (period === 'Monthly') ? ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] : (period === 'Quarterly' ? ['Q1','Q2','Q3','Q4'] : [year.toString()]);
     
-    const rfqs = db.read('purchaseRFQs').filter(r => new Date(r.date).getFullYear() === year);
+    const rfqs = db.read('purchaseRFQs').filter(r => new Date(r.date || r.createdAt).getFullYear() === year);
+    const isSupplier = basedOn === 'Supplier';
     const chartData = Array(periods.length).fill(0);
     const pivot = {};
 
     rfqs.forEach(r => {
-        const d = new Date(r.date);
+        const d = new Date(r.date || r.createdAt);
         const pIdx = period === 'Monthly' ? d.getMonth() : (period === 'Quarterly' ? Math.floor(d.getMonth()/3) : 0);
-        chartData[pIdx] += (r.totalAmount || 0);
+        
+        const rfqQty = (r.items || []).reduce((s, it) => s + parseFloat(it.qty || 0), 0);
+        const rfqAmt = parseFloat(r.totalAmount || r.grandTotal || 0);
+        const val = isSupplier ? rfqAmt : rfqQty;
 
-        const supplier = db.findById('suppliers', r.supplierId);
-        const label = supplier ? supplier.name : 'Unknown';
-        if (!pivot[label]) pivot[label] = Array(periods.length).fill(0);
-        pivot[label][pIdx] += (r.totalAmount || 0);
+        chartData[pIdx] += val;
+
+        if (isSupplier) {
+            const supplier = db.read('suppliers')?.find(s => s.id === r.supplierId);
+            const label = supplier ? supplier.name : (r.supplierName || 'Unknown');
+            if (!pivot[label]) pivot[label] = Array(periods.length).fill(0);
+            pivot[label][pIdx] += val;
+        } else {
+            (r.items || []).forEach(it => {
+                const label = it.itemName || it.prodText || 'Unknown';
+                if (!pivot[label]) pivot[label] = Array(periods.length).fill(0);
+                pivot[label][pIdx] += parseFloat(it.qty || 0);
+            });
+        }
+    });
+
+    const chartColors = ['#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899', '#84cc16', '#14b8a6', '#6366f1'];
+    const datasets = [{
+        label: `Total ${isSupplier ? 'Value' : 'Qty'}`,
+        data: chartData,
+        borderColor: '#9ca3af',
+        borderDash: [5, 5],
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        pointRadius: 3,
+        tension: 0.3
+    }];
+
+    const sortedLabels = Object.keys(pivot).sort((a, b) => pivot[b].reduce((s, v) => s + v, 0) - pivot[a].reduce((s, v) => s + v, 0));
+    sortedLabels.slice(0, 10).forEach((label, i) => {
+        const color = chartColors[i % chartColors.length];
+        datasets.push({
+            label: label,
+            data: pivot[label],
+            borderColor: color,
+            backgroundColor: 'transparent',
+            borderWidth: 2,
+            pointRadius: 3,
+            tension: 0.3
+        });
     });
 
     const ctx = document.getElementById('rfqt_chart');
@@ -454,8 +541,19 @@ window.updatePurchaseRFQTrends = () => {
         if (window._rfqtChart) window._rfqtChart.destroy();
         window._rfqtChart = new Chart(ctx, {
             type: 'line',
-            data: { labels: periods, datasets: [{ label: 'Total RFQ Value', data: chartData, borderColor: '#f472b6', backgroundColor: 'rgba(244, 114, 182, 0.1)', fill: true, tension: 0.4 }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            data: { labels: periods, datasets: datasets },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                interaction: { mode: 'index', intersect: false },
+                plugins: { 
+                    legend: { display: true, position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, font: { size: 10 } } },
+                    tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${isSupplier ? 'Rp ' : ''}${formatNumber(ctx.parsed.y)}${isSupplier ? '' : ' KG'}` } }
+                },
+                scales: {
+                    y: { ticks: { callback: v => (isSupplier ? 'Rp ' : '') + formatNumber(v) + (isSupplier ? '' : ' KG') } }
+                }
+            }
         });
     }
 
@@ -463,7 +561,21 @@ window.updatePurchaseRFQTrends = () => {
     const tbody = document.getElementById('rfqt_tbody');
     if (thead && tbody) {
         thead.innerHTML = `<th class="px-4 py-2 border-r border-gray-200 font-medium">${basedOn}</th>` + periods.map(p => `<th class="px-4 py-2 border-r border-gray-200 text-right font-medium">${p}</th>`).join('');
-        tbody.innerHTML = Object.keys(pivot).map(label => `<tr><td class="px-4 py-2 border-r border-gray-200 font-semibold">${label}</td>${pivot[label].map(v => `<td class="px-4 py-2 border-r border-gray-200 text-right font-mono">${formatNumber(v)}</td>`).join('')}</tr>`).join('');
+        
+        const grandTotals = Array(periods.length).fill(0);
+        Object.keys(pivot).forEach(l => pivot[l].forEach((v, i) => grandTotals[i] += v));
+
+        tbody.innerHTML = Object.keys(pivot).map(label => `
+            <tr class="hover:bg-gray-50">
+                <td class="px-4 py-2 border-r border-gray-200 font-semibold">${label}</td>
+                ${pivot[label].map(v => `<td class="px-4 py-2 border-r border-gray-200 text-right font-mono">${isSupplier ? 'Rp ' : ''}${formatNumber(v)}${isSupplier ? '' : ' KG'}</td>`).join('')}
+            </tr>
+        `).join('') + `
+            <tr class="bg-gray-100 font-bold border-t-2 border-gray-300">
+                <td class="px-4 py-2 border-r border-gray-200">Total</td>
+                ${grandTotals.map(v => `<td class="px-4 py-2 border-r border-gray-200 text-right font-mono">${isSupplier ? 'Rp ' : ''}${formatNumber(v)}${isSupplier ? '' : ' KG'}</td>`).join('')}
+            </tr>
+        `;
     }
 };
 
@@ -517,19 +629,59 @@ window.updatePurchaseOrderTrends = () => {
     
     let periods = (period === 'Monthly') ? ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] : (period === 'Quarterly' ? ['Q1','Q2','Q3','Q4'] : [year.toString()]);
     
-    const pos = db.read('purchaseOrders').filter(p => new Date(p.date).getFullYear() === year);
+    const pos = db.read('purchaseOrders').filter(p => new Date(p.date || p.createdAt).getFullYear() === year);
+    const isSupplier = basedOn === 'Supplier';
     const chartData = Array(periods.length).fill(0);
     const pivot = {};
 
     pos.forEach(p => {
-        const d = new Date(p.date);
+        const d = new Date(p.date || p.createdAt);
         const pIdx = period === 'Monthly' ? d.getMonth() : (period === 'Quarterly' ? Math.floor(d.getMonth()/3) : 0);
-        chartData[pIdx] += (p.totalAmount || 0);
+        
+        const poQty = (p.items || []).reduce((s, it) => s + parseFloat(it.qty || 0), 0);
+        const poAmt = parseFloat(p.totalAmount || p.grandTotal || 0);
+        const val = isSupplier ? poAmt : poQty;
 
-        const supplier = db.findById('suppliers', p.supplierId);
-        const label = supplier ? supplier.name : 'Unknown';
-        if (!pivot[label]) pivot[label] = Array(periods.length).fill(0);
-        pivot[label][pIdx] += (p.totalAmount || 0);
+        chartData[pIdx] += val;
+
+        if (isSupplier) {
+            const supplier = db.read('suppliers')?.find(s => s.id === p.supplierId);
+            const label = supplier ? supplier.name : (p.supplierName || 'Unknown');
+            if (!pivot[label]) pivot[label] = Array(periods.length).fill(0);
+            pivot[label][pIdx] += val;
+        } else {
+            (p.items || []).forEach(it => {
+                const label = it.itemName || it.prodText || 'Unknown';
+                if (!pivot[label]) pivot[label] = Array(periods.length).fill(0);
+                pivot[label][pIdx] += parseFloat(it.qty || 0);
+            });
+        }
+    });
+
+    const chartColors = ['#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899', '#84cc16', '#14b8a6', '#6366f1'];
+    const datasets = [{
+        label: `Total ${isSupplier ? 'Value' : 'Qty'}`,
+        data: chartData,
+        borderColor: '#9ca3af',
+        borderDash: [5, 5],
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        pointRadius: 3,
+        tension: 0.3
+    }];
+
+    const sortedLabels = Object.keys(pivot).sort((a, b) => pivot[b].reduce((s, v) => s + v, 0) - pivot[a].reduce((s, v) => s + v, 0));
+    sortedLabels.slice(0, 10).forEach((label, i) => {
+        const color = chartColors[i % chartColors.length];
+        datasets.push({
+            label: label,
+            data: pivot[label],
+            borderColor: color,
+            backgroundColor: 'transparent',
+            borderWidth: 2,
+            pointRadius: 3,
+            tension: 0.3
+        });
     });
 
     const ctx = document.getElementById('pot_chart');
@@ -537,8 +689,19 @@ window.updatePurchaseOrderTrends = () => {
         if (window._potChart) window._potChart.destroy();
         window._potChart = new Chart(ctx, {
             type: 'line',
-            data: { labels: periods, datasets: [{ label: 'Total PO Value', data: chartData, borderColor: '#6366f1', backgroundColor: 'rgba(99, 102, 241, 0.1)', fill: true, tension: 0.4 }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+            data: { labels: periods, datasets: datasets },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                interaction: { mode: 'index', intersect: false },
+                plugins: { 
+                    legend: { display: true, position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, font: { size: 10 } } },
+                    tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${isSupplier ? 'Rp ' : ''}${formatNumber(ctx.parsed.y)}${isSupplier ? '' : ' KG'}` } }
+                },
+                scales: {
+                    y: { ticks: { callback: v => (isSupplier ? 'Rp ' : '') + formatNumber(v) + (isSupplier ? '' : ' KG') } }
+                }
+            }
         });
     }
 
@@ -546,6 +709,20 @@ window.updatePurchaseOrderTrends = () => {
     const tbody = document.getElementById('pot_tbody');
     if (thead && tbody) {
         thead.innerHTML = `<th class="px-4 py-2 border-r border-gray-200 font-medium">${basedOn}</th>` + periods.map(p => `<th class="px-4 py-2 border-r border-gray-200 text-right font-medium">${p}</th>`).join('');
-        tbody.innerHTML = Object.keys(pivot).map(label => `<tr><td class="px-4 py-2 border-r border-gray-200 font-semibold">${label}</td>${pivot[label].map(v => `<td class="px-4 py-2 border-r border-gray-200 text-right font-mono">${formatNumber(v)}</td>`).join('')}</tr>`).join('');
+        
+        const grandTotals = Array(periods.length).fill(0);
+        Object.keys(pivot).forEach(l => pivot[l].forEach((v, i) => grandTotals[i] += v));
+
+        tbody.innerHTML = Object.keys(pivot).map(label => `
+            <tr class="hover:bg-gray-50">
+                <td class="px-4 py-2 border-r border-gray-200 font-semibold">${label}</td>
+                ${pivot[label].map(v => `<td class="px-4 py-2 border-r border-gray-200 text-right font-mono">${isSupplier ? 'Rp ' : ''}${formatNumber(v)}${isSupplier ? '' : ' KG'}</td>`).join('')}
+            </tr>
+        `).join('') + `
+            <tr class="bg-gray-100 font-bold border-t-2 border-gray-300">
+                <td class="px-4 py-2 border-r border-gray-200">Total</td>
+                ${grandTotals.map(v => `<td class="px-4 py-2 border-r border-gray-200 text-right font-mono">${isSupplier ? 'Rp ' : ''}${formatNumber(v)}${isSupplier ? '' : ' KG'}</td>`).join('')}
+            </tr>
+        `;
     }
 };

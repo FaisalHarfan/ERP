@@ -378,7 +378,11 @@ window.openMOModal = (stagePreset = '') => {
         `<option value="${s.key}" ${stagePreset === s.key ? 'selected' : ''}>${s.label}</option>`).join('');
 
     const boms = db.read('bomHeaders') || [];
-    const bomOpts = boms.map(b => `<option value="${b.id}">${b.name}</option>`).join('');
+    const bomOpts = boms.map(b => {
+        const prod = db.findById('inventoryItems', b.productId);
+        const name = b.productName || b.name || (prod ? prod.itemName : 'Resep Tanpa Nama');
+        return `<option value="${b.id}">${name}</option>`;
+    }).join('');
     const machines = db.read('machines') || [];
     const todayStr = new Date().toISOString().split('T')[0];
 
@@ -1632,24 +1636,29 @@ window.filterMOProductList = (rowId, val) => {
     if (!container) return;
     const search = val.toLowerCase();
     const allItems = db.read('inventoryItems') || [];
-    const products = allItems.filter(i => i.category === 'FINISHED_GOODS' && i.status !== 'INACTIVE');
-
-    const filtered = products.filter(p =>
-        !search ||
-        (p.itemName || '').toLowerCase().includes(search) ||
-        (p.itemCode || '').toLowerCase().includes(search)
-    );
-
+    
+    // Get allowed categories based on current stage
     const stage = document.getElementById('mo_stage')?.value;
+    const allowedCats = STAGE_STOCK_CATEGORY[stage] || ['FINISHED_GOODS'];
+    
+    const products = allItems.filter(i => allowedCats.includes(i.category) && i.status !== 'INACTIVE');
+
+    const filtered = products.filter(p => {
+        const name = (p.itemName || p.item_name || '').toLowerCase();
+        const code = (p.itemCode || p.item_code || '').toLowerCase();
+        return !search || name.includes(search) || code.includes(search);
+    });
+
     const stageInfo = PROD_STAGES.find(s => s.key === stage) || { key: stage, inputFrom: 'RAW_MATERIAL' };
 
     container.innerHTML = filtered.map(p => {
         let displayStock = db.getInventoryStock(p.id);
-        let stockLabel = 'Stock FG';
-        let stockColor = 'text-blue-500';
+        const isWIP = ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'].includes(p.category);
+        let stockLabel = isWIP ? 'Stok WIP' : 'Stok FG';
+        let stockColor = isWIP ? 'text-orange-500' : 'text-blue-500';
         
-        let displayItemName = p.itemName;
-        let displayItemCode = p.itemCode || '-';
+        let displayItemName = p.itemName || p.item_name || 'Tanpa Nama';
+        let displayItemCode = p.itemCode || p.item_code || '-';
         
         if (stageInfo.inputFrom !== 'RAW_MATERIAL') {
             const inputStageLabel = PROD_STAGES.find(s => s.key === stageInfo.inputFrom)?.label || stageInfo.inputFrom;
@@ -1657,21 +1666,20 @@ window.filterMOProductList = (rowId, val) => {
             if (inputItemId) {
                 const wipItem = db.findById('inventoryItems', inputItemId);
                 if (wipItem) {
-                    displayItemName = wipItem.itemName;
-                    displayItemCode = wipItem.itemCode || '-';
+                    // Keep original displayItemName (the product being produced)
+                    // But we use the stock and label from the input WIP item
+                    displayStock = db.getInventoryStock(inputItemId);
+                    stockLabel = `Stok WIP (${inputStageLabel})`;
                 }
-                displayStock = db.getInventoryStock(inputItemId);
-                stockLabel = `Stok WIP (${inputStageLabel})`;
             } else {
                 displayStock = 0;
                 stockLabel = `Stok WIP (${inputStageLabel})`;
-                displayItemName = `${p.itemName} (${inputStageLabel})`;
                 displayItemCode = 'BELUM ADA';
             }
             stockColor = displayStock > 0 ? 'text-emerald-600' : 'text-rose-500';
         }
         
-        const name = (p.itemName || '').replace(/'/g, "\\'");
+        const name = (p.itemName || p.item_name || '').replace(/'/g, "\\'");
         return `
             <div onclick="selectMOProduct('${rowId}', '${p.id}', '${name}')"
                 class="px-4 py-3 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors m-0.5 border border-transparent hover:border-slate-200">
@@ -1806,12 +1814,13 @@ window.loadBOMMaterialsToMO = () => {
     // Auto fill name
     const bom = db.findById('bomHeaders', bomId);
     if (bom) {
-        document.getElementById('mo_product').value = bom.name;
+        const prod = db.findById('inventoryItems', bom.productId);
+        document.getElementById('mo_product').value = bom.productName || bom.name || (prod ? prod.itemName : 'Resep Tanpa Nama');
     }
 
     // Auto fill materials
     const allMaterials = db.read('bomMaterials') || [];
-    const materials = allMaterials.filter(m => m.bomHeaderId === bomId);
+    const materials = allMaterials.filter(m => m.bomId === bomId);
 
     const list = document.getElementById('mo_rm_list');
     if (list) {
@@ -1891,7 +1900,7 @@ window.deleteMO = async (id) => {
     }
 };
 
-// â”€â”€â”€ LAPORAN PRODUKSI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
 window.renderProductionReports = () => {
     document.getElementById('pageTitle').innerText = 'Laporan Tren Output Produksi';
     const mainContent = document.getElementById('main-content');
@@ -2159,7 +2168,7 @@ window.exportProductionReportsCsv = () => {
     a.download = `Laporan_Tren_Produksi_${document.getElementById('pr_year')?.value || ''}.csv`;
     a.click();
 };
-// â”€â”€â”€ PRODUKSI HARIAN (PROCESS-DRIVEN) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
 window.renderDailyProduction = () => {
     const canEdit = getModulePermission('produksi').edit;
     document.getElementById('pageTitle').innerText = 'Produksi Harian (Daily Logs)';
@@ -2452,7 +2461,7 @@ window.deleteDailyLog = (id) => {
     renderDailyProduction();
 };
 
-// â”€â”€â”€ FINALISASI & REPACKING (WIP to FG) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
 window.renderProductionFinalization = () => {
     const canEdit = getModulePermission('produksi').edit;
     document.getElementById('pageTitle').innerText = 'Finalisasi & Repacking (Finish Good)';
@@ -2492,7 +2501,7 @@ window.renderProductionFinalization = () => {
                 <table class="w-full text-left border-collapse">
                     <thead><tr class="bg-slate-50 border-b border-slate-100">
                         <th class="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tanggal</th>
-                        <th class="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Source (WIP)</th>
+                        <th class="py-4 px-4 text-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Source (WIP)</th>
                         <th class="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Total Berat (Kg)</th>
                         <th class="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center"></th>
                         <th class="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Target (SKU FG)</th>
@@ -2699,7 +2708,7 @@ window.deleteRepackingLog = (id) => {
     db.delete('repackingLogs', id);
     renderProductionFinalization();
 };
-// â”€â”€â”€ BILL OF MATERIAL (BOM) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
 window.renderBOMManagement = () => {
     document.getElementById('pageTitle').innerText = 'Bill Of Material ( BOM )';
     const mc = document.getElementById('main-content');
@@ -2758,9 +2767,9 @@ window.renderBOMRows = (boms) => {
     if (boms.length === 0) return '';
     
     return boms.map(bom => {
-        const targetProduct = db.findById('inventoryItems', bom.targetProductId);
-        const materials = (db.read('bomMaterials') || []).filter(m => m.bomHeaderId === bom.id);
-        const initials = bom.name ? bom.name.substring(0,2).toUpperCase() : 'BM';
+        const targetProduct = db.findById('inventoryItems', bom.productId);
+        const materials = (db.read('bomMaterials') || []).filter(m => m.bomId === bom.id);
+        const initials = bom.productName ? bom.productName.substring(0,2).toUpperCase() : 'BM';
         
         return `
         <tr class="hover:bg-slate-50/80 transition-colors group">
@@ -2770,7 +2779,7 @@ window.renderBOMRows = (boms) => {
                         ${initials}
                     </div>
                     <div>
-                        <div class="text-sm font-bold text-slate-800">${bom.name}</div>
+                        <div class="text-sm font-bold text-slate-800">${bom.productName}</div>
                     </div>
                 </div>
             </td>
@@ -2795,10 +2804,10 @@ window.filterBOMList = () => {
     const boms = db.read('bomHeaders') || [];
     
     const filtered = boms.filter(b => {
-        const targetProduct = db.findById('inventoryItems', b.targetProductId);
+        const targetProduct = db.findById('inventoryItems', b.productId);
         const productName = targetProduct ? targetProduct.itemName.toLowerCase() : '';
         return !search || 
-            b.name.toLowerCase().includes(search) || 
+            (b.productName || b.name).toLowerCase().includes(search) || 
             productName.includes(search);
     });
 
@@ -2857,6 +2866,46 @@ window.selectMaterialOption = (id, name, unit) => {
     filterMaterialDropdown();
 };
 
+window.toggleBOMTargetDropdown = () => {
+    const menu = document.getElementById('bom_target_dropdown_menu');
+    menu.classList.toggle('hidden');
+    if (!menu.classList.contains('hidden')) {
+        document.getElementById('bom_target_dropdown_search').focus();
+    }
+};
+
+window.filterBOMTargetDropdown = () => {
+    const query = document.getElementById('bom_target_dropdown_search').value.toLowerCase();
+    const options = document.querySelectorAll('.bom-target-option');
+    options.forEach(opt => {
+        const name = opt.dataset.name || '';
+        const code = opt.dataset.code || '';
+        if (name.includes(query) || code.includes(query)) {
+            opt.classList.remove('hidden');
+            opt.classList.add('flex');
+        } else {
+            opt.classList.add('hidden');
+            opt.classList.remove('flex');
+        }
+    });
+};
+
+window.selectBOMTargetOption = (id, name) => {
+    const input = document.getElementById('bom_product_id');
+    input.value = id;
+    
+    const btnText = document.getElementById('bom_target_dropdown_text');
+    btnText.textContent = name;
+    
+    const btn = document.getElementById('bom_target_dropdown_btn');
+    btn.classList.remove('text-slate-400');
+    btn.classList.add('text-slate-800');
+    
+    document.getElementById('bom_target_dropdown_menu').classList.add('hidden');
+    document.getElementById('bom_target_dropdown_search').value = '';
+    filterBOMTargetDropdown();
+};
+
 window.openBOMModal = (id = null) => {
     if (window.pushCurrentToHistory) window.pushCurrentToHistory();
     const bom = id ? db.findById('bomHeaders', id) : null;
@@ -2875,22 +2924,60 @@ window.openBOMModal = (id = null) => {
     const rawMaterials = invItems.filter(i => (i.category === 'RAW_MATERIAL' || i.category === 'Bahan Baku') && i.status !== 'INACTIVE');
 
     // Materials data if edit
-    const currentMaterials = id ? (db.read('bomMaterials') || []).filter(m => m.bomHeaderId === id) : [];
+    const currentMaterials = id ? (db.read('bomMaterials') || []).filter(m => m.bomId === id) : [];
 
     const body = `
     <div class="space-y-6 px-1 py-2">
         <!-- Target Product Section -->
-        <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative">
             <label class="block text-[11px] font-black text-slate-400 uppercase mb-3 ml-1">PILIH PRODUK TARGET (WIP OVEN BASAH) <span class="text-red-500">*</span></label>
-            <select id="bom_name_id" onchange="document.getElementById('bom_product_id').value = this.value" 
-                class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold bg-white focus:border-indigo-400 outline-none transition-all shadow-sm">
-                <option value="">-- Pilih Produk Target --</option>
-                ${mixingProducts.map(p => `
-                <option value="${p.id}" data-name="${p.itemName}" ${id && db.findById('bomHeaders', id)?.targetProductId === p.id ? 'selected' : ''}>
-                    ${p.itemName} (${p.itemCode})
-                </option>`).join('')}
-            </select>
-            <input type="hidden" id="bom_product_id" value="${id ? db.findById('bomHeaders', id)?.targetProductId : ''}">
+            
+            <div class="relative w-full">
+                <button type="button" onclick="toggleBOMTargetDropdown()" id="bom_target_dropdown_btn"
+                    class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold bg-white text-left flex justify-between items-center transition-all hover:border-indigo-400 shadow-sm ${id ? 'text-slate-800' : 'text-slate-400'}">
+                    <span id="bom_target_dropdown_text">${id ? (db.findById('inventoryItems', db.findById('bomHeaders', id)?.productId)?.itemName || '-- Pilih Produk Target --') : '-- Pilih Produk Target --'}</span>
+                    <i class="fas fa-chevron-down text-[10px]"></i>
+                </button>
+                
+                <input type="hidden" id="bom_product_id" value="${id ? db.findById('bomHeaders', id)?.productId : ''}">
+                
+                <div id="bom_target_dropdown_menu" class="hidden absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden animate-slide-up">
+                    <div class="p-3 border-b border-slate-100 bg-slate-50/30">
+                        <div class="relative">
+                            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                            <input type="text" id="bom_target_dropdown_search" onkeyup="filterBOMTargetDropdown()" placeholder="Ketik kode atau nama..." 
+                                class="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3 py-2.5 text-sm font-medium text-slate-700 outline-none focus:border-indigo-400 transition-all shadow-sm">
+                        </div>
+                    </div>
+                    
+                    <div class="max-h-64 overflow-y-auto custom-scrollbar p-2" id="bom_target_dropdown_list">
+                        ${mixingProducts.length > 0 ? mixingProducts.map(p => `
+                            <div class="bom-target-option flex justify-between items-center p-3 hover:bg-indigo-50/50 rounded-xl cursor-pointer transition-all group" 
+                                onclick="selectBOMTargetOption('${p.id}', '${p.itemName.replace(/'/g, "\\'")}')"
+                                data-name="${(p.itemName || '').toLowerCase()}" data-code="${(p.itemCode || '').toLowerCase()}">
+                                <div class="flex flex-col">
+                                    <div class="text-sm font-bold text-slate-700 group-hover:text-indigo-600">${p.itemName}</div>
+                                    <div class="text-[10px] font-black text-slate-300 uppercase tracking-widest group-hover:text-indigo-300">${p.itemCode}</div>
+                                </div>
+                            </div>
+                        `).join('') : `
+                            <div class="p-6 flex flex-col items-center justify-center text-center">
+                                <div class="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center mb-3">
+                                    <i class="fas fa-exclamation text-slate-300"></i>
+                                </div>
+                                <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">PILIH KATEGORI TERLEBIH DAHULU</div>
+                            </div>
+                        `}
+                    </div>
+                    
+                    <div class="p-2 border-t border-slate-100 bg-slate-50/50">
+                        <button type="button" onclick="window._isModalOpen=false; navigateTo('inventory-master')" class="w-full flex items-center gap-3 p-2.5 hover:bg-white hover:shadow-sm rounded-xl text-[11px] font-black text-slate-500 hover:text-indigo-600 transition-all uppercase tracking-wider">
+                            <div class="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center shadow-sm text-slate-400 group-hover:text-indigo-500"><i class="fas fa-plus"></i></div>
+                            TAMBAH PRODUK BARU
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Item Bahan Baku (Expanded for 'full' width) -->
@@ -3058,13 +3145,12 @@ function appendMaterialToTable(location, itemId, itemName, qty, unit) {
     tbody.appendChild(tr);
 }
 
-window.saveBOM = (id = '') => {
-    const nameId = document.getElementById('bom_name_id').value;
-    const nameOpt = document.getElementById('bom_name_id').selectedOptions[0];
-    const name = nameOpt ? nameOpt.getAttribute('data-name') : '';
-    const targetProductId = nameId;
+window.saveBOM = async (id = '') => {
+    const productId = document.getElementById('bom_product_id').value;
+    let name = document.getElementById('bom_target_dropdown_text').textContent;
+    if (name === '-- Pilih Produk Target --') name = '';
 
-    if (!name || !targetProductId) {
+    if (!name || !productId) {
         showToast('Mohon pilih Produk Mixing target resep', 'error');
         return;
     }
@@ -3086,41 +3172,59 @@ window.saveBOM = (id = '') => {
         return;
     }
 
-    const bomData = { name, targetProductId, baseQty: 100, unit: '%', updatedAt: new Date().toISOString() };
+    const bomData = { productName: name, productId, baseQty: 100, unit: '%', updatedAt: new Date().toISOString() };
 
     let headerId = id;
     if (id) {
-        db.update('bomHeaders', id, bomData);
+        await db.update('bomHeaders', id, bomData);
     } else {
-        const newBom = db.insert('bomHeaders', bomData);
-        headerId = newBom.id;
+        const newBom = await db.insert('bomHeaders', bomData);
+        if (newBom) {
+            headerId = newBom.id;
+        } else {
+            showToast('Gagal menyimpan resep ke database', 'error');
+            return;
+        }
     }
 
-    // Replace materials
+    // Replace materials in PostgreSQL
     const allMaterials = db.read('bomMaterials') || [];
-    const filtered = allMaterials.filter(m => m.bomHeaderId !== headerId);
-    materials.forEach(m => {
-        filtered.push({
+    const oldMaterials = allMaterials.filter(m => m.bomId === headerId);
+    
+    for (const old of oldMaterials) {
+        await db.delete('bomMaterials', old.id);
+    }
+
+    for (const m of materials) {
+        await db.insert('bomMaterials', {
             id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-            bomHeaderId: headerId,
+            bomId: headerId,
             itemId: m.itemId,
             qty: m.qty,
             unit: m.unit,
             location: m.location,
             createdAt: new Date().toISOString()
         });
-    });
-    db.save('bomMaterials', filtered);
+    }
+
+    // Refresh memory cache from PostgreSQL
+    await db.sync('bomMaterials');
 
     showToast('Resep berhasil disimpan!', 'success');
     renderBOMManagement();
 };
 
-window.deleteBOM = (id) => {
+window.deleteBOM = async (id) => {
     if (!confirm('Hapus resep ini?')) return;
-    db.delete('bomHeaders', id);
+    await db.delete('bomHeaders', id);
+    
     const materials = db.read('bomMaterials') || [];
-    db.save('bomMaterials', materials.filter(m => m.bomHeaderId !== id));
+    const oldMaterials = materials.filter(m => m.bomId === id);
+    
+    for (const old of oldMaterials) {
+        await db.delete('bomMaterials', old.id);
+    }
+    
     showToast('Resep berhasil dihapus', 'success');
     renderBOMManagement();
 };
@@ -3585,6 +3689,7 @@ window.toggleMachineStatus = (id) => {
 
 // --- MASTER STOK PRODUKSI (Mirip Inventory) ---
 window.renderProductionStockMaster = () => {
+    window._lastItemContext = 'production';
     const canEdit = getModulePermission('produksi').edit;
     renderBreadcrumb(['Produksi', 'Master', 'Stock Master']);
     document.getElementById('pageTitle').innerText = 'Stok Produksi';
@@ -3596,8 +3701,8 @@ window.renderProductionStockMaster = () => {
 
     let items = (db.read('inventoryItems') || []).filter(it => it.status === 'ACTIVE');
     
-    // Default categories for production if no filter: Raw, WIP, FG
-    const prodCats = ['RAW_MATERIAL', 'OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK', 'FINISHED_GOODS', 'BULK_STOCK'];
+    // Default categories for production: Only WIP (Oven Basah & Oven Kering)
+    const prodCats = ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'];
     
     // Apply Filters
     if (f.cat) {
@@ -3613,11 +3718,8 @@ window.renderProductionStockMaster = () => {
     }
 
     const catLabels = {
-        RAW_MATERIAL: 'Bahan Baku',
         OVEN_BASAH_STOCK: 'Oven Basah',
-        OVEN_KERING_STOCK: 'Oven Kering',
-        BULK_STOCK: 'Stok Curah',
-        FINISHED_GOODS: 'Gudang Jadi'
+        OVEN_KERING_STOCK: 'Oven Kering'
     };
 
     const catOpts = Object.entries(catLabels)
@@ -3755,28 +3857,30 @@ window.renderProductionStockRows = (items) => {
                     <span class="text-[10px] font-bold ${isActive ? 'text-green-600' : 'text-slate-400'} uppercase tracking-widest">${isActive ? 'Active' : 'Non-Active'}</span>
                 </div>
             </td>
-            <td class="py-4 px-5 text-right">
+            <td class="py-4 px-5 text-right overflow-visible">
                 ${canEdit ? `
-                <div class="flex justify-end">
-                    <div class="relative" onmouseenter="this.querySelector('.dropdown-menu').classList.remove('hidden')" onmouseleave="this.querySelector('.dropdown-menu').classList.add('hidden')">
-                        <button class="flex items-center gap-2 px-3 py-1.5 rounded-[10px] border border-slate-200 text-slate-700 bg-[#f8fafc] hover:bg-slate-100 transition-colors text-[12px] font-bold shadow-sm whitespace-nowrap">
+                <div class="flex justify-end overflow-visible">
+                    <div class="relative inventory-dropdown-container">
+                        <button onclick="window.toggleRowDropdown(event, '${it.id}')" 
+                            class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition-colors text-[11px] font-bold shadow-sm whitespace-nowrap">
                             Pilih Aksi...
-                            <i class="fas fa-chevron-down text-[10px] text-slate-400"></i>
+                            <i class="fas fa-chevron-down text-[9px] text-slate-400"></i>
                         </button>
-                        <div class="dropdown-menu hidden absolute right-0 top-full mt-1 w-40 bg-white rounded-xl shadow-[0_4px_20px_-4px_rgba(0,0,0,0.1)] border border-slate-100 z-[99] overflow-hidden text-left">
-                            <div class="py-1 flex flex-col">
-                                <button onclick="renderInventoryItemForm('${it.id}')" class="text-left px-4 py-2 text-xs font-bold text-slate-600 hover:text-blue-600 hover:bg-blue-50/50 flex items-center gap-2 transition-colors">
-                                    <i class="fas fa-edit w-4"></i> Edit Item
+                        
+                        <div id="dropdown-${it.id}" class="inventory-action-menu hidden absolute right-0 top-full mt-1 w-48 bg-white rounded-xl shadow-[0_10px_25px_-5px_rgba(0,0,0,0.1),0_8px_10px_-6px_rgba(0,0,0,0.1)] border border-slate-100 z-[2000] overflow-hidden text-left animate-in fade-in zoom-in-95 duration-100">
+                            <div class="py-1.5 flex flex-col">
+                                <button onclick="event.stopPropagation(); window.renderInventoryItemForm('${it.id}')" class="text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50/50 flex items-center gap-3 transition-colors">
+                                    <i class="fas fa-edit w-4 text-slate-400"></i> Edit Item
                                 </button>
-                                <button onclick="openStockAdjustmentModal('${it.id}')" class="text-left px-4 py-2 text-xs font-bold text-slate-600 hover:text-blue-600 hover:bg-blue-50/50 flex items-center gap-2 transition-colors">
-                                    <i class="fas fa-sync-alt w-4"></i> Penyesuaian Stok
+                                <button onclick="event.stopPropagation(); window.openStockAdjustmentModal('${it.id}')" class="text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50/50 flex items-center gap-3 transition-colors">
+                                    <i class="fas fa-sync-alt w-4 text-slate-400"></i> Penyesuaian Stok
                                 </button>
-                                <button onclick="toggleInventoryItemStatus('${it.id}')" class="text-left px-4 py-2 text-xs font-bold text-slate-600 hover:text-blue-600 hover:bg-blue-50/50 flex items-center gap-2 transition-colors">
-                                    <i class="fas fa-power-off w-4"></i> ${isActive ? 'Non-Aktifkan' : 'Aktifkan'}
+                                <button onclick="event.stopPropagation(); window.toggleInventoryItemStatus('${it.id}')" class="text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50/50 flex items-center gap-3 transition-colors">
+                                    <i class="fas fa-power-off w-4 text-slate-400"></i> ${isActive ? 'Non-Aktifkan' : 'Aktifkan'}
                                 </button>
-                                <div class="border-t border-slate-50 my-1"></div>
-                                <button onclick="deleteInventoryItem('${it.id}')" class="text-left px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-50 flex items-center gap-2 transition-colors">
-                                    <i class="fas fa-trash-alt w-4"></i> Hapus Item
+                                <div class="h-px bg-slate-50 my-1 mx-2"></div>
+                                <button onclick="event.stopPropagation(); window.deleteInventoryItem('${it.id}')" class="text-left px-4 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50/50 flex items-center gap-3 transition-colors">
+                                    <i class="fas fa-trash w-4 text-slate-400"></i> Hapus Item
                                 </button>
                             </div>
                         </div>

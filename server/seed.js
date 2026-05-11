@@ -96,6 +96,50 @@ async function seedDefaults() {
         console.log('  ✅ Bank Accounts seeded');
     }
 
+    // 6. Migration: Sync existing item codes with new prefix rules
+    console.log('🔄 Checking for item code prefix updates...');
+    const items = await models.InventoryItem.findAll();
+    const prefixes = {
+        RAW_MATERIAL: 'RM',
+        FINISHED_GOODS: 'FG',
+        SPAREPART: 'SP',
+        PACKAGING: 'PK',
+        SERVICE: 'SV',
+        GAS: 'GAS',
+        ASSET: 'AKT',
+        SUPPLIES: 'SUP',
+        OVEN_BASAH_STOCK: 'OB',
+        OVEN_KERING_STOCK: 'OK',
+        BULK_STOCK: 'BK',
+        WIP: 'WIP'
+    };
+
+    let updateCount = 0;
+    for (const it of items) {
+        if (!it.item_code || !it.category) continue;
+        const correctPrefix = prefixes[it.category] || 'ITM';
+        const currentParts = it.item_code.split('-');
+        const currentPrefix = currentParts[0];
+        
+        if (currentPrefix !== correctPrefix) {
+            const seq = currentParts[1] || '0001';
+            const newCode = `${correctPrefix}-${seq}`;
+            
+            // Check if new code already exists to avoid unique constraint violation
+            const conflict = await models.InventoryItem.findOne({ where: { item_code: newCode } });
+            if (!conflict) {
+                await it.update({ item_code: newCode });
+                // Sync related stock transactions
+                await models.StockTransaction.update(
+                    { item_code: newCode },
+                    { where: { item_id: it.id } }
+                );
+                updateCount++;
+            }
+        }
+    }
+    if (updateCount > 0) console.log(`  ✅ Migrated ${updateCount} item codes to new prefixes.`);
+
     console.log('🌱 Seeding complete!');
 }
 

@@ -3,6 +3,12 @@
 // â”€â”€â”€ HELPERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const CATEGORY_LABELS = {
     RAW_MATERIAL: 'Bahan Baku',
+    PACKAGING: 'Packaging',
+    SUPPLIES: 'Perlengkapan',
+    SERVICE: 'Service',
+    SPAREPART: 'Sparepart',
+    ASSET: 'Aktiva ( tetap )',
+    GAS: 'Gas',
     OVEN_BASAH_STOCK: 'Oven basah',
     OVEN_KERING_STOCK: 'Oven Kering',
     BULK_STOCK: 'Stok Curah (KG)',
@@ -10,6 +16,12 @@ const CATEGORY_LABELS = {
 };
 const CATEGORY_COLORS = {
     RAW_MATERIAL: 'bg-yellow-100 text-yellow-800',
+    PACKAGING: 'bg-purple-100 text-purple-800',
+    SUPPLIES: 'bg-blue-100 text-blue-800',
+    SERVICE: 'bg-indigo-100 text-indigo-800',
+    SPAREPART: 'bg-orange-100 text-orange-800',
+    ASSET: 'bg-teal-100 text-teal-800',
+    GAS: 'bg-rose-100 text-rose-800',
     OVEN_BASAH_STOCK: 'bg-orange-100 text-orange-800',
     OVEN_KERING_STOCK: 'bg-yellow-100 text-yellow-800',
     BULK_STOCK: 'bg-indigo-100 text-indigo-800',
@@ -17,7 +29,10 @@ const CATEGORY_COLORS = {
 };
 const REF_LABELS = { PO: 'Purchase Receipt', SO: 'Sales Delivery', PRODUCTION_IN: 'Hasil Produksi', PRODUCTION_OUT: 'Konsumsi Produksi', SHRINKAGE: 'Penyusutan/NG', MANUAL: 'Manual' };
 
-function invFmt(n) { return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(n || 0); }
+function invFmt(n) { 
+    const val = parseFloat(n);
+    return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(isNaN(val) ? 0 : val); 
+}
 function invDate(d) { return d ? new Date(d).toLocaleDateString('id-ID') : '-'; }
 
 // Helper to refresh correctly based on current view
@@ -30,6 +45,71 @@ window.refreshStockMasterView = () => {
         renderInventoryMaster();
     }
 };
+
+// --- Searchable Dropdown Helpers ---
+window.toggleSearchableSelect = (id) => {
+    const dropdown = document.getElementById(id + '_dropdown');
+    if (!dropdown) return;
+    document.querySelectorAll('.searchable-dropdown').forEach(d => {
+        if (d.id !== id + '_dropdown') d.classList.add('hidden');
+    });
+    dropdown.classList.toggle('hidden');
+    if (!dropdown.classList.contains('hidden')) {
+        const input = document.getElementById(id + '_search');
+        if (input) { input.value = ''; input.focus(); window.filterSearchableOptions(id); }
+    }
+};
+window.filterSearchableOptions = (id) => {
+    const q = document.getElementById(id + '_search').value.toLowerCase();
+    const options = document.querySelectorAll(`#${id}_options > div`);
+    options.forEach(opt => {
+        const text = opt.innerText.toLowerCase();
+        opt.classList.toggle('hidden', !text.includes(q));
+    });
+};
+window.selectSearchableOption = (id, value, label) => {
+    const hiddenInput = document.getElementById(id);
+    const displaySpan = document.getElementById(id + '_display');
+    if (hiddenInput) {
+        hiddenInput.value = value;
+        // Explicitly trigger update for filters
+        if (id === 'filter_item_category') {
+            if (window.updateInventoryFilters) window.updateInventoryFilters();
+        } else {
+            // Trigger standard change for other inputs (like in forms)
+            hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
+            if (typeof hiddenInput.onchange === 'function') hiddenInput.onchange();
+        }
+    }
+    if (displaySpan) {
+        displaySpan.innerText = label;
+        displaySpan.classList.remove('text-slate-400');
+    }
+    window.toggleSearchableSelect(id);
+};
+window.toggleRowDropdown = (e, id) => {
+    e.stopPropagation();
+    const dropdown = document.getElementById(`dropdown-${id}`);
+    const isHidden = dropdown.classList.contains('hidden');
+    
+    // Close all other dropdowns first
+    document.querySelectorAll('.inventory-action-menu').forEach(d => d.classList.add('hidden'));
+    
+    if (isHidden) {
+        dropdown.classList.remove('hidden');
+    }
+};
+
+document.addEventListener('click', (e) => {
+    // Close searchable dropdowns
+    if (!e.target.closest('.searchable-select-container')) {
+        document.querySelectorAll('.searchable-dropdown').forEach(d => d.classList.add('hidden'));
+    }
+    // Close row action dropdowns
+    if (!e.target.closest('.inventory-dropdown-container')) {
+        document.querySelectorAll('.inventory-action-menu').forEach(d => d.classList.add('hidden'));
+    }
+});
 
 window.renderInventoryDashboard = () => {
     document.getElementById('pageTitle').innerText = 'Dashboard Logistik';
@@ -300,8 +380,14 @@ window.renderInventoryMaster = async () => {
             items = items.filter(it => it.category === f.category);
         }
         if (f.name) {
-            const q = f.name.toLowerCase();
-            items = items.filter(it => it.itemName.toLowerCase().includes(q) || it.itemCode.toLowerCase().includes(q));
+            const q = f.name.toLowerCase().trim();
+            const searchWords = q.split(/\s+/).filter(w => w.length > 0);
+            
+            items = items.filter(it => {
+                const targetText = `${it.itemName} ${it.itemCode}`.toLowerCase();
+                // Match if ALL words in the query are present in the item name or code
+                return searchWords.every(word => targetText.includes(word));
+            });
         }
 
         // Sort items: Gudang Jadi first, then others by logical order, then alphabetical
@@ -319,9 +405,11 @@ window.renderInventoryMaster = async () => {
             return (a.itemName || '').localeCompare(b.itemName || '');
         });
 
-        const catOpts = Object.entries(CATEGORY_LABELS)
-            .map(([v, l]) => `<option value="${v}" ${f.category === v ? 'selected' : ''}>${l}</option>`)
-            .join('');
+        const isProdView = document.getElementById('pageTitle')?.innerText === 'Stok Produksi';
+        const filteredCategories = Object.entries(CATEGORY_LABELS)
+            .filter(([v]) => isProdView ? ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'].includes(v) : !['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'].includes(v));
+
+        const selectedCatLabel = f.category ? (CATEGORY_LABELS[f.category] || f.category) : 'All Categories';
 
     mc.innerHTML = `
     <div class="space-y-4 animate-in fade-in duration-500">
@@ -331,19 +419,43 @@ window.renderInventoryMaster = async () => {
                 <!-- Search Input -->
                 <div class="flex-1 min-w-[250px] relative group">
                     <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors"></i>
-                    <input type="text" id="filter_item_name" onkeyup="updateInventoryFilters()" value="${f.name}" placeholder="Search Code or Item Name..." 
+                    <input type="text" id="filter_item_name" oninput="updateInventoryFilters()" value="${f.name}" placeholder="Search Code or Item Name..." 
                         class="w-full pl-12 pr-4 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-semibold text-slate-700 placeholder:text-slate-300 focus:bg-white focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all">
                 </div>
 
                 <!-- Category Filter -->
-                <div class="relative min-w-[180px]">
-                    <i class="fas fa-filter absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"></i>
-                    <select id="filter_item_category" onchange="updateInventoryFilters()" 
-                        class="w-full pl-11 pr-10 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-bold text-slate-700 appearance-none cursor-pointer focus:bg-white focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/5 transition-all outline-none">
-                        <option value="">All Categories</option>
-                        ${catOpts}
-                    </select>
-                    <i class="fas fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none text-[10px]"></i>
+                <div class="searchable-select-container relative min-w-[200px]">
+                    <i class="fas fa-filter absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none z-10"></i>
+                    <input type="hidden" id="filter_item_category" value="${f.category || ''}" onchange="updateInventoryFilters()">
+                    <button type="button" onclick="toggleSearchableSelect('filter_item_category')" 
+                        class="w-full pl-11 pr-10 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-bold text-slate-700 appearance-none cursor-pointer focus:bg-white focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/5 transition-all outline-none flex justify-between items-center text-left">
+                        <span id="filter_item_category_display">${selectedCatLabel}</span>
+                        <i class="fas fa-chevron-down text-slate-300 text-[10px]"></i>
+                    </button>
+                    
+                    <div id="filter_item_category_dropdown" class="searchable-dropdown hidden absolute left-0 right-0 top-full mt-2 bg-white rounded-2xl shadow-xl border border-slate-100 z-[100] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        <div class="p-3 border-b border-slate-50">
+                            <div class="relative">
+                                <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+                                <input type="text" placeholder="Cari kategori..." onkeyup="filterSearchableOptions('filter_item_category')" id="filter_item_category_search"
+                                    class="w-full pl-9 pr-3 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20">
+                            </div>
+                        </div>
+                        <div class="max-h-60 overflow-y-auto p-1 custom-scrollbar" id="filter_item_category_options">
+                            <div onclick="selectSearchableOption('filter_item_category', '', 'All Categories')"
+                                class="px-4 py-2.5 rounded-lg text-sm font-bold text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 cursor-pointer transition-colors flex items-center justify-between group">
+                                <span>All Categories</span>
+                                <i class="fas fa-check text-[10px] text-indigo-500 transition-opacity ${!f.category ? 'opacity-100' : 'opacity-0'}"></i>
+                            </div>
+                            ${filteredCategories.map(([v, l]) => `
+                                <div onclick="selectSearchableOption('filter_item_category', '${v}', '${l}')"
+                                    class="px-4 py-2.5 rounded-lg text-sm font-bold text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 cursor-pointer transition-colors flex items-center justify-between group">
+                                    <span>${l}</span>
+                                    <i class="fas fa-check text-[10px] text-indigo-500 transition-opacity ${f.category === v ? 'opacity-100' : 'opacity-0'}"></i>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Actions -->
@@ -444,22 +556,25 @@ function renderInventoryRows(items) {
             </td>
             <td class="py-4 px-5 text-right overflow-visible">
                 <div class="flex justify-end overflow-visible">
-                    <div class="relative dropdown-container" style="z-index: 1000;">
-                        <button onclick="this.nextElementSibling.classList.toggle('hidden')" class="flex items-center gap-2 px-3 py-1.5 rounded-[10px] border border-slate-200 text-slate-700 bg-[#f8fafc] hover:bg-slate-100 transition-colors text-[12px] font-bold shadow-sm whitespace-nowrap">
+                    <div class="relative inventory-dropdown-container">
+                        <button onclick="toggleRowDropdown(event, '${it.id}')" 
+                            class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition-colors text-[11px] font-bold shadow-sm whitespace-nowrap">
                             Pilih Aksi...
-                            <i class="fas fa-chevron-down text-[10px] text-slate-400"></i>
+                            <i class="fas fa-chevron-down text-[9px] text-slate-400"></i>
                         </button>
-                        <div class="dropdown-menu hidden absolute right-0 top-full mt-1 w-40 bg-white rounded-xl shadow-[0_10px_25px_-5px_rgba(0,0,0,0.1),0_8px_10px_-6px_rgba(0,0,0,0.1)] border border-slate-100 z-[1001] overflow-hidden text-left">
-                            <div class="py-1 flex flex-col">
-                                <button onclick="renderInventoryItemForm('${it.id}')" class="text-left px-4 py-2 text-xs font-bold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50/50 flex items-center gap-2 transition-colors">
-                                    <i class="fas fa-edit w-4"></i> Edit Item
+                        
+                        <div id="dropdown-${it.id}" class="inventory-action-menu hidden absolute right-0 top-full mt-1 w-44 bg-white rounded-xl shadow-[0_10px_25px_-5px_rgba(0,0,0,0.1),0_8px_10px_-6px_rgba(0,0,0,0.1)] border border-slate-100 z-[2000] overflow-hidden text-left animate-in fade-in zoom-in-95 duration-100">
+                            <div class="py-1.5 flex flex-col">
+                                <button onclick="renderInventoryItemForm('${it.id}')" class="text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50/50 flex items-center gap-3 transition-colors">
+                                    <i class="fas fa-edit w-4 text-slate-400 group-hover:text-indigo-500"></i> Edit Item
                                 </button>
+                                
                                 ${isCurrentUserAdmin() ? `
-                                <button onclick="openStockAdjustmentModal('${it.id}')" class="text-left px-4 py-2 text-xs font-bold text-slate-600 hover:text-orange-600 hover:bg-orange-50/50 flex items-center gap-2 transition-colors">
-                                    <i class="fas fa-sync-alt w-4"></i> Adjustment
+                                <button onclick="openStockAdjustmentModal('${it.id}')" class="text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-orange-600 hover:bg-orange-50/50 flex items-center gap-3 transition-colors">
+                                    <i class="fas fa-sync-alt w-4 text-slate-400"></i> Adjustment
                                 </button>
-                                <div class="h-px bg-slate-100 my-1 mx-2"></div>
-                                <button onclick="deleteInventoryItem('${it.id}')" class="text-left px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50/50 flex items-center gap-2 transition-colors">
+                                <div class="h-px bg-slate-50 my-1 mx-2"></div>
+                                <button onclick="deleteInventoryItem('${it.id}')" class="text-left px-4 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50/50 flex items-center gap-3 transition-colors">
                                     <i class="fas fa-trash w-4"></i> Hapus Item
                                 </button>
                                 ` : ''}
@@ -472,12 +587,20 @@ function renderInventoryRows(items) {
     }).join('');
 }
 
+let _filterDebounce = null;
 window.updateInventoryFilters = () => {
-    window._inventoryFilters = {
-        name: document.getElementById('filter_item_name')?.value || '',
-        category: document.getElementById('filter_item_category')?.value || ''
-    };
-    renderInventoryMaster();
+    // Debounce to prevent multiple rapid renders
+    if (_filterDebounce) clearTimeout(_filterDebounce);
+    _filterDebounce = setTimeout(() => {
+        const nameInput = document.getElementById('filter_item_name');
+        const catInput = document.getElementById('filter_item_category');
+        
+        window._inventoryFilters = {
+            name: nameInput ? nameInput.value : (window._inventoryFilters?.name || ''),
+            category: catInput ? catInput.value : (window._inventoryFilters?.category || '')
+        };
+        renderInventoryMaster();
+    }, 300);
 };
 
 window.resetInventoryFilters = () => {
@@ -494,21 +617,32 @@ window.renderInventoryItemForm = (id = null) => {
     // Dynamic Categories based on context
     const allCats = [
         ['RAW_MATERIAL', 'Bahan Baku'], 
+        ['PACKAGING', 'Packaging'],
+        ['SUPPLIES', 'Perlengkapan'],
+        ['SERVICE', 'Service'],
+        ['SPAREPART', 'Sparepart'],
+        ['ASSET', 'Aktiva ( tetap )'],
+        ['GAS', 'Gas'],
         ['OVEN_BASAH_STOCK', 'Oven Basah'], 
         ['OVEN_KERING_STOCK', 'Oven Kering'], 
         ['FINISHED_GOODS', 'Gudang Jadi']
     ];
     
     const pageTitleText = document.getElementById('pageTitle')?.innerText;
-    let filteredCats = allCats;
-    if (pageTitleText === 'Stok Produksi') {
+    const isProductionContext = pageTitleText === 'Stok Produksi' || (window._currentView && window._currentView.includes('production'));
+    
+    let filteredCats = allCats.filter(([v]) => !['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'].includes(v));
+    if (isProductionContext) {
         filteredCats = allCats.filter(([v]) => ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'].includes(v));
     }
 
-    const catOpts = filteredCats.map(([v, l]) => `<option value="${v}" ${item?.category === v ? 'selected' : ''}>${l}</option>`).join('');
+    const currentCat = filteredCats.find(([v]) => v === item?.category);
+    const catLabel = currentCat ? currentCat[1] : '-- Pilih Kategori --';
     const previewCode = item ? item.itemCode : '(auto-generate)';
 
     const isProduction = pageTitleText === 'Stok Produksi' || (window._currentView && window._currentView.includes('production'));
+    window._lastItemContext = isProduction ? 'production' : 'inventory';
+
     renderBreadcrumb([isProduction ? 'Produksi' : 'Stock', 'Master Items', id ? 'Edit Item' : 'New Item']);
     document.getElementById('pageTitle').innerText = id ? 'Edit Item Master' : 'Tambah Item Baru';
     const mc = document.getElementById('main-content');
@@ -519,7 +653,7 @@ window.renderInventoryItemForm = (id = null) => {
         <div class="sticky top-0 z-40 bg-white border-b border-slate-100 px-8 py-4 flex items-center justify-between shrink-0 shadow-sm">
             <div></div>
             <div class="flex items-center gap-3">
-                <button onclick="renderInventoryMaster()" class="px-6 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95">Batal</button>
+                <button onclick="window._lastItemContext === 'production' ? renderProductionStockMaster() : renderInventoryMaster()" class="px-6 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95">Batal</button>
                 <button onclick="saveInventoryItem('${id || ''}')" class="px-8 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg active:scale-95 flex items-center gap-2">
                     <i class="fas fa-check-circle text-[10px]"></i> Simpan Data Item
                 </button>
@@ -542,13 +676,33 @@ window.renderInventoryItemForm = (id = null) => {
                             <input type="text" id="inv_name" value="${item?.itemName || ''}" 
                                 class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 outline-none" placeholder="">
                         </div>
-                        <div>
+                        <div class="searchable-select-container relative">
                             <label class="block text-sm font-semibold text-slate-600 mb-2">Kategori <span class="text-red-400">*</span></label>
-                            <select id="inv_category" onchange="invUpdateCodePreview()" 
-                                class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
-                                <option value="">-- Pilih Kategori --</option>
-                                ${catOpts}
-                            </select>
+                            <input type="hidden" id="inv_category" value="${item?.category || ''}" onchange="invUpdateCodePreview()">
+                            <button type="button" onclick="toggleSearchableSelect('inv_category')" 
+                                class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer flex justify-between items-center transition-all hover:bg-slate-200/50">
+                                <span id="inv_category_display" class="${!item?.category ? 'text-slate-400' : 'text-slate-800'}">${catLabel}</span>
+                                <i class="fas fa-chevron-down text-slate-400 text-[10px]"></i>
+                            </button>
+                            
+                            <div id="inv_category_dropdown" class="searchable-dropdown hidden absolute left-0 right-0 top-full mt-2 bg-white rounded-2xl shadow-xl border border-slate-100 z-[100] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                <div class="p-3 border-b border-slate-50">
+                                    <div class="relative">
+                                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+                                        <input type="text" placeholder="Cari kategori..." onkeyup="filterSearchableOptions('inv_category')" id="inv_category_search"
+                                            class="w-full pl-9 pr-3 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20">
+                                    </div>
+                                </div>
+                                <div class="max-h-60 overflow-y-auto p-1 custom-scrollbar" id="inv_category_options">
+                                    ${filteredCats.map(([v, l]) => `
+                                        <div onclick="selectSearchableOption('inv_category', '${v}', '${l}')"
+                                            class="px-4 py-2.5 rounded-lg text-sm font-bold text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 cursor-pointer transition-colors flex items-center justify-between group">
+                                            <span>${l}</span>
+                                            <i class="fas fa-check text-[10px] text-indigo-500 transition-opacity ${item?.category === v ? 'opacity-100' : 'opacity-0'}"></i>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
                         </div>
                         <div>
                             <label class="block text-sm font-semibold text-slate-600 mb-2">Item Code</label>
@@ -557,11 +711,33 @@ window.renderInventoryItemForm = (id = null) => {
                             </div>
                             <input type="hidden" id="inv_code_preview" value="${previewCode}">
                         </div>
-                        <div>
+                        <div class="searchable-select-container relative">
                             <label class="block text-sm font-semibold text-slate-600 mb-2">Satuan Dasar <span class="text-red-400">*</span></label>
-                            <select id="inv_unit" class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
-                                ${unitOpts}
-                            </select>
+                            <input type="hidden" id="inv_unit" value="${item?.unit || 'KG'}">
+                            <button type="button" onclick="toggleSearchableSelect('inv_unit')" 
+                                class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer flex justify-between items-center transition-all hover:bg-slate-200/50">
+                                <span id="inv_unit_display" class="text-slate-800">${item?.unit || 'KG'}</span>
+                                <i class="fas fa-chevron-down text-slate-400 text-[10px]"></i>
+                            </button>
+                            
+                            <div id="inv_unit_dropdown" class="searchable-dropdown hidden absolute left-0 right-0 top-full mt-2 bg-white rounded-2xl shadow-xl border border-slate-100 z-[100] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                <div class="p-3 border-b border-slate-50">
+                                    <div class="relative">
+                                        <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+                                        <input type="text" placeholder="Cari satuan..." onkeyup="filterSearchableOptions('inv_unit')" id="inv_unit_search"
+                                            class="w-full pl-9 pr-3 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20">
+                                    </div>
+                                </div>
+                                <div class="max-h-60 overflow-y-auto p-1 custom-scrollbar" id="inv_unit_options">
+                                    ${units.map(u => `
+                                        <div onclick="selectSearchableOption('inv_unit', '${u}', '${u}')"
+                                            class="px-4 py-2.5 rounded-lg text-sm font-bold text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 cursor-pointer transition-colors flex items-center justify-between group">
+                                            <span>${u}</span>
+                                            <i class="fas fa-check text-[10px] text-indigo-500 transition-opacity ${(item?.unit === u || (!item?.unit && u === 'KG')) ? 'opacity-100' : 'opacity-0'}"></i>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
                         </div>
                         <div>
                             <label class="block text-sm font-semibold text-slate-600 mb-2">Harga Beli Rata-rata</label>
@@ -657,7 +833,7 @@ window.saveInventoryItem = async (id) => {
         });
 
         closeModal();
-        renderInventoryMaster();
+        returnToMasterView();
     } catch (err) {
         showToast(err.message, 'error');
         btn.innerHTML = oldHtml;
@@ -666,21 +842,21 @@ window.saveInventoryItem = async (id) => {
 };
 
 window.toggleInventoryItemStatus = async (id) => {
-    const item = (window._tempInventoryItems || []).find(it => it.id === id);
+    const item = (window._tempInventoryItems || []).find(it => it.id === id) || db.findById('inventoryItems', id);
     if (!item) return;
     const newStatus = item.status === 'INACTIVE' ? 'ACTIVE' : 'INACTIVE';
     
     try {
         await api.updateInventoryItem(id, { status: newStatus });
         showToast(`Item di-${newStatus === 'ACTIVE' ? 'aktifkan' : 'non-aktifkan'}`);
-        renderInventoryMaster();
+        returnToMasterView();
     } catch (err) {
         showToast(err.message, 'error');
     }
 };
 
 window.deleteInventoryItem = async (id) => {
-    const item = (window._tempInventoryItems || []).find(it => it.id === id);
+    const item = (window._tempInventoryItems || []).find(it => it.id === id) || db.findById('inventoryItems', id);
     if (!item) return;
 
     if (!confirm(`⚠️ HAPUS PERMANEN: ${item.itemName} (${item.itemCode})?\n\nSemua transaksi (Masuk/Keluar), history di Stock Card, item di SO/PO/RFQ, serta BOM yang menggunakan item ini di SELURUH departemen akan ikut TERHAPUS.\n\nLanjutkan?`)) return;
@@ -759,9 +935,17 @@ window.deleteInventoryItem = async (id) => {
         localStorage.setItem('unityerp_inventoryItems', JSON.stringify(localItems));
 
         showToast(`Barang ${item.itemName} dan seluruh data terkait telah dihapus dari sistem.`, 'success');
-        renderInventoryMaster();
+        returnToMasterView();
     } catch (err) {
         showToast(err.message, 'error');
+    }
+};
+
+window.returnToMasterView = () => {
+    if (window._lastItemContext === 'production' && typeof renderProductionStockMaster === 'function') {
+        renderProductionStockMaster();
+    } else {
+        renderInventoryMaster();
     }
 };
 
@@ -876,7 +1060,7 @@ window.saveStockAdjustment = async (itemId) => {
 
         showToast(`Stok berhasil disesuaikan (${type}: ${absDiff})`);
         closeModal();
-        renderInventoryMaster();
+        returnToMasterView();
     } catch (err) {
         showToast(err.message, 'error');
         btn.innerHTML = oldHtml;
@@ -2218,13 +2402,18 @@ function renderInventoryPOReceipt() {
                 </td>
                 <td class="py-4 px-6 text-right whitespace-nowrap">
                     ${tab === 'pending' ? (canEdit ? `
-                    <button onclick="openPOReceiptModal('${po.id}')" class="bg-blue-600 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-200 transition-all active:scale-95 flex items-center gap-2 ml-auto">
+                    <button onclick="receiveGoodsPO('${po.id}')" class="bg-blue-600 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-200 transition-all active:scale-95 flex items-center gap-2 ml-auto">
                         <i class="fas fa-box-open"></i> TERIMA
                     </button>
                     ` : '<span class="text-slate-400 text-[10px] italic font-medium">VIEW ONLY</span>') : `
-                    <button onclick="viewPOReceiptDetails('${po.id}')" class="bg-slate-100 hover:bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 ml-auto">
-                        <i class="fas fa-eye"></i> DETAIL
-                    </button>
+                    <div class="flex justify-end gap-2">
+                        <button onclick="printNPB('${po.id}')" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2">
+                            <i class="fas fa-print"></i> CETAK
+                        </button>
+                        <button onclick="viewPOReceiptDetails('${po.id}')" class="bg-slate-100 hover:bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2">
+                            <i class="fas fa-eye"></i> DETAIL
+                        </button>
+                    </div>
                     `}
                 </td>
             </tr>`;
@@ -2333,6 +2522,7 @@ function renderInventoryPOReceipt() {
                 TOTAL: ${pos.length} DOKUMEN MENUNGGU
             </div>
         </div>
+        <div id="gr-form-view" class="hidden"></div>
     `;
 
     // Add UI Helpers
@@ -2562,28 +2752,62 @@ window.viewPOReceiptDetails = (id) => {
     `).join('');
 
     const body = `
-        <div class="space-y-4">
-            <div class="grid grid-cols-2 gap-4 text-sm bg-gray-50 p-4 rounded-xl border border-gray-100">
-                <div><span class="text-gray-400">No. PO:</span> <strong class="text-blue-600">${po.poNumber}</strong></div>
-                <div><span class="text-gray-400">Supplier:</span> <strong>${sup.name}</strong></div>
-                <div><span class="text-gray-400">Tgl Order:</span> <strong>${invDate(po.date)}</strong></div>
-                <div><span class="text-gray-400">Tgl Terima:</span> <strong class="text-green-600">${invDate(po.receivedAt)}</strong></div>
+        <div class="space-y-6">
+            <div class="bg-slate-50/50 p-6 rounded-2xl border border-slate-100 grid grid-cols-2 gap-6 relative overflow-hidden">
+                <div class="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full blur-2xl -mr-8 -mt-8"></div>
+                <div class="space-y-3 relative z-10">
+                    <div>
+                        <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Referensi Order</p>
+                        <p class="text-sm font-black text-blue-600">${po.poNumber}</p>
+                    </div>
+                    <div>
+                        <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Tanggal Pesanan</p>
+                        <p class="text-sm font-bold text-slate-700">${invDate(po.date)}</p>
+                    </div>
+                </div>
+                <div class="space-y-3 relative z-10">
+                    <div>
+                        <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Supplier</p>
+                        <p class="text-sm font-black text-slate-800">${sup.name}</p>
+                    </div>
+                    <div>
+                        <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Terakhir Diterima</p>
+                        <p class="text-sm font-black text-green-600">${invDate(po.receivedAt)}</p>
+                    </div>
+                </div>
             </div>
             
-            <table class="w-full text-left">
-                <thead>
-                    <tr class="border-b-2 border-gray-100 text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                        <th class="py-2 px-2">Nama Produk / Item</th>
-                        <th class="py-2 px-2 text-right">Order Qty</th>
-                        <th class="py-2 px-2 text-right text-green-600">Terima Qty</th>
-                    </tr>
-                </thead>
-                <tbody>${itemRows}</tbody>
-            </table>
+            <div class="border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
+                <table class="w-full text-left">
+                    <thead>
+                        <tr class="bg-slate-50/80 border-b border-slate-100">
+                            <th class="py-4 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Item Deskripsi</th>
+                            <th class="py-4 px-5 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Qty Pesanan</th>
+                            <th class="py-4 px-5 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Qty Diterima</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50 bg-white">
+                        ${(po.items || []).map(i => `
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="py-4 px-5 font-bold text-slate-700 text-sm">${i.prodText || i.itemName || '-'}</td>
+                                <td class="py-4 px-5 text-right font-medium text-slate-500 text-sm">${invFmt(i.qty)} <span class="text-[10px] text-slate-300 font-bold uppercase tracking-tighter">${i.unit || ''}</span></td>
+                                <td class="py-4 px-5 text-right font-black text-green-600 text-sm">${invFmt(i.receivedQty || 0)} <span class="text-[10px] text-green-200 uppercase tracking-tighter">${i.unit || ''}</span></td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
         </div>
     `;
 
-    showModal(`Detail Penerimaan - ${po.poNumber}`, body, `<button onclick="closeModal()" class="btn-secondary">Tutup</button>`);
+    showModal(`Detail Penerimaan - ${po.poNumber}`, body, `
+        <div class="flex gap-2">
+            <button onclick="printNPB('${po.id}')" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2">
+                <i class="fas fa-print"></i> CETAK NPB
+            </button>
+            <button onclick="closeModal()" class="px-5 py-2 bg-slate-100 text-slate-500 rounded-lg text-xs font-black uppercase tracking-widest hover:bg-slate-200 transition-all">TUTUP</button>
+        </div>
+    `);
 };
 
 
@@ -3143,9 +3367,9 @@ window.runMonthlyStockReport = () => {
         const preTxs = itemTxs.filter(t => new Date(t.date) < startDate);
         const inPeriodTxs = itemTxs.filter(t => new Date(t.date) >= startDate && new Date(t.date) <= endDate);
 
-        const initial = preTxs.reduce((sum, t) => sum + (t.type === 'IN' ? t.qty : -t.qty), 0);
-        const totalIn = inPeriodTxs.filter(t => t.type === 'IN').reduce((sum, t) => sum + t.qty, 0);
-        const totalOut = inPeriodTxs.filter(t => t.type === 'OUT').reduce((sum, t) => sum + t.qty, 0);
+        const initial = preTxs.reduce((sum, t) => sum + (t.type === 'IN' ? (parseFloat(t.qty) || 0) : -(parseFloat(t.qty) || 0)), 0);
+        const totalIn = inPeriodTxs.filter(t => t.type === 'IN').reduce((sum, t) => sum + (parseFloat(t.qty) || 0), 0);
+        const totalOut = inPeriodTxs.filter(t => t.type === 'OUT').reduce((sum, t) => sum + (parseFloat(t.qty) || 0), 0);
         const final = initial + totalIn - totalOut;
 
         return { ...it, openingStock: initial, totalIn, totalOut, closingStock: final };
@@ -3337,13 +3561,13 @@ window.viewProductStockCard = (productId, startDateStr = null, endDateStr = null
         balance += qtyIn - qtyOut;
         return `
             <tr class="border-b border-gray-100 text-xs">
-                <td class="py-2 px-2 text-gray-500">${invDate(t.date)}</td>
-                <td class="py-2 px-2 font-mono text-gray-400">${t.txNo}</td>
-                <td class="py-2 px-2 font-medium text-gray-700">${t.itemName}</td>
+                <td class="py-2 px-2 text-slate-600 font-bold">${invDate(t.date)}</td>
+                <td class="py-2 px-2 font-mono text-slate-500 font-bold">${t.txNo || '-'}</td>
+                <td class="py-2 px-2 font-medium text-gray-700">${t.itemName || '-'}</td>
                 <td class="py-2 px-2 text-right text-green-600 font-bold">${qtyIn > 0 ? '+' + invFmt(qtyIn) : '-'}</td>
                 <td class="py-2 px-2 text-right text-red-600 font-bold">${qtyOut > 0 ? '-' + invFmt(qtyOut) : '-'}</td>
                 <td class="py-2 px-2 text-right font-black text-gray-800">${invFmt(balance)}</td>
-                <td class="py-2 px-2 text-[10px] text-gray-400 capitalize italic">${t.reference.toLowerCase()}</td>
+                <td class="py-2 px-2 text-[10px] text-slate-600 font-bold capitalize italic">${t.reference ? t.reference.toLowerCase() : '-'}</td>
             </tr>`;
     }).join('');
 
@@ -4610,5 +4834,398 @@ window.printWIPReport = () => {
     window.printHTML(printHtml, `Mutasi WIP ${loc} - ${monthVal}`, true);
 };
 
+window.deleteInventoryReturn = async function(id, type) {
+    const tableName = type === 'return' ? 'salesReturns' : 'productExchanges';
+    const label = type === 'return' ? 'Retur Penjualan' : 'Tukar Guling';
+    if (!confirm(`Yakin ingin menghapus dokumen ${label} ini?`)) return;
+    
+    try {
+        await db.delete(tableName, id);
+        if (window.api && typeof window.api.pullAll === 'function') await window.api.pullAll();
+        showToast(`${label} berhasil dihapus.`);
+        window.renderIncomingReturns();
+    } catch (e) {
+        showToast(`Gagal hapus: ${e.message}`, 'error');
+    }
+};
 
+window.renderIncomingReturns = async function () {
+    document.getElementById('pageTitle').innerText = 'Penerimaan Retur';
+    renderBreadcrumb(['Logistik', 'Penerimaan Retur']);
+    const mc = document.getElementById('main-content');
 
+    if (!window._irActiveTab) window._irActiveTab = 'pending';
+    if (!window._irFilters) window._irFilters = { search: '', start: '', end: '' };
+    const filters = window._irFilters;
+
+    mc.innerHTML = `<div class="p-10 text-center"><i class="fas fa-spinner fa-spin text-3xl text-indigo-500"></i><p class="mt-4 text-slate-500 font-medium">Memuat data retur...</p></div>`;
+
+    try {
+        const [returns, exchanges, customers] = await Promise.all([
+            api.read('salesReturns'),
+            api.read('productExchanges'),
+            api.read('customers')
+        ]);
+
+        const getCustomerName = (id) => {
+            if (!id) return '-';
+            const c = customers.find(x => x.id === id || x.customer_id === id);
+            return c ? c.name : id;
+        };
+
+        const srDate = d => d ? new Date(d).toLocaleDateString('id-ID') : '-';
+        const srFmt = n => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n || 0);
+        
+        function getStatusBadge(status) {
+            const map = {
+                'PENDING':        'bg-slate-100 text-slate-500',
+                'APPROVED':       'bg-slate-100 text-slate-500 shadow-sm',
+                'GOODS_RECEIVED': 'bg-indigo-100 text-indigo-800',
+                'RETURN_RECEIVED':'bg-indigo-100 text-indigo-800',
+                'COMPLETED':      'bg-emerald-100 text-emerald-800',
+                'REJECTED':       'bg-red-100 text-red-800'
+            };
+            const labels = {
+                'PENDING':        'WAITING WH',
+                'APPROVED':       'WAITING WH',
+                'GOODS_RECEIVED': 'INSPECTED',
+                'RETURN_RECEIVED':'RETUR DITERIMA',
+                'COMPLETED':      'SELESAI',
+                'REJECTED':       'DITOLAK'
+            };
+            const cls = map[status] || 'bg-gray-100 text-gray-600';
+            const lbl = labels[status] || status;
+            return `<span class="px-3 py-1 rounded-full text-[10px] font-bold uppercase ${cls}">${lbl}</span>`;
+        }
+
+        // Combine all items for the unified list
+        let allItems = [
+            ...returns.map(r => ({ ...r, irType: 'return' })),
+            ...exchanges.map(ex => ({ ...ex, irType: 'exchange' }))
+        ];
+
+        // Filtering
+        if (filters.search) {
+            const s = filters.search.toLowerCase();
+            allItems = allItems.filter(item => {
+                const cName = getCustomerName(item.customer_id || item.customerId).toLowerCase();
+                return (item.return_number || item.returnNumber || item.exchange_number || item.exchangeNumber || '').toLowerCase().includes(s) ||
+                       cName.includes(s) ||
+                       (item.product_name || item.productName || item.returned_product_name || item.returnedProductName || '').toLowerCase().includes(s);
+            });
+        }
+
+        allItems.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+        const pendingItems = allItems.filter(item => ['PENDING', 'APPROVED'].includes(item.status));
+        const historyItems = allItems.filter(item => ['GOODS_RECEIVED', 'RETURN_RECEIVED', 'COMPLETED', 'REJECTED'].includes(item.status));
+
+        const activeItems = window._irActiveTab === 'pending' ? pendingItems : historyItems;
+
+        const rows = activeItems.map(item => {
+            const isReturn = item.irType === 'return';
+            const idDoc = isReturn ? (item.return_number || item.returnNumber) : (item.exchange_number || item.exchangeNumber);
+            const customerName = getCustomerName(item.customer_id || item.customerId);
+            
+            let refDocHtml = '';
+            if (isReturn) {
+                refDocHtml = `
+                    <div class="text-xs font-bold text-slate-800">${item.product_name || item.productName || '-'}</div>
+                    <div class="text-[9px] text-slate-400">Ref SO: ${item.so_number || item.soNumber || '-'} &bull; Qty: ${item.qty_returned || item.qtyReturned || 0}</div>
+                `;
+            } else {
+                refDocHtml = `
+                    <div class="text-[10px] font-bold text-red-600 flex items-center gap-1"><i class="fas fa-arrow-left text-[8px]"></i> ${item.returned_product_name || item.returnedProductName || '-'} (x${item.returned_qty || item.returnedQty || 0})</div>
+                    <div class="text-[10px] font-bold text-emerald-600 flex items-center gap-1 mt-0.5"><i class="fas fa-arrow-right text-[8px]"></i> ${item.replacement_product_name || item.replacementProductName || '-'}</div>
+                `;
+            }
+
+            let actionsHtml = '';
+            if (window._irActiveTab === 'pending') {
+                actionsHtml = `
+                    <option value="receive">Terima & Inspeksi</option>
+                    <option value="delete">Hapus</option>
+                `;
+            }
+
+            const navigasiHtml = actionsHtml ? `
+                <div class="inline-block relative w-[130px]">
+                    <select class="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none transition-all shadow-sm" 
+                        onchange="handleIRAction(this, '${item.id}', '${item.irType}')">
+                        <option value="" disabled selected>Pilih Aksi...</option>
+                        ${actionsHtml}
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
+                        <i class="fas fa-chevron-down text-[10px]"></i>
+                    </div>
+                </div>
+            ` : '<span class="text-slate-300 font-bold text-xs">-</span>';
+
+            return `
+                <tr class="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group">
+                    <td class="px-6 py-4">
+                        <div class="text-xs font-black text-slate-800 uppercase tracking-tight">${customerName}</div>
+                        <div class="text-[10px] font-bold text-blue-600 mt-0.5 px-1.5 py-0.5 bg-blue-50 rounded inline-block uppercase">${idDoc}</div>
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">TANGGAL RETUR</div>
+                        <div class="text-xs font-bold text-slate-700">${srDate(item.date)}</div>
+                    </td>
+                    <td class="px-6 py-4 text-center">
+                        ${getStatusBadge(item.status)}
+                    </td>
+                    <td class="px-6 py-4">
+                        <div class="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">REF DOKUMEN</div>
+                        ${refDocHtml}
+                    </td>
+                    <td class="px-6 py-4 text-right">
+                        ${navigasiHtml}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        mc.innerHTML = `
+        <div class="space-y-6 animate-in fade-in duration-500 h-[calc(100vh-140px)] flex flex-col">
+            <!-- Filter Bar -->
+            <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-4 flex flex-wrap lg:flex-nowrap items-center justify-between gap-4">
+                <div class="flex-1 min-w-[300px] relative">
+                    <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                    <input type="text" id="ir_search" value="${filters.search || ''}" onkeyup="if(event.key==='Enter') applyIRFilters()" placeholder="Cari Pelanggan, No. SJ, atau Ref Order..." 
+                        class="w-full pl-12 pr-4 py-3 bg-slate-50/50 border-2 border-transparent focus:border-blue-500 focus:bg-white rounded-2xl text-sm font-bold text-slate-600 outline-none transition-all">
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <button class="flex items-center bg-white border-2 border-slate-100 rounded-2xl overflow-hidden hover:border-blue-300 transition-all shadow-sm h-[48px] group">
+                        <span class="bg-slate-50 px-4 h-full flex items-center text-slate-500 group-hover:bg-slate-100 transition-colors">
+                            <i class="fas fa-calendar-alt text-xs"></i>
+                        </span>
+                        <span class="px-4 text-[11px] font-black text-slate-400 uppercase tracking-widest">Date Range</span>
+                        <span class="pr-3 text-slate-400 group-hover:text-blue-500 transition-colors"><i class="fas fa-chevron-down text-[10px]"></i></span>
+                    </button>
+
+                    <div class="bg-slate-100 p-1 rounded-2xl flex items-center shadow-inner ml-2">
+                        <button onclick="changeIRTab('pending')" class="px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${window._irActiveTab === 'pending' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}">
+                            Antrean
+                        </button>
+                        <button onclick="changeIRTab('history')" class="px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${window._irActiveTab === 'history' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}">
+                            Riwayat
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Table Container -->
+            <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex-1 overflow-y-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead class="sticky top-0 z-20 bg-white shadow-sm">
+                        <tr class="text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-50/50">
+                            <th class="px-6 py-5">Tujuan / Ref Order</th>
+                            <th class="px-6 py-5">Logistics Info</th>
+                            <th class="px-6 py-5 text-center">Status Barang</th>
+                            <th class="px-6 py-5">Ref Dokumen</th>
+                            <th class="px-6 py-5 text-right">Navigasi</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50">
+                        ${rows || `<tr><td colspan="5" class="py-20 text-center text-slate-300 font-bold uppercase tracking-widest italic">Tidak ada data untuk ditampilkan</td></tr>`}
+                    </tbody>
+                </table>
+            </div>
+        </div>`;
+
+    } catch (err) {
+        console.error('Error rendering incoming returns:', err);
+        showToast('Gagal memuat data retur', 'error');
+    }
+};
+
+window.changeIRTab = function(tab) {
+    window._irActiveTab = tab;
+    window.renderIncomingReturns();
+};
+
+window.applyIRFilters = function() {
+    window._irFilters.search = document.getElementById('ir_search').value;
+    window.renderIncomingReturns();
+};
+
+window.handleIRAction = function(select, id, type) {
+    const action = select.value;
+    if (!action) return;
+    
+    if (action === 'receive') {
+        window.openReceiveReturnForm(id, type);
+    } else if (action === 'delete') {
+        window.deleteInventoryReturn(id, type);
+    }
+    
+    select.value = '';
+};
+
+/**
+ * Form Inspeksi — Inventory isi qty aktual + kondisi barang
+ * type: 'return' | 'exchange'
+ */
+window.openReceiveReturnForm = async function (id, type) {
+    const mc = document.getElementById('main-content');
+    
+    try {
+        const record = await api.findById(type === 'return' ? 'salesReturns' : 'productExchanges', id);
+        if (!record) { showToast('Data tidak ditemukan', 'error'); return; }
+
+        const docNumber = record.return_number || record.returnNumber || record.exchange_number || record.exchangeNumber || '-';
+        const soNumber = record.so_number || record.soNumber || '-';
+        const productName = record.product_name || record.productName || record.returned_product_name || record.returnedProductName || '-';
+        const claimedQty = record.qty_returned || record.qtyReturned || record.returned_qty || record.returnedQty || 0;
+        const reason = record.reason || '-';
+        const isExchange = type === 'exchange';
+        const condLabel = isExchange ? 'returned_condition' : 'condition';
+        const defaultCond = record[condLabel] || record.condition || 'Good';
+        const title = isExchange ? 'TERIMA BARANG' : 'TERIMA BARANG RETUR';
+        const todayStr = new Date().toISOString().split('T')[0];
+
+        // Generate a pseudo-receipt number like NPB
+        const npbNum = `RET-${todayStr.replace(/-/g, '')}-${id.substring(0, 3).toUpperCase()}`;
+
+        mc.innerHTML = `
+        <div class="animate-in fade-in slide-in-from-bottom-2 duration-500 -m-4 sm:-m-6 h-[calc(100vh-64px)] flex flex-col overflow-hidden bg-slate-50/50">
+            <!-- Header -->
+            <div class="sticky top-0 z-40 bg-white border-b border-slate-100 px-8 py-4 flex items-center justify-between shrink-0 shadow-sm">
+                <div class="flex items-center gap-4">
+                    <button onclick="window.renderIncomingReturns()" class="text-slate-400 hover:text-slate-600 transition-colors">
+                        <i class="fas fa-chevron-left text-lg"></i>
+                    </button>
+                    <div>
+                        <h2 class="text-lg font-black text-slate-800 tracking-tight uppercase">${title}</h2>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <button onclick="window.renderIncomingReturns()" class="px-6 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-600 transition-all">BATAL</button>
+                    <button onclick="window.confirmInventoryReceive('${id}', '${type}')"
+                        class="px-8 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all shadow-lg shadow-blue-500/20 active:scale-95 flex items-center gap-2">
+                        <i class="fas fa-check-circle"></i> KONFIRMASI TERIMA
+                    </button>
+                </div>
+            </div>
+
+            <!-- Content Area -->
+            <div class="flex-1 overflow-y-auto custom-scrollbar">
+                <div class="max-w-7xl mx-auto px-8 py-10 space-y-8">
+                    
+                    <!-- 1. INFORMASI PENERIMAAN -->
+                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm">
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div class="space-y-2">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tanggal Terima</label>
+                                <input type="date" id="inv_recv_date" value="${todayStr}" 
+                                    class="w-full bg-slate-50 border-2 border-transparent rounded-2xl px-5 py-3 text-sm font-black text-slate-700 focus:bg-white focus:border-blue-500/20 outline-none transition-all shadow-sm">
+                            </div>
+                            <div class="space-y-2">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Kondisi Barang</label>
+                                <select id="inv_recv_condition" 
+                                    class="w-full bg-slate-50 border-2 border-transparent rounded-2xl px-5 py-3 text-sm font-black text-slate-700 focus:bg-white focus:border-blue-500/20 outline-none transition-all shadow-sm cursor-pointer">
+                                    <option value="Good" ${defaultCond === 'Good' ? 'selected' : ''}>BAGUS / GOOD</option>
+                                    <option value="Damaged" ${defaultCond !== 'Good' ? 'selected' : ''}>RUSAK / DAMAGED</option>
+                                </select>
+                            </div>
+                            <div class="space-y-2">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nama Penerima</label>
+                                <input type="text" id="inv_recv_notes_person" placeholder="NAMA / KETERANGAN..." 
+                                    class="w-full bg-slate-50 border-2 border-transparent rounded-2xl px-5 py-3 text-sm font-black text-slate-700 focus:bg-white focus:border-blue-500/20 outline-none transition-all shadow-sm">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 2. DAFTAR ITEM (Table-based like NPB) -->
+                    <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-50/50 border-b border-slate-100">
+                                    <th class="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Produk Deskripsi</th>
+                                    <th class="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Sisa Pesanan</th>
+                                    <th class="px-8 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right w-[250px]">Terima Hari Ini</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-50">
+                                <tr class="hover:bg-slate-50/50 transition-colors">
+                                    <td class="px-8 py-6">
+                                        <div class="flex items-center gap-4">
+                                            <div class="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400">
+                                                <i class="fas fa-box"></i>
+                                            </div>
+                                            <div>
+                                                <div class="text-sm font-black text-slate-800 uppercase tracking-tight">${productName}</div>
+                                                <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">
+                                                    PESAN: ${claimedQty} &bull; TERIMA: 0
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="px-8 py-6 text-right">
+                                        <div class="flex items-center justify-end gap-2">
+                                            <span class="text-sm font-black text-blue-600">${claimedQty}</span>
+                                            <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest">KG</span>
+                                        </div>
+                                    </td>
+                                    <td class="px-8 py-6 text-right">
+                                        <input type="number" id="inv_recv_qty" value="${claimedQty}" step="any" min="0" max="${claimedQty}"
+                                            class="w-full max-w-[180px] ml-auto bg-slate-50 border-2 border-transparent rounded-2xl px-5 py-3 text-center text-lg font-black text-slate-700 focus:bg-white focus:border-blue-500/20 outline-none transition-all shadow-sm">
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- 3. CATATAN TAMBAHAN -->
+                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-4">
+                        <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2">
+                            <i class="fas fa-comment-alt text-blue-600"></i> CATATAN INSPEKSI (OPTIONAL)
+                        </h3>
+                        <textarea id="inv_recv_notes" rows="4" placeholder="JELASKAN KONDISI FISIK BARANG JIKA RUSAK..."
+                            class="w-full bg-slate-50 border-2 border-transparent rounded-3xl px-6 py-5 text-sm font-medium text-slate-700 focus:bg-white focus:border-blue-500/20 outline-none transition-all shadow-sm resize-none"></textarea>
+                    </div>
+
+                </div>
+            </div>
+        </div>`;
+    } catch (err) {
+        showToast(`Gagal memuat data: ${err.message}`, 'error');
+    }
+};
+
+window.confirmInventoryReceive = async function (id, type) {
+    const qtyEl = document.getElementById('inv_recv_qty');
+    const condEl = document.getElementById('inv_recv_condition');
+    const notesEl = document.getElementById('inv_recv_notes');
+    const personEl = document.getElementById('inv_recv_notes_person');
+
+    const qty = parseFloat(qtyEl?.value || 0);
+    const condition = condEl?.value || 'Good';
+    const notes = notesEl?.value?.trim() || '';
+    const person = personEl?.value?.trim() || '';
+
+    if (qty <= 0) { showToast('Qty aktual harus lebih dari 0', 'error'); return; }
+
+    try {
+        const payload = { 
+            receivedQty: qty, 
+            receivedCondition: condition, 
+            receivedNotes: notes,
+            receivedBy: person
+        };
+
+        if (type === 'return') {
+            await api.receiveSalesReturn(id, payload);
+        } else {
+            await api.receiveProductExchange(id, payload);
+        }
+        
+        const condLabel = condition === 'Good' ? 'Bagus → stok bertambah (RETURN_IN) ✓' : 'Rusak → masuk Judgment ✓';
+        showToast(`Barang diterima & diinspeksi: ${condLabel}`);
+        if (window.api && typeof window.api.pullAll === 'function') await window.api.pullAll();
+        window.renderIncomingReturns();
+    } catch (err) {
+        showToast(`Gagal konfirmasi: ${err.message}`, 'error');
+    }
+};

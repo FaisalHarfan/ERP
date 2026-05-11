@@ -46,6 +46,17 @@ window.calculateColly = function (qty, kemasan) {
 // ==========================================
 // MAIN LIST VIEW (SALES DEPT)
 // ==========================================
+window.syncDeliveryOrders = async function() {
+    try {
+        await db.sync('deliveryOrders');
+        renderSalesDeliveryOrders();
+        showToast('Data Surat Jalan berhasil disinkronkan', 'success');
+    } catch (e) {
+        console.error(e);
+        showToast('Gagal sinkronisasi data Surat Jalan', 'error');
+    }
+};
+
 window.renderSalesDeliveryOrders = function () {
     const perm = getModulePermission('penjualan');
     document.getElementById('pageTitle').innerText = 'Delivery Order (Surat Jalan)';
@@ -72,9 +83,10 @@ window.renderSalesDeliveryOrders = function () {
         : filteredList.filter(d => d.status === 'SHIPPED');
 
     const statusBadge = (s) => {
-        if (s === 'DRAFT' || s === 'PENDING') return '<span class="px-3 py-1 bg-slate-100 text-slate-500 rounded-full text-[10px] font-bold uppercase tracking-tight shadow-sm">Waiting WH</span>';
+        if (s === 'DRAFT' || s === 'PENDING' || s === 'WAITING WH') return '<span class="px-3 py-1 bg-slate-100 text-slate-500 rounded-full text-[10px] font-bold uppercase tracking-tight shadow-sm">Waiting WH</span>';
         if (s === 'HOLD') return '<span class="px-3 py-1 bg-red-50 text-red-600 rounded-full text-[10px] font-bold uppercase tracking-tight shadow-sm">Stock Hold</span>';
         if (s === 'SHIPPED') return '<span class="px-3 py-1 bg-green-50 text-green-700 rounded-full text-[10px] font-bold uppercase tracking-tight shadow-sm">Shipped</span>';
+        if (s === 'CANCELLED') return '<span class="px-3 py-1 bg-red-100 text-red-700 rounded-full text-[10px] font-bold uppercase tracking-tight shadow-sm">Cancelled</span>';
         return `<span class="px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-[10px] font-bold uppercase tracking-tight shadow-sm">${s || 'PENDING'}</span>`;
     };
 
@@ -188,25 +200,30 @@ window.renderSalesDeliveryOrders = function () {
             filteredDOs.map(d => `
                 <tr class="hover:bg-slate-50/50 transition-colors group">
                     <td class="px-6 py-4">
-                        <p class="font-black text-blue-600 text-sm tracking-tight mb-0.5">${d.doNumber}</p>
+                        <p class="font-black text-blue-600 text-sm tracking-tight mb-0.5">${d.doNumber || '-'}</p>
                         <p class="text-[10px] font-bold text-slate-400 tracking-wider">${d.soNumber || '-'}</p>
                     </td>
                     <td class="px-6 py-4">
                         <p class="font-black text-slate-700 text-sm">${(d.recipientName || 'Gudang Internal').toUpperCase()}</p>
-                        <p class="text-[10px] font-bold text-slate-400 italic">${d.shippingAddress?.slice(0, 50) || '-'}${d.shippingAddress?.length > 50 ? '...' : ''}</p>
+                        <p class="text-[10px] font-bold text-slate-400 italic">${d.address?.slice(0, 50) || '-'}${d.address?.length > 50 ? '...' : ''}</p>
                     </td>
                     <td class="px-6 py-4 text-center">
                         ${statusBadge(d.status)}
                     </td>
                     <td class="px-6 py-4">
                         <p class="text-[10px] font-black text-slate-700 uppercase tracking-wider mb-0.5">${d.driverName || '-'}</p>
-                        <p class="text-[10px] font-bold text-slate-400">${d.vehicleNumber || '-'}</p>
+                        <p class="text-[10px] font-bold text-slate-400">${d.vehicleNo || '-'}</p>
                     </td>
                     <td class="px-6 py-4 text-right">
-                        <div class="flex justify-end items-center gap-2">
-                            <button onclick="printDeliveryOrder('${d.id}')" class="bg-white text-slate-400 hover:text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-slate-100 hover:border-blue-200 flex items-center gap-2 group/print">
-                                <i class="fas fa-print group-hover/print:scale-110 transition-transform"></i> Cetak
-                            </button>
+                        <div class="inline-block relative w-full max-w-[140px]">
+                            <select onchange="handleDOAction(this, '${d.id}')" class="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-[10px] rounded-xl pl-3 pr-8 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none transition-all shadow-sm uppercase tracking-widest">
+                                <option value="" disabled selected>Pilih Aksi...</option>
+                                <option value="print">Cetak SJ</option>
+                                ${d.status !== 'SHIPPED' && d.status !== 'CANCELLED' ? `<option value="cancel" class="text-red-600">Batalkan SJ</option>` : ''}
+                            </select>
+                            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
+                                <i class="fas fa-chevron-down text-[9px]"></i>
+                            </div>
                         </div>
                     </td>
                 </tr>
@@ -224,6 +241,43 @@ window.renderSalesDeliveryOrders = function () {
 window.changeSalesDOTab = function(tab) {
     window._salesDoActiveTab = tab;
     window.renderSalesDeliveryOrders();
+};
+
+window.handleDOAction = function(select, id) {
+    const action = select.value;
+    select.value = ""; // Reset dropdown
+    if (action === 'print') printDeliveryOrder(id);
+    if (action === 'cancel') cancelDeliveryOrder(id);
+};
+
+window.cancelDeliveryOrder = async function(id) {
+    const d = db.findById('deliveryOrders', id);
+    if (!d) return;
+    
+    if (d.status === 'SHIPPED') {
+        showToast('Surat Jalan yang sudah dikirim tidak dapat dibatalkan.', 'error');
+        return;
+    }
+
+    if (!confirm(`Apakah Anda yakin ingin membatalkan Surat Jalan ${d.doNumber}?`)) return;
+
+    try {
+        console.log(`[DO] Membatalkan SJ ID: ${id}...`);
+        const result = await db.update('deliveryOrders', id, { status: 'CANCELLED' });
+        
+        if (result && result.status === 'CANCELLED') {
+            console.log(`[DO] SJ Berhasil dibatalkan:`, result);
+            showToast(`Surat Jalan ${d.doNumber} berhasil dibatalkan.`, 'success');
+            // Pastikan render ulang menggunakan data terbaru dari db.read
+            renderSalesDeliveryOrders();
+        } else {
+            console.error(`[DO] Gagal membatalkan SJ. Respon:`, result);
+            showToast('Gagal membatalkan Surat Jalan. Silakan coba klik "Sync" terlebih dahulu.', 'error');
+        }
+    } catch (e) {
+        console.error(`[DO] Error saat membatalkan SJ:`, e);
+        showToast('Terjadi kesalahan koneksi saat membatalkan Surat Jalan.', 'error');
+    }
 };
 
 window.filterSalesDOTable = function() {
@@ -535,7 +589,7 @@ window.selectBlankDOProduct = function (id, name, unit) {
     document.getElementById(`doi_qty_${id}`).select();
 };
 
-window.saveBlankDeliveryOrder = function () {
+window.saveBlankDeliveryOrder = async function () {
     const recipient = document.getElementById('do_recipient').value.trim();
     const address = document.getElementById('do_address').value.trim();
     const driver = document.getElementById('do_driver').value.trim();
@@ -566,7 +620,7 @@ window.saveBlankDeliveryOrder = function () {
 
     if (items.length === 0) { showToast('Minimal satu item harus ditambahkan.', 'error'); return; }
 
-    const saved = db.insert('deliveryOrders', {
+    const saved = await db.insert('deliveryOrders', {
         doNumber: doNum,
         date: date ? new Date(date).toISOString() : new Date().toISOString(),
         type: 'BLANK',
@@ -581,10 +635,12 @@ window.saveBlankDeliveryOrder = function () {
         invoiceNumber: null
     });
 
-    showToast(`Surat Jalan ${doNum} berhasil dibuat.`);
-    closeModal();
-    renderSalesDeliveryOrders();
-    setTimeout(() => printDeliveryOrder(saved.id), 300);
+    if (saved) {
+        showToast(`Surat Jalan ${doNum} berhasil dibuat.`);
+        closeModal();
+        renderSalesDeliveryOrders();
+        setTimeout(() => printDeliveryOrder(saved.id), 300);
+    }
 };
 
 window.openDeliveryFromSOModal = function (soId = null) {
@@ -901,7 +957,7 @@ window.loadSOForDO = function () {
     }
 };
 
-window.saveDeliveryFromSO = function () {
+window.saveDeliveryFromSO = async function () {
     try {
         const soId = document.getElementById('dos_so_id')?.value;
         const recipient = document.getElementById('dos_recipient')?.value.trim();
@@ -916,52 +972,55 @@ window.saveDeliveryFromSO = function () {
 
         const so = db.findById('salesOrders', soId);
         if (!so) { showToast('Sales Order tidak ditemukan.', 'error'); return; }
-    const rows = document.getElementById('dos_items_preview').querySelectorAll('tbody tr');
-    const items = [];
-    rows.forEach((row, idx) => {
-        const qtyBox = row.querySelector(`#dosi_qty_${idx}`);
-        const name = row.cells[1].innerText.split('\n')[0];
-        const qty = parseFloat(qtyBox.dataset.qty) || 0;
-        const kemasan = row.querySelector(`#dosi_kemasan_${idx}`)?.value || '';
-        const colly = row.querySelector(`#dosi_colly_display_${idx}`)?.innerText || 0;
+        const rows = document.getElementById('dos_items_preview').querySelectorAll('tbody tr');
+        const items = [];
+        rows.forEach((row, idx) => {
+            const qtyBox = row.querySelector(`#dosi_qty_${idx}`);
+            const name = row.cells[1].innerText.split('\n')[0];
+            const qty = parseFloat(qtyBox.dataset.qty) || 0;
+            const kemasan = row.querySelector(`#dosi_kemasan_${idx}`)?.value || '';
+            const colly = row.querySelector(`#dosi_colly_display_${idx}`)?.innerText || 0;
 
-        const soItem = so.items[idx]; 
+            const soItem = so.items[idx]; 
 
-        items.push({
-            name,
-            qty,
-            kemasan,
-            colly,
-            unit: soItem?.prodUnit || 'PCS',
-            inventoryItemId: soItem?.inventoryItemId,
-            price: soItem?.price || 0,
-            remark: ''
+            items.push({
+                name,
+                qty,
+                kemasan,
+                colly,
+                unit: soItem?.prodUnit || 'PCS',
+                inventoryItemId: soItem?.inventoryItemId,
+                price: soItem?.price || 0,
+                remark: ''
+            });
         });
-    });
 
-    const doNum = document.getElementById('dos_number').value;
-    const saved = db.insert('deliveryOrders', {
-        doNumber: doNum,
-        date: date ? new Date(date).toISOString() : new Date().toISOString(),
-        status: 'PENDING',
-        type: 'SO',
-        recipientName: recipient,
-        address,
-        driverName: driver,
-        vehicleNo: vehicle,
-        items,
-        notes,
-        salesOrderId: soId,
-        soNumber: so?.soNumber
-    });
+        const doNum = document.getElementById('dos_number').value;
+        const saved = await db.insert('deliveryOrders', {
+            doNumber: doNum,
+            date: date ? new Date(date).toISOString() : new Date().toISOString(),
+            status: 'PENDING',
+            type: 'SO',
+            recipientName: recipient,
+            address,
+            driverName: driver,
+            vehicleNo: vehicle,
+            items,
+            notes,
+            salesOrderId: soId,
+            soNumber: so?.soNumber
+        });
 
-        showToast(`Surat Jalan ${doNum} berhasil diproses ke gudang.`);
-        renderSalesDeliveryOrders();
+        if (saved) {
+            showToast(`Surat Jalan ${doNum} berhasil diproses ke gudang.`);
+            renderSalesDeliveryOrders();
+        }
     } catch (err) {
-        console.error('Save Delivery Error:', err);
-        showToast('Gagal memproses ke gudang: ' + err.message, 'error');
+        console.error('Error in saveDeliveryFromSO:', err);
+        showToast('Gagal menyimpan Surat Jalan', 'error');
     }
 };
+
 
 // ==========================================
 // PRINT DELIVERY ORDER (MODERN TEMPLATE)
@@ -1295,6 +1354,7 @@ window.renderWarehouseDeliveryOrders = function () {
                 </div>
             </div>
         </div>
+        <div id="do-form-view" class="hidden"></div>
     `;
 };
 
@@ -1330,6 +1390,9 @@ window.openConfirmShipmentModal = function(id) {
     const d = db.findById('deliveryOrders', id);
     if (!d) return;
 
+    const listView = document.querySelector('.animate-in.fade-in.duration-500.space-y-5');
+    const formView = document.getElementById('do-form-view');
+
     let issues = [];
     const itemRows = (d.items || []).map(i => {
         const stock = i.inventoryItemId ? db.getInventoryStock(i.inventoryItemId) : 0;
@@ -1337,80 +1400,124 @@ window.openConfirmShipmentModal = function(id) {
         if (!isOk) issues.push(i.name);
 
         return `
-            <tr class="border-b border-slate-50 last:border-0">
-                <td class="py-4 px-3">
-                    <span class="block font-black text-slate-800 text-xs uppercase tracking-tight">${i.name}</span>
-                    <span class="text-[9px] text-slate-400 font-bold uppercase tracking-widest">${i.kemasan || '-'}</span>
+            <tr class="hover:bg-slate-50/50 transition-colors group">
+                <td class="py-5 px-8">
+                    <div class="flex items-center gap-4">
+                        <div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-600 transition-all border border-slate-200/50 shadow-sm">
+                            <i class="fas fa-box-open text-xs"></i>
+                        </div>
+                        <div>
+                            <span class="block font-black text-slate-800 text-sm uppercase tracking-tight">${i.name}</span>
+                            <span class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Pesan: ${invFmt(i.qty)} • Stok: ${invFmt(stock)}</span>
+                        </div>
+                    </div>
                 </td>
-                <td class="py-4 px-3 text-right">
-                    <div class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Qty Kirim</div>
-                    <div class="font-black text-blue-600 text-sm italic">${i.qty}</div>
+                <td class="py-5 px-6 text-center">
+                    <div class="inline-flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-600 rounded-full text-[10px] font-black uppercase tracking-tight border border-blue-100">
+                        ${invFmt(i.qty)} <span class="opacity-50">${i.unit || 'KG'}</span>
+                    </div>
                 </td>
-                <td class="py-4 px-3 text-right">
-                    <div class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Di Gudang</div>
-                    <div class="font-black ${isOk ? 'text-slate-800' : 'text-red-600 animate-pulse'} text-sm">${stock}</div>
-                </td>
-                <td class="py-4 px-3 text-center">
-                    ${isOk 
-                        ? '<span class="w-8 h-8 bg-green-50 text-green-500 rounded-full flex items-center justify-center mx-auto shadow-sm"><i class="fas fa-check text-[10px]"></i></span>' 
-                        : '<span class="w-8 h-8 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto shadow-sm animate-bounce"><i class="fas fa-times text-[10px]"></i></span>'}
+                <td class="py-5 px-8 text-right w-48">
+                    <div class="flex items-center justify-end gap-3">
+                         <div class="w-10 h-10 ${isOk ? 'bg-green-50 text-green-500 border-green-100' : 'bg-red-50 text-red-500 border-red-100 animate-pulse'} rounded-xl border flex items-center justify-center shadow-sm">
+                            <i class="fas ${isOk ? 'fa-check' : 'fa-times'} text-xs"></i>
+                        </div>
+                        <span class="text-[11px] font-black ${isOk ? 'text-slate-700' : 'text-red-600'} uppercase tracking-widest w-12 text-center">${invFmt(i.qty)}</span>
+                    </div>
                 </td>
             </tr>
         `;
     }).join('');
 
     const hasIssue = issues.length > 0;
+    
     const body = `
-        <div class="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-400">
-            <div class="${hasIssue ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100'} border-2 rounded-3xl p-5 flex items-start gap-4 shadow-sm relative overflow-hidden">
-                <div class="relative z-10 w-12 h-12 ${hasIssue ? 'bg-red-600' : 'bg-blue-600'} rounded-2xl flex items-center justify-center shrink-0 shadow-lg text-white">
-                    <i class="fas ${hasIssue ? 'fa-exclamation-triangle' : 'fa-truck-loading'} text-sm"></i>
-                </div>
-                <div class="relative z-10 flex-1">
-                    <h4 class="text-xs font-black ${hasIssue ? 'text-red-900' : 'text-blue-900'} tracking-widest uppercase mb-1">Verifikasi Logistics</h4>
-                    <p class="text-[10px] ${hasIssue ? 'text-red-700' : 'text-blue-700'} font-bold leading-relaxed uppercase tracking-tight">
-                        ${hasIssue ? 'PERINGATAN: Stok tidak mencukupi untuk beberapa item. Lanjutkan dengan resiko stok negatif?' : 'Seluruh barang tersedia. Konfirmasi untuk mencetak surat jalan final dan memotong stok.'}
-                    </p>
+        <div class="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <!-- Top Info Bar -->
+            <div class="bg-blue-50/50 p-8 rounded-[2rem] border border-blue-100/50">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    <div class="space-y-2">
+                        <label class="block text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] ml-1">No. Surat Jalan (Otomatis)</label>
+                        <div class="w-full bg-white rounded-2xl px-5 py-3.5 text-sm font-black text-blue-600 shadow-sm border border-blue-100/50 truncate uppercase">${d.doNumber}</div>
+                    </div>
+                    <div class="space-y-2">
+                        <label class="block text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] ml-1">Tanggal Kirim</label>
+                        <input type="date" id="dos_date" value="${new Date().toISOString().split('T')[0]}" 
+                            class="w-full border-2 border-transparent bg-white rounded-2xl px-5 py-3 text-sm font-black text-slate-700 focus:border-blue-500/20 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all shadow-sm">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="block text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] ml-1">Nama Driver</label>
+                        <input type="text" id="dos_track_driver" value="${d.driverName || ''}" placeholder="BUDI SANTOSO" 
+                            class="w-full border-2 border-transparent bg-white rounded-2xl px-5 py-3 text-sm font-black text-slate-700 focus:border-blue-500/20 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all shadow-sm uppercase tracking-tight placeholder:text-slate-300">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="block text-[10px] font-black text-blue-400 uppercase tracking-[0.2em] ml-1">No. Polisi Kendaraan</label>
+                        <input type="text" id="dos_track_no" value="${d.vehicleNo || ''}" placeholder="B 1234 XY" 
+                            class="w-full border-2 border-transparent bg-white rounded-2xl px-5 py-3 text-sm font-black text-slate-700 focus:border-blue-500/20 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all shadow-sm uppercase tracking-widest placeholder:text-slate-300 font-mono">
+                    </div>
                 </div>
             </div>
-
-            <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
-                <table class="w-full text-left">
-                    <thead class="bg-slate-50/50 border-b border-slate-100">
-                        <tr class="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                            <th class="py-3.5 px-3">Item Produk</th>
-                            <th class="py-3.5 px-3 text-right">Kirim</th>
-                            <th class="py-3.5 px-3 text-right">Fisik</th>
-                            <th class="py-3.5 px-3 text-center w-20">Valid</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-50">${itemRows}</tbody>
-                </table>
+            
+            <div class="flex items-center gap-3 px-2">
+                <i class="fas fa-info-circle text-blue-400 text-xs"></i>
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic">
+                    ${hasIssue ? 'Peringatan: Stok tidak mencukupi untuk beberapa item.' : 'Seluruh barang tersedia. Periksa kembali manifest sebelum konfirmasi pengiriman.'}
+                </p>
             </div>
 
-            <div class="grid grid-cols-2 gap-4">
-                <div class="space-y-1.5">
-                    <label class="block text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">Nama Driver Konfirmasi</label>
-                    <input type="text" id="dos_track_driver" value="${d.driverName || ''}" class="w-full border-2 border-slate-50 rounded-2xl px-4 py-2.5 text-xs font-black text-slate-700 bg-slate-50 focus:bg-white focus:border-blue-500 outline-none transition-all shadow-sm uppercase tracking-tight">
-                </div>
-                <div class="space-y-1.5">
-                    <label class="block text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">No. Polisi Kendaraan</label>
-                    <input type="text" id="dos_track_no" placeholder="Contoh: B 1234 XY" value="${d.vehicleNo || ''}" class="w-full border-2 border-slate-50 rounded-2xl px-4 py-2.5 text-xs font-black text-slate-700 bg-slate-50 focus:bg-white focus:border-blue-500 outline-none transition-all shadow-sm">
+            <!-- Items Table -->
+            <div class="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-slate-50/50 border-b border-slate-100">
+                            <tr class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                                <th class="py-5 px-8">Produk Deskripsi</th>
+                                <th class="py-5 px-6 text-center">Rencana Kirim</th>
+                                <th class="py-5 px-8 text-right w-48">Validasi Stok</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50">
+                            ${itemRows}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
     `;
 
-    const footer = `
-        <div class="flex items-center justify-end gap-4 w-full">
-            <button onclick="closeModal()" class="text-xs font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors">Batal</button>
-            <button onclick="confirmShipment('${id}')" 
-                class="bg-blue-600 hover:bg-slate-900 text-white px-10 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 flex items-center gap-2">
-                ${hasIssue ? 'PROSES (STOK MINUS)' : 'KONFIRMASI PENGIRIMAN'}
-            </button>
-        </div>
-    `;
-    showModal('Persetujuan Pengeluaran Barang', body, footer, 'max-w-xl');
+    if (listView && formView) {
+        listView.classList.add('hidden');
+        formView.classList.remove('hidden');
+        
+        formView.innerHTML = `
+            <div class="animate-in fade-in slide-in-from-bottom-4 duration-500 -m-6 h-[calc(100vh-64px)] flex flex-col overflow-hidden bg-white">
+                <!-- Header Bar -->
+                <div class="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 px-8 py-4 flex justify-between items-center shrink-0 shadow-sm">
+                    <div class="flex items-center gap-6">
+                        <div>
+                            <h2 class="text-lg font-bold text-slate-800 uppercase tracking-tight">Kirim Barang - <span class="text-blue-600">${d.doNumber}</span></h2>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <button onclick="window.renderWarehouseDeliveryOrders()" class="px-6 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-all">BATAL</button>
+                        <button onclick="confirmShipment('${id}')" 
+                            class="px-8 py-2.5 ${hasIssue ? 'bg-red-600' : 'bg-blue-600'} text-white rounded-xl text-[10px] font-black uppercase tracking-[0.1em] hover:bg-slate-900 transition-all shadow-lg active:scale-95 flex items-center gap-2">
+                            <i class="fas ${hasIssue ? 'fa-exclamation-triangle' : 'fa-check-circle'}"></i> 
+                            ${hasIssue ? 'PROSES (PAKSA STOK MINUS)' : 'KONFIRMASI PENGIRIMAN'}
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Scrollable Content -->
+                <div class="flex-1 overflow-y-auto custom-scrollbar bg-white/30 pb-32">
+                    <div class="w-full px-10 py-10 max-w-7xl mx-auto">
+                        ${body}
+                    </div>
+                </div>
+            </div>
+        `;
+        return;
+    }
 };
 
 window.confirmShipment = async function(id) {

@@ -5,7 +5,7 @@
 const API_BASE = '/api';
 
 const TABLES = [
-    'units', 'products', 'warehouses', 'suppliers', 'customers',
+    'units', 'warehouses', 'suppliers', 'customers',
     'purchaseRequests', 'purchaseOrders', 'purchaseInvoices', 'supplierPayments',
     'salesQuotations', 'purchaseRFQs', 'salesOrders', 'salesInvoices', 'payments',
     'boms', 'productionOrders', 'stockMovements',
@@ -42,18 +42,23 @@ const api = {
      */
     read: async (table) => {
         try {
+            console.log(`[API] Reading table: ${table}...`);
             const res = await fetch(`${API_BASE}/data/${table}`, { headers: authHeaders() });
             if (!res.ok) {
                 if (res.status === 401 || res.status === 403) {
+                    console.error('[API] Unauthorized. Redirecting to login.');
                     window.location.href = 'login.html';
                     return [];
                 }
-                console.error(`API read error: ${res.status}`);
+                const errBody = await res.json().catch(() => ({}));
+                console.error(`[API] Read error (${table}): Status ${res.status}`, errBody);
                 return [];
             }
-            return await res.json();
+            const data = await res.json();
+            console.log(`[API] Successfully read ${data.length} records for ${table}.`);
+            return data;
         } catch (err) {
-            console.error(`API read(${table}) error:`, err);
+            console.error(`[API] Read(${table}) fetch error:`, err);
             return [];
         }
     },
@@ -79,15 +84,23 @@ const api = {
      */
     insert: async (table, record) => {
         try {
+            console.log(`[API] Inserting into ${table}:`, record);
             const res = await fetch(`${API_BASE}/data/${table}`, {
                 method: 'POST',
                 headers: authHeaders(),
                 body: JSON.stringify(record)
             });
-            if (!res.ok) throw new Error(`Insert failed: ${res.status}`);
-            return await res.json();
+            if (!res.ok) {
+                const errBody = await res.json().catch(() => ({}));
+                console.error(`[API] Insert error (${table}): Status ${res.status}`, errBody);
+                throw new Error(`Insert failed: ${res.status}. ${errBody.error || ''}`);
+            }
+            const result = await res.json();
+            console.log(`[API] Insert successful for ${table}.`);
+            return result;
         } catch (err) {
-            console.error(`API insert(${table}) error:`, err);
+            console.error(`[API] Insert(${table}) error:`, err);
+            showToast(`Gagal menyimpan data ke server: ${err.message}`, 'error');
             return null;
         }
     },
@@ -262,6 +275,57 @@ const api = {
         return await res.json();
     },
 
+    // ─── Sales Return API ─────────────────────────────────────
+
+    createSalesReturn: async (data) => {
+        const res = await fetch(`${API_BASE}/sales/returns`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(data) });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Gagal membuat Sales Return'); }
+        return await res.json();
+    },
+    approveSalesReturn: async (id) => {
+        const res = await fetch(`${API_BASE}/sales/returns/${id}/approve`, { method: 'POST', headers: authHeaders() });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Gagal approve Sales Return'); }
+        return await res.json();
+    },
+    rejectSalesReturn: async (id) => {
+        const res = await fetch(`${API_BASE}/sales/returns/${id}/reject`, { method: 'POST', headers: authHeaders() });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Gagal reject Sales Return'); }
+        return await res.json();
+    },
+    receiveSalesReturn: async (id, data) => {
+        const res = await fetch(`${API_BASE}/sales/returns/${id}/receive`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(data) });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Gagal konfirmasi penerimaan retur'); }
+        return await res.json();
+    },
+
+    // ─── Product Exchange (Tukar Guling) API ─────────────────
+
+    createProductExchange: async (data) => {
+        const res = await fetch(`${API_BASE}/sales/exchanges`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(data) });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Gagal membuat Tukar Guling'); }
+        return await res.json();
+    },
+    approveProductExchange: async (id) => {
+        const res = await fetch(`${API_BASE}/sales/exchanges/${id}/approve`, { method: 'POST', headers: authHeaders() });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Gagal approve Tukar Guling'); }
+        return await res.json();
+    },
+    rejectProductExchange: async (id) => {
+        const res = await fetch(`${API_BASE}/sales/exchanges/${id}/reject`, { method: 'POST', headers: authHeaders() });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Gagal reject Tukar Guling'); }
+        return await res.json();
+    },
+    receiveProductExchange: async (id, data) => {
+        const res = await fetch(`${API_BASE}/sales/exchanges/${id}/receive`, { method: 'POST', headers: authHeaders(), body: JSON.stringify(data) });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Gagal konfirmasi penerimaan tukar guling'); }
+        return await res.json();
+    },
+    shipProductExchange: async (id) => {
+        const res = await fetch(`${API_BASE}/sales/exchanges/${id}/ship`, { method: 'POST', headers: authHeaders() });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Gagal kirim pengganti tukar guling'); }
+        return await res.json();
+    },
+
     // ─── Purchase API (Fase 2) ────────────────────────────────
 
     receivePOGoods: async (poId, data) => {
@@ -372,6 +436,11 @@ const api = {
             results.forEach(({ table, data }) => {
                 if (data && Array.isArray(data)) {
                     localStorage.setItem('unityerp_' + table, JSON.stringify(data));
+                    if (typeof db !== 'undefined' && typeof db.save === 'function') {
+                        db.save(table, data);
+                    } else if (window.db && typeof window.db.save === 'function') {
+                        window.db.save(table, data);
+                    }
                     synced++;
                 }
             });

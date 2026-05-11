@@ -106,12 +106,14 @@ router.post('/orders/:id/receive', authenticateToken, async (req, res) => {
             await sequelize.query(
                 `UPDATE purchase_orders SET 
                     status = :status,
-                    items = :items
+                    items = :items,
+                    receipts = :receipts
                 WHERE id = :id`,
                 {
                     replacements: {
                         status: newStatus,
                         items: JSON.stringify(updatedItems),
+                        receipts: JSON.stringify(receipts),
                         id: po.id
                     },
                     transaction: t
@@ -153,8 +155,7 @@ router.post('/orders/:id/receive', authenticateToken, async (req, res) => {
 
         // System Log
         await SystemLog.create({
-            id: uuidv4(),
-            user_id: req.user.id,
+            user_id: req.user.userId,
             action: 'RECEIVE_PO_GOODS',
             details: `Menerima barang untuk PO ${poData.po_number || poData.poNumber || ''}: ${receivedItems.length} item, total ${totalValueReceived}`,
             timestamp: new Date()
@@ -243,8 +244,7 @@ router.post('/payments/:invoiceId/pay', authenticateToken, async (req, res) => {
 
         // 4. System Log
         await SystemLog.create({
-            id: uuidv4(),
-            user_id: req.user.id,
+            user_id: req.user.userId,
             action: 'SUPPLIER_PAYMENT',
             details: `Pembayaran ${amount} untuk invoice ${inv.inv_number || inv.id}`,
             timestamp: new Date()

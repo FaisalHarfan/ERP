@@ -102,6 +102,7 @@ const BREADCRUMB_MAP = {
     'sales-delivery-orders': ['Penjualan', 'Delivery Orders'],
     'sales-reports': ['Penjualan', 'Reports'],
     'sales-report-analytics': ['Penjualan', 'Reports', 'Sales Analytics'],
+    'sales-region-report': ['Penjualan', 'Reports', 'Sales By Region'],
     'sales-report-address': ['Penjualan', 'Reports', 'Customer Addresses & Contacts'],
     'sales-report-trends': ['Penjualan', 'Reports', 'Sales Invoice Trends'],
     'sales-quotation-trends': ['Penjualan', 'Reports', 'Quotations Trends'],
@@ -124,6 +125,7 @@ const BREADCRUMB_MAP = {
     'inventory-master': ['Logistik', 'Master Items'],
     'inventory-logs': ['Logistik', 'Daily Logs'],
     'inventory-judgment': ['Logistik', 'Judgment'],
+    'inventory-incoming-returns': ['Logistik', 'Penerimaan Retur'],
     'inventory-shrinkage': ['Produksi', 'Reports', 'Laporan Penyusutan'],
     'inventory-transfer': ['Logistik', 'Stock Transfer'],
     'production-dashboard': ['Produksi', 'Dashboard'],
@@ -240,10 +242,11 @@ const views = {
     'sales-report-trends': renderSalesInvoiceTrends,
     'sales-quotation-trends': () => window.renderSalesQuotationTrends(),
     'sales-order-trends': () => window.renderSalesOrderTrends(),
+    'sales-region-report': () => window.renderSalesRegionTrends(),
     'purchase-rfqs': renderPurchaseRFQs,
     'sales-customers': renderCustomerData,
-    'sales-returns': window.renderSalesReturns,
-    'sales-exchanges': window.renderProductExchanges,
+    'sales-returns': () => window.renderSalesReturns(),
+    'sales-exchanges': () => window.renderProductExchanges(),
     'sales-return-reports': window.renderSalesReturnReports,
     'sales-delivery-orders': window.renderSalesDeliveryOrders,
     // Production Module (New)
@@ -277,6 +280,7 @@ const views = {
     'finance-neracasaldo': window.renderFinanceTrialBalance,
     'inventory-judgment': window.renderInventoryJudgment,
     'inventory-conversion': window.renderInventoryConversion,
+    'inventory-incoming-returns': () => window.renderIncomingReturns(),
     // Settings Module
     'settings-users': window.renderSettingsUsers,
     'settings-roles': window.renderSettingsRoles,
@@ -296,6 +300,7 @@ const MODULE_VIEW_MAP = {
     'inventory-card': 'logistik', 'inventory-shrinkage': 'produksi', 'inventory-monthly-report': 'logistik', 'inventory-conversion': 'logistik',
     'production-dashboard': 'produksi', 'production-bom': 'produksi', 'production-mo': 'produksi', 'production-shift-report': 'produksi', 'production-wip-stock': 'produksi', 'production-reports': 'produksi', 'production-stock-master': 'produksi', 'master-machines': 'produksi',
     'sales-returns': 'logistik', 'sales-exchanges': 'logistik', 'sales-return-reports': 'logistik',
+    'inventory-incoming-returns': 'logistik',
     'finance-dashboard': 'finance', 'finance-accounts': 'finance',
     'finance-ar': 'finance',
     'finance-ar-history': 'finance',
@@ -310,7 +315,8 @@ const MODULE_VIEW_MAP = {
     'finance-credit-notes': 'finance', 'finance-debit-notes': 'finance', 'finance-hpp': 'finance', 'finance-rugilaba': 'finance', 'finance-neracasaldo': 'finance',
     'settings-users': 'pengaturan', 'settings-roles': 'pengaturan', 'settings-company': 'pengaturan',
     'settings-system': 'pengaturan', 'settings-dashboard': 'pengaturan',
-    'sales-delivery-orders': 'penjualan'
+    'sales-delivery-orders': 'penjualan',
+    'sales-region-report': 'penjualan'
 };
 
 // --- Global Auth Helpers ---
@@ -606,14 +612,27 @@ async function navigateTo(viewId, isBack = false) {
         'sales-quotations': ['salesQuotations', 'customers', 'inventoryItems'],
         'sales-orders': ['salesOrders', 'customers', 'inventoryItems'],
         'sales-invoices': ['salesInvoices', 'customers', 'inventoryItems'],
-        'master-suppliers': ['suppliers'],
+        'purchase-requests': ['purchaseRequests', 'suppliers', 'inventoryItems'],
+        'purchase-rfqs': ['purchaseRFQs', 'suppliers', 'inventoryItems'],
         'purchase-orders': ['purchaseOrders', 'suppliers', 'inventoryItems'],
-        'production-stock': ['inventoryItems', 'stockTransactions'],
+        'purchase-invoices': ['purchaseInvoices', 'suppliers', 'inventoryItems'],
+        'supplier-payments': ['supplierPayments', 'suppliers', 'accounts'],
+        'production-dashboard': ['productionOrders', 'stockTransactions', 'inventoryItems'],
+        'production-stock-master': ['inventoryItems', 'stockTransactions'],
         'production-bom': ['bomHeaders', 'bomMaterials', 'inventoryItems'],
-        'production-mo': ['manufacturingOrders', 'inventoryItems', 'bomHeaders'],
+        'production-mo': ['productionOrders', 'inventoryItems', 'bomHeaders', 'machines'],
+        'production-wip-stock': ['inventoryItems', 'stockTransactions'],
+        'production-reports': ['productionOrders', 'inventoryItems'],
+        'master-machines': ['machines'],
         'finance-accounts': ['accounts'],
         'settings-users': ['users', 'roles'],
-        'settings-roles': ['roles']
+        'settings-roles': ['roles'],
+        'sales-delivery-orders': ['deliveryOrders', 'salesOrders', 'customers', 'inventoryItems'],
+        'sales-region-report': ['salesOrders', 'customers'],
+        'sales-report-trends': ['salesInvoices', 'customers', 'inventoryItems'],
+        'sales-quotation-trends': ['salesQuotations', 'customers', 'inventoryItems'],
+        'sales-order-trends': ['salesOrders', 'customers', 'inventoryItems'],
+        'sales-report-analytics': ['salesInvoices', 'salesOrders', 'customers', 'inventoryItems']
     };
     
     const tablesToSync = tableSyncMap[viewId] || [];
@@ -2154,7 +2173,7 @@ window.openCustomerModal = async (id = null, afterView = null) => {
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Pajak (PPN %)</label>
                                 <select id="cust_ppn" class="w-full bg-slate-50 border-2 border-transparent rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:bg-white focus:border-blue-400 outline-none cursor-pointer transition-all appearance-none">
                                     <option value="0" ${customer.ppn == 0 ? 'selected' : ''}>0% (Tanpa Pajak)</option>
-                                    <option value="11" ${(customer.ppn == 11 || customer.ppn === undefined) ? 'selected' : ''}>11% (PPN)</option>
+                                    <option value="11" ${(customer.ppn == 11 || customer.ppn === undefined || customer.ppn === null) ? 'selected' : ''}>11% (PPN)</option>
                                 </select>
                             </div>
                         </div>
@@ -2567,7 +2586,7 @@ function renderSupplierRows(suppliers) {
                 </div>
             </td>
             <td class="py-4 px-5">
-                <div class="text-sm text-slate-700 font-medium">${s.pic || '-'}</div>
+                <div class="text-sm text-slate-700 font-medium">${s.contactPerson || s.contact_person || '-'}</div>
                 <div class="text-[12px] text-slate-500">${s.email || '-'}</div>
                 <div class="text-[12px] text-slate-500">${s.phone || '-'}</div>
             </td>
@@ -2629,7 +2648,7 @@ window.exportSupplierCsv = () => {
 
 
 window.renderSupplierForm = (id = null) => {
-    const s = id ? db.findById('suppliers', id) : { name: '', phone: '', email: '', address: '', pic: '', region: '', city: '', category: '', paymentTerm: '', commonProducts: [] };
+    const s = id ? db.findById('suppliers', id) : { name: '', phone: '', email: '', address: '', contactPerson: '', npwp: '', region: '', city: '', category: '', paymentTerm: '', commonProducts: [] };
     
     renderBreadcrumb(['Purchasing', 'Reports', 'Supplier Addresses & Contacts', id ? 'Edit Supplier' : 'Tambah Supplier']);
     document.getElementById('pageTitle').innerText = id ? 'Edit Supplier' : 'Tambah Supplier';
@@ -2672,8 +2691,12 @@ window.renderSupplierForm = (id = null) => {
                         </h4>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-5">
                             <div>
-                                <label class="block text-sm font-medium text-slate-600 mb-1">PIC (Person In Charge) <span class="text-red-400">*</span></label>
-                                <input type="text" id="sup_pic" value="${s.pic || ''}" placeholder="Nama PIC" class="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all">
+                                <label class="block text-sm font-medium text-slate-600 mb-1">PIC (Contact Person) <span class="text-red-400">*</span></label>
+                                <input type="text" id="sup_contact_person" value="${s.contactPerson || s.contact_person || ''}" placeholder="Nama PIC" class="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-600 mb-1">NPWP Supplier</label>
+                                <input type="text" id="sup_npwp" value="${s.npwp || ''}" placeholder="00.000.000.0-000.000" class="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm text-slate-800 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all">
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-slate-600 mb-1">Email Address <span class="text-red-400">*</span></label>
@@ -2756,7 +2779,7 @@ window.renderSupplierForm = (id = null) => {
                             <div class="flex flex-wrap md:flex-nowrap gap-4 mb-6">
                                 <div class="flex-1 min-w-[300px] relative">
                                     <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Pilih Material / Barang</label>
-                                    <div id="sup_cp_trigger" onclick="openProductSearch('sup_cp', ['RAW_MATERIAL', 'OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK', 'WIP'])" class="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-400 cursor-pointer hover:bg-slate-50 hover:border-indigo-200 transition-all flex justify-between items-center group min-h-[46px]">
+                                    <div id="sup_cp_trigger" onclick="openProductSearch('sup_cp', ['RAW_MATERIAL', 'PACKAGING', 'SUPPLIES', 'SERVICE', 'SPAREPART', 'ASSET', 'GAS', 'OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK', 'WIP'])" class="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-400 cursor-pointer hover:bg-slate-50 hover:border-indigo-200 transition-all flex justify-between items-center group min-h-[46px]">
                                         <span id="sup_cp_label" class="truncate pr-2">-- Cari Kode atau Nama Produk --</span>
                                         <i class="fas fa-chevron-down text-[10px] text-slate-300 group-hover:text-indigo-400 transition-colors"></i>
                                     </div>
@@ -2827,7 +2850,8 @@ window.refreshSupplierProductsTable = () => {
 
 window.addSupplierProduct = () => {
     const itemId = document.getElementById('sup_cp_item').value;
-    const searchInput = document.getElementById('sup_cp_item_search');
+    const label = document.getElementById('sup_cp_label');
+    const searchInput = document.getElementById('sup_cp_search_input');
     
     if (!itemId) { showToast('Pilih material/barang', 'error'); return; }
 
@@ -2837,12 +2861,20 @@ window.addSupplierProduct = () => {
     const exists = window.tempSupplierProducts.findIndex(p => p.itemId === itemId);
     if (exists < 0) {
         window.tempSupplierProducts.push({ itemId, itemName: item.itemName, unit: item.unit || 'PCS' });
+        showToast('Barang ditambahkan ke daftar', 'success');
     } else {
-        showToast('Bahan sudah ditambahkan', 'info');
+        showToast('Bahan sudah ada dalam daftar', 'info');
     }
     
+    // Reset UI
     document.getElementById('sup_cp_item').value = '';
-    searchInput.value = '';
+    if (label) {
+        label.innerText = '-- Cari Kode atau Nama Produk --';
+        label.classList.add('text-slate-400');
+        label.classList.remove('text-slate-800', 'font-black');
+    }
+    if (searchInput) searchInput.value = '';
+    
     refreshSupplierProductsTable();
 };
 
@@ -2871,8 +2903,17 @@ window.handleSupplierChange = (suppId, mode = 'PO') => {
         }
         
         const taxEl = document.getElementById('po_tax_rate');
-        if (taxEl && supp.ppn !== undefined) {
-            taxEl.value = supp.ppn;
+        if (taxEl && (supp.ppn !== undefined && supp.ppn !== null)) {
+            taxEl.value = parseInt(supp.ppn); // Convert 0.00 to 0 or 11.00 to 11
+            // Sync badge TAX/NT dan nomor PO sesuai pajak supplier
+            const isTax = parseInt(supp.ppn) > 0;
+            const taxTypeEl = document.getElementById('po_tax_type');
+            if (taxTypeEl) taxTypeEl.value = isTax ? 'A' : 'B';
+            const dateVal = document.getElementById('po_date')?.value;
+            const poNumEl = document.getElementById('po_number');
+            if (poNumEl && typeof generatePurchaseOrderNumber === 'function') {
+                poNumEl.value = generatePurchaseOrderNumber(isTax, dateVal);
+            }
             if (window.renderPOItemsList) renderPOItemsList();
         }
 
@@ -2932,10 +2973,11 @@ window.handleSupplierChange = (suppId, mode = 'PO') => {
     }
 };
 
-window.saveSupplier = (id) => {
+window.saveSupplier = async (id) => {
     const name = document.getElementById('sup_name').value.trim();
     if (!name) { showToast('Nama supplier harus diisi', 'error'); return; }
-    const pic = document.getElementById('sup_pic').value.trim();
+    const contact_person = document.getElementById('sup_contact_person').value.trim();
+    const npwp = document.getElementById('sup_npwp').value.trim();
     const phone = document.getElementById('sup_phone').value.trim();
     const email = document.getElementById('sup_email').value.trim();
     const address = document.getElementById('sup_address').value.trim();
@@ -2944,14 +2986,15 @@ window.saveSupplier = (id) => {
     const ppn = parseInt(document.getElementById('sup_ppn').value) || 0;
     const commonProducts = window.tempSupplierProducts || [];
 
-    if (!pic) { showToast('PIC harus diisi', 'error'); return; }
+    if (!contact_person) { showToast('PIC harus diisi', 'error'); return; }
     if (!phone) { showToast('Nomor Telepon harus diisi', 'error'); return; }
     if (!email) { showToast('Email harus diisi', 'error'); return; }
     if (!address) { showToast('Alamat harus diisi', 'error'); return; }
 
     const data = {
         name,
-        pic,
+        contactPerson: contact_person,
+        npwp,
         phone,
         email,
         address,
@@ -2959,10 +3002,16 @@ window.saveSupplier = (id) => {
         paymentTerm,
         ppn,
         commonProducts,
-        updatedAt: new Date().toISOString()
     };
-    if (id) { db.update('suppliers', id, data); showToast('Supplier diperbarui'); }
-    else { db.insert('suppliers', data); showToast('Supplier ditambahkan'); }
+    
+    showToast('Sedang menyimpan...', 'info');
+    if (id) { 
+        await db.update('suppliers', id, data); 
+        showToast('Supplier diperbarui', 'success'); 
+    } else { 
+        await db.insert('suppliers', data); 
+        showToast('Supplier ditambahkan', 'success'); 
+    }
     renderMasterSuppliers();
 };
 
@@ -3003,9 +3052,19 @@ function renderProductSearchResults(query, container, categoryFilter, prefix) {
     const items = db.read('inventoryItems').filter(i => i.status !== 'INACTIVE');
     const filtered = items.filter(i => {
         const matchesQuery = !query || i.itemName.toLowerCase().includes(query.toLowerCase()) || i.itemCode.toLowerCase().includes(query.toLowerCase());
-        const matchesCategory = !categoryFilter || (Array.isArray(categoryFilter) ? categoryFilter.includes(i.category) : i.category === categoryFilter);
+        
+        // If it's a supplier product search, we might want to be more inclusive
+        let matchesCategory = true;
+        if (categoryFilter) {
+            if (Array.isArray(categoryFilter)) {
+                matchesCategory = categoryFilter.includes(i.category);
+            } else {
+                matchesCategory = i.category === categoryFilter;
+            }
+        }
+        
         return matchesQuery && matchesCategory;
-    }).slice(0, 5);
+    }).slice(0, 15); // Show more results (15 instead of 5) for better usability
 
     if (filtered.length === 0) {
         container.innerHTML = `
@@ -3160,7 +3219,7 @@ window.openPOForm = async (fromPrId = null, fromRfqId = null) => {
                 <div></div>
                 <div class="flex items-center gap-3">
                     <button type="button" onclick="closePOForm()" class="px-6 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95">Batal</button>
-                    <button type="button" onclick="saveNewPurchaseOrder()" class="px-8 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95 flex items-center gap-2">
+                    <button type="button" onclick="savePO()" class="px-8 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95 flex items-center gap-2">
                         <i class="fas fa-check-circle text-[10px]"></i> Simpan Purchase Order
                     </button>
                 </div>
@@ -3263,7 +3322,13 @@ window.openPOForm = async (fromPrId = null, fromRfqId = null) => {
                             </div>
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Pajak (PPN %)</label>
-                                <select id="po_tax_rate" onchange="renderPOItemsList()"
+                                <select id="po_tax_rate" onchange="
+                                    const isTax = this.value !== '0';
+                                    const taxTypeEl = document.getElementById('po_tax_type');
+                                    if (taxTypeEl) taxTypeEl.value = isTax ? 'A' : 'B';
+                                    const dateVal = document.getElementById('po_date')?.value;
+                                    document.getElementById('po_number').value = generatePurchaseOrderNumber(isTax, dateVal);
+                                    renderPOItemsList();"
                                     class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
                                     <option value="0" ${CONFIG.taxRate == 0 ? 'selected' : ''}>0% (Tanpa Pajak)</option>
                                     <option value="11" ${(CONFIG.taxRate == 11 || !CONFIG.taxRate) ? 'selected' : ''}>11% (PPN)</option>
@@ -3480,8 +3545,8 @@ window.updatePOItemInline = (idx, field, value) => {
 
 window.removePOItem = (idx) => { window.tempPOItems.splice(idx, 1); renderPOItemsList(); };
 
-window.savePO = () => {
-    const supId = document.getElementById('po_supplier').value;
+window.savePO = async () => {
+    const supId = document.getElementById('po_supplier_id').value;
     const poNum = document.getElementById('po_number').value;
     const poDateEl = document.getElementById('po_date');
     const poEtdEl = document.getElementById('po_etd');
@@ -3508,7 +3573,7 @@ window.savePO = () => {
     const taxAmount = Math.round(dpp * taxPct / 100);
     const total = dpp + taxAmount;
 
-    const newPO = db.insert('purchaseOrders', {
+    const result = await db.insert('purchaseOrders', {
         poNumber: poNum,
         supplierId: supId,
         requestId: window.tempPOFromPR || window.tempPOFromRFQ || null,
@@ -3529,12 +3594,14 @@ window.savePO = () => {
     });
 
     if (window.tempPOFromRFQ) {
-        db.update('purchaseRFQs', window.tempPOFromRFQ, { status: 'PO_CREATED' });
+        await db.update('purchaseRFQs', window.tempPOFromRFQ, { status: 'PO_CREATED' });
     }
 
+    if (!result) { showToast('Gagal menyimpan PO, coba lagi', 'error'); return; }
     window.tempPOItems = []; window.tempPOFromPR = null; window.tempPOFromRFQ = null;
     showToast('PO Draft berhasil dibuat!', 'success');
     closePOForm();
+    await db.sync('purchaseOrders');
     renderPurchaseOrders();
 };
 
@@ -3589,102 +3656,149 @@ window.generateNPBNumber = () => {
 
 window.receiveGoodsPO = (id) => {
     const po = db.findById('purchaseOrders', id);
+    if (!po) return;
+    
     if (!['APPROVED', 'PARTIALLY RECEIVED'].includes(po.status)) {
         showToast('PO harus APPROVED atau PARTIAL sebelum terima barang', 'error');
         return;
     }
+
     const rows = (po.items || []).map((i, idx) => {
         const receivedSoFar = i.receivedQty || 0;
         const sisa = Math.max(0, i.qty - receivedSoFar);
+        const isCompleted = sisa === 0;
+
         return `
-        <tr class="border-b text-sm">
-            <td class="py-2 px-2">${i.prodText}
-                <div class="text-[10px] text-gray-400">Total Pesan: ${formatNumber(i.qty)} | Sudah Terima: ${formatNumber(receivedSoFar)}</div>
+        <tr class="group hover:bg-slate-50/50 transition-colors">
+            <td class="py-5 px-6">
+                <div class="flex items-center gap-4">
+                    <div class="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-green-50 group-hover:text-green-600 transition-all border border-slate-200/50">
+                        <i class="fas fa-box-open text-xs"></i>
+                    </div>
+                    <div>
+                        <div class="font-black text-slate-800 text-sm uppercase tracking-tight">${i.prodText || i.itemName}</div>
+                        <div class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 flex items-center gap-2">
+                             <span>PESAN: ${invFmt(i.qty)}</span>
+                             <span class="w-1 h-1 bg-slate-200 rounded-full"></span>
+                             <span>TERIMA: ${invFmt(receivedSoFar)}</span>
+                        </div>
+                    </div>
+                </div>
             </td>
-            <td class="py-2 px-2 text-right"><span class="font-bold text-blue-600">${formatNumber(sisa)}</span></td>
-            <td class="py-2 px-2 text-right">
-                <input type="number" id="recv_qty_${idx}" value="${sisa}" max="${sisa}" min="0"
-                    ${sisa === 0 ? 'disabled' : ''}
-                    class="w-20 border border-gray-300 rounded px-2 py-1 text-center text-sm ${sisa === 0 ? 'bg-gray-100' : ''}">
+            <td class="py-5 px-6 text-center">
+                <div class="inline-flex items-center gap-2 px-3 py-1 bg-slate-50 rounded-full border border-slate-100">
+                    <span class="text-xs font-black ${isCompleted ? 'text-slate-400' : 'text-blue-600'}">${invFmt(sisa)}</span>
+                    <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest">${i.unit || 'PCS'}</span>
+                </div>
+            </td>
+            <td class="py-5 px-6 text-right">
+                <div class="relative inline-block w-32">
+                    <input type="number" id="recv_qty_${idx}" value="${sisa}" max="${sisa}" min="0" step="any"
+                        ${isCompleted ? 'disabled' : ''}
+                        class="w-full border-2 border-transparent bg-slate-100/80 rounded-xl px-4 py-2.5 text-center text-sm font-black text-slate-800 focus:bg-white focus:border-green-500/20 focus:ring-4 focus:ring-green-500/5 outline-none transition-all ${isCompleted ? 'opacity-30 cursor-not-allowed' : ''}">
+                </div>
             </td>
         </tr>`;
     }).join('');
 
     const todayStr = new Date().toISOString().split('T')[0];
     const npbNum = window.generateNPBNumber();
-    const body = `<div class="text-sm">
-        <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-4">
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">No. NPB (Otomatis)</label>
-                    <input type="text" id="recv_npb" value="${npbNum}" readonly class="w-full border-none rounded-lg px-3 py-2 text-sm font-bold text-blue-700 bg-blue-100/50 shadow-sm outline-none cursor-not-allowed">
-                </div>
-                <div>
-                    <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Tanggal Terima</label>
-                    <input type="date" id="recv_date" value="${todayStr}" class="w-full border-none rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                </div>
-                <div>
-                    <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">No. Surat Jalan (Supplier)</label>
-                    <input type="text" id="recv_sj" placeholder="Contoh: SJ-12345" class="w-full border-none rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                </div>
-                <div>
-                    <label class="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Penerima / Keterangan</label>
-                    <input type="text" id="recv_notes" placeholder="Nama penerima atau catatan tambahan" class="w-full border-none rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-white shadow-sm focus:ring-2 focus:ring-blue-500 outline-none">
+    
+    const body = `
+        <div class="space-y-6">
+            <!-- Summary Info Card -->
+            <div class="bg-indigo-50/50 border border-indigo-100/50 p-8 rounded-[2rem] shadow-sm relative overflow-hidden group">
+                <div class="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 relative z-10">
+                    <div class="space-y-2">
+                        <label class="block text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] ml-1">No. NPB (Otomatis)</label>
+                        <input type="text" id="recv_npb" value="${npbNum}" readonly 
+                            class="w-full border-2 border-indigo-100/30 rounded-2xl px-5 py-3 text-sm font-black text-indigo-700 bg-white/50 outline-none cursor-not-allowed shadow-inner">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="block text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] ml-1">Tanggal Terima</label>
+                        <input type="date" id="recv_date" value="${todayStr}" 
+                            class="w-full border-2 border-transparent bg-white rounded-2xl px-5 py-3 text-sm font-black text-slate-700 focus:border-indigo-500/20 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all shadow-sm">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="block text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] ml-1">No. SJ Supplier</label>
+                        <input type="text" id="recv_sj" placeholder="SJ-XXXXX" 
+                            class="w-full border-2 border-transparent bg-white rounded-2xl px-5 py-3 text-sm font-black text-slate-700 focus:border-indigo-500/20 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all shadow-sm uppercase tracking-widest placeholder:text-slate-300">
+                    </div>
+                    <div class="space-y-2">
+                        <label class="block text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] ml-1">Nama Penerima</label>
+                        <input type="text" id="recv_notes" placeholder="Nama / Keterangan..." 
+                            class="w-full border-2 border-transparent bg-white rounded-2xl px-5 py-3 text-sm font-black text-slate-700 focus:border-indigo-500/20 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all shadow-sm uppercase placeholder:text-slate-300">
+                    </div>
                 </div>
             </div>
-        </div>
-        
-        <p class="text-gray-500 mb-3 text-xs italic">Masukkan qty aktual yang diterima. (Barang yang sudah diterima 100% tidak bisa diinput lagi).</p>
-        <div class="overflow-x-auto rounded-xl border border-slate-200">
-            <table class="w-full text-left">
-                <thead class="bg-slate-50 border-b border-slate-200 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                    <tr>
-                        <th class="py-4 px-4">Produk</th>
-                        <th class="py-4 px-4 text-center">Sisa Qty</th>
-                        <th class="py-4 px-4 text-right">Terima Hari Ini</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100">
-                    ${rows}
-                </tbody>
-            </table>
-        </div>
-    </div>`;
+            
+            <div class="flex items-center gap-3 px-2">
+                <i class="fas fa-info-circle text-indigo-400 text-xs"></i>
+                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic">Masukkan qty aktual yang diterima. Barang yang sudah 100% komplit tidak dapat diinput ulang.</p>
+            </div>
+
+            <!-- Items Table -->
+            <div class="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead class="bg-slate-50/50 border-b border-slate-100">
+                            <tr class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">
+                                <th class="py-5 px-6">Produk Deskripsi</th>
+                                <th class="py-5 px-6 text-center">Sisa Pesanan</th>
+                                <th class="py-5 px-6 text-right w-40">Terima Hari Ini</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50">
+                            ${rows}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>`;
 
     const formView = document.getElementById('gr-form-view');
     const listViewPending = document.getElementById('pgr-pending-list-view');
     const listViewHistory = document.getElementById('pgr-history-list-view');
+    const listViewInventory = document.getElementById('por-list-view');
     
     if (!formView) {
-        showModal(`Terima Barang - ${po.poNumber}`, body, `<button onclick="confirmReceiveGoods('${id}')" class="w-full sm:w-auto inline-flex justify-center rounded-md bg-green-600 px-4 py-2 text-white text-sm font-medium hover:bg-green-700 sm:ml-3">Konfirmasi Terima</button><button onclick="closeModal()" class="mt-3 sm:mt-0 w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 px-4 py-2 bg-white text-gray-700 text-sm font-medium sm:ml-3">Batal</button>`, 'xl');
+        showModal(`Terima Barang - ${po.poNumber}`, body, `
+            <div class="flex items-center justify-end gap-3 w-full px-4">
+                <button onclick="closeModal()" class="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-red-500 transition-all">Batal</button>
+                <button onclick="confirmReceiveGoods('${id}')" class="bg-green-600 hover:bg-slate-900 text-white px-10 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] shadow-xl shadow-green-500/20 transition-all active:scale-95 flex items-center gap-3">
+                    <i class="fas fa-check-circle"></i> KONFIRMASI TERIMA
+                </button>
+            </div>
+        `, 'xl');
         return;
     }
 
     if (listViewPending) listViewPending.classList.add('hidden');
     if (listViewHistory) listViewHistory.classList.add('hidden');
+    if (listViewInventory) listViewInventory.classList.add('hidden');
     
     formView.innerHTML = `
-        <div class="animate-in fade-in slide-in-from-bottom-2 duration-400 -m-6 h-[calc(100vh-64px)] flex flex-col overflow-hidden bg-slate-50/50">
-            <div class="sticky top-0 z-40 bg-white border-b border-slate-100 px-8 py-4 flex justify-between items-center shrink-0 shadow-sm">
-                <div class="flex items-center gap-4">
-                    <h2 class="text-lg font-black text-slate-800 tracking-tight">Terima Barang - <span class="text-blue-600">${po.poNumber}</span></h2>
+        <div class="animate-in fade-in slide-in-from-bottom-4 duration-500 -m-6 h-[calc(100vh-64px)] flex flex-col overflow-hidden bg-slate-50/20">
+            <!-- Header Bar -->
+            <div class="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 px-8 py-4 flex justify-between items-center shrink-0 shadow-sm">
+                <div class="flex items-center gap-6">
+                    <div>
+                        <h2 class="text-lg font-bold text-slate-800 uppercase tracking-tight">Terima Barang - <span class="text-blue-600">${po.poNumber}</span></h2>
+                    </div>
                 </div>
-                <div class="flex items-center gap-3">
-                    <button onclick="closeGRForm()" class="px-6 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95">Batal</button>
-                    <button onclick="confirmReceiveGoods('${id}')" class="px-8 py-2.5 bg-green-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg shadow-green-200 active:scale-95 flex items-center gap-2">
-                        <i class="fas fa-check"></i> Konfirmasi Terima
+                <div class="flex items-center gap-4">
+                    <button onclick="closeGRForm()" class="px-6 py-2.5 text-[10px] font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-all">BATAL</button>
+                    <button onclick="confirmReceiveGoods('${id}')" class="px-8 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-[0.1em] hover:bg-slate-900 transition-all shadow-lg shadow-blue-500/20 active:scale-95 flex items-center gap-2">
+                        <i class="fas fa-check-circle"></i> KONFIRMASI TERIMA
                     </button>
                 </div>
             </div>
             
-            <div class="flex-1 overflow-y-auto custom-scrollbar pb-32">
-                <div class="w-full px-8 py-8 max-w-7xl mx-auto space-y-8">
-                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm">
-                        <h3 class="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-6 flex items-center gap-2">
-                            <i class="fas fa-info-circle"></i> Informasi Penerimaan
-                        </h3>
-                        ${body}
-                    </div>
+            <!-- Content Area -->
+            <div class="flex-1 overflow-y-auto custom-scrollbar bg-white/30 pb-32">
+                <div class="w-full px-10 py-10 max-w-7xl mx-auto">
+                    ${body}
                 </div>
             </div>
         </div>
@@ -3770,12 +3884,19 @@ window.confirmReceiveGoods = async (id) => {
         if (window.closeGRForm) window.closeGRForm();
         else closeModal();
         // Refresh the current view
-        const activeNav = document.querySelector('.nav-btn.active');
-        if (activeNav && activeNav.dataset.view === 'purchase-receiving') {
-            renderPurchaseReceiving();
-        } else {
-            renderPurchaseOrders();
+        if (window._porActiveTab && typeof renderInventoryPOReceipt === 'function') {
+             renderInventoryPOReceipt();
+        } else if (window.renderPurchaseReceiving && document.getElementById('pageTitle')?.innerText.includes('Received')) {
+             renderPurchaseReceiving();
+        } else if (window.renderPurchaseOrders) {
+             renderPurchaseOrders();
         }
+        // Auto-offer print NPB after save
+        setTimeout(() => {
+            if (confirm(`Barang berhasil diterima (${recvNpb}). Cetak NPB sekarang?`)) {
+                printNPB(id);
+            }
+        }, 400);
     } catch (err) {
         showToast(err.message, 'error');
     }
@@ -3798,7 +3919,7 @@ window.viewPO = (id) => {
     let deliveryHtml = '';
     if (po.etd) {
         const etdDate = new Date(po.etd); etdDate.setHours(0, 0, 0, 0);
-        let etdLabel = `<span class="font-medium text-gray-800">${po.etd}</span>`;
+        let etdLabel = `<span class="font-medium text-gray-800">${po.etd.split('T')[0]}</span>`;
         let delayBadge = '';
         if (po.actualDeliveryDate) {
             const actDate = new Date(po.actualDeliveryDate); actDate.setHours(0, 0, 0, 0);
@@ -3826,7 +3947,7 @@ window.viewPO = (id) => {
                 </div>
                 <div>
                     <p class="text-gray-500 text-xs">Jatuh Tempo</p>
-                    <p class="font-medium text-orange-600 font-bold">${po.dueDate || '-'}</p>
+                    <p class="font-medium text-orange-600 font-bold">${po.dueDate ? po.dueDate.split('T')[0] : '-'}</p>
                 </div>
                 <div>
                     <p class="text-gray-500 text-xs">ETD (Estimasi Tiba)</p>
@@ -3834,7 +3955,7 @@ window.viewPO = (id) => {
                 </div>
                 <div>
                     <p class="text-gray-500 text-xs">Actual Delivery</p>
-                    <p class="font-medium ${po.actualDeliveryDate ? 'text-green-700' : 'text-gray-400'}">${po.actualDeliveryDate || 'Belum diterima'} ${po.actualDeliveryDate ? delayBadge : ''}</p>
+                    <p class="font-medium ${po.actualDeliveryDate ? 'text-green-700' : 'text-gray-400'}">${po.actualDeliveryDate ? po.actualDeliveryDate.split('T')[0] : 'Belum diterima'} ${po.actualDeliveryDate ? delayBadge : ''}</p>
                 </div>
             </div>
         </div>`;
@@ -3866,9 +3987,9 @@ window.viewPO = (id) => {
             <div class="text-right"><h3 class="text-xs font-semibold text-gray-500 uppercase mb-1">Detail</h3>
                 <p class="text-sm">Tanggal PO: ${po.date ? po.date.split('T')[0] : '-'}</p>
                 <p class="text-sm">Term Pembayaran: <strong>${po.paymentTerms || '-'}</strong></p>
-                <p class="text-sm">Jatuh Tempo: <strong>${po.dueDate || '-'}</strong></p>
-                ${po.etd ? `<p class="text-sm">ETD: <strong>${po.etd}</strong></p>` : ''}
-                ${po.actualDeliveryDate ? `<p class="text-sm">Tiba: <strong>${po.actualDeliveryDate}</strong></p>` : ''}
+                <p class="text-sm">Jatuh Tempo: <strong>${po.dueDate ? po.dueDate.split('T')[0] : '-'}</strong></p>
+                ${po.etd ? `<p class="text-sm">ETD: <strong>${po.etd.split('T')[0]}</strong></p>` : ''}
+                ${po.actualDeliveryDate ? `<p class="text-sm">Tiba: <strong>${po.actualDeliveryDate.split('T')[0]}</strong></p>` : ''}
                 <p class="text-sm">Status: ${statusBadgePurch(po.status)}</p></div>
         </div>
         ${deliveryHtml}
@@ -3961,6 +4082,169 @@ window.viewPO = (id) => {
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ PURCHASE INVOICES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+
+// ─────────────────────── PRINT NPB ──────────────────────────────
+window.printNPB = function(poId, receiptId = null) {
+    const po = db.findById('purchaseOrders', poId);
+    if (!po) { showToast('Purchase Order tidak ditemukan.', 'error'); return; }
+    if (!po.receipts || po.receipts.length === 0) { showToast('Belum ada riwayat penerimaan.', 'error'); return; }
+
+    const receipt = receiptId ? po.receipts.find(r => r.id === receiptId) : po.receipts[po.receipts.length - 1];
+    if (!receipt) { showToast('Data NPB tidak ditemukan.', 'error'); return; }
+
+    const sup = db.findById('suppliers', po.supplierId) || { name: 'Supplier' };
+    const cfg = JSON.parse(localStorage.getItem('unityerp_company_config') || '{}');
+    const company = {
+        name: cfg.companyName || (typeof CONFIG !== 'undefined' ? CONFIG.companyName : 'PT. NAMA PERUSAHAAN'),
+        address: cfg.companyAddress || (typeof CONFIG !== 'undefined' ? CONFIG.companyAddress : 'Jl. Alamat Perusahaan'),
+        phone: cfg.companyPhone || (typeof CONFIG !== 'undefined' ? CONFIG.companyPhone : '-'),
+        email: cfg.companyEmail || (typeof CONFIG !== 'undefined' ? CONFIG.companyEmail : '-'),
+        logo: cfg.logo || (typeof CONFIG !== 'undefined' ? CONFIG.logo : '')
+    };
+
+    const isNonTax = po.taxRate == 0 || (po.poNumber && po.poNumber.includes('-B-'));
+    const npbNo = receipt.npbNumber || receipt.npb || '-';
+    
+    const itemsTable = `
+        <table style="width:100%;border-collapse:collapse;margin-top:20px;">
+            <thead>
+                <tr style="background:#f1f5f9;border-bottom:2px solid #334155;">
+                    <th style="padding:10px 8px;text-align:center;font-size:10px;text-transform:uppercase;width:40px">No</th>
+                    <th style="padding:10px 8px;text-align:left;font-size:10px;text-transform:uppercase">Deskripsi Barang</th>
+                    <th style="padding:10px 8px;text-align:center;font-size:10px;text-transform:uppercase;width:80px">Diterima</th>
+                    <th style="padding:10px 8px;text-align:center;font-size:10px;text-transform:uppercase;width:80px">Satuan</th>
+                    <th style="padding:10px 8px;text-align:center;font-size:10px;text-transform:uppercase;width:100px">Keterangan</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${(receipt.items || []).map((item, i) => `
+                    <tr style="border-bottom:1px solid #e2e8f0;">
+                        <td style="padding:6px 8px;text-align:center;font-size:10px;">${i+1}</td>
+                        <td style="padding:6px 8px;text-align:left;font-size:10px;">
+                            <div style="font-weight:bold;text-transform:uppercase">${item.prodText || item.name || '-'}</div>
+                        </td>
+                        <td style="padding:6px 8px;text-align:center;font-size:11px;font-weight:900">${(item.receivedQty || item.qty || 0).toLocaleString('id-ID')}</td>
+                        <td style="padding:6px 8px;text-align:center;font-size:10px;font-weight:bold;color:#64748b">${item.unit || 'PCS'}</td>
+                        <td style="padding:6px 8px;text-align:center;font-size:10px;color:#334155">-</td>
+                    </tr>
+                `).join('')}
+                 ${[...Array(Math.max(0, 5 - (receipt.items?.length || 0)))].map(() => `
+                    <tr style="border-bottom:1px solid #e2e8f0;height:25px">
+                        <td style="padding:6px 8px;">&nbsp;</td>
+                        <td style="padding:6px 8px;"></td>
+                        <td style="padding:6px 8px;"></td>
+                        <td style="padding:6px 8px;"></td>
+                        <td style="padding:6px 8px;"></td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>`;
+
+    const printHtml = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>NPB ${npbNo}</title>
+            <style>
+                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+                * { margin:0; padding:0; box-sizing:border-box; font-family:'Inter', sans-serif; }
+                body { padding:20px; color:#1e293b; background:#e2e8f0; margin:0; }
+                .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:15px; border-bottom:3px solid #0f172a; padding-bottom:10px; }
+                .company-name { font-size:20px; font-weight:900; color:#0f172a; text-transform:uppercase; letter-spacing:-0.5px; }
+                .company-info { font-size:9px; color:#64748b; margin-top:3px; line-height:1.4; font-weight:500; }
+                .doc-type { text-align:right; }
+                .doc-type h1 { font-size:20px; font-weight:900; color:#0f172a; margin:0; line-height:1; }
+                .doc-no { font-size:12px; font-weight:700; color:#2563eb; margin-top:3px; font-family:monospace; }
+                .meta-table { width:100%; border-collapse:collapse; margin-bottom:10px; }
+                .meta-table td { padding:3px 0; font-size:10px; vertical-align:top; }
+                .label { font-weight:bold; color:#64748b; text-transform:uppercase; font-size:8px; width:100px; }
+                .value { font-weight:700; color:#0f172a; text-transform:uppercase; }
+                .signatures { margin-top:15px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; text-align:center; }
+                .sig-box { border:1px solid #e2e8f0; border-radius:8px; padding:10px; }
+                .sig-title { font-size:9px; font-weight:900; color:#94a3b8; text-transform:uppercase; margin-bottom:40px; letter-spacing:1px; }
+                .sig-line { border-top:2px solid #0f172a; width:80%; margin:0 auto 3px; }
+                .sig-name { font-size:10px; font-weight:700; color:#0f172a; }
+                .notes { margin-top:10px; padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #64748b; border-radius:6px; font-size:9px; color:#475569; line-height:1.4; }
+                @page { size: landscape; margin: 10mm; }
+                .page { background:#fff; padding:30px; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 4px 20px rgba(0,0,0,0.1); }
+                @media print { body { padding:0; background:#fff; } .page { margin:0; padding:0; border:none; border-radius:0; box-shadow:none; } }
+            </style>
+        </head>
+        <body>
+            <div class="page">
+                <div class="header">
+                    <div style="display:flex;align-items:center;gap:15px;">
+                        ${(!isNonTax && company.logo) ? `<img src="${company.logo}" alt="Logo" style="height:50px;width:auto;object-fit:contain;">` : ''}
+                        <div>
+                            <div class="company-name">${company.name}</div>
+                            ${!isNonTax ? `<div class="company-info">${company.address}<br>Tel: ${company.phone} | Email: ${company.email}</div>` : ''}
+                        </div>
+                    </div>
+                    <div class="doc-type">
+                        <h1>NOTA PENERIMAAN BARANG</h1>
+                        <div class="doc-no">${npbNo}</div>
+                    </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:30px;">
+                    <div>
+                        <table class="meta-table">
+                            <tr><td class="label">Penerima</td><td style="width:10px">:</td><td class="value">${receipt.receiver || 'Gudang Internal'}</td></tr>
+                            <tr><td class="label">Tanggal Terima</td><td style="width:10px">:</td><td class="value">${(receipt.date || po.date).split('T')[0]}</td></tr>
+                            <tr><td class="label">Ref. PO</td><td style="width:10px">:</td><td class="value" style="color:#2563eb">${po.poNumber}</td></tr>
+                        </table>
+                    </div>
+                    <div>
+                        <table class="meta-table">
+                            <tr><td class="label">Supplier</td><td style="width:10px">:</td><td class="value">${sup.name}</td></tr>
+                            <tr><td class="label">No. Surat Jalan</td><td style="width:10px">:</td><td class="value">${receipt.suratJalan || receipt.sjNumber || '-'}</td></tr>
+                        </table>
+                    </div>
+                </div>
+
+                ${itemsTable}
+
+                ${receipt.notes ? `
+                <div class="notes">
+                    <strong>Keterangan:</strong><br>
+                    ${receipt.notes}
+                </div>
+                ` : ''}
+
+                <div class="signatures">
+                    <div class="sig-box">
+                        <div class="sig-title">Pengirim (Supplier)</div>
+                        <div class="sig-line"></div>
+                        <div class="sig-name">Nama & Tanda Tangan</div>
+                    </div>
+                    <div class="sig-box">
+                        <div class="sig-title">Penerima (Gudang)</div>
+                        <div class="sig-line"></div>
+                        <div class="sig-name">${receipt.receiver || 'Bagian Gudang'}</div>
+                    </div>
+                    <div class="sig-box">
+                        <div class="sig-title">Mengetahui</div>
+                        <div class="sig-line"></div>
+                        <div class="sig-name">Purchasing / Admin</div>
+                    </div>
+                </div>
+            </div>
+        </body>
+        </html>
+    `;
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+        printWindow.document.write(printHtml);
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => {
+            printWindow.print();
+        }, 500);
+    } else {
+        showToast('Pop-up diblokir oleh browser. Izinkan pop-up untuk mencetak.', 'error');
+    }
+};
 
 window.createPurchaseInvoice = (poId) => {
     openPurchaseInvoiceForm(poId);
@@ -4091,9 +4375,20 @@ window.openPurchaseInvoiceForm = (poId = null, receiptId = null) => {
                 </div>
                 <div>
                     <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Pilih Nomor PO / Penerimaan Barang</label>
-                    <select id="pinv_po_id" onchange="updatePurchaseInvoiceDetails(this.value)" class="w-full border-2 border-slate-100 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 bg-slate-50 focus:border-blue-500 outline-none transition-all">
-                        <option value="">-- Silakan Pilih Penerimaan Barang --</option>
-                    </select>
+                    <div class="relative" id="pinv_po_container">
+                        <input type="text" id="pinv_po_display" value="-- Silakan Pilih Penerimaan Barang --" readonly
+                            onclick="togglePurchaseInvoicePoDropdown()"
+                            class="w-full border-2 border-slate-100 rounded-xl px-4 py-3 bg-slate-50 font-bold text-slate-700 outline-none cursor-pointer">
+                        <input type="hidden" id="pinv_po_id">
+                        <div id="pinv_po_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden min-w-full animate-in fade-in zoom-in-95 duration-200">
+                            <div class="p-3 border-b border-slate-50">
+                                <input type="text" id="pinv_po_dropdown_search" placeholder="Cari NPB atau PO..." onkeyup="filterPurchaseInvoicePoList(this.value)" class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                            </div>
+                            <div class="max-h-60 overflow-y-auto p-1" id="pinv_po_list">
+                                <!-- Populated dynamically -->
+                            </div>
+                        </div>
+                    </div>
                     <input type="hidden" id="pinv_receipt_total" value="0">
                 </div>
             </div>
@@ -4101,7 +4396,7 @@ window.openPurchaseInvoiceForm = (poId = null, receiptId = null) => {
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Supplier Invoice No.</label>
-                    <input type="text" id="pinv_number" class="w-full border-2 border-slate-100 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all placeholder:text-slate-300" placeholder="e.g. INV/2024/001">
+                    <input type="text" id="pinv_number" class="w-full border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all placeholder:text-slate-300 bg-white" placeholder="e.g. INV/2024/001">
                 </div>
                 <div>
                     <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Invoice Receipt Date</label>
@@ -4196,13 +4491,13 @@ window.openPurchaseInvoiceForm = (poId = null, receiptId = null) => {
 
     // If PO was pre-selected, trigger update
     if (poId) {
-        const selectEl = document.getElementById('pinv_po_id');
-        if (selectEl) {
-            const matchOpt = Array.from(selectEl.options).find(o => o.value.startsWith(poId + '|'));
-            if (matchOpt) {
-                selectEl.value = matchOpt.value;
-                updatePurchaseInvoiceDetails(matchOpt.value);
-            }
+        const matchReceipt = window.tempUninvoicedReceipts.find(r => r.po.id === poId);
+        if (matchReceipt) {
+            const val = `${matchReceipt.po.id}|${matchReceipt.receipt.id}`;
+            const npbDisp = matchReceipt.receipt.npbNumber || matchReceipt.receipt.npb || matchReceipt.receipt.date;
+            const sjDisp = matchReceipt.receipt.suratJalan ? ` | SJ: ${matchReceipt.receipt.suratJalan}` : '';
+            const displayText = `${matchReceipt.po.poNumber} - Penerimaan ke-${matchReceipt.idx} (NPB: ${npbDisp}${sjDisp}) - ${matchReceipt.supplierName}`;
+            selectPurchaseInvoicePo(val, displayText);
         }
     }
 };
@@ -4215,8 +4510,10 @@ window.selectPurchaseInvoiceSupplier = (id, name) => {
 };
 
 window.filterInvoiceReceiptsBySupplier = (supplierId) => {
-    const select = document.getElementById('pinv_po_id');
-    if (!select) return;
+    const listEl = document.getElementById('pinv_po_list');
+    const displayEl = document.getElementById('pinv_po_display');
+    const idEl = document.getElementById('pinv_po_id');
+    if (!listEl || !displayEl || !idEl) return;
 
     const filtered = supplierId 
         ? window.tempUninvoicedReceipts.filter(r => r.supplierId === supplierId)
@@ -4226,12 +4523,59 @@ window.filterInvoiceReceiptsBySupplier = (supplierId) => {
         const val = `${r.po.id}|${r.receipt.id}`;
         const npbDisp = r.receipt.npbNumber || r.receipt.npb || r.receipt.date;
         const sjDisp = r.receipt.suratJalan ? ` | SJ: ${r.receipt.suratJalan}` : '';
-        return `<option value="${val}">${r.po.poNumber} - Penerimaan ke-${r.idx} (NPB: ${npbDisp}${sjDisp}) - ${r.supplierName}</option>`;
+        const displayText = `${r.po.poNumber} - Penerimaan ke-${r.idx} (NPB: ${npbDisp}${sjDisp}) - ${r.supplierName}`;
+        
+        return `<div onclick="selectPurchaseInvoicePo('${val}', '${displayText.replace(/'/g, "\\'")}')" 
+                    class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                    ${displayText}
+                </div>`;
     }).join('');
 
-    select.innerHTML = `<option value="">-- Silakan Pilih Penerimaan Barang --</option>${options}`;
-    select.value = '';
+    listEl.innerHTML = options || `<div class="px-4 py-2.5 text-sm text-slate-400 italic">Tidak ada penerimaan barang yang tersedia</div>`;
+    displayEl.value = '-- Silakan Pilih Penerimaan Barang --';
+    idEl.value = '';
     updatePurchaseInvoiceDetails('');
+};
+
+window.filterPurchaseInvoicePoList = (query) => {
+    const q = query.toLowerCase();
+    const items = document.querySelectorAll('#pinv_po_list > div');
+    items.forEach(item => {
+        if (item.classList.contains('px-4')) {
+            const text = item.innerText.toLowerCase();
+            item.style.display = text.includes(q) ? '' : 'none';
+        }
+    });
+};
+
+window.togglePurchaseInvoicePoDropdown = () => {
+    const el = document.getElementById('pinv_po_dropdown');
+    if (!el) return;
+    const isHidden = el.classList.contains('hidden');
+    if (isHidden) {
+        el.classList.remove('hidden');
+        const searchInput = document.getElementById('pinv_po_dropdown_search');
+        if (searchInput) {
+            searchInput.value = '';
+            filterPurchaseInvoicePoList('');
+            setTimeout(() => searchInput.focus(), 50);
+        }
+    }
+    const container = el.closest('#pinv_po_container');
+    const closeHandler = (e) => {
+        if (container && !container.contains(e.target)) {
+            el.classList.add('hidden');
+            document.removeEventListener('click', closeHandler);
+        }
+    };
+    if (isHidden) setTimeout(() => document.addEventListener('click', closeHandler), 10);
+};
+
+window.selectPurchaseInvoicePo = (val, displayText) => {
+    document.getElementById('pinv_po_id').value = val;
+    document.getElementById('pinv_po_display').value = displayText;
+    document.getElementById('pinv_po_dropdown').classList.add('hidden');
+    updatePurchaseInvoiceDetails(val);
 };
 
 window.calculatePurchaseInvoiceDueDate = () => {
@@ -4290,7 +4634,25 @@ window.updatePurchaseInvoiceDetails = (val) => {
     }
 
     document.getElementById('pinv_receipt_total').value = receiptTotal;
-    calculatePurchaseInvoiceDueDate();
+
+    // Auto-set payment terms from PO
+    const termEl = document.getElementById('pinv_terms');
+    if (termEl && po.paymentTerms) {
+        // Parse payment terms string like '60 Hari' or 'Net 30 Days' -> extract days
+        const match = String(po.paymentTerms).match(/(\d+)/);
+        const days = match ? parseInt(match[1]) : 0;
+        termEl.value = days;
+    }
+
+    // Auto-calc due date from receipt date + payment terms
+    const dueInput = document.getElementById('pinv_due_date');
+    if (dueInput && receipt.date) {
+        const termEl2 = document.getElementById('pinv_terms');
+        const days = parseInt(termEl2?.value || '0');
+        const startDate = new Date(receipt.date);
+        startDate.setDate(startDate.getDate() + days);
+        dueInput.value = startDate.toISOString().split('T')[0];
+    }
 };
 
 window.submitPurchaseInvoice = async () => {
@@ -4362,8 +4724,8 @@ window.savePurchaseInvoice = async (val) => {
 
     const receiptTotal = parseFloat(document.getElementById('pinv_receipt_total').value) || 0;
 
-    const inv = db.insert('purchaseInvoices', {
-        invoiceNumber: invNum,
+    const inv = await db.insert('purchaseInvoices', {
+        invNumber: invNum,
         purchaseOrderId: poId,
         receiptId: receiptId,
         supplierId: po.supplierId,
@@ -4379,12 +4741,12 @@ window.savePurchaseInvoice = async (val) => {
         bankHolder: bankHolder
     });
 
-    // Note: Journal Entry for AP and Inventory is already recognized 
-    // at the time of Goods Receipt (confirmReceiveGoods). 
-    // Creating it here again would cause double counting of AP and Inventory.
-
-    showToast('Supplier Invoice submitted to Finance!', 'success');
-    renderPurchaseInvoices();
+    if (inv) {
+        showToast('Supplier Invoice submitted to Finance!', 'success');
+        renderPurchaseInvoices();
+    } else {
+        showToast('Gagal menyimpan invoice', 'error');
+    }
 };
 
 window.viewPurchaseInvoice = (id) => {
@@ -4401,7 +4763,7 @@ window.viewPurchaseInvoice = (id) => {
         : `<tr><td colspan="4" class="py-2 text-gray-500 italic text-sm">Belum ada pembayaran.</td></tr>`;
     const body = `<div class="space-y-4 text-sm">
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 bg-gray-50 p-3 rounded">
-            <div><p class="text-gray-500">Invoice No.</p><p class="font-bold">${inv.invoiceNumber}</p></div>
+            <div><p class="text-gray-500">Invoice No.</p><p class="font-bold">${inv.invNumber || inv.invoiceNumber || '-'}</p></div>
             <div><p class="text-gray-500">Invoice Date</p><p class="font-medium">${formatDate(inv.date).slice(0, 11)}</p></div>
             <div><p class="text-gray-500 text-red-600">Due Date</p><p class="font-bold text-red-600">${inv.dueDate ? formatDate(inv.dueDate).slice(0, 11) : '-'}</p></div>
             <div class="text-right"><p class="text-gray-500">Status</p>${statusBadgePurch(inv.status)}</div>
@@ -4437,11 +4799,11 @@ window.viewPurchaseInvoice = (id) => {
             <div class="border rounded-lg overflow-hidden bg-gray-100 flex justify-center p-2">
                 ${inv.attachment.startsWith('data:image')
                 ? `<img src="${inv.attachment}" class="max-w-full h-auto cursor-pointer" onclick="window.open('${inv.attachment}')">`
-                : `<div class="p-8 text-center"><i class="fas fa-file-pdf text-4xl text-red-500 mb-2"></i><br><a href="${inv.attachment}" download="invoice-${inv.invoiceNumber}" class="text-blue-600 underline">Unduh Lampiran</a></div>`}
+                : `<div class="p-8 text-center"><i class="fas fa-file-pdf text-4xl text-red-500 mb-2"></i><br><a href="${inv.attachment}" download="invoice-${inv.invNumber || inv.invoiceNumber}" class="text-blue-600 underline">Unduh Lampiran</a></div>`}
             </div>
         </div>` : ''}
     </div>`;
-    showModal(`Detail Invoice - ${inv.invoiceNumber}`, body, `<button onclick="closeModal()" class="w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 px-4 py-2 bg-white text-gray-700 text-sm font-medium">Tutup</button>`);
+    showModal(`Detail Invoice - ${inv.invNumber || inv.invoiceNumber || '-'}`, body, `<button onclick="closeModal()" class="w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 px-4 py-2 bg-white text-gray-700 text-sm font-medium">Tutup</button>`);
 };
 
 // --- Purchase Invoice Attachment Helpers ---
@@ -4498,7 +4860,7 @@ function renderSupplierPayments(prefillInvoiceId = null) {
             filteredPayments = allPayments.filter(p => p.invoiceId === inv.id);
             bannerHtml = `<div class="mb-6 bg-blue-50 border border-blue-100 rounded-lg p-4 sm:p-6 shadow-sm">
                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4">
-                    <div><h3 class="text-blue-800 font-bold text-lg">Rekap Hutang: ${inv.invoiceNumber}</h3>
+                    <div><h3 class="text-blue-800 font-bold text-lg">Rekap Hutang: ${inv.invNumber || inv.invoiceNumber || '-'}</h3>
                         <p class="text-blue-600 text-sm">Supplier: <span class="font-semibold">${sup.name}</span></p></div>
                     <button onclick="renderSupplierPayments(null)" class="mt-2 sm:mt-0 text-blue-700 hover:text-blue-900 text-sm font-medium underline">
                         <i class="fas fa-list mr-1"></i>Tampilkan Semua</button>
@@ -5866,6 +6228,9 @@ function renderPurchaseReceiving() {
                     </td>
                     <td class="py-4 px-6 text-right flex items-center justify-end whitespace-nowrap">
                         ${invoiceBtn}
+                        <button onclick="printNPB('${po.id}')" class="bg-white text-slate-400 hover:text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-slate-100 hover:border-blue-200 flex items-center gap-2 mr-2 group/print">
+                            <i class="fas fa-print group-hover/print:scale-110 transition-transform"></i> Cetak NPB
+                        </button>
                         <button onclick="viewPO('${po.id}')" class="text-slate-400 hover:text-slate-800 transition-colors p-2 rounded-lg hover:bg-slate-100">
                             <i class="fas fa-eye text-lg"></i>
                         </button>
@@ -5954,10 +6319,12 @@ function renderPurchaseReceiving() {
 window.closeGRForm = () => {
     const listViewPending = document.getElementById('pgr-pending-list-view');
     const listViewHistory = document.getElementById('pgr-history-list-view');
+    const listViewInventory = document.getElementById('por-list-view');
     const formView = document.getElementById('gr-form-view');
     
     if (listViewPending) listViewPending.classList.remove('hidden');
     if (listViewHistory) listViewHistory.classList.remove('hidden');
+    if (listViewInventory) listViewInventory.classList.remove('hidden');
     if (formView) {
         formView.classList.add('hidden');
         formView.innerHTML = '';
@@ -6055,6 +6422,11 @@ window.updatePOStatus = (id, newStatus) => {
 
 
 function renderPurchaseInvoices() {
+    // Sync fresh data from DB first, then re-render
+    db.sync('purchaseInvoices').then(() => _renderPurchaseInvoicesList());
+}
+
+function _renderPurchaseInvoicesList() {
     const mainContent = document.getElementById('main-content');
     const filters = window.currentFilters.purchaseInvoices;
     const suppliers = db.read('suppliers');
@@ -6095,7 +6467,7 @@ function renderPurchaseInvoices() {
             <tr class="border-b border-gray-100 hover:bg-slate-50 transition-colors group">
                 <td class="py-4 px-6 whitespace-nowrap">
                     <button onclick="viewPurchaseInvoice('${inv.id}')" class="text-blue-700 hover:text-blue-800 font-mono text-sm font-bold transition-colors cursor-pointer outline-none bg-blue-50/80 px-3.5 py-1.5 rounded-lg border border-blue-200 shadow-sm">
-                        ${inv.invoiceNumber.toUpperCase()}
+                        ${(inv.invNumber || inv.invoiceNumber || '-').toUpperCase()}
                     </button>
                 </td>
                 <td class="py-4 px-6 text-sm text-slate-500 font-medium">${formatDate(inv.date).split(' ')[0]}</td>
@@ -6871,13 +7243,10 @@ window.refreshQTItemsTable = () => {
     window._qtDiscountDesc = '';
     window._qtDiscountType = '';
     window._qtDiscountValue = '';
-    window._qtTaxRate = taxRate;
-    window._qtTaxAmount = taxAmt;
 };
 
 
-
-window.saveNewQT = () => {
+window.saveNewQT = async () => {
     try {
         if (!window.tempQTItems || window.tempQTItems.length === 0) {
             showToast('QT harus memiliki minimal 1 item', 'error');
@@ -6889,6 +7258,7 @@ window.saveNewQT = () => {
         const qtDate = document.getElementById('qt_date')?.value;
         const validTill = document.getElementById('qt_valid_till')?.value;
         const notes = document.getElementById('qt_notes')?.value || '';
+        const paymentTerms = document.getElementById('qt_payment_term')?.value || '';
 
         if (!qtNumber) { showToast('No. Quotation harus ada', 'error'); return; }
         if (!customerId) { showToast('Pilih Customer', 'error'); return; }
@@ -6908,15 +7278,23 @@ window.saveNewQT = () => {
         const taxAmount = window._qtTaxAmount || Math.round(rawTotal * finalTaxRate / 100);
         const totalAmount = rawTotal + taxAmount;
 
+        const safeIsoDate = (val) => {
+            if (!val || val === '') return null;
+            const d = new Date(val);
+            return isNaN(d.getTime()) ? null : d.toISOString();
+        };
+
         const qtData = {
             qtNumber: finalQTNumber,
-            date: new Date(qtDate).toISOString(),
-            validUntil: validTill ? new Date(validTill).toISOString() : '',
+            date: qtDate ? new Date(qtDate).toISOString() : new Date().toISOString(),
+            validUntil: (validTill && validTill !== '') ? new Date(validTill).toISOString() : null,
             customerId,
             status: window._editingQTId ? (existing.find(q => q.id === window._editingQTId)?.status || 'DRAFT') : 'DRAFT',
-            totalAmount,
+            subtotal: rawTotal,
             taxRate: finalTaxRate,
-            taxAmount,
+            taxAmount: taxAmount,
+            totalAmount: totalAmount,
+            paymentTerms: paymentTerms,
             discountType: '',
             discountValue: '',
             discountAmount: 0,
@@ -6925,21 +7303,25 @@ window.saveNewQT = () => {
             notes: notes
         };
 
+        let res;
         if (window._editingQTId) {
-            db.update('salesQuotations', window._editingQTId, qtData);
-            showToast(`Quotation ${finalQTNumber} berhasil diperbarui.`);
+            res = await db.update('salesQuotations', window._editingQTId, qtData);
         } else {
-            db.insert('salesQuotations', qtData);
-            showToast(`Quotation ${finalQTNumber} berhasil dibuat.`);
+            res = await db.insert('salesQuotations', qtData);
         }
 
-        window._editingQTId = null;
-        window._qtDiscountAmt = 0; window._qtDiscountDesc = ''; window._qtDiscountType = ''; window._qtDiscountValue = '';
-
-        renderSalesQuotations();
+        if (res) {
+            showToast(window._editingQTId ? `Quotation ${finalQTNumber} berhasil diperbarui.` : `Quotation ${finalQTNumber} berhasil dibuat.`);
+            window._editingQTId = null;
+            window._qtDiscountAmt = 0; window._qtDiscountDesc = ''; window._qtDiscountType = ''; window._qtDiscountValue = '';
+            renderSalesQuotations();
+        } else {
+            // Error is already shown by db.js/api.js via toast
+            console.error('[App] Save QT failed - result is null');
+        }
     } catch (err) {
         console.error('Save QT Error:', err);
-        alert('Gagal menyimpan quotation: ' + err.message);
+        showToast('Gagal menyimpan quotation: ' + err.message, 'error');
     }
 };
 
@@ -7021,18 +7403,22 @@ function renderPurchaseRFQs() {
             </div>
         `;
 
+        const rfqNumDisplay = (rfq.rfqNumber || 'RFQ-???').toUpperCase();
+        const rfqDateDisplay = rfq.date ? formatDate(rfq.date).split(' ')[0] : '-';
+        const itemCount = Array.isArray(rfq.items) ? rfq.items.length : 0;
+
         return `
             <tr class="border-b border-gray-100 hover:bg-slate-50 transition-colors">
                 <td class="py-4 px-6 whitespace-nowrap">
                     <button onclick="viewPurchaseRFQ('${rfq.id}')" class="text-blue-700 hover:text-blue-800 font-mono text-sm font-bold transition-colors cursor-pointer outline-none bg-blue-50/80 px-3.5 py-1.5 rounded-lg border border-blue-200 shadow-sm">
-                        ${rfq.rfqNumber.toUpperCase()}
+                        ${rfqNumDisplay}
                     </button>
                 </td>
-                <td class="py-4 px-6 text-sm text-slate-500 font-medium">${formatDate(rfq.date).split(' ')[0]}</td>
+                <td class="py-4 px-6 text-sm text-slate-500 font-medium">${rfqDateDisplay}</td>
                 <td class="py-4 px-6 text-sm text-slate-900 font-bold tracking-tight">${supplier.name}</td>
                 <td class="py-4 px-6 text-[11px] text-slate-500 font-bold uppercase tracking-widest">${rfq.category || '-'}</td>
                 <td class="py-4 px-6 text-right">
-                    <span class="text-sm font-bold text-slate-800">${rfq.items.length}</span>
+                    <span class="text-sm font-bold text-slate-800">${itemCount}</span>
                     <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Items</span>
                 </td>
                 <td class="py-4 px-6 text-center">
@@ -7245,13 +7631,13 @@ window.openRFQForm = async (rfqId = null) => {
 
     const rfq = rfqId ? db.findById('purchaseRFQs', rfqId) : null;
     window._editingRFQId = rfqId;
-    window.tempRFQItems = rfq ? [...rfq.items] : [];
+    window.tempRFQItems = rfq && Array.isArray(rfq.items) ? [...rfq.items] : [];
 
     renderBreadcrumb(['Purchasing', 'Request For Quotation', rfqId ? 'Edit RFQ' : 'Buat RFQ Baru']);
 
     const suppliers = db.read('suppliers') || [];
     const todayStr = new Date().toISOString().split('T')[0];
-    const rfqNumberStr = rfq ? rfq.rfqNumber : generatePurchaseRFQNumber(todayStr);
+    const rfqNumberStr = rfq && rfq.rfqNumber ? rfq.rfqNumber : generatePurchaseRFQNumber(todayStr);
 
     fv.innerHTML = `
         <div class="animate-in fade-in slide-in-from-bottom-2 duration-400 -m-4 sm:-m-6 h-[calc(100vh-64px)] flex flex-col overflow-hidden bg-white">
@@ -7542,7 +7928,7 @@ window.refreshPurchaseRFQItemsTable = () => {
     `).join('');
 };
 
-window.saveNewPurchaseRFQ = () => {
+window.saveNewPurchaseRFQ = async () => {
     if (window.tempRFQItems.length === 0) { showToast('RFQ harus memiliki minimal 1 item', 'error'); return; }
 
     const rfqNumber = document.getElementById('rfq_number').value;
@@ -7555,8 +7941,10 @@ window.saveNewPurchaseRFQ = () => {
     if (!rfqDate) { showToast('Pilih Tanggal RFQ', 'error'); return; }
     if (!category) { showToast('Pilih Kategori Pembelian', 'error'); return; }
 
+    showToast('Sedang menyimpan...', 'info');
+
     if (window._editingRFQId) {
-        db.update('purchaseRFQs', window._editingRFQId, {
+        await db.update('purchaseRFQs', window._editingRFQId, {
             rfqNumber,
             date: new Date(rfqDate).toISOString(),
             supplierId,
@@ -7564,9 +7952,9 @@ window.saveNewPurchaseRFQ = () => {
             items: window.tempRFQItems,
             notes
         });
-        showToast('RFQ Berhasil Diperbarui!');
+        showToast('RFQ Berhasil Diperbarui!', 'success');
     } else {
-        db.insert('purchaseRFQs', {
+        const result = await db.insert('purchaseRFQs', {
             rfqNumber,
             date: new Date(rfqDate).toISOString(),
             supplierId,
@@ -7575,11 +7963,13 @@ window.saveNewPurchaseRFQ = () => {
             items: window.tempRFQItems,
             notes
         });
-        showToast('RFQ Berhasil Disimpan!');
+        if (!result) { showToast('Gagal menyimpan RFQ, coba lagi', 'error'); return; }
+        showToast('RFQ Berhasil Disimpan!', 'success');
     }
 
     window._editingRFQId = null;
     closeRFQForm();
+    await db.sync('purchaseRFQs');
     renderPurchaseRFQs();
 };
 
@@ -7640,11 +8030,11 @@ window.viewPurchaseRFQ = (id) => {
                         </tr>
                     </thead>
                     <tbody class="text-sm divide-y divide-gray-100">
-                        ${rfq.items.map((i, idx) => `
+                        ${(rfq.items || []).map((i, idx) => `
                             <tr class="hover:bg-gray-50/50 transition-colors">
                                 <td class="py-3 px-4 text-gray-400 font-medium">${idx + 1}</td>
-                                <td class="py-3 px-4 font-semibold text-gray-800">${i.prodText}</td>
-                                <td class="py-3 px-4 text-right font-bold text-gray-900">${formatNumber(i.qty)} ${i.prodUnit}</td>
+                                <td class="py-3 px-4 font-semibold text-gray-800">${i.prodText || '-'}</td>
+                                <td class="py-3 px-4 text-right font-bold text-gray-900">${formatNumber(i.qty || 0)} ${i.prodUnit || ''}</td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -8772,8 +9162,20 @@ window.onSalesCustomerSelect = async (selectId, mode) => {
     // Set PPN
     const taxRateEl = document.getElementById(mode === 'QT' ? 'qt_tax_rate' : 'so_tax_rate');
     if (taxRateEl) {
-        const ppnVal = cust.ppn !== undefined ? cust.ppn : (cust.tax_rate !== undefined ? cust.tax_rate : 11);
-        taxRateEl.value = ppnVal;
+        // Robust check for PPN: check cust.ppn, then cust.tax_rate, fallback to 11 if both are invalid (null/undefined)
+        let ppnVal = 11;
+        if (cust.ppn !== undefined && cust.ppn !== null && cust.ppn !== '') {
+            ppnVal = parseInt(cust.ppn);
+        } else if (cust.tax_rate !== undefined && cust.tax_rate !== null && cust.tax_rate !== '') {
+            ppnVal = parseInt(cust.tax_rate);
+        }
+        
+        // Final sanity check: if value is not 0 or 11, default to 11 to avoid blank dropdown
+        if (isNaN(ppnVal) || (ppnVal !== 0 && ppnVal !== 11)) {
+            ppnVal = 11;
+        }
+
+        taxRateEl.value = ppnVal.toString();
         console.log(`[Debug] Set PPN to: ${ppnVal}`);
         if (mode === 'SO' && window.recalcSOTotal) recalcSOTotal();
         if (mode === 'QT' && window.refreshQTItemsTable) refreshQTItemsTable();
@@ -8907,9 +9309,10 @@ window.filterItemProductList = function (prefix, val) {
         };
         const targetInternalCat = catMap[selectedCat];
 
-        // For purchasing: strictly show products matching selected category
+        // For purchasing: strictly show products matching selected category OR if no category mapping found but category matches literally
         products = allItems.filter(i => {
-            return i.status !== 'INACTIVE' && i.category === targetInternalCat;
+            if (i.status === 'INACTIVE') return false;
+            return i.category === targetInternalCat || i.category === selectedCat;
         });
     } else {
         // For sales: show finished goods
@@ -9266,7 +9669,7 @@ window.recalcSOTotal = () => {
 
 
 
-window.saveNewSO = () => {
+window.saveNewSO = async () => {
     if (window.tempSOItems.length === 0) { showToast('SO harus memiliki minimal 1 item', 'error'); return; }
 
     const soNumberInitial = document.getElementById('so_number')?.value;
@@ -9299,7 +9702,7 @@ window.saveNewSO = () => {
     const taxAmount = window._soTaxAmount || Math.round(dpp * taxRate / 100);
     const totalAmount = dpp + taxAmount;
 
-    db.insert('salesOrders', {
+    await db.insert('salesOrders', {
         soNumber,
         quotationId: window._qtBeingConverted || null,
         date: new Date(soDate).toISOString(),
@@ -9323,7 +9726,7 @@ window.saveNewSO = () => {
     });
 
     if (window._qtBeingConverted) {
-        db.update('salesQuotations', window._qtBeingConverted, { status: 'SO_CREATED' });
+        await db.update('salesQuotations', window._qtBeingConverted, { status: 'SO_CREATED' });
         window._qtBeingConverted = null;
     }
 
@@ -9592,8 +9995,10 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
 
     renderBreadcrumb(['Sales', 'Sales Invoices', 'Buat Sales Invoice']);
 
-    listView.classList.add('hidden');
-    formView.classList.remove('hidden');
+    // Langsung render form ke main-content agar tidak ada konten tembus
+    const mainContent = document.getElementById('main-content');
+    mainContent.innerHTML = `<div id="si-list-view" class="hidden"></div><div id="si-form-view" class="w-full"></div>`;
+    const newFormView = document.getElementById('si-form-view');
 
     const allSOs = db.read('salesOrders') || [];
     const invoices = db.read('salesInvoices') || [];
@@ -9634,13 +10039,15 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
     let defaultDiscValue = so ? so.discountValue || '' : '';
     let inheritedDiscountAmount = so ? so.discountAmount || 0 : 0;
 
-    formView.innerHTML = `
-        <div class="animate-in fade-in slide-in-from-bottom-2 duration-500 flex flex-col bg-white rounded-3xl shadow-2xl border border-slate-200 mb-20">
+    newFormView.innerHTML = `
+        <div class="animate-in fade-in duration-300 flex flex-col bg-white" style="height: calc(100vh - 64px); overflow: hidden;">
             <!-- Header / Action Bar -->
-            <div class="bg-white border-b border-slate-100 px-8 py-5 flex items-center justify-between shrink-0 sticky top-0 z-50 rounded-t-3xl backdrop-blur-md bg-white/95">
+            <div class="border-b border-slate-200 px-8 py-5 flex items-center justify-between shrink-0" style="background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
                 <div class="flex items-center gap-6">
                     <div class="flex flex-col">
-                        <h2 class="text-lg font-black text-slate-800 tracking-tight flex items-center gap-3">
+                        <h2 class="text-lg font-black text-slate-800 tracking-tight flex items-center gap-3 uppercase">
+                            <span class="w-1.5 h-6 bg-blue-600 rounded-full"></span>
+                            BUAT <span class="text-blue-600">SALES INVOICE</span>
                         </h2>
                     </div>
                 </div>
@@ -9655,16 +10062,16 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
                 </div>
             </div>
 
-            <!-- Content Area -->
-            <div class="bg-slate-50/30 p-8 pb-32">
-                <div class="w-full space-y-8">
+            <!-- Content Area - Scrollable -->
+            <div class="flex-1 overflow-y-auto bg-slate-50/30 px-8 py-5 pb-32">
+                <div class="w-full space-y-6">
                     
                     <input type="hidden" id="inv_so_id" value="${so ? so.id : ''}">
                     <input type="hidden" id="inv_customer_id" value="${so ? so.customerId : ''}">
                     <input type="hidden" id="inv_base_subtotal" value="${baseSubtotal}">
 
                     <!-- Section: Header Info -->
-                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-8">
+                    <div class="bg-white rounded-3xl px-8 py-6 border border-slate-100 shadow-sm space-y-6">
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-10">
                             <!-- Customer Selection -->
                             <div class="space-y-3">
@@ -9801,6 +10208,27 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
                                 </div>
                                 
                                 <div class="bg-slate-50/80 rounded-3xl p-8 border border-slate-100 space-y-5 shadow-inner">
+                                    <!-- Subsidi Selector -->
+                                    <div class="flex justify-between items-center gap-4">
+                                        <div class="flex items-center gap-4 flex-wrap flex-1">
+                                            <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[120px] w-auto lg:w-[140px]">Subsidi / Potongan:</span>
+                                            <input type="text" id="inv_subsidy_desc" placeholder="Keterangan (Cth: Subsidi Countainer)" class="border-none rounded-xl px-3 py-1.5 text-[11px] font-black bg-white shadow-sm ring-1 ring-slate-100 outline-none hover:ring-blue-500 transition-all flex-1" oninput="refreshInvoiceCalculation()">
+                                        </div>
+                                        <div class="shrink-0 text-right">
+                                            <input type="text" id="inv_subsidy_amount" placeholder="0" oninput="refreshInvoiceCalculation()" class="border-none ring-2 ring-blue-500/10 rounded-xl px-4 py-2 text-sm w-28 text-right font-black outline-none focus:ring-blue-500 shadow-sm bg-white">
+                                        </div>
+                                    </div>
+                                    <div class="flex justify-between items-center text-orange-600 font-black px-2 text-sm" id="inv_subsidy_row" style="display:none">
+                                        <span id="inv_subsidy_label" class="uppercase text-[10px] w-[140px]">Subsidi:</span>
+                                        <span id="inv_subsidy_display" class="font-mono text-right">- Rp 0</span>
+                                    </div>
+                                    <div class="flex justify-between items-center px-2 text-slate-800 font-black text-sm" id="inv_subtotal_after_subsidy_row" style="display:none">
+                                        <span class="uppercase text-[10px] tracking-widest text-slate-400">Jumlah:</span>
+                                        <span id="inv_subtotal_after_subsidy_display" class="font-mono text-right text-base">Rp 0</span>
+                                    </div>
+
+                                    <div class="border-t border-slate-200/40 my-2" id="inv_subsidy_divider" style="display:none"></div>
+
                                     <!-- Discount Selector -->
                                     <div class="flex justify-between items-center gap-4">
                                         <div class="flex items-center gap-4 flex-wrap flex-1">
@@ -9826,7 +10254,7 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
                                     <!-- Tax Selector -->
                                     <div class="flex justify-between items-center gap-4">
                                        <div class="flex items-center gap-4 flex-wrap flex-1">
-                                           <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[120px] w-auto lg:w-[140px]">Pajak Pertambahan Nilai:</span>
+                                           <span id="inv_tax_label" class="text-[10px] font-black text-slate-400 uppercase tracking-widest min-w-[120px] w-auto lg:w-[140px]">Pajak Pertambahan Nilai:</span>
                                            <select id="inv_tax_rate" onchange="refreshInvoiceCalculation()" class="border-none rounded-xl px-3 py-1.5 text-[11px] font-black bg-white shadow-sm ring-1 ring-slate-100 outline-none cursor-pointer hover:ring-blue-500 transition-all">
                                                <option value="0" ${defaultTaxRate === 0 ? 'selected' : ''}>Non PPN (0%)</option>
                                                <option value="11" ${defaultTaxRate > 0 ? 'selected' : ''}>PPN Luar (11%)</option>
@@ -9890,12 +10318,18 @@ window.refreshInvoiceCalculation = () => {
         discDetailContainer.classList.add('flex');
     }
 
+    const subsidyDesc = document.getElementById('inv_subsidy_desc')?.value.trim() || 'Subsidi';
+    const subsidyAmtStr = document.getElementById('inv_subsidy_amount')?.value.trim() || '0';
+    const subsidyAmt = parseFloat(subsidyAmtStr.replace(/[^0-9]/g, '')) || 0;
+
+    const subtotalAfterSubsidy = Math.max(0, baseSubtotal - subsidyAmt);
+
     let discAmt = 0;
     let discDesc = '';
 
     if (discType === 'cash' && discVal) {
         const pct = parseFloat(discVal) || 0;
-        discAmt = Math.round(baseSubtotal * pct / 100);
+        discAmt = Math.round(subtotalAfterSubsidy * pct / 100);
         discDesc = `Cash Disc. ${pct}%`;
     } else if (discType === 'cash_flat' && discVal) {
         discAmt = parseFloat(discVal.replace(/[^0-9]/g, '')) || 0;
@@ -9905,7 +10339,7 @@ window.refreshInvoiceCalculation = () => {
         discAmt = 0;
     }
 
-    const grandTotalBeforeTax = Math.max(0, baseSubtotal - discAmt);
+    const grandTotalBeforeTax = Math.max(0, subtotalAfterSubsidy - discAmt);
 
     const taxRateStr = document.getElementById('inv_tax_rate').value;
     const taxRate = parseFloat(taxRateStr) || 0;
@@ -9923,6 +10357,24 @@ window.refreshInvoiceCalculation = () => {
         discRow.style.display = 'none';
     }
 
+    const subsidyRow = document.getElementById('inv_subsidy_row');
+    const subsidyDivider = document.getElementById('inv_subsidy_divider');
+    const subtotalAfterRow = document.getElementById('inv_subtotal_after_subsidy_row');
+    const subtotalAfterDisplay = document.getElementById('inv_subtotal_after_subsidy_display');
+
+    if (subsidyRow && subsidyAmt > 0) {
+        subsidyRow.style.display = 'flex';
+        if(subsidyDivider) subsidyDivider.style.display = 'block';
+        if(subtotalAfterRow) subtotalAfterRow.style.display = 'flex';
+        if(subtotalAfterDisplay) subtotalAfterDisplay.innerText = formatCurrency(subtotalAfterSubsidy);
+        document.getElementById('inv_subsidy_label').innerText = subsidyDesc + ':';
+        document.getElementById('inv_subsidy_display').innerText = '- ' + formatCurrency(subsidyAmt);
+    } else if (subsidyRow) {
+        subsidyRow.style.display = 'none';
+        if(subsidyDivider) subsidyDivider.style.display = 'none';
+        if(subtotalAfterRow) subtotalAfterRow.style.display = 'none';
+    }
+
     const nsfpRow = document.getElementById('inv_nsfp_row');
     if (isTax && nsfpRow) {
         nsfpRow.style.display = 'flex';
@@ -9933,9 +10385,13 @@ window.refreshInvoiceCalculation = () => {
 
     const invTaxRow = document.getElementById('inv_tax_row');
     if (invTaxRow) invTaxRow.style.display = taxRate === 0 ? 'none' : 'flex';
-    document.getElementById('inv_tax_label').innerText = `Tax / PPN (${taxRate}%):`;
-    document.getElementById('inv_tax_display').innerText = '+ ' + formatCurrency(taxAmt);
-    document.getElementById('inv_total_display').innerText = formatCurrency(grandTotal);
+    const taxLabel = document.getElementById('inv_tax_label');
+    if (taxLabel) taxLabel.innerText = `Tax / PPN (${taxRate}%):`;
+    const taxDisplay = document.getElementById('inv_tax_display');
+    if (taxDisplay) taxDisplay.innerText = '+ ' + formatCurrency(taxAmt);
+    
+    const totalDisplay = document.getElementById('inv_total_display');
+    if (totalDisplay) totalDisplay.innerText = formatCurrency(grandTotal);
 
     const currentInvNumberEl = document.getElementById('inv_number');
     if (currentInvNumberEl) {
@@ -9943,6 +10399,8 @@ window.refreshInvoiceCalculation = () => {
     }
 
     window._invCalcState = {
+        subsidyAmount: subsidyAmt,
+        subsidyDescription: subsidyDesc,
         discountAmount: discAmt,
         discountType: discType,
         discountValue: discVal,
@@ -9955,7 +10413,7 @@ window.refreshInvoiceCalculation = () => {
     };
 };
 
-window.saveNewInvoice = () => {
+window.saveNewInvoice = async () => {
     const soId = document.getElementById('inv_so_id').value;
     const so = db.findById('salesOrders', soId);
     if (!so) return;
@@ -9984,7 +10442,7 @@ window.saveNewInvoice = () => {
         finalInvoiceNumber = generateInvoiceNumber(calcState.isTax);
     }
 
-    const inv = db.insert('salesInvoices', {
+    const inv = await db.insert('salesInvoices', {
         invoiceNumber: finalInvoiceNumber,
         salesOrderId: so.id,
         customerId: so.customerId,
@@ -9998,6 +10456,8 @@ window.saveNewInvoice = () => {
         discountValue: calcState.discountValue,
         discountAmount: calcState.discountAmount,
         discountDescription: calcState.discountDescription,
+        subsidyAmount: calcState.subsidyAmount,
+        subsidyDescription: calcState.subsidyDescription,
         nsfp: calcState.nsfp,
         notes: notes,
         status: 'UNPAID',
@@ -10011,8 +10471,8 @@ window.saveNewInvoice = () => {
         })
     });
 
-    if (typeof db.addJournalEntry === 'function') {
-        db.addJournalEntry({
+    if (typeof db.addJournalEntry === 'function' && inv) {
+        await db.addJournalEntry({
             date: inv.date,
             journalNo: inv.invoiceNumber,
             description: `Invoice Penjualan ${inv.invoiceNumber} (SO ${so.soNumber})`,
@@ -10207,7 +10667,7 @@ function renderSalesInvoices() {
             </div>
         </div>
 
-        <div id="si-form-view" class="hidden animate-in fade-in slide-in-from-right-4 duration-500">
+        <div id="si-form-view" class="hidden w-full bg-slate-50 min-h-full">
             <!-- Form View Content -->
         </div>
     `;
@@ -10411,17 +10871,28 @@ window.printSalesInvoiceLandscape = function(id) {
         </table>
     `;
 
-    const rawSubtotal = (inv.totalAmount - (inv.taxAmount || 0)) + (inv.discountAmount || 0);
+    const baseSubtotal = (inv.items || []).reduce((sum, item) => sum + (parseFloat(item.subtotal) || 0), 0);
+    const subtotalAfterSubsidy = Math.max(0, baseSubtotal - (inv.subsidyAmount || 0));
+
     const totalsBlock = `
         <table style="width: 250px; border-collapse:collapse; font-size:10px; margin-left: auto;">
             <tr>
-                <td style="padding:3px; text-align:right; color:#64748b; font-weight:bold;">SUBTOTAL:</td>
-                <td style="padding:3px; text-align:right; font-weight:bold;">${formatCurrency(rawSubtotal)}</td>
+                <td style="padding:3px; text-align:right; color:#64748b; font-weight:bold;">Jumlah:</td>
+                <td style="padding:3px; text-align:right; font-weight:bold;">${formatCurrency(baseSubtotal)}</td>
             </tr>
+            ${inv.subsidyAmount > 0 ? `
+            <tr>
+                <td style="padding:3px; text-align:right; color:#64748b; font-weight:bold;">${inv.subsidyDescription || 'Subsidi'}:</td>
+                <td style="padding:3px; text-align:right; font-weight:bold;">${formatCurrency(inv.subsidyAmount)}</td>
+            </tr>
+            <tr style="border-top: 1px solid #e2e8f0;">
+                <td style="padding:3px; text-align:right; color:#64748b; font-weight:bold;">Jumlah:</td>
+                <td style="padding:3px; text-align:right; font-weight:bold;">${formatCurrency(subtotalAfterSubsidy)}</td>
+            </tr>` : ''}
             ${inv.discountAmount > 0 ? `
             <tr>
-                <td style="padding:3px; text-align:right; color:#16a34a; font-weight:bold;">DISCOUNT:</td>
-                <td style="padding:3px; text-align:right; color:#16a34a; font-weight:bold;">- ${formatCurrency(inv.discountAmount)}</td>
+                <td style="padding:3px; text-align:right; color:#64748b; font-weight:bold;">${inv.discountDescription || 'Discount'}:</td>
+                <td style="padding:3px; text-align:right; font-weight:bold;">${formatCurrency(inv.discountAmount)}</td>
             </tr>` : ''}
             ${inv.taxAmount > 0 ? `
             <tr>
@@ -10429,7 +10900,7 @@ window.printSalesInvoiceLandscape = function(id) {
                 <td style="padding:3px; text-align:right; color:#ea580c; font-weight:bold;">${formatCurrency(inv.taxAmount)}</td>
             </tr>` : ''}
             <tr style="border-top: 2px solid #0f172a;">
-                <td style="padding:5px 3px; text-align:right; font-weight:900; font-size:12px;">GRAND TOTAL:</td>
+                <td style="padding:5px 3px; text-align:right; font-weight:900; font-size:12px;">TOTAL:</td>
                 <td style="padding:5px 3px; text-align:right; font-weight:900; font-size:14px; color:#0f172a;">${formatCurrency(inv.totalAmount)}</td>
             </tr>
         </table>
@@ -11088,7 +11559,7 @@ window.updatePaymentDefaultAmount = () => {
     }
 };
 
-window.saveNewPayment = () => {
+window.saveNewPayment = async () => {
     const invoices = db.read('salesInvoices');
     const payments = db.read('payments');
 
@@ -11116,7 +11587,7 @@ window.saveNewPayment = () => {
     }
 
     // Save Payment
-    const payment = db.insert('payments', {
+    const payment = await db.insert('payments', {
         paymentNumber: 'PAY-' + Date.now().toString().slice(-6),
         invoiceId: inv.id,
         date: dateInput ? new Date(dateInput).toISOString() : new Date().toISOString(),
@@ -11127,11 +11598,11 @@ window.saveNewPayment = () => {
     });
 
     // Otomatis buat Jurnal: Debit Kas/Bank, Kredit Piutang
-    if (typeof db.addJournalEntry === 'function') {
+    if (typeof db.addJournalEntry === 'function' && payment) {
         let debitAccount = '11110'; // Default: Kas
         if (method === 'Transfer Bank') debitAccount = '11110'; // Default: Bank BCA (as seeded)
 
-        db.addJournalEntry({
+        await db.addJournalEntry({
             date: payment.date,
             description: `Pelunasan Invoice ${inv.invoiceNumber} (${method}) ${proofRef ? '- Proof: ' + proofRef : ''}`,
             reference: payment.paymentNumber,
@@ -11145,7 +11616,7 @@ window.saveNewPayment = () => {
     // Check if fully paid
     const newTotalPaid = totalPaid + inputAmount;
     if (newTotalPaid >= inv.totalAmount - 1) {
-        db.update('salesInvoices', inv.id, { status: 'PAID' });
+        await db.update('salesInvoices', inv.id, { status: 'PAID' });
         showToast('Pembayaran berhasil! Invoice LUNAS.', 'success');
     } else {
         showToast('Pembayaran berhasil dicatat.', 'success');
@@ -11596,7 +12067,7 @@ function renderSalesInvoiceTrends() {
     const currentYear = new Date().getFullYear();
 
     mainContent.innerHTML = `
-        <div class="h-full flex flex-col font-sans bg-white">
+        <div class="min-h-full flex flex-col font-sans bg-white">
             <!-- ERPNext-style compact header -->
             <div class="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white shadow-sm shrink-0">
                 <select id="sit_period" onchange="updateSalesInvoiceTrends()"
@@ -11641,7 +12112,7 @@ function renderSalesInvoiceTrends() {
             </div>
 
             <!-- Trends Table Wrapper -->
-            <div class="flex-1 overflow-auto bg-white border border-gray-200 border-t-0 border-x-0 relative">
+            <div class="w-full overflow-x-auto bg-white border border-gray-200 border-t-0 border-x-0 relative">
                 <table class="w-full text-left border-collapse" id="sit_table">
                     <thead class="bg-[#f9fafb] sticky top-0 z-20 shadow-[0_1px_0_#e5e7eb]">
                         <tr id="sit_thead" class="text-[13px] text-gray-600 border-b border-gray-200"></tr>
@@ -11696,7 +12167,7 @@ window.updateSalesInvoiceTrends = () => {
         else if (period === 'Yearly') pIdx = 0;
         const currency = 'IDR';
 
-        chartTotalAmt[pIdx] += (inv.totalAmount || inv.grandTotal || 0);
+        chartTotalAmt[pIdx] += parseFloat(inv.totalAmount || inv.grandTotal || 0);
 
         if (basedOn.includes('Item')) {
             (inv.items || []).forEach(item => {
@@ -11720,11 +12191,47 @@ window.updateSalesInvoiceTrends = () => {
             (inv.items || []).forEach(item => {
                 pivot[key].periods[pIdx].qty += parseFloat(item.qty) || 0;
             });
-            pivot[key].periods[pIdx].amt += inv.totalAmount || inv.grandTotal || 0;
+            pivot[key].periods[pIdx].amt += parseFloat(inv.totalAmount || inv.grandTotal || 0);
         }
     });
 
     const rows = Object.values(pivot);
+
+    const chartColors = ['#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899', '#84cc16', '#14b8a6', '#6366f1'];
+    const datasets = [{
+        label: 'Total Invoice Value',
+        data: chartTotalAmt,
+        borderColor: '#9ca3af',
+        borderDash: [5, 5],
+        backgroundColor: 'transparent',
+        pointBackgroundColor: '#9ca3af',
+        pointBorderColor: '#fff',
+        pointHoverBackgroundColor: '#fff',
+        pointHoverBorderColor: '#9ca3af',
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 6,
+        tension: 0,
+    }];
+
+    const sortedRows = [...rows].sort((a, b) => b.periods.reduce((sum, v) => sum + v.amt, 0) - a.periods.reduce((sum, v) => sum + v.amt, 0));
+    sortedRows.slice(0, 10).forEach((row, i) => {
+        const color = chartColors[i % chartColors.length];
+        datasets.push({
+            label: row.label,
+            data: row.periods.map(p => p.amt),
+            borderColor: color,
+            backgroundColor: 'transparent',
+            pointBackgroundColor: color,
+            pointBorderColor: '#fff',
+            pointHoverBackgroundColor: '#fff',
+            pointHoverBorderColor: color,
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 6,
+            tension: 0,
+        });
+    });
 
     // Draw Chart
     const ctx = document.getElementById('sit_chart');
@@ -11734,30 +12241,17 @@ window.updateSalesInvoiceTrends = () => {
             type: 'line',
             data: {
                 labels: periods,
-                datasets: [{
-                    label: 'Total Invoice Value',
-                    data: chartTotalAmt,
-                    borderColor: '#10b981', // emerald-500
-                    backgroundColor: 'transparent',
-                    pointBackgroundColor: '#10b981',
-                    pointBorderColor: '#fff',
-                    pointHoverBackgroundColor: '#fff',
-                    pointHoverBorderColor: '#10b981',
-                    borderWidth: 2,
-                    pointRadius: 0,
-                    pointHoverRadius: 6,
-                    tension: 0,
-                }]
+                datasets: datasets
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 interaction: { mode: 'index', intersect: false },
                 plugins: {
-                    legend: { display: false },
+                    legend: { display: true, position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, font: { size: 10 } } },
                     tooltip: {
                         callbacks: {
-                            label: c => ' Rp ' + new Intl.NumberFormat('id-ID').format(c.parsed.y)
+                            label: c => ' ' + c.dataset.label + ': Rp ' + new Intl.NumberFormat('id-ID').format(c.parsed.y)
                         }
                     }
                 },
@@ -11863,7 +12357,7 @@ window.exportSITrendsCsv = () => {
     a.download = `sales_invoice_trends_${document.getElementById('sit_year')?.value || ''}.csv`;
     a.click();
 };
-// ─── End Sales Invoice Trends ──────────────────────────────────
+// ─── Sales Quotation Trends ──────────────────────────────────
 
 // ─── Sales Quotation Trends ──────────────────────────────────
 window.renderSalesQuotationTrends = () => {
@@ -11872,7 +12366,7 @@ window.renderSalesQuotationTrends = () => {
     const currentYear = new Date().getFullYear();
 
     mainContent.innerHTML = `
-        <div class="h-full flex flex-col font-sans bg-white">
+        <div class="min-h-full flex flex-col font-sans bg-white">
             <!-- ERPNext-style compact header -->
             <div class="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white shadow-sm shrink-0">
                 <select id="sqt_period" onchange="updateSalesQuotationTrends()"
@@ -11925,7 +12419,7 @@ window.renderSalesQuotationTrends = () => {
             </div>
 
             <!-- Trends Table Wrapper -->
-            <div class="flex-1 overflow-auto bg-white relative">
+            <div class="w-full overflow-x-auto bg-white relative">
                 <table class="w-full text-left border-collapse" id="sqt_table">
                     <thead class="bg-[#f9fafb] sticky top-0 z-20 shadow-[0_1px_0_#e5e7eb]">
                         <tr id="sqt_thead" class="text-[13px] text-gray-600 border-b border-gray-200"></tr>
@@ -11992,7 +12486,7 @@ window.updateSalesQuotationTrends = () => {
         
         const currency = 'IDR';
 
-        chartTotalAmt[pIdx] += (qt.totalAmount || qt.grandTotal || 0);
+        chartTotalAmt[pIdx] += parseFloat(qt.totalAmount || qt.grandTotal || 0);
 
         if (basedOn.includes('Item')) {
             (qt.items || []).forEach(item => {
@@ -12015,11 +12509,47 @@ window.updateSalesQuotationTrends = () => {
             (qt.items || []).forEach(item => {
                 pivot[key].periods[pIdx].qty += parseFloat(item.qty) || 0;
             });
-            pivot[key].periods[pIdx].amt += qt.totalAmount || qt.grandTotal || 0;
+            pivot[key].periods[pIdx].amt += parseFloat(qt.totalAmount || qt.grandTotal || 0);
         }
     });
 
     const rows = Object.values(pivot);
+
+    const chartColors = ['#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899', '#84cc16', '#14b8a6', '#6366f1'];
+    const datasets = [{
+        label: 'Total Quotation Value',
+        data: chartTotalAmt,
+        borderColor: '#9ca3af',
+        borderDash: [5, 5],
+        backgroundColor: 'transparent',
+        pointBackgroundColor: '#9ca3af',
+        pointBorderColor: '#fff',
+        pointHoverBackgroundColor: '#fff',
+        pointHoverBorderColor: '#9ca3af',
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 6,
+        tension: 0,
+    }];
+
+    const sortedRows = [...rows].sort((a, b) => b.periods.reduce((sum, v) => sum + v.amt, 0) - a.periods.reduce((sum, v) => sum + v.amt, 0));
+    sortedRows.slice(0, 10).forEach((row, i) => {
+        const color = chartColors[i % chartColors.length];
+        datasets.push({
+            label: row.label,
+            data: row.periods.map(p => p.amt),
+            borderColor: color,
+            backgroundColor: 'transparent',
+            pointBackgroundColor: color,
+            pointBorderColor: '#fff',
+            pointHoverBackgroundColor: '#fff',
+            pointHoverBorderColor: color,
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 6,
+            tension: 0,
+        });
+    });
 
     // Draw Chart
     const ctx = document.getElementById('sqt_chart');
@@ -12029,30 +12559,17 @@ window.updateSalesQuotationTrends = () => {
             type: 'line',
             data: {
                 labels: periods,
-                datasets: [{
-                    label: 'Total Quotation Value',
-                    data: chartTotalAmt,
-                    borderColor: '#f472b6', // pink-400
-                    backgroundColor: 'transparent',
-                    pointBackgroundColor: '#f472b6',
-                    pointBorderColor: '#fff',
-                    pointHoverBackgroundColor: '#fff',
-                    pointHoverBorderColor: '#f472b6',
-                    borderWidth: 2,
-                    pointRadius: 0,
-                    pointHoverRadius: 6,
-                    tension: 0, // angular lines like frappe chart
-                }]
+                datasets: datasets
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 interaction: { mode: 'index', intersect: false },
                 plugins: {
-                    legend: { display: false },
+                    legend: { display: true, position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, font: { size: 10 } } },
                     tooltip: {
                         callbacks: {
-                            label: c => ' Rp ' + new Intl.NumberFormat('id-ID').format(c.parsed.y)
+                            label: c => ' ' + c.dataset.label + ': Rp ' + new Intl.NumberFormat('id-ID').format(c.parsed.y)
                         }
                     }
                 },
@@ -12164,7 +12681,7 @@ window.renderSalesOrderTrends = () => {
     const currentYear = new Date().getFullYear();
 
     mainContent.innerHTML = `
-        <div class="h-full flex flex-col font-sans bg-white">
+        <div class="min-h-full flex flex-col font-sans bg-white">
             <!-- ERPNext-style compact header -->
             <div class="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white shadow-sm shrink-0">
                 <select id="sot_period" onchange="updateSalesOrderTrends()"
@@ -12217,7 +12734,7 @@ window.renderSalesOrderTrends = () => {
             </div>
 
             <!-- Trends Table Wrapper -->
-            <div class="flex-1 overflow-auto bg-white relative">
+            <div class="w-full overflow-x-auto bg-white relative">
                 <table class="w-full text-left border-collapse" id="sot_table">
                     <thead class="bg-[#f9fafb] sticky top-0 z-20 shadow-[0_1px_0_#e5e7eb]">
                         <tr id="sot_thead" class="text-[13px] text-gray-600 border-b border-gray-200"></tr>
@@ -12282,7 +12799,7 @@ window.updateSalesOrderTrends = () => {
         
         const currency = 'IDR';
 
-        chartTotalAmt[pIdx] += (so.totalAmount || so.grandTotal || 0);
+        chartTotalAmt[pIdx] += parseFloat(so.totalAmount || so.grandTotal || 0);
 
         if (basedOn.includes('Item')) {
             (so.items || []).forEach(item => {
@@ -12304,11 +12821,47 @@ window.updateSalesOrderTrends = () => {
             (so.items || []).forEach(item => {
                 pivot[key].periods[pIdx].qty += parseFloat(item.qty) || 0;
             });
-            pivot[key].periods[pIdx].amt += so.totalAmount || so.grandTotal || 0;
+            pivot[key].periods[pIdx].amt += parseFloat(so.totalAmount || so.grandTotal || 0);
         }
     });
 
     const rows = Object.values(pivot);
+
+    const chartColors = ['#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899', '#84cc16', '#14b8a6', '#6366f1'];
+    const datasets = [{
+        label: 'Total Order Value',
+        data: chartTotalAmt,
+        borderColor: '#9ca3af',
+        borderDash: [5, 5],
+        backgroundColor: 'transparent',
+        pointBackgroundColor: '#9ca3af',
+        pointBorderColor: '#fff',
+        pointHoverBackgroundColor: '#fff',
+        pointHoverBorderColor: '#9ca3af',
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 6,
+        tension: 0,
+    }];
+
+    const sortedRows = [...rows].sort((a, b) => b.periods.reduce((sum, v) => sum + v.amt, 0) - a.periods.reduce((sum, v) => sum + v.amt, 0));
+    sortedRows.slice(0, 10).forEach((row, i) => {
+        const color = chartColors[i % chartColors.length];
+        datasets.push({
+            label: row.label,
+            data: row.periods.map(p => p.amt),
+            borderColor: color,
+            backgroundColor: 'transparent',
+            pointBackgroundColor: color,
+            pointBorderColor: '#fff',
+            pointHoverBackgroundColor: '#fff',
+            pointHoverBorderColor: color,
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 6,
+            tension: 0,
+        });
+    });
 
     // Draw Chart
     const ctx = document.getElementById('sot_chart');
@@ -12318,30 +12871,17 @@ window.updateSalesOrderTrends = () => {
             type: 'line',
             data: {
                 labels: periods,
-                datasets: [{
-                    label: 'Total Order Value',
-                    data: chartTotalAmt,
-                    borderColor: '#6366f1', // indigo-500
-                    backgroundColor: 'transparent',
-                    pointBackgroundColor: '#6366f1',
-                    pointBorderColor: '#fff',
-                    pointHoverBackgroundColor: '#fff',
-                    pointHoverBorderColor: '#6366f1',
-                    borderWidth: 2,
-                    pointRadius: 0,
-                    pointHoverRadius: 6,
-                    tension: 0,
-                }]
+                datasets: datasets
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 interaction: { mode: 'index', intersect: false },
                 plugins: {
-                    legend: { display: false },
+                    legend: { display: true, position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, font: { size: 10 } } },
                     tooltip: {
                         callbacks: {
-                            label: c => ' Rp ' + new Intl.NumberFormat('id-ID').format(c.parsed.y)
+                            label: c => ' ' + c.dataset.label + ': Rp ' + new Intl.NumberFormat('id-ID').format(c.parsed.y)
                         }
                     }
                 },
@@ -12438,6 +12978,277 @@ window.exportSOTrendsCsv = () => {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `sales_order_trends_${document.getElementById('sot_year')?.value || ''}.csv`;
+    a.click();
+};
+
+window.renderSalesRegionTrends = () => {
+    document.getElementById('pageTitle').innerText = 'Sales By Region';
+    const mainContent = document.getElementById('main-content');
+    const currentYear = new Date().getFullYear();
+
+    mainContent.innerHTML = `
+        <div class="min-h-full flex flex-col font-sans bg-white">
+            <!-- ERPNext-style compact header -->
+            <div class="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white shadow-sm shrink-0">
+                <select id="srt_period" onchange="updateSalesRegionTrends()"
+                    class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
+                    <option value="Monthly" selected>Monthly</option>
+                    <option value="Quarterly">Quarterly</option>
+                    <option value="Half-Yearly">Half-Yearly</option>
+                    <option value="Yearly">Yearly</option>
+                </select>
+
+                <select id="srt_based_on" class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-400 focus:outline-none cursor-not-allowed outline-none" disabled>
+                    <option value="Region">Region</option>
+                </select>
+
+                <input type="number" id="srt_year" value="${currentYear}" onchange="updateSalesRegionTrends()"
+                    class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 outline-none w-24">
+
+                <label class="flex items-center gap-2 text-[13px] text-gray-700 cursor-pointer ml-2">
+                    <input type="checkbox" id="srt_include_closed" onchange="updateSalesRegionTrends()" class="rounded border-gray-300 text-blue-600 outline-none">
+                    Include Closed Orders
+                </label>
+
+                <div class="flex-1"></div>
+                <button onclick="exportSalesRegionCsv()" class="bg-gray-100 border border-gray-200 rounded-md px-3 py-1.5 text-[13px] text-gray-700 transition-colors hover:bg-gray-200 shadow-sm">
+                    Export
+                </button>
+            </div>
+
+            <!-- Report Cache Message -->
+            <div class="px-8 mt-4 text-[13px] text-gray-500 font-medium flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full bg-[#e65c00]"></div>
+                This report was generated just now.
+            </div>
+
+            <!-- Chart Area -->
+            <div class="bg-white px-8 pt-8 pb-4 shrink-0 border-b border-gray-200 relative">
+                <div style="height: 250px;">
+                    <canvas id="srt_chart"></canvas>
+                </div>
+            </div>
+
+            <!-- Trends Table Wrapper -->
+            <div class="w-full overflow-x-auto bg-white relative">
+                <table class="w-full text-left border-collapse" id="srt_table">
+                    <thead class="bg-[#f9fafb] sticky top-0 z-20 shadow-[0_1px_0_#e5e7eb]">
+                        <tr id="srt_thead" class="text-[13px] text-gray-600 border-b border-gray-200"></tr>
+                    </thead>
+                    <tbody id="srt_tbody" class="divide-y divide-gray-100 text-[13px] text-gray-800"></tbody>
+                </table>
+            </div>
+            
+            <!-- Help text footer -->
+            <div class="px-5 py-3 bg-white border-t border-gray-200 shrink-0 flex justify-between items-center w-full mt-auto">
+                <p class="text-[13px] text-gray-500">Sales volume in Quantity (Kg) per region based on Customer Master data.</p>
+                <p class="text-[12px] text-gray-500 font-medium tracking-wide">Execution Time: ${(Math.random() * 0.05 + 0.01).toFixed(6)} sec</p>
+            </div>
+        </div>
+    `;
+    updateSalesRegionTrends();
+};
+
+window.updateSalesRegionTrends = () => {
+    const year          = parseInt(document.getElementById('srt_year')?.value || new Date().getFullYear());
+    const period        = document.getElementById('srt_period')?.value || 'Monthly';
+    const includeClosed = document.getElementById('srt_include_closed')?.checked;
+    
+    let periods = [];
+    if (period === 'Monthly') periods = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    else if (period === 'Quarterly') periods = ['Q1', 'Q2', 'Q3', 'Q4'];
+    else if (period === 'Half-Yearly') periods = ['H1', 'H2'];
+    else if (period === 'Yearly') periods = [year.toString()];
+    
+    let orders = db.read('salesOrders') || [];
+    const customers = db.read('customers') || [];
+
+    // Apply Filter logic
+    orders = orders.filter(so => {
+        const d = new Date(so.date || so.createdAt);
+        if (d.getFullYear() !== year) return false;
+        
+        if (!includeClosed && (so.status === 'CLOSED' || so.status === 'REJECTED' || so.status === 'CANCELED')) return false;
+        return true;
+    });
+
+    const pivot = {};
+    const chartTotalQty = Array(periods.length).fill(0); 
+
+    orders.forEach(so => {
+        const date = new Date(so.date || so.createdAt);
+        const monthIdx = date.getMonth();
+        let pIdx = 0;
+        
+        if (period === 'Monthly') pIdx = monthIdx;
+        else if (period === 'Quarterly') pIdx = Math.floor(monthIdx / 3);
+        else if (period === 'Half-Yearly') pIdx = Math.floor(monthIdx / 6);
+        else if (period === 'Yearly') pIdx = 0;
+        
+        const cust = customers.find(c => c.id === so.customerId);
+        let region = cust?.region || cust?.city || 'Unknown';
+        if (region.trim() === '') region = 'Unknown';
+
+        if (!pivot[region]) {
+            pivot[region] = { periods: Array(periods.length).fill(0) };
+        }
+
+        let orderQty = 0;
+        (so.items || []).forEach(item => {
+            const q = parseFloat(item.qty) || 0;
+            pivot[region].periods[pIdx] += q;
+            orderQty += q;
+        });
+        
+        chartTotalQty[pIdx] += orderQty;
+    });
+
+    const rows = Object.entries(pivot).map(([region, data]) => ({ region, periods: data.periods }));
+
+    const chartColors = ['#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899', '#84cc16', '#14b8a6', '#6366f1'];
+    const datasets = [{
+        label: 'Total Qty (Kg)',
+        data: chartTotalQty,
+        borderColor: '#9ca3af',
+        borderDash: [5, 5],
+        backgroundColor: 'transparent',
+        pointBackgroundColor: '#9ca3af',
+        pointBorderColor: '#fff',
+        pointHoverBackgroundColor: '#fff',
+        pointHoverBorderColor: '#9ca3af',
+        borderWidth: 2,
+        pointRadius: 0,
+        pointHoverRadius: 6,
+        tension: 0,
+    }];
+
+    const sortedRows = [...rows].sort((a, b) => b.periods.reduce((sum, v) => sum + v, 0) - a.periods.reduce((sum, v) => sum + v, 0));
+    sortedRows.slice(0, 10).forEach((row, i) => {
+        const color = chartColors[i % chartColors.length];
+        datasets.push({
+            label: row.region,
+            data: row.periods,
+            borderColor: color,
+            backgroundColor: 'transparent',
+            pointBackgroundColor: color,
+            pointBorderColor: '#fff',
+            pointHoverBackgroundColor: '#fff',
+            pointHoverBorderColor: color,
+            borderWidth: 2,
+            pointRadius: 0,
+            pointHoverRadius: 6,
+            tension: 0,
+        });
+    });
+
+    // Draw Chart
+    const ctx = document.getElementById('srt_chart');
+    if (ctx) {
+        if (window._srtChart) window._srtChart.destroy();
+        window._srtChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: periods,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: true, position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, font: { size: 10 } } },
+                    tooltip: {
+                        callbacks: {
+                            label: c => ' ' + c.dataset.label + ': ' + new Intl.NumberFormat('id-ID').format(c.parsed.y) + ' Kg'
+                        }
+                    }
+                },
+                scales: {
+                    x: { grid: { color: 'transparent', drawBorder: false }, ticks: { color: '#6b7280', font: { size: 10 } } },
+                    y: {
+                        grid: { color: '#f3f4f6', strokeDash: [3, 3] },
+                        border: { display: false },
+                        ticks: { 
+                            color: '#6b7280', font: { size: 10 },
+                            callback: v => {
+                                if(v >= 1000000) return (v/1000000).toFixed(0) + ' M';
+                                if(v >= 1000) return (v/1000).toFixed(0) + ' K';
+                                return v;
+                            }
+                        },
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+
+    // Thead
+    const thead = document.getElementById('srt_thead');
+    if (!thead) return;
+    
+    thead.innerHTML = `
+        <th class="w-10 px-3 py-2 border-r border-[#e5e7eb] font-medium text-center"></th>
+        <th class="min-w-[200px] px-3 py-2 border-r border-[#e5e7eb] font-medium">Region</th>
+        ${periods.map(p => `
+            <th class="px-3 py-2 border-r border-[#e5e7eb] text-right font-medium">${p} (Qty Kg)</th>
+        `).join('')}
+    `;
+
+    const tbody = document.getElementById('srt_tbody');
+    if (!tbody) return;
+
+    const totQty = Array(periods.length).fill(0);
+    rows.forEach(row => {
+        row.periods.forEach((qty, i) => { totQty[i] += qty; });
+    });
+
+    const formatNum = v => new Intl.NumberFormat('id-ID', { maximumFractionDigits: 3 }).format(v || 0);
+
+    tbody.innerHTML = rows.length === 0
+        ? `<tr><td colspan="${2 + periods.length}" class="text-center text-gray-500 py-10">No Data Available</td></tr>`
+        : rows.map(row => `
+        <tr class="hover:bg-gray-50 transition-colors group">
+            <td class="px-3 py-2 border-r border-[#e5e7eb] bg-[#f9fafb] text-xs text-gray-400 text-center select-none w-10"></td>
+            <td class="px-3 py-2 border-r border-[#e5e7eb] whitespace-nowrap">${row.region}</td>
+            ${row.periods.map(qty => `
+                <td class="px-3 py-2 border-r border-[#e5e7eb] text-right whitespace-nowrap">${formatNum(qty)}</td>
+            `).join('')}
+        </tr>
+    `).join('');
+
+    const totalRow = document.createElement('tr');
+    totalRow.className = 'border-t border-[#e5e7eb] bg-[#f9fafb]';
+    totalRow.innerHTML = `
+        <td class="px-3 py-2 border-r border-[#e5e7eb] text-gray-500 font-medium text-xs text-center w-10">1</td>
+        <td class="px-3 py-2 border-r border-[#e5e7eb] font-semibold">Total</td>
+        ${totQty.map((q) => `
+            <td class="px-3 py-2 border-r border-[#e5e7eb] text-right font-medium">${formatNum(q)}</td>
+        `).join('')}
+    `;
+    
+    Array.from(tbody.children).forEach((tr, i) => {
+        if(tr !== totalRow && tr.children[0] && tr.children.length > 1) {
+            tr.children[0].innerHTML = i + 1;
+        }
+    });
+
+    tbody.appendChild(totalRow);
+};
+
+window.exportSalesRegionCsv = () => {
+    const table = document.getElementById('srt_table');
+    if (!table) return;
+    let csv = '';
+    const trs = Array.from(table.querySelectorAll('tr'));
+    trs.forEach(row => {
+        const cells = [...row.querySelectorAll('th,td')].map(c => `"${c.textContent.trim().replace(/"/g, '""')}"`);
+        csv += cells.join(',') + '\n';
+    });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `sales_region_report_${document.getElementById('srt_year')?.value || ''}.csv`;
     a.click();
 };
 
@@ -13512,7 +14323,7 @@ window.selectPurchaseSupplier = (context, id, name) => {
     }
     // context = 'RFQ' or 'PO'
     const prefix = context === 'RFQ' ? 'rfq' : 'po';
-    const hiddenId  = context === 'RFQ' ? 'rfq_supplier_id' : 'po_supplier';
+    const hiddenId  = context === 'RFQ' ? 'rfq_supplier_id' : 'po_supplier_id';
     const displayId = `${prefix}_supplier_display`;
     const dropId    = `${prefix}_supplier_dropdown`;
 

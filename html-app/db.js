@@ -6,37 +6,69 @@ const db = {
     sync: async (table) => {
         try {
             if (!window.api) return [];
+            console.log(`[DB] Syncing table: ${table}...`);
             const data = await window.api.read(table);
-            _dbCache[table] = data;
-            return data;
+            if (!Array.isArray(data)) {
+                console.warn(`[DB] Data for ${table} is not an array:`, data);
+                _dbCache[table] = [];
+            } else {
+                _dbCache[table] = data;
+                console.log(`[DB] Synced ${data.length} records for ${table}.`);
+            }
+            return _dbCache[table];
         } catch (e) {
-            console.error(`Failed to sync table ${table}:`, e);
+            console.error(`[DB] Failed to sync table ${table}:`, e);
+            showToast(`Gagal sinkronisasi data ${table}`, 'error');
             return _dbCache[table] || [];
         }
     },
 
     read: (table) => {
         // Now reads from memory cache which is synced from PostgreSQL
-        return _dbCache[table] || [];
+        return _dbCache[table] ? [..._dbCache[table]] : [];
+    },
+
+    save: (table, data) => {
+        // Helper to manually set cache (used in migrations/seeds)
+        _dbCache[table] = Array.isArray(data) ? [...data] : [data];
+        return _dbCache[table];
     },
 
     insert: async (table, record) => {
-        if (!window.api) return null;
-        const result = await window.api.insert(table, record);
-        if (result) {
-            if (!_dbCache[table]) _dbCache[table] = [];
-            _dbCache[table].push(result);
+        if (!window.api) {
+            console.error('[DB] API not initialized');
+            return null;
         }
-        return result;
+        try {
+            console.log(`[DB] Inserting record into ${table}:`, record);
+            const result = await window.api.insert(table, record);
+            if (result) {
+                if (!_dbCache[table]) _dbCache[table] = [];
+                _dbCache[table].push(result);
+                console.log(`[DB] Successfully inserted into ${table}. ID: ${result.id}`);
+                return result;
+            } else {
+                console.error(`[DB] Insert into ${table} returned null result.`);
+                return null;
+            }
+        } catch (err) {
+            console.error(`[DB] Insert into ${table} threw error:`, err);
+            return null;
+        }
     },
 
     update: async (table, id, updates) => {
         if (!window.api) return null;
         const result = await window.api.update(table, id, updates);
-        // Update local cache
-        if (result && _dbCache[table]) {
+        // Update local cache - merge updates into existing record to prevent data loss
+        if (_dbCache[table]) {
             const idx = _dbCache[table].findIndex(item => item.id === id);
-            if (idx > -1) _dbCache[table][idx] = result;
+            if (idx > -1) {
+                // If result is the full object, use it. Otherwise, merge updates into cache.
+                const updatedRecord = (result && typeof result === 'object' && result.id) ? result : { ..._dbCache[table][idx], ...updates };
+                _dbCache[table][idx] = updatedRecord;
+                return updatedRecord;
+            }
         }
         return result;
     },
@@ -52,7 +84,14 @@ const db = {
 
     findById: (table, id) => {
         const data = db.read(table);
-        return data.find(item => item.id == id) || null;
+        // Support both camelCase (id, itemId) and snake_case (item_id)
+        return data.find(item => 
+            item.id == id || 
+            item.itemId == id || 
+            item.item_id == id ||
+            item.productId == id ||
+            item.product_id == id
+        ) || null;
     },
 
     getTables: () => {
@@ -140,8 +179,22 @@ const db = {
 
     // Auto-generate Item Code by category prefix 
     generateItemCode: (category) => {
-        const stageCats = ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK', 'WIP'];
-        const prefix = category === 'RAW_MATERIAL' ? 'RM' : (category === 'FINISHED_GOODS' ? 'FG' : (stageCats.includes(category) ? 'WIP' : 'FG'));
+        const prefixes = {
+            RAW_MATERIAL: 'RM',
+            FINISHED_GOODS: 'FG',
+            SPAREPART: 'SP',
+            PACKAGING: 'PK',
+            SERVICE: 'SV',
+            GAS: 'GAS',
+            ASSET: 'AKT',
+            SUPPLIES: 'SUP',
+            OVEN_BASAH_STOCK: 'OB',
+            OVEN_KERING_STOCK: 'OK',
+            BULK_STOCK: 'BK',
+            WIP: 'WIP'
+        };
+        
+        const prefix = prefixes[category] || 'ITM';
         const existing = db.read('inventoryItems').filter(i => i.itemCode && i.itemCode.startsWith(`${prefix}-`));
         
         let maxSeq = 0;
@@ -367,9 +420,11 @@ const db = {
 
         // 1. SEARCH BY NAME & CATEGORY (Matches manual items created by user)
         const existingByName = items.find(i => {
-            if (i.category !== category || !i.itemName) return false;
-            const iNameLower = i.itemName.toLowerCase();
-            return iNameLower === targetName.toLowerCase() || iNameLower === `${baseName.toLowerCase()} (${labelLower})`;
+            if (i.category !== category) return false;
+            const iName = (i.itemName || i.item_name || '').toLowerCase().trim();
+            const tName = targetName.toLowerCase().trim();
+            const altName = `${baseName.toLowerCase()} (${labelLower})`;
+            return iName === tName || iName === altName || iName.includes(baseName.toLowerCase());
         });
         if (existingByName) return existingByName.id;
 
@@ -603,6 +658,7 @@ const db = {
 
 // Initialize DB on load
 db.init();
+window.db = db;
 // Migration: Ensure machines have types (Strict overwrite for Oven)
 const mchs = db.read('machines');
 let mchChanged = false;
