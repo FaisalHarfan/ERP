@@ -2,6 +2,7 @@
 const router = require('express').Router();
 const { InventoryItem, StockTransaction, SystemLog, sequelize } = require('../models');
 const { authenticateToken, requirePermission } = require('../middleware/auth');
+const { Op } = require('sequelize');
 
 // Helper generator
 function generateId() {
@@ -30,7 +31,7 @@ async function generateItemCode(category) {
     // Find all items with this prefix
     const items = await InventoryItem.findAll({
         where: {
-            item_code: { [sequelize.Sequelize.Op.like]: `${prefix}-%` }
+            item_code: { [Op.like]: `${prefix}-%` }
         }
     });
 

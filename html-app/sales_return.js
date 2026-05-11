@@ -8,22 +8,23 @@ function srDate(d) { return d ? new Date(d).toLocaleDateString('id-ID') : '-'; }
 
 function srStatusBadge(status) {
     const map = {
-        'PENDING':        'bg-slate-100 text-slate-500',
-        'APPROVED':       'bg-slate-100 text-slate-500 shadow-sm',
+        'PENDING': 'bg-slate-100 text-slate-500',
+        'APPROVED': 'bg-slate-100 text-slate-500 shadow-sm',
         'GOODS_RECEIVED': 'bg-indigo-100 text-indigo-800',
-        'RETURN_RECEIVED':'bg-indigo-100 text-indigo-800',
-        'COMPLETED':      'bg-emerald-100 text-emerald-800',
-        'REJECTED':       'bg-red-100 text-red-800',
-        'CANCELED':       'bg-slate-200 text-slate-500'
+        'RETURN_RECEIVED': 'bg-indigo-100 text-indigo-800',
+        'COMPLETED': 'bg-emerald-100 text-emerald-800',
+        'REJECTED': 'bg-red-100 text-red-800',
+        'CANCELED': 'bg-slate-200 text-slate-500'
     };
     const labels = {
-        'PENDING':        'WAITING WH',
-        'APPROVED':       'WAITING WH',
+        j
+        'PENDING': 'WAITING WH',
+        'APPROVED': 'WAITING WH',
         'GOODS_RECEIVED': 'Barang Diterima Inventory',
-        'RETURN_RECEIVED':'Retur Diterima',
-        'COMPLETED':      'Selesai',
-        'REJECTED':       'Ditolak',
-        'CANCELED':       'Dibatalkan'
+        'RETURN_RECEIVED': 'Retur Diterima',
+        'COMPLETED': 'Selesai',
+        'REJECTED': 'Ditolak',
+        'CANCELED': 'Dibatalkan'
     };
     const cls = map[status] || 'bg-gray-100 text-gray-600';
     const lbl = labels[status] || status;
@@ -40,7 +41,7 @@ function srGenerateNumber(prefix) {
 window.renderSalesReturns = async function () {
     document.getElementById('pageTitle').innerText = 'Retur Penjualan';
     const mc = document.getElementById('main-content');
-    
+
     // Auto-sync on load to ensure data is fresh
     if (window.api && typeof window.api.pullAll === 'function') {
         mc.innerHTML = `<div class="p-20 text-center"><i class="fas fa-spinner fa-spin text-3xl text-blue-500 mb-4"></i><p class="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Menyinkronkan Data...</p></div>`;
@@ -48,7 +49,7 @@ window.renderSalesReturns = async function () {
     }
 
     const perm = getModulePermission('penjualan');
-    
+
     if (!window._srActiveTab) window._srActiveTab = 'pending';
     if (!window._srFilters) window._srFilters = { start: '', end: '', search: '' };
     const filters = window._srFilters;
@@ -57,18 +58,18 @@ window.renderSalesReturns = async function () {
 
     if (filters.search) {
         const s = filters.search.toLowerCase();
-        returns = returns.filter(r => 
-            r.returnNumber?.toLowerCase().includes(s) || 
-            db.findById('customers', r.customerId)?.name?.toLowerCase().includes(s) || 
+        returns = returns.filter(r =>
+            r.returnNumber?.toLowerCase().includes(s) ||
+            db.findById('customers', r.customerId)?.name?.toLowerCase().includes(s) ||
             r.productName?.toLowerCase().includes(s)
         );
     }
     if (filters.start) {
-        const dd = new Date(filters.start); dd.setHours(0,0,0,0);
+        const dd = new Date(filters.start); dd.setHours(0, 0, 0, 0);
         returns = returns.filter(q => new Date(q.date) >= dd);
     }
     if (filters.end) {
-        const dd = new Date(filters.end); dd.setHours(23,59,59,999);
+        const dd = new Date(filters.end); dd.setHours(23, 59, 59, 999);
         returns = returns.filter(q => new Date(q.date) <= dd);
     }
 
@@ -79,7 +80,7 @@ window.renderSalesReturns = async function () {
 
     const rows = filteredReturns.map(r => {
         const customer = db.findById('customers', r.customerId);
-        
+
         return `
             <tr class="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group">
                 <td class="px-6 py-4">
@@ -183,10 +184,10 @@ window.renderSalesReturns = async function () {
     `;
 };
 
-window.handleSRAction = async function(select, id) {
+window.handleSRAction = async function (select, id) {
     const action = select.value;
     if (!action) return;
-    
+
     if (action === 'print') {
         window.printSalesReturn(id);
     } else if (action === 'cancel') {
@@ -196,7 +197,7 @@ window.handleSRAction = async function(select, id) {
                 if (window.api && typeof window.api.pullAll === 'function') await window.api.pullAll();
                 showToast('Retur dibatalkan.');
                 renderSalesReturns();
-            } catch(e) {
+            } catch (e) {
                 showToast('Gagal membatalkan: ' + e.message, 'error');
             }
         }
@@ -207,7 +208,7 @@ window.handleSRAction = async function(select, id) {
                 if (window.api && typeof window.api.pullAll === 'function') await window.api.pullAll();
                 showToast('Retur berhasil dihapus.');
                 renderSalesReturns();
-            } catch(e) {
+            } catch (e) {
                 showToast('Gagal hapus: ' + e.message, 'error');
             }
         }
@@ -251,7 +252,7 @@ window.openSalesReturnForm = function (soId = null) {
     let initialCustomerName = '-- Pilih Customer --';
     let initialCustomerId = '';
     let initialSONumber = '';
-    
+
     if (soId) {
         const so = db.findById('salesOrders', soId);
         if (so) {
@@ -465,18 +466,18 @@ window.selectCustomerSR = function (id, name) {
     document.getElementById('sr_customer_id').value = id;
     document.getElementById('sr_customer_search').value = name;
     document.getElementById('sr_customer_dropdown').classList.add('hidden');
-    
+
     // Filter SOs for this customer
     const soSelect = document.getElementById('sr_so');
     const salesOrders = db.read('salesOrders').filter(s => s.customerId === id && ['CONFIRMED', 'DELIVERED', 'COMPLETED'].includes(s.status));
-    
+
     if (salesOrders.length === 0) {
         soSelect.innerHTML = '<option value="">-- Tidak ada SO --</option>';
     } else {
-        soSelect.innerHTML = '<option value="">-- Pilih Sales Order --</option>' + 
+        soSelect.innerHTML = '<option value="">-- Pilih Sales Order --</option>' +
             salesOrders.map(so => `<option value="${so.id}">${so.soNumber}</option>`).join('');
     }
-    
+
     // Reset product section
     document.getElementById('sr_product').innerHTML = '<option value="">-- Pilih SO Dulu --</option>';
 };
@@ -485,7 +486,7 @@ window.updateSRProductDetails = function () {
     const productSelect = document.getElementById('sr_product');
     const selectedOption = productSelect.options[productSelect.selectedIndex];
     const unitPrice = parseFloat(selectedOption?.getAttribute('data-price') || 0);
-    
+
     document.getElementById('sr_unit_price').value = unitPrice;
     window.updateSRRefundTotal();
 };
@@ -494,7 +495,7 @@ window.updateSRRefundTotal = function () {
     const unitPrice = parseFloat(document.getElementById('sr_unit_price').value) || 0;
     const qty = parseFloat(document.getElementById('sr_qty').value) || 0;
     const total = unitPrice * qty;
-    
+
     const display = document.getElementById('sr_refund_total_display');
     if (display) display.innerText = srFmt(total);
 };
@@ -502,7 +503,7 @@ window.updateSRRefundTotal = function () {
 window.openAdvancedSOSelector = function (context) {
     const customers = db.read('customers');
     const salesOrders = db.read('salesOrders').filter(s => ['CONFIRMED', 'DELIVERED', 'COMPLETED'].includes(s.status));
-    
+
     const body = `
         <div class="space-y-6">
             <div class="relative">
@@ -523,8 +524,8 @@ window.openAdvancedSOSelector = function (context) {
                     </thead>
                     <tbody id="adv_so_table_body" class="divide-y divide-slate-50">
                         ${salesOrders.map(so => {
-                            const c = db.findById('customers', so.customerId);
-                            return `
+        const c = db.findById('customers', so.customerId);
+        return `
                                 <tr class="hover:bg-blue-50/30 transition-colors">
                                     <td class="px-6 py-4 font-black text-blue-600">${so.soNumber}</td>
                                     <td class="px-6 py-4 font-bold text-slate-700">${c?.name || '-'}</td>
@@ -535,7 +536,7 @@ window.openAdvancedSOSelector = function (context) {
                                     </td>
                                 </tr>
                             `;
-                        }).join('')}
+    }).join('')}
                     </tbody>
                 </table>
             </div>
@@ -543,7 +544,7 @@ window.openAdvancedSOSelector = function (context) {
     `;
 
     showModal('Advanced Sales Order Search', body, `<button onclick="closeModal()" class="px-8 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all">Tutup</button>`, 'lg');
-    
+
     window.filterAdvancedSOTable = () => {
         const q = document.getElementById('adv_so_search_input').value.toLowerCase();
         document.querySelectorAll('#adv_so_table_body tr').forEach(row => {
@@ -568,7 +569,7 @@ window.loadSOItemsForReturn = function () {
     if (!soId) { productSelect.innerHTML = '<option value="">-- Pilih SO Dulu --</option>'; return; }
     const so = db.findById('salesOrders', soId);
     if (!so || !so.items?.length) { productSelect.innerHTML = '<option value="">Tidak ada item</option>'; return; }
-    
+
     productSelect.innerHTML = '<option value="">-- Pilih Produk --</option>' + so.items.map(item => {
         const invItem = db.findById('inventoryItems', item.inventoryItemId);
         const displayName = item.prodText || invItem?.itemName || 'Produk';
@@ -576,7 +577,7 @@ window.loadSOItemsForReturn = function () {
         const invId = item.inventoryItemId || '';
         return `<option value="${invId}" data-name="${displayName}" data-price="${price}">${displayName}</option>`;
     }).join('');
-    
+
     window.updateSRProductDetails();
 };
 
@@ -604,7 +605,7 @@ window.addSRItem = function () {
     });
 
     window.renderSRItemsTable();
-    
+
     // Reset adder fields
     productSelect.value = '';
     document.getElementById('sr_qty').value = 1;
@@ -619,7 +620,7 @@ window.removeSRItem = function (index) {
 window.renderSRItemsTable = function () {
     const tbody = document.getElementById('sr_items_table_body');
     const totalDisplay = document.getElementById('sr_refund_total_display');
-    
+
     if (window._srItems.length === 0) {
         tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-10 text-center text-slate-300 font-bold uppercase tracking-widest italic">Belum ada produk ditambahkan.</td></tr>`;
         totalDisplay.innerText = srFmt(0);
@@ -938,7 +939,7 @@ window.processReturnRefund = function (id) {
     }
 
     db.update('salesReturns', id, { status: 'COMPLETED', refundedAt: new Date().toISOString() });
-renderSalesReturns();
+    renderSalesReturns();
 };
 
 // ==========================================
@@ -955,7 +956,7 @@ window.renderProductExchanges = async function () {
     }
 
     const perm = getModulePermission('penjualan');
-    
+
     if (!window._exActiveTab) window._exActiveTab = 'pending';
     if (!window._exFilters) window._exFilters = { start: '', end: '', search: '' };
     const filters = window._exFilters;
@@ -964,18 +965,18 @@ window.renderProductExchanges = async function () {
 
     if (filters.search) {
         const s = filters.search.toLowerCase();
-        exchanges = exchanges.filter(ex => 
-            ex.exchangeNumber?.toLowerCase().includes(s) || 
-            db.findById('customers', ex.customerId)?.name?.toLowerCase().includes(s) || 
+        exchanges = exchanges.filter(ex =>
+            ex.exchangeNumber?.toLowerCase().includes(s) ||
+            db.findById('customers', ex.customerId)?.name?.toLowerCase().includes(s) ||
             ex.returnedProductName?.toLowerCase().includes(s)
         );
     }
     if (filters.start) {
-        const dd = new Date(filters.start); dd.setHours(0,0,0,0);
+        const dd = new Date(filters.start); dd.setHours(0, 0, 0, 0);
         exchanges = exchanges.filter(ex => new Date(ex.date) >= dd);
     }
     if (filters.end) {
-        const dd = new Date(filters.end); dd.setHours(23,59,59,999);
+        const dd = new Date(filters.end); dd.setHours(23, 59, 59, 999);
         exchanges = exchanges.filter(ex => new Date(ex.date) <= dd);
     }
 
@@ -986,7 +987,7 @@ window.renderProductExchanges = async function () {
 
     const rows = filteredExchanges.map(ex => {
         const customer = db.findById('customers', ex.customerId);
-        
+
         let deleteBtn = '';
         if (perm.edit && (ex.status === 'PENDING' || ex.status === 'APPROVED')) {
             deleteBtn = `
@@ -1096,10 +1097,10 @@ window.renderProductExchanges = async function () {
     `;
 };
 
-window.handleEXAction = async function(select, id) {
+window.handleEXAction = async function (select, id) {
     const action = select.value;
     if (!action) return;
-    
+
     if (action === 'print') {
         window.printProductExchange(id);
     } else if (action === 'cancel') {
@@ -1109,7 +1110,7 @@ window.handleEXAction = async function(select, id) {
                 if (window.api && typeof window.api.pullAll === 'function') await window.api.pullAll();
                 showToast('Exchange dibatalkan.');
                 renderProductExchanges();
-            } catch(e) {
+            } catch (e) {
                 showToast('Gagal membatalkan: ' + e.message, 'error');
             }
         }
@@ -1120,7 +1121,7 @@ window.handleEXAction = async function(select, id) {
                 if (window.api && typeof window.api.pullAll === 'function') await window.api.pullAll();
                 showToast('Tukar Guling berhasil dihapus.');
                 renderProductExchanges();
-            } catch(e) {
+            } catch (e) {
                 showToast('Gagal hapus: ' + e.message, 'error');
             }
         }
@@ -1128,7 +1129,7 @@ window.handleEXAction = async function(select, id) {
     select.value = '';
 };
 
-window.approveExchangeDoc = async function(id, approved) {
+window.approveExchangeDoc = async function (id, approved) {
     try {
         if (approved) {
             await api.approveProductExchange(id);
@@ -1178,7 +1179,7 @@ window.openExchangeForm = function (soId = null) {
     const customers = db.read('customers');
     let initialCustomerName = '-- Pilih Customer --';
     let initialCustomerId = '';
-    
+
     if (soId) {
         const so = db.findById('salesOrders', soId);
         if (so) {
@@ -1422,19 +1423,19 @@ window.selectCustomerEX = function (id, name) {
     document.getElementById('ex_customer').value = id;
     document.getElementById('ex_customer_search').value = name;
     document.getElementById('ex_customer_dropdown').classList.add('hidden');
-    
+
     // Reset SO
     const soSelect = document.getElementById('ex_so');
     soSelect.innerHTML = '<option value="">-- Loading SO... --</option>';
-    
+
     const salesOrders = db.read('salesOrders').filter(so => so.customerId === id && ['CONFIRMED', 'DELIVERED', 'COMPLETED'].includes(so.status));
     if (salesOrders.length === 0) {
         soSelect.innerHTML = '<option value="">-- Tidak Ada SO --</option>';
     } else {
-        soSelect.innerHTML = '<option value="">-- Pilih Sales Order --</option>' + 
+        soSelect.innerHTML = '<option value="">-- Pilih Sales Order --</option>' +
             salesOrders.map(so => `<option value="${so.id}">${so.soNumber} (${srDate(so.date)})</option>`).join('');
     }
-    
+
     // Enable details section logic
     document.getElementById('ex_details_section').classList.add('opacity-40', 'pointer-events-none');
     document.getElementById('ex_returned_product').value = '';
@@ -1444,13 +1445,13 @@ window.selectCustomerEX = function (id, name) {
 window.loadSOItemsForExchange = function () {
     const soId = document.getElementById('ex_so').value;
     const searchInput = document.getElementById('ex_ret_prod_search');
-    
+
     if (!soId) {
         searchInput.value = '-- Pilih SO Dulu --';
         document.getElementById('ex_details_section').classList.add('opacity-40', 'pointer-events-none');
         return;
     }
-    
+
     document.getElementById('ex_details_section').classList.remove('opacity-40', 'pointer-events-none');
     searchInput.value = '-- PILIH PRODUK --';
     window.calcExchangeDiff();
@@ -1465,7 +1466,7 @@ window.toggleProductDropdownEX = function (id, show, type) {
         window.filterProductSelectorEX('', type);
         const filterInput = document.getElementById(type === 'returned' ? 'ex_ret_prod_filter' : 'ex_rep_prod_filter');
         setTimeout(() => filterInput?.focus(), 50);
-        
+
         const closer = (e) => {
             const searchInput = document.getElementById(type === 'returned' ? 'ex_ret_prod_search' : 'ex_rep_prod_search');
             if (!el.contains(e.target) && e.target !== searchInput) {
@@ -1480,20 +1481,20 @@ window.toggleProductDropdownEX = function (id, show, type) {
 window.filterProductSelectorEX = function (q, type) {
     const list = document.getElementById(type === 'returned' ? 'ex_ret_prod_list' : 'ex_rep_prod_list');
     if (!list) return;
-    
+
     let items = [];
     if (type === 'returned') {
         const soId = document.getElementById('ex_so').value;
         const so = db.findById('salesOrders', soId);
         if (so && so.items) {
-            items = so.items.filter(i => 
-                (i.productName || '').toLowerCase().includes(q.toLowerCase()) || 
+            items = so.items.filter(i =>
+                (i.productName || '').toLowerCase().includes(q.toLowerCase()) ||
                 (i.prodText || '').toLowerCase().includes(q.toLowerCase())
             );
         }
     } else {
-        items = db.read('inventoryItems').filter(i => 
-            i.status === 'ACTIVE' && 
+        items = db.read('inventoryItems').filter(i =>
+            i.status === 'ACTIVE' &&
             (i.itemCode || '').startsWith('FG') &&
             ((i.itemName || '').toLowerCase().includes(q.toLowerCase()) || (i.itemCode || '').toLowerCase().includes(q.toLowerCase()))
         );
@@ -1506,7 +1507,7 @@ window.filterProductSelectorEX = function (q, type) {
         const code = i.productCode || i.itemCode || invItem?.itemCode || '-';
         const stock = db.getInventoryStock ? db.getInventoryStock(invId) : (i.stock || invItem?.stock || 0);
         const price = i.price || i.unitPrice || i.purchasePrice || invItem?.purchasePrice || 0;
-        
+
         return `
             <div onclick="window.selectProductEX('${invId}', '${name.replace(/'/g, "\\'")}', '${price}', '${type}')" 
                 class="px-5 py-4 hover:bg-blue-50/50 cursor-pointer transition-all border-b border-slate-50 last:border-0 group rounded-2xl">
@@ -1533,7 +1534,7 @@ window.selectProductEX = function (id, name, price, type) {
     const idInput = document.getElementById(type === 'returned' ? 'ex_returned_product' : 'ex_replacement_product');
     const searchInput = document.getElementById(type === 'returned' ? 'ex_ret_prod_search' : 'ex_rep_prod_search');
     const dropdown = document.getElementById(type === 'returned' ? 'ex_ret_prod_dropdown' : 'ex_rep_prod_dropdown');
-    
+
     idInput.value = id;
     searchInput.value = name;
     dropdown.classList.add('hidden');
@@ -1858,15 +1859,15 @@ window.renderSalesReturnReports = function () {
     `;
 };
 
-window.openPrintWindow = function(type, id, data = null) {
+window.openPrintWindow = function (type, id, data = null) {
     if (type === 'sales-return') {
         const sr = data || db.findById('salesReturns', id);
         if (!sr) return;
-        
+
         const items = Array.isArray(data) ? data : (data ? [data] : [sr]);
         const first = items[0] || sr;
         const customer = db.findById('customers', first.customerId);
-        
+
         let grandTotal = 0;
         const itemRows = items.map((item, idx) => {
             const subtotal = (parseFloat(item.unitPrice) || 0) * (parseFloat(item.qtyReturned) || 0);
@@ -1995,19 +1996,19 @@ window.openPrintWindow = function(type, id, data = null) {
                 </div>
             </div>
         `;
-        
+
         window.printHTML(printableHTML, `Nota Retur ${first.returnNumber}`, true);
     }
 };
 
-window.printSalesReturn = function(id) {
+window.printSalesReturn = function (id) {
     const sr = db.findById('salesReturns', id);
     if (!sr) return;
-    
+
     // Group all items with same return number for the single printout
     const all = db.read('salesReturns') || [];
     const items = all.filter(r => r.returnNumber === sr.returnNumber);
-    
+
     showToast(`Menyiapkan Nota Retur ${sr.returnNumber}...`);
     if (window.openPrintWindow) {
         window.openPrintWindow('sales-return', sr.id, items);
@@ -2016,7 +2017,7 @@ window.printSalesReturn = function(id) {
     }
 };
 
-window.printProductExchange = function(id) {
+window.printProductExchange = function (id) {
     const ex = db.findById('productExchanges', id);
     if (!ex) return;
     showToast(`Mencetak Nota Tukar Guling ${ex.exchangeNumber}...`);
