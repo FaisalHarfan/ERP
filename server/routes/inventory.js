@@ -103,12 +103,12 @@ router.post('/items', authenticateToken, requirePermission('logistik', 'edit'), 
         const itemCode = await generateItemCode(category);
         const newItem = await InventoryItem.create({
             id: generateId(),
-            item_code: itemCode,
-            item_name: itemName,
+            itemCode,
+            itemName,
             category,
             unit,
-            min_stock: minStock || 0,
-            purchase_price: purchasePrice || 0,
+            minStock: minStock || 0,
+            purchasePrice: purchasePrice || 0,
             status: status || 'ACTIVE'
         }, { transaction: t });
 
@@ -121,16 +121,16 @@ router.post('/items', authenticateToken, requirePermission('logistik', 'edit'), 
 
             await StockTransaction.create({
                 id: generateId(),
-                tx_no: txNo,
+                txNo,
                 date: new Date(),
-                item_id: newItem.id,
-                item_code: newItem.item_code,
-                item_name: newItem.item_name,
+                itemId: newItem.id,
+                itemCode: newItem.itemCode,
+                itemName: newItem.itemName,
                 type: 'IN',
                 qty: parseFloat(initialStock),
                 reference: 'MANUAL',
                 notes: 'Initial stock on item creation',
-                created_by: req.user.email,
+                createdBy: req.user.email,
                 location: 'WHS'
             }, { transaction: t });
         }
