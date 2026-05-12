@@ -28,14 +28,14 @@ async function ensureWIPItem(productId, stageLabel, t) {
     if (labelLower.includes('oven kering')) category = 'OVEN_KERING_STOCK';
 
     // Target Name
-    const baseName = (product.item_name || '').replace(/\s*\([^)]+\)/g, '').trim();
+    const baseName = (product.itemName || '').replace(/\s*\([^)]+\)/g, '').trim();
     const targetName = `${baseName} (${stageLabel})`;
 
     // 1. Search by name & category
     const existing = await InventoryItem.findOne({
         where: {
             category: category,
-            item_name: { [sequelize.Sequelize.Op.iLike]: targetName }
+            itemName: { [sequelize.Sequelize.Op.iLike]: targetName }
         },
         transaction: t
     });
@@ -45,17 +45,16 @@ async function ensureWIPItem(productId, stageLabel, t) {
     // 2. Auto-create if not found
     // Item code generation is handled inline below
     
-    // Fallback if helper not yet extracted
     const prefix = category === 'RAW_MATERIAL' ? 'RM' : (['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK', 'WIP'].includes(category) ? 'WIP' : 'FG');
     const lastItem = await InventoryItem.findOne({
-        where: { item_code: { [sequelize.Sequelize.Op.like]: `${prefix}-%` } },
-        order: [['item_code', 'DESC']],
+        where: { itemCode: { [sequelize.Sequelize.Op.like]: `${prefix}-%` } },
+        order: [['itemCode', 'DESC']],
         transaction: t
     });
     
     let nextSeq = 1;
-    if (lastItem && lastItem.item_code) {
-        const parts = lastItem.item_code.split('-');
+    if (lastItem && lastItem.itemCode) {
+        const parts = lastItem.itemCode.split('-');
         if (parts.length >= 2) {
             const seq = parseInt(parts[1]);
             if (!isNaN(seq)) nextSeq = seq + 1;
@@ -65,12 +64,12 @@ async function ensureWIPItem(productId, stageLabel, t) {
 
     const newItem = await InventoryItem.create({
         id: generateId(),
-        item_code: itemCode,
-        item_name: targetName,
+        itemCode: itemCode,
+        itemName: targetName,
         category,
         unit: product.unit || 'Kg',
         status: 'ACTIVE',
-        description: `WIP item auto-created for ${product.item_name} - ${stageLabel}`
+        description: `WIP item auto-created for ${product.itemName} - ${stageLabel}`
     }, { transaction: t });
 
     return newItem.id;
