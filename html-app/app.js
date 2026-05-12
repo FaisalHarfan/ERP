@@ -8750,12 +8750,6 @@ function renderSalesOrders() {
                     </div>
 
                     <div class="flex items-center gap-2">
-                        <button onclick="openSalesReturnModal()" class="border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 px-4 py-2.5 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest shadow-sm flex items-center gap-2 active:scale-95">
-                            <i class="fas fa-undo-alt"></i>Retur
-                        </button>
-                        <button onclick="openExchangeModal()" class="border border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-600 px-4 py-2.5 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest shadow-sm flex items-center gap-2 active:scale-95">
-                            <i class="fas fa-exchange-alt"></i>Tukar Guling
-                        </button>
                         <button onclick="openSOModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest shadow-xl active:scale-95 flex items-center gap-2">
                             <i class="fas fa-plus"></i>Buat SO Baru
                         </button>
