@@ -3429,13 +3429,13 @@ window.addPOItem = () => {
     const inventoryItemId = document.getElementById('po_inv_item').value;
     const searchVal = document.getElementById('po_item_search').value;
     
-    let prodText = searchVal;
-    let unit = document.getElementById('po_unit').value || '-';
+    let itemCode = '';
     
     if (inventoryItemId) {
         const p = db.findById('inventoryItems', inventoryItemId);
         if (p) {
             prodText = p.itemName;
+            itemCode = p.itemCode || '';
             unit = document.getElementById('po_unit').value || p.unit || '-';
         }
     }
@@ -3445,7 +3445,7 @@ window.addPOItem = () => {
     const qty = parseFloat(document.getElementById('po_qty').value);
     const price = parseFloat(document.getElementById('po_price').value) || 0;
     if (!qty || qty <= 0) { showToast('Qty harus diisi', 'error'); return; }
-    window.tempPOItems.push({ inventoryItemId, prodText, unit, qty, price, subtotal: qty * price });
+    window.tempPOItems.push({ inventoryItemId, itemCode, prodText, unit, qty, price, subtotal: qty * price });
     
     // Reset
     document.getElementById('po_item_search').value = '';
@@ -3497,8 +3497,8 @@ function renderPOItemsList() {
                     <tr class="group hover:bg-slate-50/50 transition-colors">
                         <td class="py-4 px-6 text-center text-slate-400 font-bold text-xs">${idx + 1}</td>
                         <td class="py-4 px-6">
-                            <div class="font-bold text-slate-700">${i.prodText || i.name}</div>
-                            <div class="text-[10px] text-slate-400 font-medium">${i.inventoryItemId || 'Non-Inventory'}</div>
+                            <div class="font-bold text-slate-700 leading-tight">${i.prodText || i.name}</div>
+                            <div class="text-[10px] text-slate-400 font-medium mt-0.5 tracking-wider uppercase">${i.itemCode || 'Non-Inventory'}</div>
                         </td>
                         <td class="py-4 px-6 text-center">
                             <input type="number" step="0.01" value="${i.qty}" 
@@ -7912,7 +7912,7 @@ window.refreshPurchaseRFQItemsTable = () => {
             <td class="py-4 px-6 text-[11px] font-black text-slate-400">${idx + 1}</td>
             <td class="py-4 px-6">
                 ${item.itemCode
-                    ? `<div class="font-black text-slate-800 text-sm">${item.itemCode}</div><div class="text-xs text-slate-500 mt-0.5">${item.prodText}</div>`
+                    ? `<div class="font-black text-slate-800 text-sm leading-tight">${item.prodText}</div><div class="text-[10px] text-slate-400 font-medium mt-0.5 tracking-wider uppercase">${item.itemCode}</div>`
                     : `<div class="font-black text-slate-800 text-sm">${item.prodText}</div>`
                 }
             </td>
