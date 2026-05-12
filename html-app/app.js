@@ -299,7 +299,7 @@ const MODULE_VIEW_MAP = {
     'inventory-dashboard': 'logistik', 'inventory-master': 'logistik', 'inventory-po-receipt': 'logistik', 'inventory-delivery': 'logistik', 'inventory-monthly-report': 'logistik', 'inventory-shrinkage': 'logistik', 'inventory-judgment': 'logistik',
     'inventory-card': 'logistik', 'inventory-shrinkage': 'produksi', 'inventory-monthly-report': 'logistik', 'inventory-conversion': 'logistik',
     'production-dashboard': 'produksi', 'production-bom': 'produksi', 'production-mo': 'produksi', 'production-shift-report': 'produksi', 'production-wip-stock': 'produksi', 'production-reports': 'produksi', 'production-stock-master': 'produksi', 'master-machines': 'produksi',
-    'sales-returns': 'logistik', 'sales-exchanges': 'logistik', 'sales-return-reports': 'logistik',
+    'sales-returns': 'penjualan', 'sales-exchanges': 'penjualan', 'sales-return-reports': 'penjualan',
     'inventory-incoming-returns': 'logistik',
     'finance-dashboard': 'finance', 'finance-accounts': 'finance',
     'finance-ar': 'finance',

@@ -17,7 +17,6 @@ function srStatusBadge(status) {
         'CANCELED': 'bg-slate-200 text-slate-500'
     };
     const labels = {
-        j
         'PENDING': 'WAITING WH',
         'APPROVED': 'WAITING WH',
         'GOODS_RECEIVED': 'Barang Diterima Inventory',
