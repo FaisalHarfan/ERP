@@ -57,13 +57,13 @@ router.post('/orders/:id/receive', authenticateToken, async (req, res) => {
                 await StockTransaction.create({
                     id: uuidv4(),
                     date: recvDate ? new Date(recvDate) : new Date(),
-                    item_id: inventoryItemId,
+                    itemId: inventoryItemId,
                     type: 'IN',
                     qty: qty,
                     reference: 'PO',
-                    reference_id: po.id,
+                    referenceId: po.id,
                     notes: `Penerimaan PO ${poData.po_number || poData.poNumber || ''} - ${prodText || ''}${recvNpb ? ' (NPB: ' + recvNpb + ')' : ''}`,
-                    created_by: req.user.name || req.user.full_name || 'System',
+                    createdBy: req.user.name || req.user.full_name || 'System',
                     location: 'WHS'
                 }, { transaction: t });
             }

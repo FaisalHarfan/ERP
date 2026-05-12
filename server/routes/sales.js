@@ -63,10 +63,10 @@ router.post('/delivery/:id/ship', authenticateToken, async (req, res) => {
                 const invItem = await InventoryItem.findByPk(item.inventoryItemId, { transaction: t });
                 if (invItem) {
                     await StockTransaction.create({
-                        id: uuidv4(), date: new Date(), item_id: item.inventoryItemId,
-                        type: 'OUT', qty: item.qty, reference: 'SALES_OUT', reference_id: doRecord.id,
+                        id: uuidv4(), date: new Date(), itemId: item.inventoryItemId,
+                        type: 'OUT', qty: item.qty, reference: 'SALES_OUT', referenceId: doRecord.id,
                         notes: `Delivery Order ${doNumber}`,
-                        created_by: req.user.full_name || 'Admin Warehouse', location: 'WHS'
+                        createdBy: req.user.full_name || 'Admin Warehouse', location: 'WHS'
                     }, { transaction: t });
                     const price = parseFloat(invItem.purchase_price || 0);
                     if (price > 0) totalCogs += price * item.qty;
@@ -227,12 +227,12 @@ router.post('/returns/:id/receive', authenticateToken, async (req, res) => {
 
         if (receivedCondition === 'Good') {
             await StockTransaction.create({
-                id: genId(), tx_no: txNo, date: new Date(),
-                item_id: invItem.id, item_code: invItem.item_code, item_name: invItem.item_name,
+                id: genId(), txNo: txNo, date: new Date(),
+                itemId: invItem.id, itemCode: invItem.itemCode || invItem.item_code, itemName: invItem.itemName || invItem.item_name,
                 type: 'RETURN_IN', qty,
-                reference: 'SALES_RETURN', reference_id: ret.id,
+                reference: 'SALES_RETURN', referenceId: ret.id,
                 notes: `Return dari ${ret.return_number} | SO: ${ret.so_number} | Kondisi: Bagus${receivedNotes ? ' | ' + receivedNotes : ''}`,
-                created_by: byUser, location: 'WHS'
+                createdBy: byUser, location: 'WHS'
             }, { transaction: t });
         } else {
             await InventoryJudgment.create({
@@ -240,11 +240,11 @@ router.post('/returns/:id/receive', authenticateToken, async (req, res) => {
                 data: { date: new Date().toISOString().split('T')[0], itemId: invItem.id, itemName: invItem.item_name, qty, location: 'WHS', status: 'DAMAGE (RUSAK FISIK)', notes: `Retur Rusak dari ${ret.return_number} | SO: ${ret.so_number}${receivedNotes ? ' | ' + receivedNotes : ''}`, createdBy: byUser }
             }, { transaction: t });
             await StockTransaction.create({
-                id: genId() + 'ng', tx_no: txNo + '-NG', date: new Date(),
-                item_id: invItem.id, item_code: invItem.item_code, item_name: invItem.item_name,
-                type: 'NG_IN', qty, reference: 'SALES_RETURN', reference_id: ret.id,
+                id: genId() + 'ng', txNo: txNo + '-NG', date: new Date(),
+                itemId: invItem.id, itemCode: invItem.itemCode || invItem.item_code, itemName: invItem.itemName || invItem.item_name,
+                type: 'NG_IN', qty, reference: 'SALES_RETURN', referenceId: ret.id,
                 notes: `Return Rusak (NG) dari ${ret.return_number} | SO: ${ret.so_number}`,
-                created_by: byUser, location: 'WHS'
+                createdBy: byUser, location: 'WHS'
             }, { transaction: t });
         }
 
@@ -358,11 +358,11 @@ router.post('/exchanges/:id/receive', authenticateToken, async (req, res) => {
 
         if (receivedCondition === 'Good') {
             await StockTransaction.create({
-                id: genId(), tx_no: txNo, date: new Date(),
-                item_id: invItem.id, item_code: invItem.item_code, item_name: invItem.item_name,
-                type: 'RETURN_IN', qty, reference: 'EXCHANGE_RETURN', reference_id: ex.id,
+                id: genId(), txNo: txNo, date: new Date(),
+                itemId: invItem.id, itemCode: invItem.itemCode || invItem.item_code, itemName: invItem.itemName || invItem.item_name,
+                type: 'RETURN_IN', qty, reference: 'EXCHANGE_RETURN', referenceId: ex.id,
                 notes: `Return Tukar Guling dari ${ex.exchange_number} | SO: ${ex.so_number} | Kondisi: Bagus${receivedNotes ? ' | ' + receivedNotes : ''}`,
-                created_by: byUser, location: 'WHS'
+                createdBy: byUser, location: 'WHS'
             }, { transaction: t });
         } else {
             await InventoryJudgment.create({
@@ -370,11 +370,11 @@ router.post('/exchanges/:id/receive', authenticateToken, async (req, res) => {
                 data: { date: new Date().toISOString().split('T')[0], itemId: invItem.id, itemName: invItem.item_name, qty, location: 'WHS', status: 'DAMAGE (RUSAK FISIK)', notes: `Retur Rusak Tukar Guling ${ex.exchange_number} | SO: ${ex.so_number}`, createdBy: byUser }
             }, { transaction: t });
             await StockTransaction.create({
-                id: genId() + 'ng', tx_no: txNo + '-NG', date: new Date(),
-                item_id: invItem.id, item_code: invItem.item_code, item_name: invItem.item_name,
-                type: 'NG_IN', qty, reference: 'EXCHANGE_RETURN', reference_id: ex.id,
+                id: genId() + 'ng', txNo: txNo + '-NG', date: new Date(),
+                itemId: invItem.id, itemCode: invItem.itemCode || invItem.item_code, itemName: invItem.itemName || invItem.item_name,
+                type: 'NG_IN', qty, reference: 'EXCHANGE_RETURN', referenceId: ex.id,
                 notes: `Retur NG Tukar Guling ${ex.exchange_number}`,
-                created_by: byUser, location: 'WHS'
+                createdBy: byUser, location: 'WHS'
             }, { transaction: t });
         }
 
@@ -408,12 +408,12 @@ router.post('/exchanges/:id/ship', authenticateToken, async (req, res) => {
         const txNo = `DO-${dateStr}-${(countTx + 1).toString().padStart(3, '0')}`;
 
         await StockTransaction.create({
-            id: genId(), tx_no: txNo, date: new Date(),
-            item_id: repItem.id, item_code: repItem.item_code, item_name: repItem.item_name,
+            id: genId(), txNo: txNo, date: new Date(),
+            itemId: repItem.id, itemCode: repItem.itemCode || repItem.item_code, itemName: repItem.itemName || repItem.item_name,
             type: 'OUT', qty: parseFloat(ex.replacement_qty),
-            reference: 'SALES_OUT', reference_id: ex.id,
+            reference: 'SALES_OUT', referenceId: ex.id,
             notes: `Kirim Pengganti Tukar Guling ${ex.exchange_number} | SO: ${ex.so_number}`,
-            created_by: req.user.full_name || req.user.email || 'Inventory', location: 'WHS'
+            createdBy: req.user.full_name || req.user.email || 'Inventory', location: 'WHS'
         }, { transaction: t });
 
         const diff = parseFloat(ex.price_difference || 0);

@@ -138,16 +138,16 @@ router.post('/orders/:id/complete', authenticateToken, requirePermission('produk
                 for (const item of mo.inputItems) {
                     await StockTransaction.create({
                         id: generateId(),
-                        tx_no: `PRD-OUT-${Date.now().toString().slice(-6)}`,
+                        txNo: `PRD-OUT-${Date.now().toString().slice(-6)}`,
                         date: new Date(),
-                        item_id: item.inventoryItemId,
-                        item_name: item.itemName,
+                        itemId: item.inventoryItemId,
+                        itemName: item.itemName,
                         type: 'OUT',
                         qty: parseFloat(item.qty),
                         reference: 'PRODUCTION_OUT',
-                        reference_id: moRecord.id,
+                        referenceId: moRecord.id,
                         notes: `FINISH Oven Basah MO ${moNumber}: Consumed for ${mo.productName}`,
-                        created_by: req.user.email,
+                        createdBy: req.user.email,
                         location: 'WHS'
                     }, { transaction: t });
                 }
@@ -161,16 +161,16 @@ router.post('/orders/:id/complete', authenticateToken, requirePermission('produk
                     
                     await StockTransaction.create({
                         id: generateId(),
-                        tx_no: `PRD-IN-${Date.now().toString().slice(-6)}`,
+                        txNo: `PRD-IN-${Date.now().toString().slice(-6)}`,
                         date: new Date(),
-                        item_id: wipItemId,
-                        item_name: targetName,
+                        itemId: wipItemId,
+                        itemName: targetName,
                         type: 'IN',
                         qty: parseFloat(op.qty),
                         reference: 'PRODUCTION_IN',
-                        reference_id: moRecord.id,
+                        referenceId: moRecord.id,
                         notes: `FINISH Oven Basah MO ${moNumber}: Produced ${targetName}`,
-                        created_by: req.user.email,
+                        createdBy: req.user.email,
                         location: 'OVEN_BASAH'
                     }, { transaction: t });
                 }
@@ -187,32 +187,32 @@ router.post('/orders/:id/complete', authenticateToken, requirePermission('produk
                     // OUT dari Oven Basah
                     await StockTransaction.create({
                         id: generateId(),
-                        tx_no: `PRD-OUT-${Date.now().toString().slice(-6)}`,
+                        txNo: `PRD-OUT-${Date.now().toString().slice(-6)}`,
                         date: new Date(),
-                        item_id: inputWipId,
-                        item_name: tp.itemName + ' (Oven Basah)',
+                        itemId: inputWipId,
+                        itemName: tp.itemName + ' (Oven Basah)',
                         type: 'OUT',
                         qty: parseFloat(tp.qty),
                         reference: 'PRODUCTION_OUT',
-                        reference_id: moRecord.id,
+                        referenceId: moRecord.id,
                         notes: `FINISH Oven Kering MO ${moNumber}: Consumed ${tp.itemName}`,
-                        created_by: req.user.email,
+                        createdBy: req.user.email,
                         location: 'OVEN_BASAH'
                     }, { transaction: t });
 
                     // IN ke Oven Kering
                     await StockTransaction.create({
                         id: generateId(),
-                        tx_no: `PRD-IN-${Date.now().toString().slice(-6)}`,
+                        txNo: `PRD-IN-${Date.now().toString().slice(-6)}`,
                         date: new Date(),
-                        item_id: outputWipId,
-                        item_name: tp.itemName + ' (Oven Kering)',
+                        itemId: outputWipId,
+                        itemName: tp.itemName + ' (Oven Kering)',
                         type: 'IN',
                         qty: parseFloat(tp.outputQty),
                         reference: 'PRODUCTION_IN',
-                        reference_id: moRecord.id,
+                        referenceId: moRecord.id,
                         notes: `FINISH Oven Kering MO ${moNumber}: Produced ${tp.itemName}`,
-                        created_by: req.user.email,
+                        createdBy: req.user.email,
                         location: 'OVEN_KERING'
                     }, { transaction: t });
                 }
@@ -227,30 +227,30 @@ router.post('/orders/:id/complete', authenticateToken, requirePermission('produk
             // OUT dari Oven Kering
             await StockTransaction.create({
                 id: generateId(),
-                tx_no: `PRD-OUT-${Date.now().toString().slice(-6)}`,
+                txNo: `PRD-OUT-${Date.now().toString().slice(-6)}`,
                 date: new Date(),
-                item_id: inputWipId,
+                itemId: inputWipId,
                 type: 'OUT',
                 qty: parseFloat(mo.inputQty),
                 reference: 'PRODUCTION_OUT',
-                reference_id: moRecord.id,
+                referenceId: moRecord.id,
                 notes: `FINISH Packing MO ${moNumber}: Consumed from Oven Kering`,
-                created_by: req.user.email,
+                createdBy: req.user.email,
                 location: 'OVEN_KERING'
             }, { transaction: t });
 
             // IN ke Gudang Jadi (WHS)
             await StockTransaction.create({
                 id: generateId(),
-                tx_no: `PRD-IN-${Date.now().toString().slice(-6)}`,
+                txNo: `PRD-IN-${Date.now().toString().slice(-6)}`,
                 date: new Date(),
-                item_id: outputItemId,
+                itemId: outputItemId,
                 type: 'IN',
                 qty: parseFloat(mo.inputQty),
                 reference: 'PRODUCTION_IN',
-                reference_id: moRecord.id,
+                referenceId: moRecord.id,
                 notes: `FINISH Packing MO ${moNumber}: Produced Finished Goods`,
-                created_by: req.user.email,
+                createdBy: req.user.email,
                 location: 'WHS'
             }, { transaction: t });
         }
