@@ -3559,7 +3559,25 @@ window.viewProductStockCard = (productId, startDateStr = null, endDateStr = null
             else totalNormalOut += qtyOut;
         }
         balance += qtyIn - qtyOut;
-        const displayTxNo = t.txNo || t.tx_no || t.referenceId || '-';
+        
+        // Smart reference resolution for old records
+        let displayTxNo = t.txNo || t.tx_no;
+        if (!displayTxNo || displayTxNo.length > 20) {
+            const refUpper = (t.reference || '').toUpperCase();
+            if (refUpper === 'PO') {
+                const po = (db.read('purchaseOrders') || []).find(p => p.id === t.referenceId);
+                if (po) displayTxNo = po.poNumber;
+            } else if (refUpper === 'SALES_OUT' || refUpper === 'DELIVERY_ORDER') {
+                const doRec = (db.read('deliveryOrders') || []).find(d => d.id === t.referenceId);
+                if (doRec) displayTxNo = (doRec.data?.doNumber || doRec.doNumber);
+            } else if (refUpper === 'SALES_RETURN' || refUpper === 'RETURN_IN') {
+                const ret = (db.read('salesReturns') || []).find(r => r.id === t.referenceId);
+                if (ret) displayTxNo = ret.returnNumber;
+            }
+        }
+        if (!displayTxNo) displayTxNo = t.referenceId || '-';
+        if (displayTxNo.length > 20) displayTxNo = displayTxNo.slice(0, 8) + '...';
+
         return `
             <tr class="border-b border-gray-100 text-xs">
                 <td class="py-2 px-2 text-slate-600 font-bold">${invDate(t.date)}</td>
@@ -3778,7 +3796,23 @@ window.printProductStockCard = (productId, startDateStr, endDateStr) => {
             else totalNormalOut += qtyOut;
         }
         balance += qtyIn - qtyOut;
-        const displayTxNo = t.txNo || t.tx_no || t.referenceId || '-';
+        
+        // Smart reference resolution
+        let displayTxNo = t.txNo || t.tx_no;
+        if (!displayTxNo || displayTxNo.length > 20) {
+            const refUpper = (t.reference || '').toUpperCase();
+            if (refUpper === 'PO') {
+                const po = (db.read('purchaseOrders') || []).find(p => p.id === t.referenceId);
+                if (po) displayTxNo = po.poNumber;
+            } else if (refUpper === 'SALES_OUT' || refUpper === 'DELIVERY_ORDER') {
+                const doRec = (db.read('deliveryOrders') || []).find(d => d.id === t.referenceId);
+                if (doRec) displayTxNo = (doRec.data?.doNumber || doRec.doNumber);
+            } else if (refUpper === 'SALES_RETURN' || refUpper === 'RETURN_IN') {
+                const ret = (db.read('salesReturns') || []).find(r => r.id === t.referenceId);
+                if (ret) displayTxNo = ret.returnNumber;
+            }
+        }
+        if (!displayTxNo) displayTxNo = t.referenceId || '-';
 
         return `
             <tr>
@@ -4172,7 +4206,24 @@ window.openWIPHistoryModal = (itemId, location, startDateStr = null, endDateStr 
             currentBalance -= q; 
         }
 
-        const displayTxNo = t.txNo || t.tx_no || t.referenceId || '-';
+        // Smart reference resolution
+        let displayTxNo = t.txNo || t.tx_no;
+        if (!displayTxNo || displayTxNo.length > 20) {
+            const refUpper = (t.reference || '').toUpperCase();
+            if (refUpper === 'PO') {
+                const po = (db.read('purchaseOrders') || []).find(p => p.id === t.referenceId);
+                if (po) displayTxNo = po.poNumber;
+            } else if (refUpper === 'SALES_OUT' || refUpper === 'DELIVERY_ORDER') {
+                const doRec = (db.read('deliveryOrders') || []).find(d => d.id === t.referenceId);
+                if (doRec) displayTxNo = (doRec.data?.doNumber || doRec.doNumber);
+            } else if (refUpper === 'SALES_RETURN' || refUpper === 'RETURN_IN') {
+                const ret = (db.read('salesReturns') || []).find(r => r.id === t.referenceId);
+                if (ret) displayTxNo = ret.returnNumber;
+            }
+        }
+        if (!displayTxNo) displayTxNo = t.referenceId || '-';
+        if (displayTxNo.length > 20) displayTxNo = displayTxNo.slice(0, 8) + '...';
+
         return `
             <tr class="border-b border-gray-50 text-[11px]">
                 <td class="py-2.5 px-2 text-gray-500">${new Date(t.date).toLocaleString('id-ID', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'})}</td>
