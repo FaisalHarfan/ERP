@@ -9663,6 +9663,7 @@ window.recalcSOTotal = () => {
     if (document.getElementById('so_tax_label')) document.getElementById('so_tax_label').innerText = `PPN (${taxPct}%):`;
     if (document.getElementById('so_total_display')) document.getElementById('so_total_display').innerText = fmt(grand);
 
+    const taxRow = document.getElementById('so_tax_row');
     if (taxRow) taxRow.style.display = taxPct === 0 ? 'none' : 'flex';
 
     // Sync SO Number Type (A/B) with Tax
