@@ -9121,6 +9121,18 @@ window.updateSODueDate = () => {
 window.updateSONumberPreview = () => {
     const isTax = document.getElementById('so_is_tax').value === 'true';
     document.getElementById('so_number').value = generateSONumber(isTax);
+
+    // Sync Tax Rate with Prefix
+    const taxRateEl = document.getElementById('so_tax_rate');
+    if (taxRateEl && !window._editingSOId) {
+        if (isTax && taxRateEl.value === '0') {
+            taxRateEl.value = '11';
+            if (window.recalcSOTotal) recalcSOTotal();
+        } else if (!isTax && taxRateEl.value !== '0') {
+            taxRateEl.value = '0';
+            if (window.recalcSOTotal) recalcSOTotal();
+        }
+    }
 };
 
 window.onSOItemSelect = () => {
@@ -9651,8 +9663,17 @@ window.recalcSOTotal = () => {
     if (document.getElementById('so_tax_label')) document.getElementById('so_tax_label').innerText = `PPN (${taxPct}%):`;
     if (document.getElementById('so_total_display')) document.getElementById('so_total_display').innerText = fmt(grand);
 
-    const taxRow = document.getElementById('so_tax_row');
     if (taxRow) taxRow.style.display = taxPct === 0 ? 'none' : 'flex';
+
+    // Sync SO Number Type (A/B) with Tax
+    const taxTypeEl = document.getElementById('so_is_tax');
+    if (taxTypeEl && !window._editingSOId) {
+        const shouldBeTax = taxPct > 0;
+        if (taxTypeEl.value !== String(shouldBeTax)) {
+            taxTypeEl.value = String(shouldBeTax);
+            if (window.updateSONumberPreview) updateSONumberPreview();
+        }
+    }
 
     // Store computed values
     window._soDiscountAmt = 0;
