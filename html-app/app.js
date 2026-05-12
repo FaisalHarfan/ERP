@@ -7192,7 +7192,10 @@ window.refreshQTItemsTable = () => {
                     <tr class="hover:bg-slate-50/50 transition-colors">
                         <td class="py-3 px-4 w-12"><input type="checkbox" class="rounded border-slate-300"></td>
                         <td class="py-3 px-2 text-slate-400 text-center">${idx + 1}</td>
-                        <td class="py-3 px-4 font-bold text-slate-800">${item.itemCode || '---'}</td>
+                        <td class="py-3 px-4">
+                            <div class="font-bold text-slate-800 leading-tight">${item.prodText || '---'}</div>
+                            <div class="text-[10px] text-slate-400 font-medium mt-0.5 tracking-wider uppercase">${item.itemCode || ''}</div>
+                        </td>
                         <td class="py-3 px-4 text-right font-bold text-slate-700">${formatNumber(item.qty)}</td>
                         <td class="py-3 px-4 text-right font-bold text-slate-700">${formatNumber(item.price)}</td>
                         <td class="py-3 px-4 text-right text-slate-500">${formatNumber(item.subtotal)}</td>
@@ -9624,7 +9627,10 @@ window.refreshSOItemsTable = () => {
                     <tr class="hover:bg-slate-50/50 transition-colors">
                         <td class="py-3 px-4 w-12"><input type="checkbox" class="rounded border-slate-300"></td>
                         <td class="py-3 px-2 text-slate-400 text-center">${idx + 1}</td>
-                        <td class="py-3 px-4 font-bold text-slate-800">${item.itemCode || item.prodText.split(' (')[0]}</td>
+                        <td class="py-3 px-4">
+                            <div class="font-bold text-slate-800 leading-tight">${item.prodText || '---'}</div>
+                            <div class="text-[10px] text-slate-400 font-medium mt-0.5 tracking-wider uppercase">${item.itemCode || ''}</div>
+                        </td>
                         <td class="py-3 px-4 text-right font-bold text-slate-700">${formatNumber(item.qty)} ${item.prodUnit || ''}</td>
                         <td class="py-3 px-4 text-right font-bold text-slate-700">${formatNumber(item.price)}</td>
                         <td class="py-3 px-4 text-right text-slate-500">${formatNumber(item.subtotal)}</td>
