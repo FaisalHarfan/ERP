@@ -56,6 +56,7 @@ router.post('/orders/:id/receive', authenticateToken, async (req, res) => {
             if (inventoryItemId) {
                 await StockTransaction.create({
                     id: uuidv4(),
+                    txNo: poData.po_number || poData.poNumber || '',
                     date: recvDate ? new Date(recvDate) : new Date(),
                     itemId: inventoryItemId,
                     type: 'IN',

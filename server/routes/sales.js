@@ -63,7 +63,10 @@ router.post('/delivery/:id/ship', authenticateToken, async (req, res) => {
                 const invItem = await InventoryItem.findByPk(item.inventoryItemId, { transaction: t });
                 if (invItem) {
                     await StockTransaction.create({
-                        id: uuidv4(), date: new Date(), itemId: item.inventoryItemId,
+                        id: uuidv4(), 
+                        txNo: doNumber,
+                        date: new Date(), 
+                        itemId: item.inventoryItemId,
                         type: 'OUT', qty: item.qty, reference: 'SALES_OUT', referenceId: doRecord.id,
                         notes: `Delivery Order ${doNumber}`,
                         createdBy: req.user.full_name || 'Admin Warehouse', location: 'WHS'

@@ -3559,10 +3559,11 @@ window.viewProductStockCard = (productId, startDateStr = null, endDateStr = null
             else totalNormalOut += qtyOut;
         }
         balance += qtyIn - qtyOut;
+        const displayTxNo = t.txNo || t.tx_no || t.referenceId || '-';
         return `
             <tr class="border-b border-gray-100 text-xs">
                 <td class="py-2 px-2 text-slate-600 font-bold">${invDate(t.date)}</td>
-                <td class="py-2 px-2 font-mono text-slate-500 font-bold">${t.txNo || '-'}</td>
+                <td class="py-2 px-2 font-mono text-slate-500 font-bold">${displayTxNo}</td>
                 <td class="py-2 px-2 font-medium text-gray-700">${t.itemName || '-'}</td>
                 <td class="py-2 px-2 text-right text-green-600 font-bold">${qtyIn > 0 ? '+' + invFmt(qtyIn) : '-'}</td>
                 <td class="py-2 px-2 text-right text-red-600 font-bold">${qtyOut > 0 ? '-' + invFmt(qtyOut) : '-'}</td>
@@ -3777,11 +3778,12 @@ window.printProductStockCard = (productId, startDateStr, endDateStr) => {
             else totalNormalOut += qtyOut;
         }
         balance += qtyIn - qtyOut;
+        const displayTxNo = t.txNo || t.tx_no || t.referenceId || '-';
 
         return `
             <tr>
                 <td class="t-center">${invDate(t.date)}</td>
-                <td>${t.txNo}</td>
+                <td>${displayTxNo}</td>
                 <td class="t-right">${qtyIn > 0 ? invFmt(qtyIn) : '-'}</td>
                 <td class="t-right">${qtyOut > 0 ? invFmt(qtyOut) : '-'}</td>
                 <td class="t-right f-bold">${invFmt(balance)}</td>
@@ -4170,10 +4172,12 @@ window.openWIPHistoryModal = (itemId, location, startDateStr = null, endDateStr 
             currentBalance -= q; 
         }
 
+        const displayTxNo = t.txNo || t.tx_no || t.referenceId || '-';
         return `
             <tr class="border-b border-gray-50 text-[11px]">
                 <td class="py-2.5 px-2 text-gray-500">${new Date(t.date).toLocaleString('id-ID', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'})}</td>
-                <td class="py-2.5 px-2 font-mono text-gray-400 text-[10px]">${t.type}</td>
+                <td class="py-2.5 px-2 font-mono text-slate-500 font-bold text-[10px]">${displayTxNo}</td>
+                <td class="py-2.5 px-2 text-center font-mono text-gray-400 text-[10px]">${t.type}</td>
                 <td class="py-2.5 px-2 text-right text-green-600 font-bold">${isIn ? '+' + invFmt(q) : '-'}</td>
                 <td class="py-2.5 px-2 text-right text-red-600 font-bold">${isOut ? '-' + invFmt(q) : '-'}</td>
                 <td class="py-2.5 px-2 text-right font-black text-slate-800">${invFmt(currentBalance)}</td>
@@ -4211,6 +4215,7 @@ window.openWIPHistoryModal = (itemId, location, startDateStr = null, endDateStr 
                     <thead class="bg-gray-100 sticky top-0 shadow-sm">
                         <tr class="text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-200">
                             <th class="py-2 px-2">Waktu</th>
+                            <th class="py-2 px-2">No. Bukti</th>
                             <th class="py-2 px-2 text-center">Tipe</th>
                             <th class="py-2 px-2 text-right">Masuk</th>
                             <th class="py-2 px-2 text-right">Keluar</th>
@@ -4220,7 +4225,7 @@ window.openWIPHistoryModal = (itemId, location, startDateStr = null, endDateStr 
                     </thead>
                     <tbody>
                         <tr class="bg-orange-50/50 text-[10px] font-bold italic text-gray-500">
-                            <td colspan="4" class="py-1 px-2 uppercase">SALDO AWAL</td>
+                            <td colspan="5" class="py-1 px-2 uppercase">SALDO AWAL</td>
                             <td class="py-1 px-2 text-right">${invFmt(openingStock)}</td>
                             <td></td>
                         </tr>
