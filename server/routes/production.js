@@ -43,7 +43,7 @@ async function ensureWIPItem(productId, stageLabel, t) {
     if (existing) return existing.id;
 
     // 2. Auto-create if not found
-    const { generateItemCode } = require('./inventory_helpers'); // We'll extract this to a helper file
+    // Item code generation is handled inline below
     
     // Fallback if helper not yet extracted
     const prefix = category === 'RAW_MATERIAL' ? 'RM' : (['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK', 'WIP'].includes(category) ? 'WIP' : 'FG');
