@@ -150,11 +150,20 @@ function toSnakeCase(obj) {
     for (const [key, value] of Object.entries(obj)) {
         const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
         // Don't convert nested JSONB objects
+        let processedValue;
         if (value && typeof value === 'object' && !Array.isArray(value) &&
             !['items', 'permissions', 'data', 'history'].includes(key)) {
-            result[snakeKey] = toSnakeCase(value);
+            processedValue = toSnakeCase(value);
         } else {
-            result[snakeKey] = value;
+            processedValue = value;
+        }
+        // Keep BOTH camelCase and snake_case keys so Sequelize models
+        // with either naming convention work correctly:
+        // - Models using camelCase attributes + field mapping (e.g., productName -> 'product_name')
+        // - Models using snake_case directly as attributes (e.g., is_system)
+        result[key] = processedValue;
+        if (snakeKey !== key) {
+            result[snakeKey] = processedValue;
         }
     }
     return result;

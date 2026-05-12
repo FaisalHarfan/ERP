@@ -375,7 +375,8 @@ const BOMMaterial = sequelize.define('bom_materials', {
     itemId: { type: DataTypes.STRING(50), field: 'item_id' },
     itemName: { type: DataTypes.STRING(200), field: 'item_name' },
     qty: DataTypes.DECIMAL(15, 2),
-    unit: DataTypes.STRING(20)
+    unit: DataTypes.STRING(20),
+    location: DataTypes.STRING(50)
 });
 
 const ManufacturingOrder = sequelize.define('manufacturing_orders', {
