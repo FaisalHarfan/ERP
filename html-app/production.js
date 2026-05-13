@@ -1488,6 +1488,9 @@ window.finalizeMO = async (id) => {
 
     try {
         await api.completeProductionOrder(id, updates);
+        await db.sync('productionOrders');
+        await db.sync('stockTransactions');
+        await db.sync('inventoryItems');
         showToast(`Produksi ${mo.moNumber} selesai!`, 'success');
         // Navigate back to MO list and keep it visible
         window._prodSearchPerformed = true;
@@ -1892,7 +1895,8 @@ window.deleteMO = async (id) => {
     if (!confirm(`Hapus MO ${mo.moNumber}? Catatan: Stok bahan yang sudah dikurangi saat Start TIDAK akan otomatis dikembalikan. Lakukan penyusuaian stok manual jika perlu.`)) return;
     
     try {
-        await api.deleteProductionOrder(id);
+        await db.delete('productionOrders', id);
+        await db.sync('productionOrders');
         showToast('MO berhasil dihapus', 'success');
         renderProductionMO();
     } catch (err) {
@@ -2405,6 +2409,25 @@ window.openFinishProductionModal = (id) => {
                 <input type="hidden" id="finish_qty_in" value="${log.qtyIn}">
             </div>
             <div>
+                <p class="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Hasil (Kg)</p>
+                <input type="number" id="finish_qty_out" step="0.01" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" oninput="calcFinishShrinkage()">
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-2 gap-4">
+            <div>
+                <p class="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Penyusutan (Kg)</p>
+                <input type="text" id="finish_shrink_kg" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-orange-600" readonly>
+            </div>
+            <div>
+                <p class="text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1">Penyusutan (%)</p>
+                <input type="text" id="finish_shrink_pct" class="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-orange-600" readonly>
+            </div>
+        </div>
+    </div>`;
+
+    const footer = `
+        <button onclick="closeModal()" class="px-6 py-2.5 rounded-lg text-gray-600 font-bold uppercase text-xs border border-gray-300 hover:bg-gray-50 transition-colors">Batal</button>
         <button onclick="saveFinishProduction('${id}')" class="w-full bg-blue-600 hover:bg-blue-700 text-white px-6 py-4 rounded-2xl font-black shadow-lg shadow-blue-100 transition-all active:scale-95 uppercase tracking-widest text-xs">Simpan & Selesaikan</button>
     `;
 
@@ -3209,6 +3232,7 @@ window.saveBOM = async (id = '') => {
 
     // Refresh memory cache from PostgreSQL
     await db.sync('bomMaterials');
+    await db.sync('bomHeaders');
 
     showToast('Resep berhasil disimpan!', 'success');
     renderBOMManagement();
@@ -3217,14 +3241,8 @@ window.saveBOM = async (id = '') => {
 window.deleteBOM = async (id) => {
     if (!confirm('Hapus resep ini?')) return;
     await db.delete('bomHeaders', id);
-    
-    const materials = db.read('bomMaterials') || [];
-    const oldMaterials = materials.filter(m => m.bomId === id);
-    
-    for (const old of oldMaterials) {
-        await db.delete('bomMaterials', old.id);
-    }
-    
+    await db.sync('bomHeaders');
+    await db.sync('bomMaterials');
     showToast('Resep berhasil dihapus', 'success');
     renderBOMManagement();
 };

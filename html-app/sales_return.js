@@ -205,6 +205,7 @@ window.handleSRAction = async function (select, id) {
             try {
                 await db.delete('salesReturns', id);
                 if (window.api && typeof window.api.pullAll === 'function') await window.api.pullAll();
+                await db.sync('salesReturns');
                 showToast('Retur berhasil dihapus.');
                 renderSalesReturns();
             } catch (e) {
@@ -669,6 +670,7 @@ window.saveSalesReturn = async function () {
         });
         showToast(`Retur ${result.returnNumber} berhasil dibuat dengan ${result.count} item.`);
         if (window.api && typeof window.api.pullAll === 'function') await window.api.pullAll();
+        await db.sync('salesReturns');
         window.closeSalesReturnForm();
     } catch (err) {
         showToast(`Gagal membuat retur: ${err.message}`, 'error');
@@ -677,14 +679,9 @@ window.saveSalesReturn = async function () {
 
 window.approveSalesReturnDoc = async function (id, approved) {
     try {
-        if (approved) {
-            await api.approveSalesReturn(id);
-            showToast('Retur disetujui. Tim Inventory akan menerima barang.');
-        } else {
-            await api.rejectSalesReturn(id);
-            showToast('Retur ditolak.', 'warning');
-        }
-        if (window.api && typeof window.api.pullAll === 'function') await window.api.pullAll();
+        await api.updateSalesReturn(id, { status: approved ? 'APPROVED' : 'DRAFT' });
+        showToast(`Dokumen Retur ${approved ? 'Disetujui' : 'Dibatalkan Approvalnya'}`);
+        await db.sync('salesReturns');
         renderSalesReturns();
     } catch (err) {
         showToast(`Gagal: ${err.message}`, 'error');
@@ -892,6 +889,8 @@ window.confirmReceiveReturn = async function (id) {
         receivedCondition: conditionActual,
         receivedNotes: notes
     });
+
+    await db.sync('salesReturns');
 
     const condLabel = conditionActual === 'Good' ? 'Bagus — stok bertambah di gudang ✓' : 'Rusak — masuk ke Judgment ✓';
     showToast(`Barang retur diterima (${condLabel})`);
@@ -1580,18 +1579,24 @@ window.saveExchange = async function () {
         });
         showToast(`Tukar Guling ${result.exchangeNumber} berhasil dibuat. Menunggu persetujuan.`);
         if (window.api && typeof window.api.pullAll === 'function') await window.api.pullAll();
+        await db.sync('productExchanges');
         window.closeExchangeForm();
     } catch (err) {
         showToast(`Gagal membuat tukar guling: ${err.message}`, 'error');
     }
 };
 
-window.approveExchange = function (id, approved) {
+window.approveExchange = async function (id, approved) {
     const ex = db.findById('productExchanges', id);
     if (!ex) return;
-    db.update('productExchanges', id, { status: approved ? 'APPROVED' : 'REJECTED' });
-    showToast(approved ? `Exchange ${ex.exchangeNumber} disetujui.` : `Exchange ${ex.exchangeNumber} ditolak.`, approved ? 'success' : 'warning');
-    renderProductExchanges();
+    try {
+        await api.updateProductExchange(id, { status: approved ? 'APPROVED' : 'DRAFT' });
+        showToast(`Dokumen Tukar Guling ${approved ? 'Disetujui' : 'Dibatalkan Approvalnya'}`);
+        await db.sync('productExchanges');
+        renderProductExchanges();
+    } catch (err) {
+        showToast(`Gagal: ${err.message}`, 'error');
+    }
 };
 
 window.receiveExchangeReturn = function (id) {
@@ -1660,6 +1665,7 @@ window.confirmReceiveExchange = async function (id) {
 
     try {
         await api.receiveProductExchange(id, { receivedQty: qty, receivedCondition: cond, receivedNotes: '' });
+        await db.sync('productExchanges');
         const condLabel = cond === 'Good' ? 'Bagus — stok bertambah (RETURN_IN)' : 'Rusak — masuk Judgment';
         showToast(`Barang retur exchange diterima (${condLabel}).`);
         window.closeExchangeForm();

@@ -607,6 +607,9 @@ async function navigateTo(viewId, isBack = false) {
     // --- DATABASE SYNC ---
     // Sync necessary tables before rendering
     const tableSyncMap = {
+        'launcher': ['notifications', 'systemLogs'],
+        'sales-dashboard': ['salesOrders', 'customers', 'salesInvoices'],
+        'purchase-dashboard': ['purchaseOrders', 'suppliers', 'purchaseRequests', 'purchaseRFQs'],
         'inventory-master': ['inventoryItems', 'stockTransactions'],
         'sales-customers': ['customers', 'inventoryItems', 'stockTransactions'],
         'sales-quotations': ['salesQuotations', 'customers', 'inventoryItems'],
@@ -627,19 +630,27 @@ async function navigateTo(viewId, isBack = false) {
         'finance-accounts': ['accounts'],
         'settings-users': ['users', 'roles'],
         'settings-roles': ['roles'],
-        'sales-delivery-orders': ['deliveryOrders', 'salesOrders', 'customers', 'inventoryItems'],
+        'sales-delivery-orders': ['deliveryOrders', 'salesOrders', 'customers', 'inventoryItems', 'stockTransactions'],
         'sales-region-report': ['salesOrders', 'customers'],
         'sales-report-trends': ['salesInvoices', 'customers', 'inventoryItems'],
         'sales-quotation-trends': ['salesQuotations', 'customers', 'inventoryItems'],
         'sales-order-trends': ['salesOrders', 'customers', 'inventoryItems'],
-        'sales-report-analytics': ['salesInvoices', 'salesOrders', 'customers', 'inventoryItems']
+        'sales-report-analytics': ['salesInvoices', 'salesOrders', 'customers', 'inventoryItems'],
+        'purchase-receiving': ['purchaseOrders', 'inventoryItems', 'stockTransactions'],
+        'purchase-reports': ['purchaseOrders', 'purchaseInvoices', 'suppliers', 'inventoryItems'],
+        'finance-dashboard': ['accounts', 'journalEntries', 'bankAccounts']
     };
     
     const tablesToSync = tableSyncMap[viewId] || [];
     if (tablesToSync.length > 0) {
         // Show loading state if needed, or just sync silently
-        for (const table of tablesToSync) {
-            await db.sync(table);
+        try {
+            for (const table of tablesToSync) {
+                await db.sync(table);
+            }
+        } catch (err) {
+            console.warn('Sync warning:', err.message);
+            // Don't block the UI if background sync fails
         }
     }
 
@@ -2414,9 +2425,10 @@ window.viewCustomerHistory = (customerId) => {
     showModal(`History: ${customer.name}`, body, `<button onclick="closeModal()" class="px-4 py-2 bg-gray-600 text-white rounded text-sm hover:bg-gray-700">Close History</button>`, 'lg');
 };
 
-window.deleteCustomer = (id) => {
+window.deleteCustomer = async (id) => {
     if (confirm('Yakin ingin menghapus customer ini?')) {
-        db.delete('customers', id);
+        await db.delete('customers', id);
+        await db.sync('customers');
         renderCustomerData();
     }
 };
@@ -3007,9 +3019,11 @@ window.saveSupplier = async (id) => {
     showToast('Sedang menyimpan...', 'info');
     if (id) { 
         await db.update('suppliers', id, data); 
+        await db.sync('suppliers');
         showToast('Supplier diperbarui', 'success'); 
     } else { 
         await db.insert('suppliers', data); 
+        await db.sync('suppliers');
         showToast('Supplier ditambahkan', 'success'); 
     }
     renderMasterSuppliers();
@@ -3140,8 +3154,12 @@ window.selectProductResult = (prefix, id, name, unit) => {
     document.getElementById(`${prefix}_results_container`).classList.add('hidden');
 };
 
-window.deleteSupplier = (id) => {
-    if (confirm('Hapus supplier ini?')) { db.delete('suppliers', id); renderMasterSuppliers(); }
+window.deleteSupplier = async (id) => {
+    if (confirm('Hapus supplier ini?')) { 
+        await db.delete('suppliers', id); 
+        await db.sync('suppliers');
+        renderMasterSuppliers(); 
+    }
 };
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ QUICK SUPPLIER CREATION HELPERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -3605,8 +3623,20 @@ window.savePO = async () => {
     renderPurchaseOrders();
 };
 
-window.approvePO = (id) => {
-    if (confirm('Approve PO ini?')) { db.update('purchaseOrders', id, { status: 'APPROVED' }); showToast('PO di-approve'); renderPurchaseOrders(); }
+window.approvePO = async (id) => {
+    if (confirm('Approve PO ini?')) { 
+        showToast('Memproses approval...', 'info');
+        const success = await db.update('purchaseOrders', id, { status: 'APPROVED' }); 
+        if (success) {
+            // RELY ON LOCAL CACHE UPDATE (db.update already does this)
+            showToast('Status PO diubah ke APPROVED', 'success'); 
+            renderPurchaseOrders(); 
+            // Background sync after delay for safety
+            setTimeout(() => db.sync('purchaseOrders'), 2000);
+        } else {
+            showToast('Gagal update status di server', 'error');
+        }
+    }
 };
 window.cancelPO = (id) => {
     if (confirm('Batalkan PO ini?')) { db.update('purchaseOrders', id, { status: 'CANCELLED' }); showToast('PO dibatalkan'); renderPurchaseOrders(); }
@@ -3883,6 +3913,12 @@ window.confirmReceiveGoods = async (id) => {
         showToast(result.message, result.isCompleted ? 'success' : 'info');
         if (window.closeGRForm) window.closeGRForm();
         else closeModal();
+        
+        // SYNC BEFORE RENDER
+        await db.sync('purchaseOrders');
+        await db.sync('inventoryItems');
+        await db.sync('stockTransactions');
+
         // Refresh the current view
         if (window._porActiveTab && typeof renderInventoryPOReceipt === 'function') {
              renderInventoryPOReceipt();
@@ -4742,6 +4778,7 @@ window.savePurchaseInvoice = async (val) => {
     });
 
     if (inv) {
+        await db.sync('purchaseInvoices');
         showToast('Supplier Invoice submitted to Finance!', 'success');
         renderPurchaseInvoices();
     } else {
@@ -4826,6 +4863,7 @@ window.handleInvoiceFile = (e, id) => {
     const reader = new FileReader();
     reader.onload = (event) => {
         db.update('purchaseInvoices', id, { attachment: event.target.result });
+        db.sync('purchaseInvoices');
         showToast('Lampiran berhasil diunggah');
         renderPurchaseInvoices();
     };
@@ -4835,6 +4873,7 @@ window.handleInvoiceFile = (e, id) => {
 window.removeInvoiceAttachment = (id) => {
     if (confirm('Hapus lampiran ini?')) {
         db.update('purchaseInvoices', id, { attachment: null });
+        db.sync('purchaseInvoices');
         showToast('Lampiran dihapus');
         renderPurchaseInvoices();
     }
@@ -5145,6 +5184,9 @@ window.saveSupplierPayment = async () => {
         if (result.isPaid) {
             db.update('purchaseInvoices', inv.id, { status: 'PAID' });
         }
+        
+        await db.sync('supplierPayments');
+        await db.sync('purchaseInvoices');
 
         showToast(result.message, 'success');
         window.currentSupPayInvoiceId = null;
@@ -7328,10 +7370,16 @@ window.saveNewQT = async () => {
     }
 };
 
-window.updateQTStatus = (id, newStatus) => {
-    db.update('salesQuotations', id, { status: newStatus });
-    showToast(`QT status updated to ${newStatus}`);
-    renderSalesQuotations();
+window.updateQTStatus = async (id, newStatus) => {
+    showToast('Updating status...', 'info');
+    const success = await db.update('salesQuotations', id, { status: newStatus });
+    if (success) {
+        showToast(`QT status updated to ${newStatus}`);
+        renderSalesQuotations();
+        setTimeout(() => db.sync('salesQuotations'), 2000);
+    } else {
+        showToast('Failed to update status', 'error');
+    }
 };
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ PURCHASE RFQ MODULE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -7976,15 +8024,17 @@ window.saveNewPurchaseRFQ = async () => {
     renderPurchaseRFQs();
 };
 
-window.updatePurchaseRFQStatus = (id, newStatus) => {
-    db.update('purchaseRFQs', id, { status: newStatus });
+window.updatePurchaseRFQStatus = async (id, newStatus) => {
+    await db.update('purchaseRFQs', id, { status: newStatus });
     showToast(`Status RFQ diperbarui ke ${newStatus}`);
     renderPurchaseRFQs();
+    setTimeout(() => db.sync('purchaseRFQs'), 2000);
 };
 
-window.deletePurchaseRFQ = (id) => {
+window.deletePurchaseRFQ = async (id) => {
     if (confirm('Yakin hapus RFQ ini?')) {
-        db.delete('purchaseRFQs', id);
+        await db.delete('purchaseRFQs', id);
+        await db.sync('purchaseRFQs');
         renderPurchaseRFQs();
     }
 };
@@ -9760,34 +9810,32 @@ window.saveNewSO = async () => {
 
     showToast('SO Draft berhasil disimpan');
     
-    // BACK TO LIST
+    // FORCE SYNC and BACK TO LIST
+    await db.sync('salesOrders');
     renderSalesOrders();
 };
 
 
 window.updateSOStatus = async (id, newStatus) => {
     try {
+        showToast('Updating SO status...', 'info');
         if (newStatus === 'CONFIRMED') {
-            // Use Phase 2 API for Atomic Transaction (creates Journal + updates Status)
             await api.approveSalesOrder(id);
-            
-            // Optimistic UI update
-            db.update('salesOrders', id, { status: 'CONFIRMED' });
-            
-            if (typeof addNotification === 'function') {
-                const so = db.findById('salesOrders', id);
-                addNotification(
-                    'Pesanan Baru Siap Kirim',
-                    `SO ${so ? so.soNumber : id} telah di-konfirmasi Sales. Siap diproses kirim.`
-                );
-            }
         } else {
-            // Fallback for other statuses (DRAFT, dll) via Hybrid Sync
-            db.update('salesOrders', id, { status: newStatus });
+            await db.update('salesOrders', id, { status: newStatus });
         }
         
         showToast(`SO status updated to ${newStatus} `);
         renderSalesOrders();
+        setTimeout(() => db.sync('salesOrders'), 2000);
+
+        if (newStatus === 'CONFIRMED' && typeof addNotification === 'function') {
+            const so = db.findById('salesOrders', id);
+            addNotification(
+                'Pesanan Baru Siap Kirim',
+                `SO ${so ? so.soNumber : id} telah di-konfirmasi Sales. Siap diproses kirim.`
+            );
+        }
     } catch (err) {
         showToast(err.message, 'error');
     }
@@ -9795,12 +9843,13 @@ window.updateSOStatus = async (id, newStatus) => {
 
 // Fungsi pengiriman SO dihapus dari Sales. Dialihkan ke Inventory (Surat Jalan/Pengiriman).
 
-window.deleteSO = (id) => {
+window.deleteSO = async (id) => {
     if (confirm('Yakin hapus SO ini?')) {
-        db.delete('salesOrders', id);
+        await db.delete('salesOrders', id);
+        await db.sync('salesOrders');
         renderSalesOrders();
     }
-}
+};
 
 window.viewSO = (id) => {
     const so = db.findById('salesOrders', id);

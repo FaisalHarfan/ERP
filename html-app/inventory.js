@@ -570,7 +570,7 @@ function renderInventoryRows(items) {
                                 </button>
                                 
                                 ${isCurrentUserAdmin() ? `
-                                <button onclick="openStockAdjustmentModal('${it.id}')" class="text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-orange-600 hover:bg-orange-50/50 flex items-center gap-3 transition-colors">
+                                <button onclick="openStockAdjustmentModal('${it.id}')" class="text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-orange-50/50 flex items-center gap-3 transition-colors">
                                     <i class="fas fa-sync-alt w-4 text-slate-400"></i> Adjustment
                                 </button>
                                 <div class="h-px bg-slate-50 my-1 mx-2"></div>
@@ -827,10 +827,9 @@ window.saveInventoryItem = async (id) => {
             showToast('Item baru berhasil ditambahkan');
         }
         
-        // Refresh hybrid cache transparently (in background) to keep other modules updated
-        api.read('inventoryItems').then(data => {
-            if (data && Array.isArray(data)) localStorage.setItem('unityerp_inventoryItems', JSON.stringify(data));
-        });
+        // SYNC ALL RELEVANT TABLES
+        await db.sync('inventoryItems');
+        await db.sync('stockTransactions');
 
         closeModal();
         returnToMasterView();
@@ -848,6 +847,7 @@ window.toggleInventoryItemStatus = async (id) => {
     
     try {
         await api.updateInventoryItem(id, { status: newStatus });
+        await db.sync('inventoryItems');
         showToast(`Item di-${newStatus === 'ACTIVE' ? 'aktifkan' : 'non-aktifkan'}`);
         returnToMasterView();
     } catch (err) {
@@ -933,6 +933,7 @@ window.deleteInventoryItem = async (id) => {
         let localItems = JSON.parse(localStorage.getItem('unityerp_inventoryItems') || '[]');
         localItems = localItems.filter(i => i.id !== id);
         localStorage.setItem('unityerp_inventoryItems', JSON.stringify(localItems));
+        await db.sync('inventoryItems');
 
         showToast(`Barang ${item.itemName} dan seluruh data terkait telah dihapus dari sistem.`, 'success');
         returnToMasterView();
@@ -1053,10 +1054,9 @@ window.saveStockAdjustment = async (itemId) => {
             notes: notes || 'Stock Adjustment (Manual Update)'
         });
         
-        // Background sync transactions cache
-        api.read('stockTransactions').then(data => {
-            if (data && Array.isArray(data)) localStorage.setItem('unityerp_stockTransactions', JSON.stringify(data));
-        });
+        // SYNC TABLES
+        await db.sync('stockTransactions');
+        await db.sync('inventoryItems');
 
         showToast(`Stok berhasil disesuaikan (${type}: ${absDiff})`);
         closeModal();
@@ -1298,7 +1298,7 @@ window.updateConversionSourceInfo = () => {
     }
 };
 
-window.saveInventoryConversion = () => {
+window.saveInventoryConversion = async () => {
     try {
         const fromId = document.getElementById('conv_from_item').value;
         const totalKg = parseFloat(document.getElementById('conv_total_kg').value) || 0;
@@ -1331,6 +1331,7 @@ window.saveInventoryConversion = () => {
             createdBy: window._session?.fullName || 'Admin',
             createdAt: new Date().toISOString()
         });
+        await db.sync('inventoryConversions');
 
         // Update Pack Breakdown (Update saldo 5kg / 800gr)
         const allPB = db.read('packBreakdowns') || [];
@@ -1348,6 +1349,7 @@ window.saveInventoryConversion = () => {
         }
 
         db.save('packBreakdowns', allPB);
+        await db.sync('packBreakdowns');
 
         showToast('Konversi kemasan berhasil disimpan', 'success');
         closeModal();
@@ -1520,14 +1522,15 @@ window.invUpdateUnit = (selectId, displayId) => {
     if (sel && disp) disp.value = sel.selectedOptions[0]?.dataset.unit || '';
 };
 
-window.saveStockIn = () => {
+window.saveStockIn = async () => {
     const itemId = document.getElementById('si_item').value;
     const qty = parseFloat(document.getElementById('si_qty').value);
     const reference = document.getElementById('si_ref').value;
     const notes = document.getElementById('si_notes').value.trim();
     if (!itemId) { showToast('Pilih item terlebih dahulu', 'error'); return; }
     if (!qty || qty <= 0) { showToast('Qty harus lebih dari 0', 'error'); return; }
-    db.addInventoryTransaction(itemId, 'IN', qty, reference, null, notes);
+    await db.addInventoryTransaction(itemId, 'IN', qty, reference, null, notes);
+    await db.sync('stockTransactions');
     showToast('Stock In berhasil disimpan', 'success');
     closeModal();
     renderInventoryStockIn();
@@ -1691,7 +1694,7 @@ window.invShowCurrentStock = (selectId, infoId) => {
     info.innerHTML = `<i class="fas fa-info-circle mr-2"></i>Stok saat ini: <span class="text-blue-800">${invFmt(stock)} ${item.unit || ''}</span>`;
 };
 
-window.saveStockOut = () => {
+window.saveStockOut = async () => {
     const itemId = document.getElementById('so_item').value;
     const qty = parseFloat(document.getElementById('so_qty').value);
     const reference = document.getElementById('so_ref').value;
@@ -1701,7 +1704,8 @@ window.saveStockOut = () => {
     if (!db.validateInventoryStock(itemId, qty)) {
         showToast('Stok tidak mencukupi untuk transaksi ini!', 'error'); return;
     }
-    db.addInventoryTransaction(itemId, 'OUT', qty, reference, null, notes);
+    await db.addInventoryTransaction(itemId, 'OUT', qty, reference, null, notes);
+    await db.sync('stockTransactions');
     showToast('Stock Out berhasil disimpan', 'success');
     closeModal();
     renderInventoryStockOut();
@@ -2074,7 +2078,7 @@ window.openOvenProcessModal = () => {
     setTimeout(() => { const el = document.getElementById('oven_input_item'); if(el) el.dispatchEvent(new Event('change')); }, 100);
 };
 
-window.saveOvenProcess = () => {
+window.saveOvenProcess = async () => {
     const itemId = document.getElementById('oven_input_item').value;
     const inQty = parseFloat(document.getElementById('oven_in_qty').value);
     const outQty = parseFloat(document.getElementById('oven_out_qty').value);
@@ -2085,9 +2089,10 @@ window.saveOvenProcess = () => {
     const txId = 'OVN-' + Date.now().toString().slice(-6);
 
     // 1. OUT from Oven Basah
-    db.addInventoryTransaction(itemId, 'OUT', inQty, 'PRODUCTION_OVEN', txId, notes, 'Admin', 'OVEN_BASAH');
+    await db.addInventoryTransaction(itemId, 'OUT', inQty, 'PRODUCTION_OVEN', txId, notes, 'Admin', 'OVEN_BASAH');
     // 2. IN to Oven Kering
-    db.addInventoryTransaction(itemId, 'IN', outQty, 'PRODUCTION_OVEN', txId, notes, 'Admin', 'OVEN_KERING');
+    await db.addInventoryTransaction(itemId, 'IN', outQty, 'PRODUCTION_OVEN', txId, notes, 'Admin', 'OVEN_KERING');
+    await db.sync('stockTransactions');
 
     showToast('Proses Baking selesai', 'success');
     closeModal();
@@ -2160,7 +2165,7 @@ window.openFinalizeProdModal = () => {
     setTimeout(() => { const el = document.getElementById('fin_input_item'); if(el) el.dispatchEvent(new Event('change')); }, 100);
 };
 
-window.saveFinalizeProd = () => {
+window.saveFinalizeProd = async () => {
     const inputItemId = document.getElementById('fin_input_item').value;
     const outputItemId = document.getElementById('fin_output_item').value;
     const inQty = parseFloat(document.getElementById('fin_in_qty').value);
@@ -2171,16 +2176,17 @@ window.saveFinalizeProd = () => {
     const txId = 'FIN-' + Date.now().toString().slice(-6);
 
     // 1. OUT from Oven Kering (WIP)
-    db.addInventoryTransaction(inputItemId, 'OUT', inQty, 'PRODUCTION_FINALIZE', txId, '', 'Admin', 'OVEN_KERING');
+    await db.addInventoryTransaction(inputItemId, 'OUT', inQty, 'PRODUCTION_FINALIZE', txId, '', 'Admin', 'OVEN_KERING');
     // 2. IN to WHS (FG)
-    db.addInventoryTransaction(outputItemId, 'IN', outQty, 'PRODUCTION_FINALIZE', txId, '', 'Admin', 'WHS');
+    await db.addInventoryTransaction(outputItemId, 'IN', outQty, 'PRODUCTION_FINALIZE', txId, '', 'Admin', 'WHS');
+    await db.sync('stockTransactions');
 
     showToast('Produksi Selesai! Stok FG bertambah.', 'success');
     closeModal();
     renderInventoryProduction();
 };
 
-// â”€â”€â”€ 6. STOCK REPORT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€â”€ 6. STOCK REPORT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderInventoryReport() {
     document.getElementById('pageTitle').innerText = 'Laporan Stok';
     const items = db.read('inventoryItems');
@@ -2276,30 +2282,31 @@ function findInvItemByName(name) {
 }
 
 // Dipanggil dari confirmReceiveGoods (PO diterima) -> stock IN
-window.syncInventoryFromPOReceipt = (poId, poNumber, receivedItems) => {
+window.syncInventoryFromPOReceipt = async (poId, poNumber, receivedItems) => {
     let synced = 0;
-    receivedItems.forEach(item => {
-        if (!item.qty || item.qty <= 0) return;
+    for (const item of receivedItems) {
+        if (!item.qty || item.qty <= 0) continue;
         // Prioritaskan inventoryItemId yang sudah tersimpan di item PO
         const invItem = item.inventoryItemId
             ? db.findById('inventoryItems', item.inventoryItemId)
             : findInvItemByName(item.prodText);
         if (invItem) {
-            db.addInventoryTransaction(invItem.id, 'IN', item.qty, 'PO', poId,
+            await db.addInventoryTransaction(invItem.id, 'IN', item.qty, 'PO', poId,
                 `Auto dari PO Receive: ${poNumber} - ${item.prodText}`);
             synced++;
         }
-    });
+    }
+    await db.sync('stockTransactions');
     if (synced > 0) showToast(`[OK] ${synced} item dari PO ${poNumber} otomatis masuk ke stok Inventory!`, 'success');
     else showToast('PO diterima. Pastikan item PO terhubung ke Master Inventory.', 'success');
 };
 
 // Dipanggil dari deliverSO (SO dikirim) -> stock OUT
-window.syncInventoryFromSODelivery = (soId, soNumber, items) => {
+window.syncInventoryFromSODelivery = async (soId, soNumber, items) => {
     let synced = 0;
     const errors = [];
-    items.forEach(item => {
-        if (!item.qty || item.qty <= 0) return;
+    for (const item of items) {
+        if (!item.qty || item.qty <= 0) continue;
         // Prioritaskan inventoryItemId yang sudah tersimpan di item SO
         const invItem = item.inventoryItemId
             ? db.findById('inventoryItems', item.inventoryItemId)
@@ -2307,13 +2314,14 @@ window.syncInventoryFromSODelivery = (soId, soNumber, items) => {
         if (invItem) {
             if (!db.validateInventoryStock(invItem.id, item.qty)) {
                 errors.push(`⚠️ Stok inventory "${invItem.itemName}" tidak cukup`);
-                return;
+                continue;
             }
-            db.addInventoryTransaction(invItem.id, 'OUT', item.qty, 'SO', soId,
+            await db.addInventoryTransaction(invItem.id, 'OUT', item.qty, 'SO', soId,
                 `Auto dari SO Delivery ${soNumber}: ${item.prodText}`);
             synced++;
         }
-    });
+    }
+    await db.sync('stockTransactions');
     if (errors.length) errors.forEach(e => showToast(e, 'error'));
     if (synced > 0) showToast(`âœ… ${synced} item otomatis dikurangi dari stok Inventory!`, 'success');
 };
@@ -2328,7 +2336,7 @@ window.switchInvReportTab = (cat) => {
     document.getElementById('inv_report_table').innerHTML = window._invReportBuildTable(cat === 'all' ? null : cat);
 };
 
-// â”€â”€â”€ 6. PENGIRIMAN BARANG (SURAT JALAN / DELIVERY) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€â”€ 6. PENGIRIMAN BARANG (SURAT JALAN / DELIVERY) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // renderWarehouseDeliveryOrders removed - using the version in delivery_order.js
 
 // Legacy logistics section removed. Using delivery_order.js instead.
@@ -2729,6 +2737,7 @@ window.confirmPOReceipt = async (id) => {
             actualDeliveryDate: result.isCompleted ? new Date().toISOString().split('T')[0] : (po.actualDeliveryDate || null),
             items: updatedItems
         });
+        await db.sync('purchaseOrders');
 
         showToast(result.message, result.isCompleted ? 'success' : 'info');
         closePORForm();
@@ -3245,7 +3254,7 @@ window.openManualShrinkageModal = () => {
     showModal('Judgement Barang (Penyusutan Manual)', body, footer);
 };
 
-window.saveManualShrinkage = () => {
+window.saveManualShrinkage = async () => {
     const itemId = document.getElementById('mshrink_item').value;
     const qty = parseFloat(document.getElementById('mshrink_qty').value);
     const date = document.getElementById('mshrink_date').value;
@@ -3256,7 +3265,8 @@ window.saveManualShrinkage = () => {
         showToast('Stok tidak mencukupi untuk dipotong!', 'error'); return;
     }
 
-    db.addInventoryTransaction(itemId, 'OUT', qty, 'SHRINKAGE', null, notes, date);
+    await db.addInventoryTransaction(itemId, 'OUT', qty, 'SHRINKAGE', null, notes, date);
+    await db.sync('stockTransactions');
     showToast('Penyusutan berhasil dicatat dan stok dipotong', 'success');
     closeModal();
     renderInventoryShrinkageReport();
