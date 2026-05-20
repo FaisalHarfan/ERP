@@ -350,20 +350,6 @@
                             class="fas fa-receipt text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         <span class="sidebar-label">Payables (AP)</span>
                     </a>
-                    <a href="#" data-view="finance-credit-notes"
-                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
-                        <div class="active-indicator"></div>
-                        <i
-                            class="fas fa-file-invoice-dollar text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
-                        <span class="sidebar-label">Credit Notes</span>
-                    </a>
-                    <a href="#" data-view="finance-debit-notes"
-                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
-                        <div class="active-indicator"></div>
-                        <i
-                            class="fas fa-file-prescription text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
-                        <span class="sidebar-label">Debit Notes</span>
-                    </a>
                     <a href="#" data-view="finance-receipts"
                         class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
                         <div class="active-indicator"></div>
@@ -377,6 +363,20 @@
                         <i
                             class="fas fa-external-link-alt text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
                         <span class="sidebar-label">Pengeluaran Kas & Bank</span>
+                    </a>
+                    <a href="#" data-view="finance-credit-notes"
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-file-invoice-dollar text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Credit Notes</span>
+                    </a>
+                    <a href="#" data-view="finance-debit-notes"
+                        class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
+                        <div class="active-indicator"></div>
+                        <i
+                            class="fas fa-file-prescription text-[10px] w-4 mr-2 opacity-50 group-hover:opacity-100 transition-opacity"></i>
+                        <span class="sidebar-label">Debit Notes</span>
                     </a>
                     <a href="#" data-view="finance-journal"
                         class="nav-btn flex items-center px-3 py-2 text-sm text-slate-600 hover:text-slate-900 rounded-md relative group">
@@ -523,7 +523,8 @@
                     <span id="pageTitle" class="text-slate-800 font-bold text-base">Apps</span>
                 </div>
             </div>
-            <div class="flex items-center space-x-4">
+            <div class="flex items-center gap-3">
+                <div id="topbar-actions" class="flex items-center gap-2"></div>
                 <span id="header-user-name" class="text-sm text-gray-500 hidden sm:block">Sistem Informasi Manufaktur</span>
                 <div class="relative">
                     <button class="text-gray-400 hover:text-gray-600 focus:outline-none"
@@ -545,6 +546,9 @@
                         </div>
                     </div>
                 </div>
+                <div id="header-admin-info" class="text-sm font-medium text-slate-600">Administrator</div>
+                <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">AD</div>
+                <button class="text-slate-400 hover:text-slate-600"><i class="fas fa-bell"></i></button>
             </div>
         </header>
 
@@ -601,12 +605,12 @@
     <script src="export.js?v=27"></script>
     <script src="inventory.js?v=27"></script>
     <script src="production.js?v=27"></script>
-    <script src="finance.js?v=27"></script>
+    <script src="finance.js?v=31"></script>
     <script src="sales_return.js?v=27"></script>
     <script src="delivery_order.js?v=27"></script>
     <script src="settings.js"></script>
     <script src="purchase_reports.js"></script>
-    <script src="app.js?v=3"></script>
+    <script src="app.js?v=4"></script>
     <script>
         // ── Populate sidebar with session user ─────────────────────
         (function () {

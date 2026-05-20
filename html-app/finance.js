@@ -9,7 +9,8 @@ window._arHistoryFilters = window._arHistoryFilters || { customer: '', date: '',
 window._journalFilters = window._journalFilters || { q: '' };
 window._expenseFilters = window._expenseFilters || { start: '', end: '', coaId: '' };
 window._receiptFilters = window._receiptFilters || { start: '', end: '', coaId: '' };
-window._coaFilters = window._coaFilters || { accountId: '', type: '' };
+window._coaFilters = window._coaFilters || { q: '', type: '' };
+window._coaExpandedNodes = window._coaExpandedNodes || {};
 
 // Ensure filter open states are initialized
 window._uiState.apFilterOpen = window._uiState.apFilterOpen ?? false;
@@ -40,258 +41,386 @@ window.renderFinanceDashboard = function () {
     document.getElementById('pageTitle').innerText = 'Dashboard Finance';
     const mc = document.getElementById('main-content');
 
-    const accounts = db.read('accounts');
-    const journal = db.read('journalEntries');
+    const accounts = db.read('accounts') || [];
+    const journal = db.read('journalEntries') || [];
+    const salesInvoices = db.read('salesInvoices') || [];
+    const purchaseInvoices = db.read('purchaseInvoices') || [];
+    const allPayments = db.read('payments') || [];
+    const allSuppPayments = db.read('supplierPayments') || [];
 
-    // Hitung Ringkasan
-    const totalRevenue = accounts.filter(a => a.type === 'INCOME').reduce((sum, a) => sum + Math.abs(db.getAccountBalance(a.id)), 0);
-    const totalExpenses = accounts.filter(a => a.type === 'EXPENSE').reduce((sum, a) => sum + Math.abs(db.getAccountBalance(a.id)), 0);
-    const netProfit = totalRevenue - totalExpenses;
+    // 1. Calculate Summary Stats (ERPNext Style)
+    const totalOutgoingBills = purchaseInvoices.reduce((sum, i) => sum + (parseFloat(i.totalAmount) || 0), 0);
+    const totalIncomingBills = salesInvoices.reduce((sum, i) => sum + (parseFloat(i.totalAmount) || 0), 0);
+    const totalIncomingPayment = allPayments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+    const totalOutgoingPayment = allSuppPayments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
 
-    const cashBankBalance = accounts.filter(a => a.code.startsWith('11')).reduce((sum, a) => sum + db.getAccountBalance(a.id), 0);
-    const salesInvoices = db.read('salesInvoices');
-    const purchaseInvoices = db.read('purchaseInvoices');
-    const allPayments = db.read('payments');
-    const allSuppPayments = db.read('supplierPayments');
+    // 2. Profit and Loss Stats
+    const totalIncomeThisYear = accounts.filter(a => a && a.type === 'INCOME').reduce((sum, a) => sum + Math.abs(db.getAccountBalance(a.id) || 0), 0);
+    const totalExpenseThisYear = accounts.filter(a => a && a.type === 'EXPENSE').reduce((sum, a) => sum + Math.abs(db.getAccountBalance(a.id) || 0), 0);
+    const profitThisYear = totalIncomeThisYear - totalExpenseThisYear;
 
-    const totalAR = salesInvoices.filter(i => i.status === 'UNPAID' || i.status === 'PARTIAL').reduce((sum, i) => {
-        const paid = allPayments.filter(p => p.invoiceId === i.id).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
-        return sum + ((parseFloat(i.totalAmount) || 0) - paid);
-    }, 0);
-    const totalAP = purchaseInvoices.filter(i => i.status === 'UNPAID' || i.status === 'PARTIAL').reduce((sum, i) => {
-        const paid = allSuppPayments.filter(p => p.invoiceId === i.id).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
-        return sum + ((parseFloat(i.totalAmount) || 0) - paid);
-    }, 0);
+    const summaryCard = (title, value) => `
+        <div class="bg-white rounded-lg border border-gray-100 p-5 shadow-sm hover:shadow-md transition-shadow">
+            <p class="text-xs font-semibold text-gray-500 mb-2">${title}</p>
+            <h3 class="text-xl font-bold text-gray-800">${formatCurrency(value)}</h3>
+        </div>`;
+
+    const erpNextChart = (title, id, heightClass = 'h-64') => `
+        <div class="bg-white rounded-lg border border-gray-100 shadow-sm p-6 flex flex-col">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-sm font-semibold text-gray-700">${title}</h3>
+                <div class="flex gap-2">
+                    <button class="text-gray-400 hover:text-gray-600"><i class="fas fa-filter text-xs"></i></button>
+                    <button class="text-gray-400 hover:text-gray-600"><i class="fas fa-ellipsis-h text-xs"></i></button>
+                </div>
+            </div>
+            <div class="relative w-full ${heightClass} flex-1">
+                <canvas id="${id}"></canvas>
+            </div>
+        </div>`;
 
     mc.innerHTML = `
-        <!-- Summary Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col justify-between hover:shadow-md transition-shadow border-l-4 border-blue-500">
-                <div>
-                    <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Total Pendapatan</p>
-                    <h3 class="text-2xl font-bold text-gray-800">${formatCurrency(totalRevenue)}</h3>
+        <div class="space-y-6 pb-12 bg-[#f8f9fb] p-6 -m-6 animate-in fade-in duration-500">
+            <!-- Breadcrumbs -->
+            <div class="flex items-center text-xs text-gray-500 gap-2 mb-2">
+                <i class="fas fa-home"></i> <span>/</span> <span>Dashboard</span> <span>/</span> <span class="font-bold text-gray-800">Accounts</span>
+            </div>
+
+            <!-- Top Summary Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                ${summaryCard('Total Outgoing Bills', totalOutgoingBills)}
+                ${summaryCard('Total Incoming Bills', totalIncomingBills)}
+                ${summaryCard('Total Incoming Payment', totalIncomingPayment)}
+                ${summaryCard('Total Outgoing Payment', totalOutgoingPayment)}
+            </div>
+
+            <!-- Profit and Loss Panel -->
+            <div class="bg-white rounded-lg border border-gray-100 shadow-sm p-8">
+                <div class="flex justify-between items-center mb-8">
+                    <h3 class="text-md font-semibold text-gray-700">Profit and Loss</h3>
+                    <div class="flex gap-2">
+                        <button class="p-1 px-2 border rounded text-xs text-gray-500 hover:bg-gray-50"><i class="fas fa-filter"></i></button>
+                    </div>
                 </div>
-                <div class="mt-4 flex items-center text-xs text-green-600 font-bold">
-                    <i class="fas fa-arrow-up mr-1"></i> Real-time
+                <div class="grid grid-cols-3 text-center">
+                    <div>
+                        <p class="text-xs text-gray-500 mb-2">Total Income This Year</p>
+                        <h4 class="text-lg font-bold text-gray-800">${formatCurrency(totalIncomeThisYear)}</h4>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500 mb-2">Total Expense This Year</p>
+                        <h4 class="text-lg font-bold text-gray-800">${formatCurrency(totalExpenseThisYear)}</h4>
+                    </div>
+                    <div>
+                        <p class="text-xs text-gray-500 mb-2">Profit This Year</p>
+                        <h4 class="text-lg font-bold ${profitThisYear >= 0 ? 'text-red-500' : 'text-blue-500'}">${formatCurrency(profitThisYear)}</h4>
+                    </div>
                 </div>
             </div>
 
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col justify-between hover:shadow-md transition-shadow border-l-4 border-red-500">
-                <div>
-                    <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Total Pengeluaran</p>
-                    <h3 class="text-2xl font-bold text-gray-800">${formatCurrency(totalExpenses)}</h3>
-                </div>
-                <div class="mt-4 flex items-center text-xs text-red-600 font-bold">
-                    <i class="fas fa-arrow-down mr-1"></i> Real-time
-                </div>
+            <!-- Charts Row 1: Bills Trend -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                ${erpNextChart('Incoming Bills (Purchase Invoice)', 'chartIncomingBills')}
+                ${erpNextChart('Outgoing Bills (Sales Invoice)', 'chartOutgoingBills')}
             </div>
 
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col justify-between hover:shadow-md transition-shadow border-l-4 border-indigo-500">
-                <div>
-                    <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Laba Bersih</p>
-                    <h3 class="text-2xl font-bold ${netProfit >= 0 ? 'text-indigo-600' : 'text-red-600'}">${formatCurrency(netProfit)}</h3>
-                </div>
-                <div class="mt-4 flex items-center text-xs text-indigo-600 font-bold">
-                    <i class="fas fa-chart-line mr-1"></i> Profit/Loss
-                </div>
+            <!-- Charts Row 2: Ageing -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                ${erpNextChart('Accounts Receivable Ageing', 'chartARAgeing')}
+                ${erpNextChart('Accounts Payable Ageing', 'chartAPAgeing')}
             </div>
 
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col justify-between hover:shadow-md transition-shadow border-l-4 border-green-500">
-                <div>
-                    <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Saldo Kas & Bank</p>
-                    <h3 class="text-2xl font-bold text-green-600">${formatCurrency(cashBankBalance)}</h3>
-                </div>
-                <div class="mt-4 flex items-center text-xs text-green-600 font-bold">
-                    <i class="fas fa-wallet mr-1"></i> Liquidity
-                </div>
-            </div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-             <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                <div>
-                    <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Piutang Usaha (AR)</p>
-                    <h3 class="text-xl font-bold text-orange-600">${formatCurrency(totalAR)}</h3>
-                    <p class="text-[10px] text-gray-400 mt-1">Tagihan pelanggan belum lunas</p>
-                </div>
-                <button onclick="navigateTo('finance-ar')" class="mt-4 text-sm font-bold text-blue-600 hover:text-blue-800">Lihat Detail <i class="fas fa-chevron-right ml-1"></i></button>
-            </div>
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                <div>
-                    <p class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Hutang Usaha (AP)</p>
-                    <h3 class="text-xl font-bold text-red-600">${formatCurrency(totalAP)}</h3>
-                    <p class="text-[10px] text-gray-400 mt-1">Tagihan supplier belum dibayar</p>
-                </div>
-                <button onclick="navigateTo('finance-ap')" class="mt-4 text-sm font-bold text-blue-600 hover:text-blue-800">Lihat Detail <i class="fas fa-chevron-right ml-1"></i></button>
-            </div>
-        </div>
-
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                <h3 class="text-md font-bold text-gray-800 mb-4 flex items-center gap-2">
-                    <i class="fas fa-university text-blue-500"></i> Rekening Kas & Bank
-                </h3>
-                <div class="space-y-4">
-                    ${db.read('bankAccounts').map(ba => {
-        const bal = db.getAccountBalance(ba.accountId);
-        return `
-                            <div class="flex justify-between items-center p-3 rounded-lg bg-gray-50">
-                                <div>
-                                    <p class="text-sm font-bold text-gray-700">${ba.name}</p>
-                                    <p class="text-[10px] text-gray-500">${ba.bankName} - ${ba.accountNumber}</p>
-                                </div>
-                                <span class="font-bold text-blue-600 text-sm">${formatCurrency(bal)}</span>
-                            </div>
-                        `;
-    }).join('') || '<p class="text-center py-6 text-gray-400 text-sm">Belum ada akun bank.</p>'}
-                </div>
-            </div>
-
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                <h3 class="text-md font-bold text-gray-800 mb-4 flex items-center gap-2">
-                    <i class="fas fa-history text-slate-500"></i> Jurnal Umum Terakhir
-                </h3>
-                <div class="space-y-3">
-                    ${journal.slice(-5).reverse().map(j => `
-                        <div class="flex items-center justify-between text-xs border-b border-gray-50 pb-2">
-                            <div>
-                                <p class="font-bold text-gray-800">${j.journalNo}</p>
-                                <p class="text-gray-500 truncate w-48">${j.description}</p>
-                            </div>
-                            <div class="text-right">
-                                <span class="font-bold text-blue-600">${formatCurrency(j.totalDebit)}</span>
-                                <p class="text-[10px] text-gray-400">${formatDate(j.date).slice(0, 10)}</p>
-                            </div>
-                        </div>
-                    `).join('') || '<p class="text-center py-6 text-gray-400 text-sm">Tidak ada transaksi terbaru.</p>'}
-                </div>
-                <button onclick="navigateTo('finance-journal')" class="w-full mt-4 py-2 bg-gray-50 text-gray-600 text-xs font-bold rounded-lg hover:bg-gray-100">Buka Semua Jurnal</button>
+            <!-- Charts Row 3: Bank & Budget -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                ${erpNextChart('Bank Balance', 'chartBankBalanceTrend')}
+                ${erpNextChart('Budget Variance', 'chartBudgetVariance')}
             </div>
         </div>
     `;
+
+    // Initialize ERPNext Style Charts
+    setTimeout(() => initFinanceChartsERP(accounts, journal, salesInvoices, purchaseInvoices), 100);
+};
+
+window.initFinanceChartsERP = function(accounts, journal, salesInvoices, purchaseInvoices) {
+    if (typeof Chart === 'undefined') return;
+
+    const months = ['May 2025', 'Jul 2025', 'Sep 2025', 'Nov 2025', 'Jan 2026', 'Mar 2026', 'May 2026'];
+    const chartOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+            y: { beginAtZero: true, grid: { color: '#f0f0f0', drawBorder: false }, ticks: { color: '#888', font: { size: 10 } } },
+            x: { grid: { display: false }, ticks: { color: '#888', font: { size: 9 } } }
+        }
+    };
+
+    // 1. Incoming Bills Trend
+    const ctxInc = document.getElementById('chartIncomingBills');
+    if (ctxInc) {
+        new Chart(ctxInc, {
+            type: 'line',
+            data: { labels: months, datasets: [{ data: [0,0,0,0,0,0,0], borderColor: '#cbd5e1', borderWidth: 1.5, pointRadius: 0, tension: 0.1 }] },
+            options: chartOptions
+        });
+    }
+
+    // 2. Outgoing Bills Trend
+    const ctxOut = document.getElementById('chartOutgoingBills');
+    if (ctxOut) {
+        new Chart(ctxOut, {
+            type: 'line',
+            data: { labels: months, datasets: [{ data: [0,0,0,0,0,0,0], borderColor: '#cbd5e1', borderWidth: 1.5, pointRadius: 0, tension: 0.1 }] },
+            options: chartOptions
+        });
+    }
+
+    // 3. AR Ageing (Bar)
+    const ctxAR = document.getElementById('chartARAgeing');
+    if (ctxAR) {
+        new Chart(ctxAR, {
+            type: 'bar',
+            data: {
+                labels: ['<0', '0-30', '31-60'],
+                datasets: [{
+                    data: [0, 0, 0],
+                    backgroundColor: ['#93c5fd', '#f9a8d4', '#3b82f6'],
+                    barThickness: 15
+                }]
+            },
+            options: { ...chartOptions, scales: { ...chartOptions.scales, y: { display: false } } }
+        });
+    }
+
+    // 4. AP Ageing (Bar)
+    const ctxAP = document.getElementById('chartAPAgeing');
+    if (ctxAP) {
+        new Chart(ctxAP, {
+            type: 'bar',
+            data: {
+                labels: ['<0', '0-30', '31-60'],
+                datasets: [{
+                    data: [0, 0, 0],
+                    backgroundColor: ['#93c5fd', '#f9a8d4', '#3b82f6'],
+                    barThickness: 15
+                }]
+            },
+            options: { ...chartOptions, scales: { ...chartOptions.scales, y: { display: false } } }
+        });
+    }
+
+    // 5. Bank Balance Trend
+    const ctxBank = document.getElementById('chartBankBalanceTrend');
+    if (ctxBank) {
+        new Chart(ctxBank, {
+            type: 'line',
+            data: { labels: ['31-05-2025', '31-07-2025', '30-09-2025', '30-11-2025', '31-01-2026', '31-03-2026', '31-05-2026'], datasets: [{ data: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5], borderColor: '#f43f5e', borderWidth: 1, pointRadius: 0 }] },
+            options: chartOptions
+        });
+    }
 };
 
 window.renderFinanceAccounts = function () {
     document.getElementById('pageTitle').innerText = 'Chart of Accounts (COA)';
     const mc = document.getElementById('main-content');
     
-    const filterAccountId = window._coaFilters?.accountId || '';
-    const filterType = window._coaFilters?.type || '';
-
     let accounts = db.read('accounts');
-    const allAccounts = [...accounts]; // For the dropdown
+    let q = (window._coaFilters?.q || '').toLowerCase();
+    let filteredAccounts = accounts;
     
-    if (filterAccountId) {
-        accounts = accounts.filter(a => a.id === filterAccountId);
-    }
-    if (filterType) {
-        accounts = accounts.filter(a => a.type === filterType);
+    if (q) {
+        // Find matches
+        const matches = accounts.filter(a => 
+            a.name.toLowerCase().includes(q) || 
+            (a.code && a.code.toLowerCase().includes(q))
+        );
+        
+        // Ensure parents are included for matches
+        const matchIds = new Set(matches.map(m => m.id));
+        const finalIds = new Set();
+        
+        const includeParents = (nodeId) => {
+            if (!nodeId || finalIds.has(nodeId)) return;
+            finalIds.add(nodeId);
+            const node = accounts.find(a => a.id === nodeId);
+            if (node && node.parentId) includeParents(node.parentId);
+        };
+        
+        matches.forEach(m => includeParents(m.id));
+        filteredAccounts = accounts.filter(a => finalIds.has(a.id));
+        
+        // Auto-expand all when searching
+        filteredAccounts.forEach(a => { if (a.isGroup) window._coaExpandedNodes[a.id] = true; });
     }
 
-    mc.innerHTML = `
-        <div class="flex flex-col gap-6">
-            <!-- Collapsible Filter Section -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-0 overflow-hidden">
-                <div onclick="toggleCOAFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
-                    <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
-                        <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
-                        ${(!window._uiState.coaFilterOpen && (filterAccountId || filterType)) ? 
-                            `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
-                    </h3>
-                    <div class="flex items-center gap-3">
-                        <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.coaFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
-                        <i class="fas fa-chevron-${window._uiState.coaFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
+    const buildTree = (list) => {
+        const map = {}, roots = [];
+        list.forEach((node, index) => {
+            map[node.id] = index;
+            node.children = [];
+        });
+        list.forEach((node) => {
+            if (node.parentId && map[node.parentId] !== undefined) {
+                list[map[node.parentId]].children.push(node);
+            } else {
+                roots.push(node);
+            }
+        });
+        if (roots.length === list.length && list.length > 0) {
+            const types = ['ASSET', 'LIABILITY', 'EQUITY', 'INCOME', 'EXPENSE'];
+            const typeRoots = types.map(t => ({
+                id: `root_${t}`,
+                name: t.charAt(0) + t.slice(1).toLowerCase(),
+                code: '',
+                type: t,
+                isGroup: true,
+                children: list.filter(a => a.type === t)
+            }));
+            return typeRoots;
+        }
+        return roots;
+    };
+
+    const treeData = buildTree(JSON.parse(JSON.stringify(filteredAccounts)));
+
+    const renderNode = (node, depth = 0) => {
+        const isGroup = node.isGroup || (node.children && node.children.length > 0);
+        const isExpanded = window._coaExpandedNodes[node.id] || false;
+        const balance = node.id.startsWith('root_') ? 0 : db.getAccountBalance(node.id);
+        const balanceFormatted = formatCurrency(Math.abs(balance));
+        const balanceType = balance >= 0 ? 'Dr' : 'Cr';
+        
+        // Highlight match
+        const nameText = node.name;
+        const codeText = node.code || '';
+        let displayHTML = `${codeText ? `<span class="text-slate-400 font-mono text-[11px] mr-2">${codeText}</span>` : ''}${nameText}`;
+        
+        if (q) {
+            const regex = new RegExp(`(${q})`, 'gi');
+            displayHTML = displayHTML.replace(regex, '<mark class="bg-yellow-200 text-slate-900">$1</mark>');
+        }
+        
+        return `
+            <div class="group border-b border-gray-50 hover:bg-blue-50/20 transition-all">
+                <div class="flex items-center py-3 px-4" style="padding-left: ${depth * 24 + 16}px">
+                    <div class="w-8 flex items-center justify-center">
+                        ${isGroup ? `
+                            <button onclick="toggleCOANode('${node.id}', event)" class="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-blue-600 transition-colors mr-1">
+                                <i class="fas fa-chevron-right text-[10px] transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}"></i>
+                            </button>
+                            <i class="fas fa-folder text-yellow-500 text-sm"></i>
+                        ` : `
+                            <i class="far fa-file-alt text-slate-300 text-sm ml-7"></i>
+                        `}
+                    </div>
+                    <div class="flex-1 flex items-center gap-3 ml-2">
+                        <div class="flex flex-col">
+                            <span class="text-sm font-semibold text-gray-700 cursor-pointer hover:text-blue-600 transition-colors" onclick="${isGroup ? `toggleCOANode('${node.id}', event)` : `viewAccountLedger('${node.id}')`}">
+                                ${displayHTML}
+                            </span>
+                        </div>
+                        ${isGroup ? `
+                        <div class="hidden group-hover:flex items-center gap-1 animate-in fade-in zoom-in duration-200">
+                            <button onclick="editAccount('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-slate-600 shadow-sm">Edit</button>
+                            <button onclick="deleteAccount('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-red-500 shadow-sm">Delete</button>
+                            <button onclick="addChildAccount('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-blue-600 shadow-sm">Add Child</button>
+                            <button onclick="viewAccountLedger('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-slate-600 shadow-sm">Ledger</button>
+                        </div>
+                        ` : ''}
+                    </div>
+                    <div class="text-right">
+                        <span class="text-sm font-bold ${balance >= 0 ? 'text-blue-600' : 'text-red-500'}">${balanceFormatted}</span>
+                        <span class="text-[10px] text-gray-400 font-bold ml-1">${balanceType}</span>
                     </div>
                 </div>
+                <div class="node-children ${isExpanded ? 'block' : 'hidden'}">
+                    ${(node.children || []).map(child => renderNode(child, depth + 1)).join('')}
+                </div>
+            </div>
+        `;
+    };
 
-                <div class="${window._uiState.coaFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-                        <div>
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Pilih Akun</label>
-                            <select id="coaFilterAccountId" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white cursor-pointer font-sans">
-                                <option value="">-- Semua Akun --</option>
-                                ${allAccounts.map(a => `<option value="${a.id}" ${filterAccountId === a.id ? 'selected' : ''}>${a.code} - ${a.name}</option>`).join('')}
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Tipe Akun</label>
-                            <select id="coaFilterType" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50 focus:bg-white cursor-pointer font-sans">
-                                <option value="">-- Semua Tipe --</option>
-                                <option value="ASSET" ${filterType === 'ASSET' ? 'selected' : ''}>Aset (Harta)</option>
-                                <option value="LIABILITY" ${filterType === 'LIABILITY' ? 'selected' : ''}>Kewajiban (Hutang)</option>
-                                <option value="EQUITY" ${filterType === 'EQUITY' ? 'selected' : ''}>Ekuitas (Modal)</option>
-                                <option value="INCOME" ${filterType === 'INCOME' ? 'selected' : ''}>Pendapatan</option>
-                                <option value="EXPENSE" ${filterType === 'EXPENSE' ? 'selected' : ''}>Beban / Biaya</option>
-                            </select>
-                        </div>
+    mc.innerHTML = `
+        <div class="max-w-5xl mx-auto space-y-6 pb-20 animate-in fade-in duration-500">
+            <!-- Modern Search Bar Filter -->
+            <div class="flex flex-col md:flex-row items-center justify-between gap-4">
+                <div class="relative w-full md:w-96 group">
+                    <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                        <i class="fas fa-search text-slate-400 group-focus-within:text-blue-500 transition-colors"></i>
                     </div>
-                    <div class="flex gap-2 pt-4 mt-4 border-t border-slate-50">
-                        <button onclick="updateCOAFilters()" class="bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
-                            <i class="fas fa-search mr-2"></i> TAMPILKAN DATA
-                        </button>
-                        <button onclick="document.getElementById('coaFilterAccountId').value=''; document.getElementById('coaFilterType').value=''; updateCOAFilters()" class="bg-slate-50 hover:bg-slate-100 text-slate-400 px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">
-                            <i class="fas fa-undo mr-2"></i> RESET
-                        </button>
-                    </div>
+                    <input type="text" id="coaSearchInput" value="${window._coaFilters.q || ''}" 
+                        onkeyup="if(event.key==='Enter') applyCOASearch()"
+                        placeholder="Search accounts by name or code..." 
+                        class="block w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all shadow-sm">
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="expandAllCOA()" class="px-3 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-bold text-slate-600 hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm">
+                        <i class="fas fa-expand-arrows-alt"></i> EXPAND
+                    </button>
+                    <button onclick="collapseAllCOA()" class="px-3 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-bold text-slate-600 hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm">
+                        <i class="fas fa-compress-arrows-alt"></i> COLLAPSE
+                    </button>
                 </div>
             </div>
 
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div class="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/50 flex-wrap gap-4">
-                    <div>
-                        <h3 class="font-bold text-gray-700 text-lg">Daftar Akun</h3>
-                        <p class="text-xs text-gray-500">Kelola kategori keuangan perusahaan</p>
-                    </div>
-                    <button onclick="openAccountModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm whitespace-nowrap">
-                        <i class="fas fa-plus mr-2"></i>Tambah Akun
-                    </button>
+            <!-- Tree Container -->
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div class="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    <span>Account Name</span>
+                    <span>Balance</span>
                 </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse">
-                        <thead class="bg-gray-50 text-slate-500 text-[11px] uppercase tracking-wider font-semibold">
-                            <tr>
-                                <th class="px-6 py-3 border-b border-gray-100">Kode</th>
-                                <th class="px-6 py-3 border-b border-gray-100">Nama Akun</th>
-                                <th class="px-6 py-3 border-b border-gray-100">Tipe</th>
-                                <th class="px-6 py-3 border-b border-gray-100 text-right">Saldo</th>
-                                <th class="px-6 py-3 border-b border-gray-100">Status</th>
-                                <th class="px-6 py-3 border-b border-gray-100"></th>
-                            </tr>
-                        </thead>
-                        <tbody class="text-sm divide-y divide-gray-100">
-                            ${accounts.map(a => `
-                                <tr class="hover:bg-blue-50/30 transition-colors">
-                                    <td class="px-6 py-4 font-bold text-indigo-600">${a.code}</td>
-                                    <td class="px-6 py-4">
-                                        <div class="font-medium text-gray-700">${a.name}</div>
-                                        <div class="text-[10px] text-gray-400 italic">${a.description || '-'}</div>
-                                    </td>
-                                    <td class="px-6 py-4">
-                                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${getAccountTypeClass(a.type)}">${a.type}</span>
-                                    </td>
-                                    <td class="px-6 py-4 text-right font-bold ${db.getAccountBalance(a.id) < 0 ? 'text-red-500' : 'text-blue-600'}">
-                                        ${formatCurrency(Math.abs(db.getAccountBalance(a.id)))}
-                                    </td>
-                                    <td class="px-6 py-4">
-                                        <span class="inline-flex items-center px-2 py-1 rounded-full text-[10px] font-medium bg-green-100 text-green-700">
-                                            <span class="w-1.5 h-1.5 rounded-full bg-green-500 mr-1.5"></span> Aktif
-                                        </span>
-                                    </td>
-                                    <td class="px-6 py-4 text-right">
-                                        <div class="flex justify-end gap-2">
-                                            <button onclick="viewAccountMutasi('${a.id}')" class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-green-50 hover:text-green-600 transition-all" title="Lihat Mutasi"><i class="fas fa-list-ul text-xs"></i></button>
-                                            <button onclick="editAccount('${a.id}')" class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-blue-50 hover:text-blue-600 transition-all"><i class="fas fa-edit text-xs"></i></button>
-                                            <button onclick="deleteAccount('${a.id}')" class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-red-50 hover:text-red-600 transition-all"><i class="fas fa-trash text-xs"></i></button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            `).join('') || '<tr><td colspan="6" class="px-6 py-8 text-center text-gray-400 italic">Akun tidak ditemukan.</td></tr>'}
-                        </tbody>
-                    </table>
+                <div class="divide-y divide-slate-50">
+                    ${treeData.map(root => renderNode(root)).join('') || '<div class="p-12 text-center text-slate-400 italic">No accounts found.</div>'}
                 </div>
+            </div>
+            
+            <!-- Floating Add Button -->
+            <div class="fixed bottom-8 right-8">
+                <button onclick="openAccountModal()" class="w-14 h-14 bg-blue-600 text-white rounded-full shadow-2xl flex items-center justify-center hover:bg-blue-700 hover:scale-110 transition-all ring-4 ring-white">
+                    <i class="fas fa-plus text-xl"></i>
+                </button>
             </div>
         </div>
     `;
+
+    // Focus search input after render
+    const input = document.getElementById('coaSearchInput');
+    if (input) {
+        input.focus();
+        const val = input.value;
+        input.value = '';
+        input.value = val;
+    }
+};
+
+window.toggleCOANode = function(id, event) {
+    if (event) event.stopPropagation();
+    window._coaExpandedNodes[id] = !window._coaExpandedNodes[id];
+    renderFinanceAccounts();
+};
+
+window.expandAllCOA = function() {
+    const accounts = db.read('accounts') || [];
+    accounts.forEach(a => {
+        if (a.isGroup) window._coaExpandedNodes[a.id] = true;
+    });
+    // Add roots
+    ['root_ASSET', 'root_LIABILITY', 'root_EQUITY', 'root_INCOME', 'root_EXPENSE'].forEach(r => window._coaExpandedNodes[r] = true);
+    renderFinanceAccounts();
+};
+
+window.collapseAllCOA = function() {
+    window._coaExpandedNodes = {};
+    renderFinanceAccounts();
+};
+
+window.addChildAccount = function(parentId) {
+    openAccountModal(null, parentId);
+};
+
+window.viewAccountLedger = function(accountId) {
+    navigateTo('finance-journal', { accountId: accountId });
 };
 
 window.updateCOAFilters = function() {
@@ -302,22 +431,13 @@ window.updateCOAFilters = function() {
     renderFinanceAccounts();
 };
 
-function getAccountTypeClass(type) {
-    const map = {
-        'ASSET': 'bg-green-100 text-green-700',
-        'LIABILITY': 'bg-orange-100 text-orange-700',
-        'EQUITY': 'bg-purple-100 text-purple-700',
-        'INCOME': 'bg-indigo-100 text-indigo-700',
-        'EXPENSE': 'bg-red-100 text-red-700'
-    };
-    return map[type] || 'bg-gray-100 text-gray-700';
-}
-
-window.openAccountModal = function (accountId = null) {
+window.openAccountModal = function (accountId = null, parentId = null) {
     let acc = null;
     if (accountId) {
         acc = db.findById('accounts', accountId);
     }
+    const accounts = db.read('accounts') || [];
+    
     const body = `
         <form id="accountForm" class="space-y-4">
             <input type="hidden" id="editAccountId" value="${acc ? acc.id : ''}">
@@ -343,14 +463,24 @@ window.openAccountModal = function (accountId = null) {
                     </select>
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-gray-500 mb-1">Saldo Awal (Manual)</label>
-                    <input type="number" id="accOpeningBalance" value="${acc && acc.openingBalance !== undefined ? acc.openingBalance : ''}" class="w-full border border-gray-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="0">
+                    <label class="block text-xs font-bold text-gray-500 mb-1">Akun Induk (Parent)</label>
+                    <select id="accParentId" class="w-full border border-gray-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                        <option value="">-- Tanpa Induk --</option>
+                        ${accounts.filter(a => a.isGroup).map(a => `<option value="${a.id}" ${(acc ? acc.parentId : parentId) === a.id ? 'selected' : ''}>${a.code} - ${a.name}</option>`).join('')}
+                    </select>
                 </div>
             </div>
-
+            <div class="flex items-center gap-2 py-2">
+                <input type="checkbox" id="accIsGroup" ${acc && acc.isGroup ? 'checked' : ''} class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                <label for="accIsGroup" class="text-sm font-bold text-gray-700">Akun ini adalah Group (Bisa punya anak)</label>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-500 mb-1">Saldo Awal</label>
+                <input type="number" id="accOpeningBalance" value="${acc && acc.openingBalance !== undefined ? acc.openingBalance : ''}" class="w-full border border-gray-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="0">
+            </div>
             <div>
                 <label class="block text-xs font-bold text-gray-500 mb-1">Deskripsi</label>
-                <textarea id="accDesc" class="w-full border border-gray-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" rows="2" placeholder="Penjelasan singkat penggunaan akun...">${acc && acc.description ? acc.description : ''}</textarea>
+                <textarea id="accDescription" class="w-full border border-gray-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" rows="2" placeholder="Penjelasan singkat penggunaan akun...">${acc && acc.description ? acc.description : ''}</textarea>
             </div>
         </form>
     `;
@@ -366,14 +496,16 @@ window.saveAccount = async function () {
     const code = document.getElementById('accCode').value;
     const name = document.getElementById('accName').value;
     const type = document.getElementById('accType').value;
-    const description = document.getElementById('accDesc').value;
+    const parentId = document.getElementById('accParentId').value;
+    const isGroup = document.getElementById('accIsGroup').checked;
+    const description = document.getElementById('accDescription').value;
     const openingBalanceStr = document.getElementById('accOpeningBalance')?.value;
     const openingBalance = openingBalanceStr ? parseFloat(openingBalanceStr) : 0;
 
     if (!code || !name) return alert('Mohon isi kode dan nama akun.');
 
     try {
-        await api.saveAccount({ id: editId, code, name, type, description, openingBalance, status: 'ACTIVE' });
+        await api.saveAccount({ id: editId, code, name, type, parentId, isGroup, description, openingBalance, status: 'ACTIVE' });
         showToast(editId ? 'Akun berhasil diupdate' : 'Akun berhasil ditambahkan');
         closeModal();
         renderFinanceAccounts();
@@ -550,224 +682,268 @@ window.exportMutasiToPDF = function(accountId, startDate, endDate) {
 };
 
 window.renderFinanceExpenses = function () {
-    document.getElementById('pageTitle').innerText = 'Manajemen Pengeluaran & Biaya';
+    document.getElementById('pageTitle').innerText = 'Pengeluaran Kas & Bank';
     const mc = document.getElementById('main-content');
     
-    // Filters logic
-    const fDateStart = window._expenseFilters?.start || '';
-    const fDateEnd = window._expenseFilters?.end || '';
-    const fCoaId = window._expenseFilters?.coaId || '';
-    const allCoa = db.read('accounts').filter(a => a.type === 'EXPENSE');
+    window._uiState.expenseActiveTab = window._uiState.expenseActiveTab || 'list';
+    const activeTab = window._uiState.expenseActiveTab;
 
+    window._expenseFilters = window._expenseFilters || { q: '', start: '', end: '', coaId: '' };
+    const f = window._expenseFilters;
+    
     let expenses = db.read('expenses') || [];
-    if (fDateStart) expenses = expenses.filter(e => e.date >= fDateStart);
-    if (fDateEnd) expenses = expenses.filter(e => e.date <= fDateEnd);
-    if (fCoaId) expenses = expenses.filter(e => e.toAccountId === fCoaId);
+    if (f.q) {
+        const q = f.q.toLowerCase();
+        expenses = expenses.filter(e => e.expenseNo.toLowerCase().includes(q) || e.description.toLowerCase().includes(q));
+    }
+    if (f.start) expenses = expenses.filter(e => e.date >= f.start);
+    if (f.end) expenses = expenses.filter(e => e.date <= f.end);
 
-    mc.innerHTML = `
-        <div class="flex flex-col gap-6">
-            <!-- Filter Section -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-                <div onclick="toggleExpenseFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
-                    <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
-                        <i class="fas fa-filter text-red-600"></i> FILTER PENCARIAN
-                        ${(fDateStart || fDateEnd || fCoaId) ? `<span class="ml-2 px-2 py-0.5 bg-red-50 text-red-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
-                    </h3>
-                    <div class="flex items-center gap-3">
-                        <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.expFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
-                        <i class="fas fa-chevron-${window._uiState.expFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
-                    </div>
-                </div>
-                <div class="${window._uiState.expFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Dari Tanggal</label>
-                            <input type="date" id="expFStart" value="${fDateStart}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 outline-none focus:border-red-500 transition-all">
-                        </div>
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Sampai Tanggal</label>
-                            <input type="date" id="expFEnd" value="${fDateEnd}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 outline-none focus:border-red-500 transition-all">
-                        </div>
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nama COA (Biaya)</label>
-                            <select id="expFCoa" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 outline-none focus:border-red-500 transition-all">
-                                <option value="">-- Semua Kategori --</option>
-                                ${allCoa.map(a => `<option value="${a.id}" ${fCoaId === a.id ? 'selected' : ''}>${a.code} - ${a.name}</option>`).join('')}
-                            </select>
-                        </div>
-                    </div>
-                    <div class="flex gap-2 pt-6 mt-6 border-t border-slate-50">
-                        <button onclick="applyExpenseFilters()" class="bg-red-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
-                            CARI DATA
-                        </button>
-                        <button onclick="resetExpenseFilters()" class="bg-slate-50 hover:bg-slate-100 text-slate-400 px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">
-                            RESET
-                        </button>
-                    </div>
-                </div>
+    const totalAmount = expenses.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
+
+    let contentHtml = '';
+    // Reusable Filter Bar
+    const filterBarHtml = `
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex flex-col md:flex-row items-center gap-3 mb-4">
+            <div class="relative flex-1 group w-full">
+                <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors"></i>
+                <input type="text" onkeyup="if(event.key==='Enter') { window._expenseFilters.q=this.value; renderFinanceExpenses(); }"
+                    value="${f.q || ''}" placeholder="Cari di ${activeTab === 'list' ? 'Daftar' : 'Riwayat'}..." 
+                    class="w-full pl-11 pr-4 py-2.5 bg-slate-50/50 rounded-xl border border-slate-100 focus:border-blue-500 focus:bg-white text-sm font-semibold text-slate-700 outline-none transition-all">
             </div>
-
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                    <div>
-                        <h3 class="font-bold text-gray-700 text-lg">Riwayat Pengeluaran (Biaya)</h3>
-                        <p class="text-xs text-gray-500 text-red-500">Catat setiap pengeluaran kas perusahaan</p>
-                    </div>
-                    <button onclick="openExpenseModal()" class="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-bold hover:bg-red-700 transition-colors shadow-sm">
-                        <i class="fas fa-plus mr-2"></i>Catat Biaya
-                    </button>
+            <div class="flex items-center gap-3 w-full md:w-auto px-1">
+                <div class="px-5 py-1.5 bg-red-50 rounded-xl border border-red-100 flex flex-col items-center justify-center min-w-[160px] h-10 shadow-sm">
+                    <span class="text-[9px] font-black text-red-400 uppercase tracking-widest leading-none mb-0.5">Total ${activeTab === 'list' ? 'Item' : 'Riwayat'}</span>
+                    <span class="text-sm font-black text-red-700 leading-none">${formatCurrency(totalAmount)}</span>
                 </div>
+                ${activeTab === 'list' ? `
+                <button onclick="openExpenseModal()" class="flex items-center justify-center gap-2 px-6 h-10 bg-blue-600 hover:bg-slate-900 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-200 transition-all active:scale-95 whitespace-nowrap">
+                    <i class="fas fa-plus"></i> INPUT PENGELUARAN
+                </button>` : ''}
+            </div>
+        </div>
+    `;
+
+    if (activeTab === 'list') {
+        contentHtml = filterBarHtml + `
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
-                        <thead class="bg-gray-50 text-slate-500 text-[11px] uppercase tracking-wider font-semibold">
-                            <tr>
-                                <th class="px-6 py-3 border-b border-gray-100">Tgl & Ref</th>
-                                <th class="px-6 py-3 border-b border-gray-100">Kebutuhan</th>
-                                <th class="px-6 py-3 border-b border-gray-100">Nama COA</th>
-                                <th class="px-6 py-3 border-b border-gray-100">Kas Bank</th>
-                                <th class="px-6 py-3 border-b border-gray-100 text-right">Jumlah</th>
+                        <thead>
+                            <tr class="bg-slate-50/50">
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">TGL & REFERENSI</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">KEBUTUHAN</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">KATEGORI (COA)</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">KAS / BANK</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">JUMLAH</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">AKSI</th>
                             </tr>
                         </thead>
-                        <tbody class="text-sm divide-y divide-gray-100">
+                        <tbody class="divide-y divide-slate-50">
                             ${expenses.map(e => `
-                                <tr class="hover:bg-red-50/30 transition-colors">
+                                <tr class="hover:bg-slate-50/50 transition-colors group">
                                     <td class="px-6 py-4">
-                                        <div class="text-[10px] text-gray-400 font-bold">${formatDate(e.date).slice(0, 10)}</div>
-                                        <div class="font-bold text-gray-800">${e.expenseNo}</div>
+                                        <div class="text-[10px] text-slate-400 font-bold mb-1">${formatDate(e.date).slice(0, 10)}</div>
+                                        <div class="inline-flex items-center px-2 py-1 bg-red-50 text-red-600 rounded-lg font-bold text-[10px] border border-red-100">${e.expenseNo}</div>
                                     </td>
-                                    <td class="px-6 py-4 text-gray-600 font-medium">${e.description}</td>
                                     <td class="px-6 py-4">
-                                        <span class="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-md text-[10px] uppercase font-bold">
-                                            ${db.findById('accounts', e.toAccountId)?.name || '-'}
+                                        <div class="text-sm font-bold text-slate-700">${e.description}</div>
+                                        <div class="text-[10px] text-slate-400 mt-0.5 font-medium italic opacity-70">${e.method || 'Tunai'}</div>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <span class="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[9px] font-black uppercase tracking-widest">${db.findById('accounts', e.toAccountId)?.name || '-'}</span>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <span class="text-xs font-bold text-slate-600 uppercase flex items-center gap-2">
+                                            <i class="fas fa-university text-slate-300 text-[10px]"></i>
+                                            ${db.findById('accounts', e.fromAccountId)?.name || '-'}
                                         </span>
                                     </td>
-                                    <td class="px-6 py-4 text-gray-600 text-xs font-bold uppercase">${db.findById('accounts', e.fromAccountId)?.name || '-'}</td>
                                     <td class="px-6 py-4 text-right font-black text-red-600">${formatCurrency(e.amount)}</td>
+                                    <td class="px-6 py-4 text-right">
+                                        <button onclick="handleExpenseAction('view', '${e.id}')" class="w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-blue-600 transition-all">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                    </td>
                                 </tr>
-                            `).join('') || '<tr><td colspan="5" class="px-6 py-12 text-center text-gray-400 italic">Belum ada pengeluaran yang ditemukan.</td></tr>'}
+                            `).join('') || '<tr><td colspan="6" class="px-6 py-10 text-center text-slate-400 italic">Tidak ada data.</td></tr>'}
                         </tbody>
                     </table>
                 </div>
             </div>
+        `;
+    } else if (activeTab === 'history') {
+        contentHtml = filterBarHtml + `
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in slide-in-from-bottom-4 duration-500">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50/50">
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">TANGGAL</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">NOMOR</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">KETERANGAN</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">JUMLAH</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50">
+                        ${expenses.map(e => `
+                            <tr class="hover:bg-slate-50 transition-colors">
+                                <td class="px-6 py-4 text-sm text-slate-600">${formatDate(e.date)}</td>
+                                <td class="px-6 py-4 font-bold text-slate-700">${e.expenseNo}</td>
+                                <td class="px-6 py-4 text-sm text-slate-500">${e.description}</td>
+                                <td class="px-6 py-4 text-right font-black text-red-600">${formatCurrency(e.amount)}</td>
+                            </tr>
+                        `).join('') || '<tr><td colspan="4" class="px-6 py-10 text-center text-slate-400">Belum ada riwayat.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    mc.innerHTML = `
+        <div class="flex flex-col gap-4 animate-in fade-in duration-500">
+            <div class="flex items-center gap-8 border-b border-slate-200 mb-2 px-2">
+                <button onclick="window._uiState.expenseActiveTab='list'; renderFinanceExpenses()" 
+                    class="pb-3 text-sm font-bold transition-all relative ${activeTab === 'list' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
+                    Daftar Pengeluaran
+                    ${activeTab === 'list' ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-sm"></div>' : ''}
+                </button>
+                <button onclick="window._uiState.expenseActiveTab='history'; renderFinanceExpenses()" 
+                    class="pb-3 text-sm font-bold transition-all relative ${activeTab === 'history' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
+                    Riwayat Pengeluaran
+                    ${activeTab === 'history' ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-sm"></div>' : ''}
+                </button>
+            </div>
+            ${contentHtml}
         </div>
     `;
-};
-
-window.toggleExpenseFilter = function() {
-    window._uiState.expFilterOpen = !window._uiState.expFilterOpen;
-    renderFinanceExpenses();
-};
-
-window.applyExpenseFilters = function() {
-    window._expenseFilters = {
-        start: document.getElementById('expFStart').value,
-        end: document.getElementById('expFEnd').value,
-        coaId: document.getElementById('expFCoa').value
-    };
-    renderFinanceExpenses();
-};
-
-window.resetExpenseFilters = function() {
-    window._expenseFilters = { start: '', end: '', coaId: '' };
-    renderFinanceExpenses();
 };
 
 window.renderFinanceReceipts = function () {
     document.getElementById('pageTitle').innerText = 'Penerimaan Kas & Bank';
     const mc = document.getElementById('main-content');
     
-    // Filters logic
-    const fDateStart = window._receiptFilters?.start || '';
-    const fDateEnd = window._receiptFilters?.end || '';
-    const fCoaId = window._receiptFilters?.coaId || '';
-    const allCoa = db.read('accounts').filter(a => a.type === 'INCOME' || a.type === 'EQUITY' || a.type === 'LIABILITY');
+    window._uiState.receiptActiveTab = window._uiState.receiptActiveTab || 'list';
+    const activeTab = window._uiState.receiptActiveTab;
 
+    window._receiptFilters = window._receiptFilters || { q: '', start: '', end: '', coaId: '' };
+    const f = window._receiptFilters;
+    
     let receipts = db.read('receipts') || [];
-    if (fDateStart) receipts = receipts.filter(r => r.date >= fDateStart);
-    if (fDateEnd) receipts = receipts.filter(r => r.date <= fDateEnd);
-    if (fCoaId) receipts = receipts.filter(r => r.sourceAccountId === fCoaId);
+    if (f.q) {
+        const q = f.q.toLowerCase();
+        receipts = receipts.filter(r => r.receiptNo.toLowerCase().includes(q) || r.description.toLowerCase().includes(q));
+    }
+    if (f.start) receipts = receipts.filter(r => r.date >= f.start);
+    if (f.end) receipts = receipts.filter(r => r.date <= f.end);
 
-    mc.innerHTML = `
-        <div class="flex flex-col gap-6">
-            <!-- Filter Section -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-                <div onclick="toggleReceiptFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
-                    <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
-                        <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
-                        ${(fDateStart || fDateEnd || fCoaId) ? `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
-                    </h3>
-                    <div class="flex items-center gap-3">
-                        <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.recFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
-                        <i class="fas fa-chevron-${window._uiState.recFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
-                    </div>
-                </div>
-                <div class="${window._uiState.recFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-end">
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Dari Tanggal</label>
-                            <input type="date" id="recFStart" value="${fDateStart}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 outline-none focus:border-blue-500 transition-all">
-                        </div>
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Sampai Tanggal</label>
-                            <input type="date" id="recFEnd" value="${fDateEnd}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 outline-none focus:border-blue-500 transition-all">
-                        </div>
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Sumber COA</label>
-                            <select id="recFCoa" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 outline-none focus:border-blue-500 transition-all">
-                                <option value="">-- Semua Sumber --</option>
-                                ${allCoa.map(a => `<option value="${a.id}" ${fCoaId === a.id ? 'selected' : ''}>${a.code} - ${a.name}</option>`).join('')}
-                            </select>
-                        </div>
-                    </div>
-                    <div class="flex gap-2 pt-6 mt-6 border-t border-slate-50">
-                        <button onclick="applyReceiptFilters()" class="bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
-                            CARI DATA
-                        </button>
-                        <button onclick="resetReceiptFilters()" class="bg-slate-50 hover:bg-slate-100 text-slate-400 px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">
-                            RESET
-                        </button>
-                    </div>
-                </div>
+    const totalAmount = receipts.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+
+    let contentHtml = '';
+    // Reusable Filter Bar
+    const filterBarHtml = `
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex flex-col md:flex-row items-center gap-3 mb-4">
+            <div class="relative flex-1 group w-full">
+                <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors"></i>
+                <input type="text" onkeyup="if(event.key==='Enter') { window._receiptFilters.q=this.value; renderFinanceReceipts(); }"
+                    value="${f.q || ''}" placeholder="Cari di ${activeTab === 'list' ? 'Daftar' : 'Riwayat'}..." 
+                    class="w-full pl-11 pr-4 py-2.5 bg-slate-50/50 rounded-xl border border-slate-100 focus:border-blue-500 focus:bg-white text-sm font-semibold text-slate-700 outline-none transition-all">
             </div>
-
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div class="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                    <div>
-                        <h3 class="font-bold text-gray-700 text-lg">Riwayat Penerimaan</h3>
-                        <p class="text-xs text-gray-500 text-blue-500">Catat setiap uang yang masuk ke kas/bank perusahaan</p>
-                    </div>
-                    <button onclick="openReceiptModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors shadow-sm">
-                        <i class="fas fa-plus mr-2"></i>Catat Penerimaan
-                    </button>
+            <div class="flex items-center gap-3 w-full md:w-auto px-1">
+                <div class="px-5 py-1.5 bg-blue-50 rounded-xl border border-blue-100 flex flex-col items-center justify-center min-w-[160px] h-10 shadow-sm">
+                    <span class="text-[9px] font-black text-blue-400 uppercase tracking-widest leading-none mb-0.5">Total ${activeTab === 'list' ? 'Item' : 'Riwayat'}</span>
+                    <span class="text-sm font-black text-blue-700 leading-none">${formatCurrency(totalAmount)}</span>
                 </div>
+                ${activeTab === 'list' ? `
+                <button onclick="openReceiptModal()" class="flex items-center justify-center gap-2 px-6 h-10 bg-blue-600 hover:bg-slate-900 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-200 transition-all active:scale-95 whitespace-nowrap">
+                    <i class="fas fa-plus"></i> INPUT PENERIMAAN
+                </button>` : ''}
+            </div>
+        </div>
+    `;
+
+    if (activeTab === 'list') {
+        contentHtml = filterBarHtml + `
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
-                        <thead class="bg-gray-50 text-slate-500 text-[11px] uppercase tracking-wider font-semibold">
-                            <tr>
-                                <th class="px-6 py-3 border-b border-gray-100">Tgl & Ref</th>
-                                <th class="px-6 py-3 border-b border-gray-100">Keterangan</th>
-                                <th class="px-6 py-3 border-b border-gray-100">Sumber (COA)</th>
-                                <th class="px-6 py-3 border-b border-gray-100">Penerima (Kas)</th>
-                                <th class="px-6 py-3 border-b border-gray-100 text-right">Jumlah</th>
+                        <thead>
+                            <tr class="bg-slate-50/50">
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">TGL & REFERENSI</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">KETERANGAN</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">SUMBER (COA)</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">JUMLAH</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">AKSI</th>
                             </tr>
                         </thead>
-                        <tbody class="text-sm divide-y divide-gray-100">
+                        <tbody class="divide-y divide-slate-50">
                             ${receipts.map(r => `
-                                <tr class="hover:bg-blue-50/30 transition-colors">
+                                <tr class="hover:bg-slate-50/50 transition-colors group">
                                     <td class="px-6 py-4">
-                                        <div class="text-[10px] text-gray-400 font-bold">${formatDate(r.date).slice(0, 10)}</div>
-                                        <div class="font-bold text-gray-800">${r.receiptNo}</div>
+                                        <div class="text-[10px] text-slate-400 font-bold mb-1">${formatDate(r.date).slice(0, 10)}</div>
+                                        <div class="inline-flex items-center px-2 py-1 bg-blue-50 text-blue-600 rounded-lg font-bold text-[10px] border border-blue-100">${r.receiptNo}</div>
                                     </td>
-                                    <td class="px-6 py-4 text-gray-600 font-medium">${r.description}</td>
-                                    <td class="px-6 py-4 text-gray-500 text-xs font-bold uppercase tracking-tight">${db.findById('accounts', r.sourceAccountId)?.name || '-'}</td>
-                                    <td class="px-6 py-4 text-gray-500 text-xs font-bold uppercase tracking-tight">${db.findById('accounts', r.targetAccountId)?.name || '-'}</td>
+                                    <td class="px-6 py-4">
+                                        <div class="text-sm font-bold text-slate-700">${r.description}</div>
+                                        <div class="text-[10px] text-slate-400 mt-0.5 font-medium italic opacity-70">${r.method || 'Transfer'}</div>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <span class="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[9px] font-black uppercase tracking-widest">${db.findById('accounts', r.sourceAccountId)?.name || '-'}</span>
+                                    </td>
                                     <td class="px-6 py-4 text-right font-black text-blue-600">${formatCurrency(r.amount)}</td>
+                                    <td class="px-6 py-4 text-right">
+                                        <button onclick="handleReceiptAction('view', '${r.id}')" class="w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-blue-600 transition-all">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                    </td>
                                 </tr>
-                            `).join('') || '<tr><td colspan="5" class="px-6 py-12 text-center text-gray-400 italic">Belum ada penerimaan yang ditemukan.</td></tr>'}
+                            `).join('') || '<tr><td colspan="5" class="px-6 py-10 text-center text-slate-400 italic">Tidak ada data.</td></tr>'}
                         </tbody>
                     </table>
                 </div>
             </div>
+        `;
+    } else if (activeTab === 'history') {
+        contentHtml = filterBarHtml + `
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in slide-in-from-bottom-4 duration-500">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50/50">
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">TANGGAL</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">NOMOR</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">KETERANGAN</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">JUMLAH</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50">
+                        ${receipts.map(r => `
+                            <tr class="hover:bg-slate-50 transition-colors">
+                                <td class="px-6 py-4 text-sm text-slate-600">${formatDate(r.date)}</td>
+                                <td class="px-6 py-4 font-bold text-slate-700">${r.receiptNo}</td>
+                                <td class="px-6 py-4 text-sm text-slate-500">${r.description}</td>
+                                <td class="px-6 py-4 text-right font-black text-blue-600">${formatCurrency(r.amount)}</td>
+                            </tr>
+                        `).join('') || '<tr><td colspan="4" class="px-6 py-10 text-center text-slate-400">Belum ada riwayat.</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    }
+
+    mc.innerHTML = `
+        <div class="flex flex-col gap-4 animate-in fade-in duration-500">
+            <div class="flex items-center gap-8 border-b border-slate-200 mb-2 px-2">
+                <button onclick="window._uiState.receiptActiveTab='list'; renderFinanceReceipts()" 
+                    class="pb-3 text-sm font-bold transition-all relative ${activeTab === 'list' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
+                    Daftar Penerimaan
+                    ${activeTab === 'list' ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-sm"></div>' : ''}
+                </button>
+                <button onclick="window._uiState.receiptActiveTab='history'; renderFinanceReceipts()" 
+                    class="pb-3 text-sm font-bold transition-all relative ${activeTab === 'history' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
+                    Riwayat Penerimaan
+                    ${activeTab === 'history' ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-sm"></div>' : ''}
+                </button>
+            </div>
+            ${contentHtml}
         </div>
     `;
 };
@@ -814,62 +990,114 @@ window.resetReceiptFilters = function() {
 };
 
 window.openReceiptModal = function () {
+    const mc = document.getElementById('main-content');
+    window.renderBreadcrumb(['Finance', 'Penerimaan Kas & Bank', 'Catat Penerimaan']);
     const assetAccounts = db.read('accounts').filter(a => a.type === 'ASSET' && a.code.startsWith('11'));
     const allAccounts = db.read('accounts');
 
-    const body = `
-        <form id="receiptForm" class="space-y-8 py-6">
-            <div class="grid grid-cols-2 gap-8">
-                <div class="col-span-2 md:col-span-1">
-                    <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Tanggal Terima</label>
-                    <input type="date" id="recDate" class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all bg-slate-50/30" value="${new Date().toISOString().slice(0, 10)}">
+    mc.innerHTML = `
+        <div class="-mx-4 -mt-4 sm:-mx-6 sm:-mt-6 mb-6 bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-end gap-3 sticky top-0 z-10">
+            <button onclick="renderFinanceReceipts()" class="px-5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-all">BATAL</button>
+            <button onclick="saveReceipt()" class="flex items-center gap-2 px-6 py-2 text-sm font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all active:scale-95">
+                <span class="w-2 h-2 rounded-full bg-white inline-block"></span> SIMPAN PENERIMAAN
+            </button>
+        </div>
+        <div class="space-y-6">
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                <div class="px-8 py-4 border-b border-slate-100">
+                    <span class="text-[10px] font-black text-blue-600 uppercase tracking-widest">
+                        <i class="fas fa-circle text-[6px] mr-1"></i> INFORMASI PENERIMAAN
+                    </span>
                 </div>
-                <div class="col-span-2 md:col-span-1">
-                    <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Jumlah diterima (IDR)</label>
-                    <input type="text" id="recAmount" 
-                           oninput="this.value = formatAmountInput(this.value)"
-                           class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all bg-slate-50/30" 
-                           placeholder="0" required>
+                <div class="px-8 py-6">
+                    <div class="grid grid-cols-1 gap-5">
+                        <div class="grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Tanggal Terima <span class="text-red-400">*</span></label>
+                                <input type="date" id="recDate" value="${new Date().toISOString().slice(0,10)}" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Jumlah Diterima (IDR) <span class="text-red-400">*</span></label>
+                                <input type="text" id="recAmount" oninput="this.value=formatAmountInput(this.value)" placeholder="0" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-blue-600 outline-none focus:border-blue-500 focus:bg-white transition-all">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Masuk ke (Kas/Bank Penerima) <span class="text-red-400">*</span></label>
+                                <div class="relative" id="rec_target_account_dropdown_wrapper">
+                                    <!-- Trigger -->
+                                    <button type="button" id="rec_target_account_trigger"
+                                        onclick="toggleFinanceDropdown('rec_target_account_dropdown')"
+                                        class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all flex items-center justify-between hover:border-blue-400">
+                                        <span id="rec_target_account_label" class="text-slate-700">${assetAccounts[0] ? `${assetAccounts[0].name} (${assetAccounts[0].code})` : '-- Pilih Kas/Bank --'}</span>
+                                        <i class="fas fa-chevron-down text-slate-300 text-xs transition-transform" id="rec_target_account_chevron"></i>
+                                    </button>
+                                    <input type="hidden" id="recTargetAccount" value="${assetAccounts[0] ? assetAccounts[0].id : ''}">
+                                    <!-- Dropdown Panel -->
+                                    <div id="rec_target_account_dropdown" class="hidden absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                        <!-- Search -->
+                                        <div class="p-3 border-b border-slate-100">
+                                            <div class="relative">
+                                                <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+                                                <input type="text" id="rec_target_account_search_input" placeholder="Cari Kas/Bank..." oninput="filterFinanceDropdown('rec_target_account', this.value)"
+                                                    class="w-full pl-9 pr-4 py-2 bg-slate-50 rounded-xl border border-slate-100 text-sm font-semibold text-slate-700 outline-none focus:border-blue-400">
+                                            </div>
+                                        </div>
+                                        <!-- Options List -->
+                                        <div id="rec_target_account_options" class="max-h-56 overflow-y-auto py-1">
+                                            ${assetAccounts.map(a => `<div class="px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer transition-colors" onclick="selectFinanceDropdown('rec_target_account', '${a.id}', '${a.name} (${a.code})')">${a.name} (${a.code})</div>`).join('')}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Sumber COA (Asal Dana) <span class="text-red-400">*</span></label>
+                                <div class="relative" id="rec_source_account_dropdown_wrapper">
+                                    <!-- Trigger -->
+                                    <button type="button" id="rec_source_account_trigger"
+                                        onclick="toggleFinanceDropdown('rec_source_account_dropdown')"
+                                        class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all flex items-center justify-between hover:border-blue-400">
+                                        <span id="rec_source_account_label" class="text-slate-400">- Pilih Akun Sumber -</span>
+                                        <i class="fas fa-chevron-down text-slate-300 text-xs transition-transform" id="rec_source_account_chevron"></i>
+                                    </button>
+                                    <input type="hidden" id="recSourceAccount" value="">
+                                    <!-- Dropdown Panel -->
+                                    <div id="rec_source_account_dropdown" class="hidden absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                        <!-- Search -->
+                                        <div class="p-3 border-b border-slate-100">
+                                            <div class="relative">
+                                                <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+                                                <input type="text" id="rec_source_account_search_input" placeholder="Cari Akun..." oninput="filterFinanceDropdown('rec_source_account', this.value)"
+                                                    class="w-full pl-9 pr-4 py-2 bg-slate-50 rounded-xl border border-slate-100 text-sm font-semibold text-slate-700 outline-none focus:border-blue-400">
+                                            </div>
+                                        </div>
+                                        <!-- Options List -->
+                                        <div id="rec_source_account_options" class="max-h-56 overflow-y-auto py-1">
+                                            ${allAccounts.map(a => `<div class="px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer transition-colors" onclick="selectFinanceDropdown('rec_source_account', '${a.id}', '${a.code} - ${a.name}')">${a.code} - ${a.name}</div>`).join('')}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Metode Penerimaan</label>
+                                <select id="recMethod" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all">
+                                    <option value="Transfer">Transfer Bank</option>
+                                    <option value="Tunai">Tunai / Cash</option>
+                                    <option value="Cek/Giro">Cek / Giro</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Keterangan Transaksi</label>
+                                <textarea id="recDesc" rows="2" placeholder="Tuliskan alasan atau detail penerimaan dana..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all resize-none"></textarea>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
-            
-            <div class="grid grid-cols-2 gap-8">
-                <div class="col-span-2 md:col-span-1">
-                    <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Masuk Ke (Kas/Bank Penerima)</label>
-                    <select id="recTargetAccount" class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all bg-slate-50/30">
-                        ${assetAccounts.map(a => `<option value="${a.id}">${a.name} (${a.code})</option>`).join('')}
-                    </select>
-                </div>
-                <div class="col-span-2 md:col-span-1">
-                    <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Sumber COA (Asal Dana)</label>
-                    <select id="recSourceAccount" class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all bg-slate-50/30">
-                        <option value="">- Pilih Akun Sumber -</option>
-                        ${allAccounts.map(a => `<option value="${a.id}">${a.code} - ${a.name}</option>`).join('')}
-                    </select>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-2 gap-8">
-                <div class="col-span-2 md:col-span-1">
-                    <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Metode Penerimaan</label>
-                    <select id="recMethod" class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all bg-slate-50/30">
-                        <option value="Transfer">Transfer Bank</option>
-                        <option value="Tunai">Tunai / Cash</option>
-                        <option value="Cek/Giro">Cek / Giro</option>
-                    </select>
-                </div>
-                <div class="col-span-2 md:col-span-1">
-                    <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Keterangan Transaksi</label>
-                    <textarea id="recDesc" class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition-all bg-slate-50/30" rows="2" placeholder="Tuliskan alasan atau detail penerimaan dana..."></textarea>
-                </div>
-            </div>
-        </form>
+        </div>
     `;
-    const footer = `
-        <button onclick="saveReceipt()" class="px-8 py-3 bg-blue-600 text-white rounded-lg text-xs font-black uppercase tracking-widest shadow-lg hover:bg-slate-900 transition-all active:scale-95">Simpan Penerimaan</button>
-        <button onclick="closeModal()" class="px-5 py-3 bg-gray-100 text-gray-500 rounded-lg text-xs font-black uppercase tracking-widest mr-2 hover:bg-gray-200 transition-all">Batal</button>
-    `;
-    showModal('Catat Penerimaan Kas & Bank', body, footer, 'xl');
 };
 
 window.saveReceipt = async function () {
@@ -886,7 +1114,6 @@ window.saveReceipt = async function () {
 
     try {
         await api.saveReceipt({ date, amount, targetAccountId, sourceAccountId, method, description });
-        closeModal();
         showToast('Penerimaan berhasil dicatat', 'success');
         renderFinanceReceipts();
     } catch (err) {
@@ -895,71 +1122,124 @@ window.saveReceipt = async function () {
 };
 
 window.openExpenseModal = function () {
+    const mc = document.getElementById('main-content');
+    window.renderBreadcrumb(['Finance', 'Pengeluaran Kas & Bank', 'Catat Pengeluaran']);
     const assetAccounts = db.read('accounts').filter(a => a.type === 'ASSET' && a.code.startsWith('11'));
     const expenseAccounts = db.read('accounts').filter(a => a.type === 'EXPENSE');
     const depts = db.read('departments');
 
-    const body = `
-        <form id="expenseForm" class="space-y-8 py-6">
-            <div class="grid grid-cols-2 gap-8">
-                <div>
-                    <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Tanggal di bayar</label>
-                    <input type="date" id="expDate" class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-red-500/10 focus:border-red-500 outline-none transition-all bg-slate-50/30" value="${new Date().toISOString().slice(0, 10)}">
+    mc.innerHTML = `
+        <div class="-mx-4 -mt-4 sm:-mx-6 sm:-mt-6 mb-6 bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-end gap-3 sticky top-0 z-10">
+            <button onclick="renderFinanceExpenses()" class="px-5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-all">BATAL</button>
+            <button onclick="saveExpense()" class="flex items-center gap-2 px-6 py-2 text-sm font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all active:scale-95">
+                <span class="w-2 h-2 rounded-full bg-white inline-block"></span> SIMPAN PENGELUARAN
+            </button>
+        </div>
+        <div class="space-y-6">
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                <div class="px-8 py-4 border-b border-slate-100">
+                    <span class="text-[10px] font-black text-blue-600 uppercase tracking-widest">
+                        <i class="fas fa-circle text-[6px] mr-1"></i> INFORMASI PENGELUARAN
+                    </span>
                 </div>
-                <div>
-                    <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Jumlah yang di bayar (IDR)</label>
-                    <input type="text" id="expAmount" 
-                           oninput="this.value = formatAmountInput(this.value)"
-                           class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-red-500/10 focus:border-red-500 outline-none transition-all bg-slate-50/30" 
-                           placeholder="0" required>
+                <div class="px-8 py-6">
+                    <div class="grid grid-cols-1 gap-5">
+                        <div class="grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Tanggal Dibayar <span class="text-red-400">*</span></label>
+                                <input type="date" id="expDate" value="${new Date().toISOString().slice(0,10)}" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Jumlah Dibayar (IDR) <span class="text-red-400">*</span></label>
+                                <input type="text" id="expAmount" oninput="this.value=formatAmountInput(this.value)" placeholder="0" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-blue-600 outline-none focus:border-blue-500 focus:bg-white transition-all">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Kas/Bank Pengeluaran <span class="text-red-400">*</span></label>
+                                <div class="relative" id="exp_from_account_dropdown_wrapper">
+                                    <!-- Trigger -->
+                                    <button type="button" id="exp_from_account_trigger"
+                                        onclick="toggleFinanceDropdown('exp_from_account_dropdown')"
+                                        class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all flex items-center justify-between hover:border-blue-400">
+                                        <span id="exp_from_account_label" class="text-slate-700">${assetAccounts[0] ? `${assetAccounts[0].name} (${assetAccounts[0].code})` : '-- Pilih Kas/Bank --'}</span>
+                                        <i class="fas fa-chevron-down text-slate-300 text-xs transition-transform" id="exp_from_account_chevron"></i>
+                                    </button>
+                                    <input type="hidden" id="expFromAccount" value="${assetAccounts[0] ? assetAccounts[0].id : ''}">
+                                    <!-- Dropdown Panel -->
+                                    <div id="exp_from_account_dropdown" class="hidden absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                        <!-- Search -->
+                                        <div class="p-3 border-b border-slate-100">
+                                            <div class="relative">
+                                                <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+                                                <input type="text" id="exp_from_account_search_input" placeholder="Cari Kas/Bank..." oninput="filterFinanceDropdown('exp_from_account', this.value)"
+                                                    class="w-full pl-9 pr-4 py-2 bg-slate-50 rounded-xl border border-slate-100 text-sm font-semibold text-slate-700 outline-none focus:border-blue-400">
+                                            </div>
+                                        </div>
+                                        <!-- Options List -->
+                                        <div id="exp_from_account_options" class="max-h-56 overflow-y-auto py-1">
+                                            ${assetAccounts.map(a => `<div class="px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer transition-colors" onclick="selectFinanceDropdown('exp_from_account', '${a.id}', '${a.name} (${a.code})')">${a.name} (${a.code})</div>`).join('')}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">COA (Kategori Biaya) <span class="text-red-400">*</span></label>
+                                <div class="relative" id="exp_to_account_dropdown_wrapper">
+                                    <!-- Trigger -->
+                                    <button type="button" id="exp_to_account_trigger"
+                                        onclick="toggleFinanceDropdown('exp_to_account_dropdown')"
+                                        class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all flex items-center justify-between hover:border-blue-400">
+                                        <span id="exp_to_account_label" class="text-slate-400">- Pilih Kategori Biaya -</span>
+                                        <i class="fas fa-chevron-down text-slate-300 text-xs transition-transform" id="exp_to_account_chevron"></i>
+                                    </button>
+                                    <input type="hidden" id="expToAccount" value="">
+                                    <!-- Dropdown Panel -->
+                                    <div id="exp_to_account_dropdown" class="hidden absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                        <!-- Search -->
+                                        <div class="p-3 border-b border-slate-100">
+                                            <div class="relative">
+                                                <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+                                                <input type="text" id="exp_to_account_search_input" placeholder="Cari Kategori Biaya..." oninput="filterFinanceDropdown('exp_to_account', this.value)"
+                                                    class="w-full pl-9 pr-4 py-2 bg-slate-50 rounded-xl border border-slate-100 text-sm font-semibold text-slate-700 outline-none focus:border-blue-400">
+                                            </div>
+                                        </div>
+                                        <!-- Options List -->
+                                        <div id="exp_to_account_options" class="max-h-56 overflow-y-auto py-1">
+                                            ${expenseAccounts.map(a => `<div class="px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer transition-colors" onclick="selectFinanceDropdown('exp_to_account', '${a.id}', '${a.name} (${a.code})')">${a.name} (${a.code})</div>`).join('')}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Metode Pembayaran</label>
+                                <select id="expMethod" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all">
+                                    <option value="Transfer">Transfer Bank</option>
+                                    <option value="Tunai">Tunai / Cash</option>
+                                    <option value="Cek/Giro">Cek / Giro</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Departemen Alokasi</label>
+                                <select id="expDept" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all">
+                                    <option value="">- Pilih Departemen -</option>
+                                    ${depts.map(d => `<option value="${d.id}">${d.name}</option>`).join('')}
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Kebutuhan / Keterangan</label>
+                            <textarea id="expDesc" rows="3" placeholder="Tuliskan tujuan atau kebutuhan pengeluaran dana..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all resize-none"></textarea>
+                        </div>
+                    </div>
                 </div>
             </div>
-
-            <div class="grid grid-cols-2 gap-8">
-                <div>
-                    <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Kas Bank yang mengeluarkan dana</label>
-                    <select id="expFromAccount" class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-red-500/10 focus:border-red-500 outline-none transition-all bg-slate-50/30">
-                        ${assetAccounts.map(a => `<option value="${a.id}">${a.name} (${a.code})</option>`).join('')}
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Nama COA (Kategori Biaya)</label>
-                    <select id="expToAccount" class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-red-500/10 focus:border-red-500 outline-none transition-all bg-slate-50/30">
-                        ${expenseAccounts.map(a => `<option value="${a.id}">${a.name} (${a.code})</option>`).join('')}
-                    </select>
-                </div>
-            </div>
-
-            <div class="grid grid-cols-2 gap-8">
-                <div>
-                    <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Metode Pembayaran</label>
-                    <select id="expMethod" class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-red-500/10 focus:border-red-500 outline-none transition-all bg-slate-50/30">
-                        <option value="Transfer">Transfer Bank</option>
-                        <option value="Tunai">Tunai / Cash</option>
-                        <option value="Cek/Giro">Cek / Giro</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Departemen Alokasi</label>
-                    <select id="expDept" class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-red-500/10 focus:border-red-500 outline-none transition-all bg-slate-50/30">
-                        <option value="">- Pilih Departemen -</option>
-                        ${depts.map(d => `<option value="${d.id}">${d.name}</option>`).join('')}
-                    </select>
-                </div>
-            </div>
-
-            <div>
-                <label class="block text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 ml-1">Kebutuhan (Keterangan)</label>
-                <textarea id="expDesc" class="w-full border-2 border-slate-100 rounded-xl p-4 text-base font-bold focus:ring-4 focus:ring-red-500/10 focus:border-red-500 outline-none transition-all bg-slate-50/30" rows="2" placeholder="Tuliskan tujuan atau kebutuhan pengeluaran dana..."></textarea>
-            </div>
-        </form>
+        </div>
     `;
-    const footer = `
-        <button onclick="saveExpense()" class="px-8 py-3 bg-red-600 text-white rounded-lg text-xs font-black uppercase tracking-widest shadow-lg hover:bg-slate-900 transition-all active:scale-95">Simpan Pengeluaran</button>
-        <button onclick="closeModal()" class="px-5 py-3 bg-gray-100 text-gray-500 rounded-lg text-xs font-black uppercase tracking-widest mr-2 hover:bg-gray-200 transition-all">Batal</button>
-    `;
-    showModal('Catat Pengeluaran Baru', body, footer, 'xl');
 };
+
 
 window.saveExpense = async function () {
     const date = document.getElementById('expDate').value;
@@ -972,10 +1252,10 @@ window.saveExpense = async function () {
     const description = document.getElementById('expDesc').value;
 
     if (!amount || amount <= 0) return showToast('Mohon isi jumlah pengeluaran.', 'error');
+    if (!toAccountId) return showToast('Mohon pilih COA (Kategori Biaya).', 'error');
 
     try {
         await api.saveExpense({ date, amount, fromAccountId, toAccountId, departmentId, description, method });
-        closeModal();
         showToast('Pengeluaran berhasil dicatat', 'success');
         renderFinanceExpenses();
     } catch (err) {
@@ -1415,257 +1695,467 @@ window.renderFinancePartnerLedger = function () {
         </div>
     `;
 };
-
-window.renderFinanceAR = function () {
-    document.getElementById('pageTitle').innerText = 'Data Piutang (AR)';
+window.renderFinanceAR = function () {
+    document.getElementById('pageTitle').innerText = 'Receivables (AR)';
     const mc = document.getElementById('main-content');
+    
+    // Ensure state
+    window._uiState.arActiveTab = window._uiState.arActiveTab || 'unpaid';
+    window._arFilters = window._arFilters || { q: '', status: '', dateFrom: '', dateTo: '', sortOrder: 'desc' };
+    window._arHistoryFilters = window._arHistoryFilters || { q: '', customer: '', date: '', dateFrom: '', dateTo: '' };
+    
     const activeTab = window._uiState.arActiveTab;
+    const allPayments = db.read('payments') || [];
+    const allInvoices = db.read('salesInvoices') || [];
+
+    const tabs = [
+        { id: 'unpaid', label: 'Antrean Piutang', icon: 'fa-clock' },
+        { id: 'history', label: 'Riwayat Penerimaan', icon: 'fa-history' }
+    ];
 
     let contentHtml = '';
 
     if (activeTab === 'unpaid') {
-        const filterCust = (window._arFilters?.customer || '').toLowerCase();
-        const filterDate = window._arFilters?.date || '';
+        const q = (window._arFilters.q || '').toLowerCase();
+        let invoices = allInvoices.filter(i => i.status === 'UNPAID' || i.status === 'PARTIAL');
 
-        let invoices = db.read('salesInvoices').filter(i => i.status === 'UNPAID' || i.status === 'PARTIAL');
-        if (filterCust) {
+        // Apply Search
+        if (q) {
             invoices = invoices.filter(i => {
                 const cName = (i.customerName || db.findById('customers', i.customerId)?.name || '').toLowerCase();
-                return cName.includes(filterCust);
+                return i.invoiceNumber.toLowerCase().includes(q) || cName.includes(q);
             });
         }
-        if (filterDate) {
-            invoices = invoices.filter(i => i.date && i.date.startsWith(filterDate));
+
+        // Apply Date Range Filter
+        if (window._arFilters.dateFrom || window._arFilters.dateTo) {
+            invoices = invoices.filter(i => {
+                let ok = true;
+                if (window._arFilters.dateFrom && i.date < window._arFilters.dateFrom) ok = false;
+                if (window._arFilters.dateTo && i.date > window._arFilters.dateTo) ok = false;
+                return ok;
+            });
         }
 
-        const allPayments = db.read('payments');
+        // Apply Sorting
+        const order = window._arFilters.sortOrder === 'asc' ? 1 : -1;
+        invoices.sort((a, b) => (a.date > b.date ? 1 : -1) * order);
+
         const totalAR = invoices.reduce((sum, i) => {
             const paid = allPayments.filter(p => p.invoiceId === i.id).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
             return sum + (parseFloat(i.totalAmount) - paid);
         }, 0);
 
         contentHtml = `
-            <!-- Filter Section (Unpaid) -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-6 overflow-hidden">
-                <div onclick="toggleARFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
-                    <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
-                        <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
-                        ${(filterCust || filterDate) ? `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
-                    </h3>
-                    <div class="flex items-center gap-3">
-                        <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.arFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
-                        <i class="fas fa-chevron-${window._uiState.arFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
-                    </div>
+            <!-- Unified Filter & Action Box -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex flex-col md:flex-row items-center gap-3 mb-6">
+                <div class="relative flex-1 group w-full">
+                    <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors"></i>
+                    <input type="text" id="arSearchInput" 
+                        onkeyup="if(event.key==='Enter') applyARSearch()"
+                        value="${window._arFilters.q || ''}"
+                        placeholder="Cari No. Faktur atau Nama Pelanggan..." 
+                        class="w-full pl-11 pr-4 py-2.5 bg-slate-50/50 rounded-xl border border-slate-100 focus:border-blue-500 focus:bg-white text-sm font-semibold text-slate-700 outline-none transition-all"
+                    >
                 </div>
-                <div class="${window._uiState.arFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nama Customer</label>
-                            <input type="text" id="arFilterCustomer" value="${window._arFilters?.customer || ''}" placeholder="Cari Nama Customer..." class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50">
+                
+                <div class="flex items-center gap-3 w-full md:w-auto px-1">
+                    <div class="relative flex items-center h-10 bg-white border border-slate-200 rounded-xl shadow-sm overflow-visible">
+                        <button onclick="window._arFilters.sortOrder = window._arFilters.sortOrder === 'asc' ? 'desc' : 'asc'; renderFinanceAR()" 
+                            class="w-10 h-full flex items-center justify-center bg-slate-50 border-r border-slate-200 text-slate-400 hover:text-blue-600 transition-all">
+                            <i class="fas fa-sort-amount-${window._arFilters.sortOrder === 'asc' ? 'up' : 'down'}-alt text-xs"></i>
+                        </button>
+                        <div onclick="window._uiState.arDatePopoverOpen = !window._uiState.arDatePopoverOpen; renderFinanceAR()" 
+                            class="relative flex items-center h-full px-4 cursor-pointer hover:bg-slate-50 transition-all group min-w-[100px]">
+                            <span class="text-sm font-bold text-blue-600 mr-3">Date</span>
+                            <i class="fas fa-chevron-down text-blue-300 text-[10px] transition-transform ${window._uiState.arDatePopoverOpen ? 'rotate-180' : ''}"></i>
                         </div>
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Bulan Faktur</label>
-                            <input type="month" id="arFilterDate" value="${window._arFilters?.date || ''}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50">
-                        </div>
-                    </div>
-                    <div class="flex gap-2 pt-4 mt-4 border-t border-slate-50">
-                        <button onclick="updateARFilters()" class="bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">TAMPILKAN DATA</button>
-                        <button onclick="document.getElementById('arFilterCustomer').value=''; document.getElementById('arFilterDate').value=''; updateARFilters()" class="bg-slate-50 hover:bg-slate-100 text-slate-400 px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">RESET</button>
-                    </div>
-                </div>
-            </div>
 
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div class="p-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center flex-wrap gap-4">
-                    <div>
-                        <h3 class="font-bold text-gray-700">Daftar Faktur Penjualan Belum Lunas</h3>
-                        <p class="text-xs text-gray-500">Total piutang aktif: <span class="font-bold text-orange-600">${formatCurrency(totalAR)}</span></p>
+                        <div class="${window._uiState.arDatePopoverOpen ? 'block' : 'hidden'} absolute top-full left-0 mt-3 w-80 bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100 p-6 z-[100] animate-in fade-in zoom-in-95 duration-200">
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-5">FILTER RANGE</div>
+                            <div class="grid grid-cols-2 gap-4 mb-6">
+                                <div class="space-y-1.5">
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">DARI</label>
+                                    <input type="date" id="arDateFrom" value="${window._arFilters.dateFrom || ''}" class="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none">
+                                </div>
+                                <div class="space-y-1.5">
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">KE</label>
+                                    <input type="date" id="arDateTo" value="${window._arFilters.dateTo || ''}" class="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none">
+                                </div>
+                            </div>
+                            <div class="flex gap-3">
+                                <button onclick="applyARDateRange()" class="flex-1 bg-blue-600 text-white py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-200">APPLY</button>
+                                <button onclick="resetARDateRange()" class="flex-1 bg-slate-50 text-slate-400 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest">RESET</button>
+                            </div>
+                        </div>
                     </div>
-                    <button onclick="openFinanceARPaymentModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold shadow-sm hover:bg-blue-700 transition-colors">
-                        <i class="fas fa-plus mr-1"></i> Input Pelunasan
+
+                    <div class="px-5 py-1.5 bg-orange-50 rounded-xl border border-orange-100 flex flex-col items-center justify-center min-w-[160px] h-10 shadow-sm shadow-orange-50">
+                        <span class="text-[9px] font-black text-orange-400 uppercase tracking-widest leading-none mb-0.5">Total Outstanding</span>
+                        <span class="text-sm font-black text-orange-700 leading-none">${formatCurrency(totalAR)}</span>
+                    </div>
+
+                    <button onclick="openFinanceARPaymentModal()" class="flex items-center justify-center gap-2 px-6 h-10 bg-blue-600 hover:bg-slate-900 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-200 transition-all active:scale-95 whitespace-nowrap">
+                        <i class="fas fa-plus"></i> INPUT PELUNASAN
                     </button>
                 </div>
+            </div>
+
+            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
+                TOTAL: ${invoices.length} PIUTANG AKTIF
+            </div>
+
+            <!-- Table View -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
-                        <thead class="bg-gray-50 text-slate-500 text-[11px] uppercase tracking-wider font-semibold">
-                            <tr>
-                                <th class="px-6 py-3 border-b border-gray-100">Faktur</th>
-                                <th class="px-6 py-3 border-b border-gray-100">Customer</th>
-                                <th class="px-6 py-3 border-b border-gray-100">Jatuh Tempo</th>
-                                <th class="px-6 py-3 border-b border-gray-100 text-right">Sisa Piutang</th>
-                                <th class="px-6 py-3 border-b border-gray-100">Status</th>
+                        <thead>
+                            <tr class="bg-slate-50/50">
+                                <th class="px-4 py-4 w-10">
+                                    <input type="checkbox" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500">
+                                </th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Customer Name</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Status</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Date</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">Balance</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">No. Invoice</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">Aksi</th>
                             </tr>
                         </thead>
-                        <tbody class="text-sm divide-y divide-gray-100">
+                        <tbody class="divide-y divide-slate-50">
                             ${invoices.map(i => {
                                 const paid = allPayments.filter(p => p.invoiceId === i.id).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+                                const balance = parseFloat(i.totalAmount) - paid;
+                                
+                                // Status Pill Style
+                                let statusClass = 'bg-slate-100 text-slate-600 border-slate-200';
+                                if (i.status === 'PAID') statusClass = 'bg-emerald-50 text-emerald-600 border border-emerald-200';
+                                else if (i.status === 'PARTIAL') statusClass = 'bg-amber-50 text-amber-600 border border-amber-200';
+                                else if (i.status === 'UNPAID') statusClass = 'bg-rose-50 text-rose-600 border border-rose-200';
+
                                 return `
-                                <tr>
-                                    <td class="px-6 py-4">
-                                        <div class="font-bold text-gray-800">${i.invoiceNumber}</div>
-                                        <div class="text-[10px] text-gray-400">${formatDate(i.date).slice(0, 10)}</div>
+                                <tr class="hover:bg-slate-50/50 transition-colors group">
+                                    <td class="px-4 py-4">
+                                        <input type="checkbox" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500">
                                     </td>
-                                    <td class="px-6 py-4 text-gray-700 font-medium">${i.customerName || db.findById('customers', i.customerId)?.name || 'Unknown'}</td>
-                                    <td class="px-6 py-4 text-gray-600">${i.dueDate || '-'}</td>
-                                    <td class="px-6 py-4 text-right font-bold text-blue-600">${formatCurrency(i.totalAmount - paid)}</td>
                                     <td class="px-6 py-4">
-                                        <span class="px-2 py-1 ${i.status === 'PARTIAL' ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700'} rounded-full text-[10px] font-bold">${i.status}</span>
+                                        <div class="text-sm font-bold text-slate-800">${i.customerName || db.findById('customers', i.customerId)?.name || 'Unknown'}</div>
+                                    </td>
+                                    <td class="px-6 py-4 text-center">
+                                        <span class="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider border ${statusClass}">
+                                            ${i.status}
+                                        </span>
+                                    </td>
+                                    <td class="px-6 py-4 text-center text-xs font-bold text-slate-600">
+                                        ${i.date ? i.date.split('-').reverse().join('-') : '-'}
+                                    </td>
+                                    <td class="px-6 py-4 text-right">
+                                        <div class="text-sm font-bold text-slate-800">${formatCurrency(balance)}</div>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <div class="px-3 py-1 bg-blue-50 text-blue-600 border border-blue-100 rounded-lg text-[10px] font-black w-fit hover:bg-blue-600 hover:text-white transition-all cursor-pointer">
+                                            ${i.invoiceNumber}
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 text-right">
+                                        <div class="flex justify-end">
+                                            <div class="relative group/action">
+                                                <select onchange="handleARAction(this.value, '${i.id}')" class="appearance-none bg-slate-50 border border-slate-200 rounded-lg pl-3 pr-8 py-1.5 text-[10px] font-bold text-slate-600 outline-none cursor-pointer hover:bg-white hover:border-blue-300 transition-all shadow-sm">
+                                                    <option value="">Pilih Aksi...</option>
+                                                    <option value="view">Detail Faktur</option>
+                                                    <option value="pay">Input Bayar</option>
+                                                </select>
+                                                <div class="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-slate-400">
+                                                    <i class="fas fa-chevron-down text-[8px]"></i>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </td>
                                 </tr>
-                            `}).join('') || '<tr><td colspan="5" class="px-6 py-12 text-center text-gray-400">Tidak ada piutang aktif.</td></tr>'}
+                            `}).join('') || `
+                                <tr>
+                                    <td colspan="7" class="px-6 py-20 text-center text-slate-400 italic">
+                                        Tidak ada data piutang ditemukan.
+                                    </td>
+                                </tr>
+                            `}
                         </tbody>
                     </table>
                 </div>
             </div>
+
         `;
     } else {
-        // Riwayat Tab
-        const f = window._arHistoryFilters;
-        const filterCust = (f.customer || '').toLowerCase();
-        const filterDate = f.date || '';
-        const filterMethod = f.method || '';
-
-        let payments = db.read('payments').sort((a, b) => new Date(b.date) - new Date(a.date));
-        if (filterCust) {
+        const q = (window._arHistoryFilters.q || '').toLowerCase();
+        let payments = [...allPayments].sort((a, b) => new Date(b.date) - new Date(a.date));
+        
+        // Apply History Search
+        if (q) {
             payments = payments.filter(p => {
                 const inv = db.findById('salesInvoices', p.invoiceId);
-                const cust = db.findById('customers', inv?.customerId);
-                return (cust?.name || '').toLowerCase().includes(filterCust);
+                const cName = (inv?.customerName || db.findById('customers', inv?.customerId)?.name || '').toLowerCase();
+                return p.paymentNumber.toLowerCase().includes(q) || cName.includes(q);
             });
         }
-        if (filterDate) payments = payments.filter(p => p.date && p.date.startsWith(filterDate));
-        if (filterMethod) payments = payments.filter(p => p.method === filterMethod);
+
+        // Apply History Date Range
+        if (window._arHistoryFilters.dateFrom || window._arHistoryFilters.dateTo) {
+            payments = payments.filter(p => {
+                let ok = true;
+                if (window._arHistoryFilters.dateFrom && p.date < window._arHistoryFilters.dateFrom) ok = false;
+                if (window._arHistoryFilters.dateTo && p.date > window._arHistoryFilters.dateTo) ok = false;
+                return ok;
+            });
+        }
 
         contentHtml = `
-            <!-- Filter Section (History) -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-6 overflow-hidden">
-                <div onclick="toggleARHistFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
-                    <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
-                        <i class="fas fa-filter text-blue-600"></i> FILTER RIWAYAT
-                        ${(filterCust || filterDate || filterMethod) ? `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
-                    </h3>
-                    <div class="flex items-center gap-3">
-                        <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.arHistFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
-                        <i class="fas fa-chevron-${window._uiState.arHistFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
+            <!-- History Filter Row -->
+            <div class="flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-6">
+                <div class="flex items-center gap-4 w-full md:w-auto flex-1">
+                    <div class="relative flex-1 md:flex-none md:w-80 group">
+                        <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                            <i class="fas fa-search text-slate-400 group-focus-within:text-blue-500 transition-colors"></i>
+                        </div>
+                        <input type="text" id="arHistSearchInput" value="${window._arHistoryFilters.q || ''}" 
+                            onkeyup="if(event.key==='Enter') applyARHistSearch()"
+                            placeholder="Cari No. Ref atau Pelanggan..." 
+                            class="block w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all">
+                    </div>
+                    
+                    <!-- History Date Pop-over -->
+                    <div class="relative flex items-center bg-white border border-slate-200 rounded-xl overflow-visible shadow-sm h-10">
+                        <div class="w-10 h-full flex items-center justify-center bg-slate-50 border-r border-slate-200 text-slate-500">
+                            <i class="fas fa-calendar-alt text-xs"></i>
+                        </div>
+                        <div onclick="window._uiState.arHistDatePopoverOpen = !window._uiState.arHistDatePopoverOpen; renderFinanceAR()" 
+                            class="relative flex items-center h-full px-4 cursor-pointer hover:bg-slate-50 transition-all group min-w-[100px]">
+                            <span class="text-sm font-bold text-blue-600 mr-3">Date</span>
+                            <i class="fas fa-chevron-down text-blue-300 text-[10px] transition-transform ${window._uiState.arHistDatePopoverOpen ? 'rotate-180' : ''}"></i>
+                        </div>
+
+                        <div class="${window._uiState.arHistDatePopoverOpen ? 'block' : 'hidden'} absolute top-full left-0 mt-3 w-80 bg-white rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] border border-slate-100 p-6 z-[100]">
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-5">FILTER RIWAYAT</div>
+                            <div class="grid grid-cols-2 gap-4 mb-6">
+                                <div class="space-y-1.5">
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">DARI</label>
+                                    <input type="date" id="arHistDateFrom" value="${window._arHistoryFilters.dateFrom || ''}" class="w-full bg-slate-50 border-none rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 outline-none">
+                                </div>
+                                <div class="space-y-1.5">
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">KE</label>
+                                    <input type="date" id="arHistDateTo" value="${window._arHistoryFilters.dateTo || ''}" class="w-full bg-slate-50 border-none rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 outline-none">
+                                </div>
+                            </div>
+                            <div class="flex gap-3">
+                                <button onclick="applyARHistDateRange()" class="flex-1 bg-blue-600 text-white py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-200">APPLY</button>
+                                <button onclick="resetARHistDateRange()" class="flex-1 bg-slate-50 text-slate-400 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest">RESET</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="${window._uiState.arHistFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nama Customer</label>
-                            <input type="text" id="arHistFilterCustomer" value="${f.customer}" placeholder="Cari Nama..." class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50">
-                        </div>
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Bulan Pembayaran</label>
-                            <input type="month" id="arHistFilterDate" value="${f.date}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50">
-                        </div>
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Metode</label>
-                            <select id="arHistFilterMethod" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50">
-                                <option value="">Semua Metode</option>
-                                <option value="Transfer Bank" ${f.method === 'Transfer Bank' ? 'selected' : ''}>Transfer Bank</option>
-                                <option value="Tunai" ${f.method === 'Tunai' ? 'selected' : ''}>Tunai / Cash</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="flex gap-2 pt-4 mt-4 border-t border-slate-50">
-                        <button onclick="applyARHistFilters()" class="bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">TAMPILKAN</button>
-                        <button onclick="resetARHistoryFilters()" class="bg-slate-50 hover:bg-slate-100 text-slate-400 px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">RESET</button>
-                    </div>
+                <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    TOTAL: ${payments.length} PENERIMAAN
                 </div>
             </div>
 
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div class="p-4 border-b border-gray-100 bg-slate-50/50">
-                    <h3 class="font-bold text-gray-700">Riwayat Penerimaan Pembayaran</h3>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse">
-                        <thead class="bg-gray-50 text-slate-500 text-[11px] uppercase tracking-wider font-semibold">
-                            <tr>
-                                <th class="px-6 py-3 border-b border-gray-100">Tgl & Ref</th>
-                                <th class="px-6 py-3 border-b border-gray-100">Faktur</th>
-                                <th class="px-6 py-3 border-b border-gray-100">Customer</th>
-                                <th class="px-6 py-3 border-b border-gray-100 text-right">Jumlah</th>
-                            </tr>
-                        </thead>
-                        <tbody class="text-sm divide-y divide-gray-100">
-                            ${payments.map(p => {
-                                const inv = db.findById('salesInvoices', p.invoiceId) || { invoiceNumber: '-', customerId: null };
-                                const cust = db.findById('customers', inv.customerId) || { name: '-' };
-                                return `
-                                <tr>
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50/50">
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Tanggal</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">No. Ref</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Faktur</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Customer</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">Jumlah</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50">
+                        ${payments.map(p => {
+                            const inv = db.findById('salesInvoices', p.invoiceId) || { invoiceNumber: '-', customerId: null };
+                            const cName = inv.customerName || db.findById('customers', inv.customerId)?.name || '-';
+                            return `
+                                <tr class="hover:bg-slate-50/50 transition-colors group">
+                                    <td class="px-6 py-4 text-xs font-bold text-slate-500">${p.date.split('-').reverse().join('-')}</td>
                                     <td class="px-6 py-4">
-                                        <div class="text-[10px] text-gray-400 font-bold">${formatDate(p.date).slice(0, 10)}</div>
-                                        <div class="font-bold text-gray-800">${p.paymentNumber}</div>
+                                        <div class="text-sm font-black text-slate-700">${p.paymentNumber}</div>
                                     </td>
-                                    <td class="px-6 py-4 text-gray-600 font-medium">${inv.invoiceNumber}</td>
-                                    <td class="px-6 py-4 text-gray-600">${cust.name}</td>
-                                    <td class="px-6 py-4 text-right font-bold text-blue-600">${formatCurrency(p.amount)}</td>
+                                    <td class="px-6 py-4">
+                                        <div class="text-[10px] font-black px-2 py-1 bg-slate-100 text-slate-500 rounded-md w-fit">${inv.invoiceNumber}</div>
+                                    </td>
+                                    <td class="px-6 py-4 text-sm font-bold text-slate-600">${cName}</td>
+                                    <td class="px-6 py-4 text-right font-black text-emerald-600">${formatCurrency(p.amount)}</td>
                                 </tr>
-                            `}).join('') || '<tr><td colspan="4" class="px-6 py-12 text-center text-gray-400">Belum ada riwayat.</td></tr>'}
-                        </tbody>
-                    </table>
-                </div>
+                            `;
+                        }).join('') || '<tr><td colspan="5" class="px-6 py-12 text-center text-slate-400 italic">Belum ada riwayat.</td></tr>'}
+                    </tbody>
+                </table>
             </div>
         `;
     }
 
     mc.innerHTML = `
         <div class="space-y-6">
-            <!-- Tab Navigation -->
             <div class="flex items-center gap-8 border-b border-slate-200 mb-6 px-2">
-                <button onclick="window._uiState.arActiveTab='unpaid'; renderFinanceAR()" 
-                    class="pb-4 text-sm font-bold transition-all relative ${activeTab === 'unpaid' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
-                    Antrean Piutang
-                    ${activeTab === 'unpaid' ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-[0_2px_10px_rgba(37,99,235,0.3)]"></div>' : ''}
-                </button>
-                <button onclick="window._uiState.arActiveTab='history'; renderFinanceAR()" 
-                    class="pb-4 text-sm font-bold transition-all relative ${activeTab === 'history' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
-                    Riwayat Penerimaan
-                    ${activeTab === 'history' ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-[0_2px_10px_rgba(37,99,235,0.3)]"></div>' : ''}
-                </button>
+                ${tabs.map(t => `
+                    <button onclick="window._uiState.arActiveTab='${t.id}'; renderFinanceAR()" 
+                        class="pb-4 text-sm font-bold transition-all relative ${activeTab === t.id ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
+                        ${t.label}
+                        ${activeTab === t.id ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-[0_2px_10px_rgba(37,99,235,0.3)]"></div>' : ''}
+                    </button>
+                `).join('')}
             </div>
-
             ${contentHtml}
         </div>
     `;
+
+    // Maintain search focus
+    const input = document.getElementById('arSearchInput');
+    if (input) {
+        input.focus();
+        const val = input.value; input.value = ''; input.value = val;
+    }
 };
 
-window.updateARFilters = function() {
-    window._arFilters = {
-        customer: document.getElementById('arFilterCustomer')?.value || '',
-        date: document.getElementById('arFilterDate')?.value || ''
-    };
-    renderFinanceAR();
-};
-
-window.toggleARFilter = function() {
-    window._uiState.arFilterOpen = !window._uiState.arFilterOpen;
-    renderFinanceAR();
-};
-
-window.toggleARHistFilter = function() {
-    window._uiState.arHistFilterOpen = !window._uiState.arHistFilterOpen;
+window.applyARSearch = function() {
+    window._arFilters.q = document.getElementById('arSearchInput')?.value || '';
     renderFinanceAR();
 };
 
 window.applyARHistFilters = function() {
     window._arHistoryFilters = {
-        customer: document.getElementById('arHistFilterCustomer').value,
-        date: document.getElementById('arHistFilterDate').value,
-        method: document.getElementById('arHistFilterMethod').value
+        customer: document.getElementById('arHistFilterCustomer')?.value || '',
+        date: document.getElementById('arHistFilterDate')?.value || ''
     };
     renderFinanceAR();
 };
 
 window.resetARHistoryFilters = function() {
-    window._arHistoryFilters = { customer: '', date: '', method: '' };
+    window._arHistoryFilters = { customer: '', date: '' };
     renderFinanceAR();
 };
 
+window.handleARAction = function(action, id) {
+    if (!action) return;
+    if (action === 'view') navigateTo('sales-invoices', { invoiceId: id });
+    else if (action === 'pay') openFinanceARPaymentModal(id);
+};
+
+window.applyARSearch = function() {
+    window._arFilters.q = document.getElementById('arSearchInput')?.value || '';
+    renderFinanceAR();
+};
+
+window.applyARDateRange = function() {
+    window._arFilters.dateFrom = document.getElementById('arDateFrom')?.value || '';
+    window._arFilters.dateTo = document.getElementById('arDateTo')?.value || '';
+    window._uiState.arDatePopoverOpen = false;
+    renderFinanceAR();
+};
+
+window.resetARDateRange = function() {
+    window._arFilters.dateFrom = '';
+    window._arFilters.dateTo = '';
+    window._uiState.arDatePopoverOpen = false;
+    renderFinanceAR();
+};
+
+window.applyARHistSearch = function() {
+    window._arHistoryFilters.q = document.getElementById('arHistSearchInput')?.value || '';
+    renderFinanceAR();
+};
+
+window.applyARHistDateRange = function() {
+    window._arHistoryFilters.dateFrom = document.getElementById('arHistDateFrom')?.value || '';
+    window._arHistoryFilters.dateTo = document.getElementById('arHistDateTo')?.value || '';
+    window._uiState.arHistDatePopoverOpen = false;
+    renderFinanceAR();
+};
+
+window.resetARHistDateRange = function() {
+    window._arHistoryFilters.q = '';
+    window._arHistoryFilters.dateFrom = '';
+    window._arHistoryFilters.dateTo = '';
+    window._uiState.arHistDatePopoverOpen = false;
+    renderFinanceAR();
+};
+;
+
+// --- Custom Finance Dropdown Helpers ---
+window.toggleFinanceDropdown = function(dropdownId) {
+    const dropdown = document.getElementById(dropdownId);
+    if (!dropdown) return;
+    const isHidden = dropdown.classList.contains('hidden');
+    // Close all open finance dropdowns first
+    document.querySelectorAll('[id$="_dropdown"]').forEach(d => {
+        if (d !== dropdown) {
+            d.classList.add('hidden');
+        }
+    });
+    dropdown.classList.toggle('hidden', !isHidden);
+    // Focus search input if opening
+    if (isHidden) {
+        const searchInput = dropdown.querySelector('input[type="text"]');
+        if (searchInput) setTimeout(() => searchInput.focus(), 50);
+    }
+};
+
+window.selectFinanceDropdown = function(prefix, value, label, callbackFnName, extraParam) {
+    // Set hidden input
+    let hiddenInputId = '';
+    if (prefix === 'ar_customer') hiddenInputId = 'far_customer_id';
+    else if (prefix === 'ap_supplier') hiddenInputId = 'fap_supplier_id';
+    else if (prefix === 'ar_invoice') hiddenInputId = 'far_invoice_id';
+    else if (prefix === 'ap_invoice') hiddenInputId = 'fap_invoice_id';
+    else if (prefix === 'rec_target_account') hiddenInputId = 'recTargetAccount';
+    else if (prefix === 'rec_source_account') hiddenInputId = 'recSourceAccount';
+    else if (prefix === 'exp_from_account') hiddenInputId = 'expFromAccount';
+    else if (prefix === 'exp_to_account') hiddenInputId = 'expToAccount';
+    
+    const hiddenInput = document.getElementById(hiddenInputId);
+    if (hiddenInput) {
+        hiddenInput.value = value;
+        if (extraParam !== undefined) {
+            hiddenInput.dataset.balance = extraParam;
+        }
+    }
+    // Update label
+    const labelEl = document.getElementById(prefix + '_label');
+    if (labelEl) {
+        labelEl.textContent = label;
+        labelEl.classList.remove('text-slate-400');
+        labelEl.classList.add('text-slate-700');
+    }
+    // Close dropdown
+    const dropdown = document.getElementById(prefix + '_dropdown');
+    if (dropdown) dropdown.classList.add('hidden');
+    // Call callback
+    if (callbackFnName && typeof window[callbackFnName] === 'function') {
+        window[callbackFnName]();
+    }
+};
+
+window.filterFinanceDropdown = function(prefix, query) {
+    const optionsContainer = document.getElementById(prefix + '_options');
+    if (!optionsContainer) return;
+    const q = query.toLowerCase();
+    optionsContainer.querySelectorAll('div').forEach(item => {
+        const text = item.textContent.toLowerCase();
+        item.style.display = text.includes(q) ? '' : 'none';
+    });
+};
+
+// Close dropdowns when clicking outside
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('[id$="_dropdown_wrapper"]') && !e.target.closest('[id$="_dropdown"]')) {
+        document.querySelectorAll('[id$="_dropdown"]:not(.hidden)').forEach(d => {
+            d.classList.add('hidden');
+        });
+    }
+}, true);
+
 // --- Finance AR Payment Feature ---
 window.openFinanceARPaymentModal = () => {
+    const mc = document.getElementById('main-content');
+    window.renderBreadcrumb(['Finance', 'Data Piutang (AR)', 'Input Pelunasan']);
     const invoices = db.read('salesInvoices');
     const payments = db.read('payments');
     const customers = db.read('customers');
@@ -1744,23 +2234,167 @@ window.openFinanceARPaymentModal = () => {
         </div>
     `;
 
-    const footer = `
-        <button type="button" onclick="saveFinanceARPayment()" class="w-full sm:w-auto justify-center rounded-md bg-green-600 px-4 py-2 text-white font-medium hover:bg-green-700 text-sm shadow-sm transition-colors">Proses Pelunasan</button>
-        <button type="button" onclick="closeModal()" class="mt-3 w-full sm:w-auto justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-700 font-medium hover:bg-gray-50 text-sm transition-colors">Batal</button>
+    mc.innerHTML = `
+        <!-- Action Bar: full-width white bar like Quotation form -->
+        <div class="-mx-4 -mt-4 sm:-mx-6 sm:-mt-6 mb-6 bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-end gap-3 sticky top-0 z-10">
+            <button onclick="renderFinanceAR()" class="px-5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-all">BATAL</button>
+            <button onclick="saveFinanceARPayment()" class="flex items-center gap-2 px-6 py-2 text-sm font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all active:scale-95">
+                <span class="w-2 h-2 rounded-full bg-white inline-block"></span> PROSES PELUNASAN
+            </button>
+        </div>
+        <div class="space-y-6">
+            <!-- Section: Informasi Pelunasan -->
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                <div class="px-8 py-4 border-b border-slate-100">
+                    <span class="text-[10px] font-black text-blue-600 uppercase tracking-widest">
+                        <i class="fas fa-circle text-[6px] mr-1"></i> INFORMASI PELUNASAN
+                    </span>
+                </div>
+                <div class="px-8 py-6">
+                    <div class="grid grid-cols-1 gap-5">
+                        <!-- Customer Custom Dropdown -->
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Customer <span class="text-red-400">*</span></label>
+                            <div class="relative" id="ar_customer_dropdown_wrapper">
+                                <!-- Trigger -->
+                                <button type="button" id="ar_customer_trigger"
+                                    onclick="toggleFinanceDropdown('ar_customer_dropdown')"
+                                    class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all flex items-center justify-between hover:border-blue-400">
+                                    <span id="ar_customer_label" class="text-slate-400">-- Pilih Customer --</span>
+                                    <i class="fas fa-chevron-down text-slate-300 text-xs transition-transform" id="ar_customer_chevron"></i>
+                                </button>
+                                <input type="hidden" id="far_customer_id">
+                                <!-- Dropdown Panel -->
+                                <div id="ar_customer_dropdown" class="hidden absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                    <!-- Search -->
+                                    <div class="p-3 border-b border-slate-100">
+                                        <div class="relative">
+                                            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+                                            <input type="text" id="ar_customer_search_input" placeholder="Cari customer..." oninput="filterFinanceDropdown('ar_customer', this.value)"
+                                                class="w-full pl-9 pr-4 py-2 bg-slate-50 rounded-xl border border-slate-100 text-sm font-semibold text-slate-700 outline-none focus:border-blue-400">
+                                        </div>
+                                    </div>
+                                    <!-- Options List -->
+                                    <div id="ar_customer_options" class="max-h-56 overflow-y-auto py-1">
+                                        ${customerIdsWithUnpaid.map(cId => {
+                                            const c = customers.find(x => x.id === cId) || { name: 'Unknown', id: cId };
+                                            return `<div class="px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer transition-colors" onclick="selectFinanceDropdown('ar_customer', '${cId}', '${c.name}', 'updateARInvoicesByCustomer')">${c.name}</div>`;
+                                        }).join('')}
+                                    </div>
+                                    <!-- Footer Actions -->
+                                    <div class="border-t border-slate-100 py-1">
+                                        <div onclick="navigateTo('customers-new')" class="px-4 py-3 flex items-center gap-3 text-sm font-semibold text-slate-500 hover:bg-slate-50 cursor-pointer transition-colors">
+                                            <span class="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 text-xs"><i class="fas fa-plus"></i></span>
+                                            Buat Customer Baru
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Faktur Custom Dropdown -->
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Pilih Faktur Piutang (AR) <span class="text-red-400">*</span></label>
+                            <div class="relative" id="ar_invoice_dropdown_wrapper">
+                                <!-- Trigger -->
+                                <button type="button" id="ar_invoice_trigger" disabled
+                                    onclick="toggleFinanceDropdown('ar_invoice_dropdown')"
+                                    class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all flex items-center justify-between hover:border-blue-400 disabled:opacity-50 disabled:cursor-not-allowed">
+                                    <span id="ar_invoice_label" class="text-slate-400">-- Pilih Customer terlebih dahulu --</span>
+                                    <i class="fas fa-chevron-down text-slate-300 text-xs transition-transform" id="ar_invoice_chevron"></i>
+                                </button>
+                                <input type="hidden" id="far_invoice_id">
+                                <!-- Dropdown Panel -->
+                                <div id="ar_invoice_dropdown" class="hidden absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                    <!-- Search -->
+                                    <div class="p-3 border-b border-slate-100">
+                                        <div class="relative">
+                                            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+                                            <input type="text" id="ar_invoice_search_input" placeholder="Cari Faktur/Invoice..." oninput="filterFinanceDropdown('ar_invoice', this.value)"
+                                                class="w-full pl-9 pr-4 py-2 bg-slate-50 rounded-xl border border-slate-100 text-sm font-semibold text-slate-700 outline-none focus:border-blue-400">
+                                        </div>
+                                    </div>
+                                    <!-- Options List -->
+                                    <div id="ar_invoice_options" class="max-h-56 overflow-y-auto py-1">
+                                        <!-- Dynamically Populated -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Tanggal & Kas/Bank -->
+                        <div class="grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Tanggal Terima <span class="text-red-400">*</span></label>
+                                <input type="date" id="far_date" value="${new Date().toISOString().split('T')[0]}" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Masuk ke Kas/Bank <span class="text-red-400">*</span></label>
+                                <select id="far_account_id" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all">
+                                    ${assetAccounts.map(a => `<option value="${a.id}">${a.name} (${a.code})</option>`).join('')}
+                                </select>
+                            </div>
+                        </div>
+                        <!-- Metode -->
+                        <div class="grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Metode Pembayaran</label>
+                                <select id="far_method" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all">
+                                    <option>Transfer Bank</option>
+                                    <option>Tunai / Cash</option>
+                                    <option>Giro / Cek</option>
+                                </select>
+                            </div>
+                        </div>
+                        <!-- Alokasi & Uang Lebih -->
+                        <div class="grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Alokasi Piutang (Rp) <span class="text-red-400">*</span></label>
+                                <input type="number" id="far_amount" placeholder="0" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-blue-600 outline-none focus:border-blue-500 focus:bg-white transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Uang Lebih Titipan (Rp)</label>
+                                <input type="number" id="far_overpay" placeholder="0" value="0" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-emerald-600 outline-none focus:border-blue-500 focus:bg-white transition-all">
+                            </div>
+                        </div>
+                        <!-- Catatan -->
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Catatan</label>
+                            <textarea id="far_notes" rows="2" placeholder="Catatan tambahan..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all resize-none"></textarea>
+                        </div>
+                        <!-- Upload -->
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Upload Bukti Pembayaran <span class="text-slate-300 font-normal">(Opsional)</span></label>
+                            <input type="file" id="far_proof_file" accept="image/*,application/pdf" class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 border border-slate-200 rounded-xl bg-slate-50 p-1">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     `;
-
-    showModal('Input Pelunasan Piutang (AR)', body, footer, 'full');
 };
 
 window.updateARInvoicesByCustomer = () => {
     const customerId = document.getElementById('far_customer_id').value;
-    const invoiceSelect = document.getElementById('far_invoice_id');
+    const hiddenInput = document.getElementById('far_invoice_id');
+    const triggerBtn = document.getElementById('ar_invoice_trigger');
+    const labelEl = document.getElementById('ar_invoice_label');
+    const optionsContainer = document.getElementById('ar_invoice_options');
     const amountInput = document.getElementById('far_amount');
 
+    // Reset values first
+    if (hiddenInput) {
+        hiddenInput.value = '';
+        delete hiddenInput.dataset.balance;
+    }
+    if (amountInput) amountInput.value = '0';
+
     if (!customerId) {
-        invoiceSelect.innerHTML = '<option value="" disabled selected>-- Pilih Customer terlebih dahulu --</option>';
-        invoiceSelect.disabled = true;
-        if (amountInput) amountInput.value = '0';
+        if (labelEl) {
+            labelEl.textContent = '-- Pilih Customer terlebih dahulu --';
+            labelEl.classList.add('text-slate-400');
+            labelEl.classList.remove('text-slate-700');
+        }
+        if (triggerBtn) triggerBtn.disabled = true;
+        if (optionsContainer) optionsContainer.innerHTML = '';
         return;
     }
 
@@ -1768,28 +2402,39 @@ window.updateARInvoicesByCustomer = () => {
     const payments = db.read('payments');
 
     if (invoices.length === 0) {
-        invoiceSelect.innerHTML = '<option value="" disabled selected>Tidak ada faktur UNPAID untuk customer ini</option>';
-        invoiceSelect.disabled = true;
-        if (amountInput) amountInput.value = '0';
+        if (labelEl) {
+            labelEl.textContent = 'Tidak ada faktur UNPAID untuk customer ini';
+            labelEl.classList.add('text-slate-400');
+            labelEl.classList.remove('text-slate-700');
+        }
+        if (triggerBtn) triggerBtn.disabled = true;
+        if (optionsContainer) optionsContainer.innerHTML = '';
         return;
     }
 
-    const options = invoices.map(inv => {
+    if (labelEl) {
+        labelEl.textContent = 'Pilih Invoice...';
+        labelEl.classList.add('text-slate-400');
+        labelEl.classList.remove('text-slate-700');
+    }
+    if (triggerBtn) triggerBtn.disabled = false;
+
+    const itemsHtml = invoices.map(inv => {
         const invPayments = payments.filter(p => p.invoiceId === inv.id);
         const totalPaid = invPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
         const balance = inv.totalAmount - totalPaid;
-        return `<option value="${inv.id}" data-balance="${balance}">${inv.invoiceNumber} (Sisa: ${formatCurrency(balance)})</option>`;
+        const displayLabel = `${inv.invoiceNumber} (Sisa: ${formatCurrency(balance)})`;
+        return `<div class="px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer transition-colors" 
+            onclick="selectFinanceDropdown('ar_invoice', '${inv.id}', '${displayLabel}', 'updateFinanceARPaymentDefaultAmount', '${balance}')">${displayLabel}</div>`;
     }).join('');
 
-    invoiceSelect.innerHTML = '<option value="" disabled selected>Pilih Invoice...</option>' + options;
-    invoiceSelect.disabled = false;
-    if (amountInput) amountInput.value = '0';
+    if (optionsContainer) optionsContainer.innerHTML = itemsHtml;
 };
 
 window.updateFinanceARPaymentDefaultAmount = () => {
-    const select = document.getElementById('far_invoice_id');
-    if (select && select.selectedIndex > 0) {
-        const balance = select.options[select.selectedIndex].dataset.balance;
+    const hiddenInput = document.getElementById('far_invoice_id');
+    if (hiddenInput && hiddenInput.value) {
+        const balance = hiddenInput.dataset.balance || '0';
         document.getElementById('far_amount').value = balance;
     }
 };
@@ -1877,285 +2522,366 @@ window.saveFinanceARPayment = async () => {
     }
 
     showToast('Pelunasan piutang berhasil dicatat', 'success');
-    closeModal();
     renderFinanceAR();
-};
-
-window._apFilters = window._apFilters || { status: 'BELUM_LUNAS', supplierId: '', startDate: '', endDate: '' };
-
-window.applyAPFilters = () => {
-    window._apFilters = {
-        status: document.getElementById('filter_ap_status').value,
-        supplierId: document.getElementById('filter_ap_supplier').value,
-        startDate: document.getElementById('filter_ap_start').value,
-        endDate: document.getElementById('filter_ap_end').value
-    };
-    renderFinanceAP();
-};
-
-window.resetAPFilters = () => {
-    window._apFilters = { status: 'BELUM_LUNAS', supplierId: '', startDate: '', endDate: '' };
-    renderFinanceAP();
 };
 
 window.renderFinanceAP = function () {
     document.getElementById('pageTitle').innerText = 'Data Hutang (AP)';
     const mc = document.getElementById('main-content');
+    
+    // Ensure state
+    window._uiState.apActiveTab = window._uiState.apActiveTab || 'unpaid';
+    window._apFilters = window._apFilters || { q: '', status: '', dateFrom: '', dateTo: '', sortOrder: 'desc' };
+    window._apHistoryFilters = window._apHistoryFilters || { q: '', dateFrom: '', dateTo: '' };
+    
     const activeTab = window._uiState.apActiveTab;
+    const allInvoices = db.read('purchaseInvoices') || [];
+    const allPayments = db.read('supplierPayments') || [];
+    const suppliers = db.read('suppliers') || [];
+
+    const tabs = [
+        { id: 'unpaid', label: 'Antrean Hutang', icon: 'fa-clock' },
+        { id: 'history', label: 'Riwayat Pembayaran', icon: 'fa-history' }
+    ];
 
     let contentHtml = '';
 
     if (activeTab === 'unpaid') {
-        let invoices = db.read('purchaseInvoices') || [];
-        const suppliers = db.read('suppliers') || [];
+        const q = (window._apFilters.q || '').toLowerCase();
+        let invoices = allInvoices.filter(i => i.status === 'UNPAID' || i.status === 'PARTIAL');
 
-        const f = window._apFilters;
-        if (f.status === 'BELUM_LUNAS') {
-            invoices = invoices.filter(i => i.status === 'UNPAID' || i.status === 'PARTIAL');
-        } else if (f.status) {
-            invoices = invoices.filter(i => i.status === f.status);
+        // Apply Search
+        if (q) {
+            invoices = invoices.filter(i => {
+                const sName = (suppliers.find(s => s.id === i.supplierId || s.name === i.supplierId)?.name || '').toLowerCase();
+                const invNum = (i.invNumber || i.invoiceNumber || '').toLowerCase();
+                return invNum.includes(q) || sName.includes(q);
+            });
         }
-        if (f.supplierId) invoices = invoices.filter(i => i.supplierId === f.supplierId);
-        if (f.startDate) invoices = invoices.filter(i => (i.date || '').substring(0, 10) >= f.startDate);
-        if (f.endDate) invoices = invoices.filter(i => (i.date || '').substring(0, 10) <= f.endDate);
 
-        invoices.sort((a, b) => new Date(b.date) - new Date(a.date));
+        // Apply Date Range Filter
+        if (window._apFilters.dateFrom || window._apFilters.dateTo) {
+            invoices = invoices.filter(i => {
+                let ok = true;
+                if (window._apFilters.dateFrom && i.date < window._apFilters.dateFrom) ok = false;
+                if (window._apFilters.dateTo && i.date > window._apFilters.dateTo) ok = false;
+                return ok;
+            });
+        }
+
+        // Apply Sorting
+        const order = window._apFilters.sortOrder === 'asc' ? 1 : -1;
+        invoices.sort((a, b) => (a.date > b.date ? 1 : -1) * order);
+
+        const totalAP = invoices.reduce((sum, i) => {
+            const paid = allPayments.filter(p => p.invoiceId === i.id).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+            return sum + (parseFloat(i.totalAmount) - paid);
+        }, 0);
 
         contentHtml = `
-            <!-- Filter Section (Unpaid) -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-6 overflow-hidden">
-                <div onclick="toggleAPFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
-                    <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
-                        <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
-                        ${(f.status || f.supplierId || f.startDate || f.endDate) ? `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
-                    </h3>
-                    <div class="flex items-center gap-3">
-                        <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.apFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
-                        <i class="fas fa-chevron-${window._uiState.apFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
-                    </div>
+            <!-- Unified Filter & Action Box -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex flex-col md:flex-row items-center gap-3 mb-6">
+                <div class="relative flex-1 group w-full">
+                    <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors"></i>
+                    <input type="text" id="apSearchInput" 
+                        onkeyup="if(event.key==='Enter') applyAPSearch()"
+                        value="${window._apFilters.q || ''}"
+                        placeholder="Cari No. Tagihan atau Nama Supplier..." 
+                        class="w-full pl-11 pr-4 py-2.5 bg-slate-50/50 rounded-xl border border-slate-100 focus:border-blue-500 focus:bg-white text-sm font-semibold text-slate-700 outline-none transition-all"
+                    >
                 </div>
-                <div class="${window._uiState.apFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Status</label>
-                            <select id="filter_ap_status" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50">
-                                <option value="BELUM_LUNAS" ${f.status === 'BELUM_LUNAS' ? 'selected' : ''}>Belum Lunas</option>
-                                <option value="PAID" ${f.status === 'PAID' ? 'selected' : ''}>Paid</option>
-                            </select>
+                
+                <div class="flex items-center gap-3 w-full md:w-auto px-1">
+                    <div class="relative flex items-center h-10 bg-white border border-slate-200 rounded-xl shadow-sm overflow-visible">
+                        <button onclick="window._apFilters.sortOrder = window._apFilters.sortOrder === 'asc' ? 'desc' : 'asc'; renderFinanceAP()" 
+                            class="w-10 h-full flex items-center justify-center bg-slate-50 border-r border-slate-200 text-slate-400 hover:text-blue-600 transition-all">
+                            <i class="fas fa-sort-amount-${window._apFilters.sortOrder === 'asc' ? 'up' : 'down'}-alt text-xs"></i>
+                        </button>
+                        <div onclick="window._uiState.apDatePopoverOpen = !window._uiState.apDatePopoverOpen; renderFinanceAP()" 
+                            class="relative flex items-center h-full px-4 cursor-pointer hover:bg-slate-50 transition-all group min-w-[100px]">
+                            <span class="text-sm font-bold text-blue-600 mr-3">Date</span>
+                            <i class="fas fa-chevron-down text-blue-300 text-[10px] transition-transform ${window._uiState.apDatePopoverOpen ? 'rotate-180' : ''}"></i>
                         </div>
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Supplier</label>
-                            <select id="filter_ap_supplier" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50">
-                                <option value="">Semua Supplier</option>
-                                ${suppliers.map(s => `<option value="${s.id}" ${f.supplierId === s.id ? 'selected' : ''}>${s.name}</option>`).join('')}
-                            </select>
-                        </div>
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Dari</label>
-                            <input type="date" id="filter_ap_start" value="${f.startDate}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50">
-                        </div>
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Sampai</label>
-                            <input type="date" id="filter_ap_end" value="${f.endDate}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50">
+
+                        <div class="${window._uiState.apDatePopoverOpen ? 'block' : 'hidden'} absolute top-full left-0 mt-3 w-80 bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100 p-6 z-[100] animate-in fade-in zoom-in-95 duration-200">
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-5">FILTER RANGE</div>
+                            <div class="grid grid-cols-2 gap-4 mb-6">
+                                <div class="space-y-1.5">
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">DARI</label>
+                                    <input type="date" id="apDateFrom" value="${window._apFilters.dateFrom || ''}" class="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none">
+                                </div>
+                                <div class="space-y-1.5">
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">KE</label>
+                                    <input type="date" id="apDateTo" value="${window._apFilters.dateTo || ''}" class="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none">
+                                </div>
+                            </div>
+                            <div class="flex gap-3">
+                                <button onclick="applyAPDateRange()" class="flex-1 bg-blue-600 text-white py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-200">APPLY</button>
+                                <button onclick="resetAPDateRange()" class="flex-1 bg-slate-50 text-slate-400 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest">RESET</button>
+                            </div>
                         </div>
                     </div>
-                    <div class="flex gap-2 pt-4 mt-4 border-t border-slate-50">
-                        <button onclick="applyAPFilters()" class="bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">TAMPILKAN DATA</button>
-                        <button onclick="resetAPFilters()" class="bg-slate-50 hover:bg-slate-100 text-slate-400 px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">RESET</button>
+
+                    <div class="px-5 py-1.5 bg-rose-50 rounded-xl border border-rose-100 flex flex-col items-center justify-center min-w-[160px] h-10 shadow-sm shadow-rose-50">
+                        <span class="text-[9px] font-black text-rose-400 uppercase tracking-widest leading-none mb-0.5">Total Outstanding</span>
+                        <span class="text-sm font-black text-rose-700 leading-none">${formatCurrency(totalAP)}</span>
                     </div>
+
+                    <button onclick="openFinanceAPPaymentModal()" class="flex items-center justify-center gap-2 px-6 h-10 bg-blue-600 hover:bg-slate-900 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-200 transition-all active:scale-95 whitespace-nowrap">
+                        <i class="fas fa-plus"></i> INPUT PEMBAYARAN
+                    </button>
                 </div>
             </div>
 
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div class="p-6 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
-                    <div>
-                        <h3 class="font-bold text-gray-700">Daftar Tagihan Supplier</h3>
-                        <p class="text-xs text-gray-500">Total hutang aktif: <span class="font-bold text-red-600">${formatCurrency(invoices.reduce((sum, inv) => {
-                            const paid = db.read('supplierPayments').filter(p => p.invoiceId === inv.id).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
-                            return sum + (parseFloat(inv.totalAmount) - paid);
-                        }, 0))}</span></p>
-                    </div>
-                    <button onclick="openFinanceAPPaymentModal()" class="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold shadow-sm hover:bg-blue-700 transition-colors">
-                        <i class="fas fa-plus mr-1"></i> Input Pelunasan
-                    </button>
-                </div>
+            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
+                TOTAL: ${invoices.length} TAGIHAN AKTIF
+            </div>
+
+
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
-                        <thead class="bg-gray-50 text-slate-500 text-[11px] uppercase tracking-wider font-semibold">
-                            <tr>
-                                <th class="px-6 py-3 border-b border-gray-100">Tagihan</th>
-                                <th class="px-6 py-3 border-b border-gray-100">Supplier</th>
-                                <th class="px-6 py-3 border-b border-gray-100">Jatuh Tempo</th>
-                                <th class="px-6 py-3 border-b border-gray-100 text-right">Total</th>
-                                <th class="px-6 py-3 border-b border-gray-100 text-center">Status</th>
+                        <thead>
+                            <tr class="bg-slate-50/50">
+                                <th class="px-4 py-4 w-10">
+                                    <input type="checkbox" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500">
+                                </th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Supplier Name</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Status</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Jatuh Tempo</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">Sisa Hutang</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">No. Tagihan</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">Aksi</th>
                             </tr>
                         </thead>
-                        <tbody class="text-sm divide-y divide-gray-100">
-                            ${invoices.map(i => `
-                                <tr>
-                                    <td class="px-6 py-4">
-                                        <div class="font-bold text-gray-800">${i.invoiceNumber}</div>
-                                        <div class="text-[10px] text-gray-400">${formatDate(i.date).slice(0, 10)}</div>
+                        <tbody class="divide-y divide-slate-50">
+                            ${invoices.map(i => {
+                                const paid = allPayments.filter(p => p.invoiceId === i.id).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+                                const balance = parseFloat(i.totalAmount) - paid;
+                                const supp = suppliers.find(s => s.id === i.supplierId || s.name === i.supplierId) || { name: i.supplierId };
+                                
+                                let statusClass = 'bg-slate-100 text-slate-600 border-slate-200';
+                                if (i.status === 'PAID') statusClass = 'bg-emerald-50 text-emerald-600 border border-emerald-200';
+                                else if (i.status === 'PARTIAL') statusClass = 'bg-amber-50 text-amber-600 border border-amber-200';
+                                else if (i.status === 'UNPAID') statusClass = 'bg-rose-50 text-rose-600 border border-rose-200';
+
+                                return `
+                                <tr class="hover:bg-slate-50/50 transition-colors group">
+                                    <td class="px-4 py-4">
+                                        <input type="checkbox" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500">
                                     </td>
-                                    <td class="px-6 py-4 font-medium text-gray-700">${suppliers.find(s => s.id === i.supplierId || s.name === i.supplierId)?.name || i.supplierId}</td>
-                                    <td class="px-6 py-4 text-gray-600">${i.dueDate || '-'}</td>
-                                    <td class="px-6 py-4 text-right font-bold text-blue-600">
-                                        ${(() => {
-                                            const paid = db.read('supplierPayments').filter(p => p.invoiceId === i.id).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
-                                            return formatCurrency(i.totalAmount - paid);
-                                        })()}
+                                    <td class="px-6 py-4">
+                                        <div class="text-sm font-bold text-slate-800">${supp.name}</div>
+                                        <div class="text-[10px] text-slate-400 font-bold uppercase mt-0.5">${i.id.substring(0,8)}</div>
                                     </td>
                                     <td class="px-6 py-4 text-center">
-                                        <span class="px-3 py-1 ${i.status === 'PAID' ? 'bg-green-50 text-green-700' : (i.status === 'PARTIAL' ? 'bg-orange-50 text-orange-700' : 'bg-red-50 text-red-700')} rounded-md text-[10px] font-black tracking-widest border">
+                                        <span class="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider border ${statusClass}">
                                             ${i.status}
                                         </span>
                                     </td>
+                                    <td class="px-6 py-4 text-center text-xs font-bold text-slate-600">
+                                        ${i.dueDate ? formatDate(i.dueDate).slice(0, 10) : '-'}
+                                    </td>
+                                    <td class="px-6 py-4 text-right">
+                                        <div class="text-sm font-bold text-slate-800">${formatCurrency(balance)}</div>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <div class="px-3 py-1 bg-slate-50 text-slate-600 border border-slate-200 rounded-lg text-[10px] font-black w-fit">
+                                            ${i.invNumber || i.invoiceNumber || '-'}
+                                        </div>
+                                    </td>
+                                    <td class="px-6 py-4 text-right">
+                                        <div class="flex justify-end">
+                                            <div class="relative group/action">
+                                                <select onchange="handleAPAction(this.value, '${i.id}')" class="appearance-none bg-slate-50 border border-slate-200 rounded-lg pl-3 pr-8 py-1.5 text-[10px] font-bold text-slate-600 outline-none cursor-pointer hover:bg-white hover:border-blue-300 transition-all shadow-sm">
+                                                    <option value="">Pilih Aksi...</option>
+                                                    <option value="view">Detail</option>
+                                                    <option value="pay">Bayar</option>
+                                                </select>
+                                                <div class="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-slate-400">
+                                                    <i class="fas fa-chevron-down text-[8px]"></i>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
                                 </tr>
-                            `).join('') || '<tr><td colspan="5" class="px-6 py-12 text-center text-gray-400">Tidak ada data.</td></tr>'}
+                            `}).join('') || '<tr><td colspan="7" class="px-6 py-20 text-center text-slate-400 italic">Tidak ada tagihan supplier.</td></tr>'}
                         </tbody>
                     </table>
                 </div>
             </div>
         `;
     } else {
-        // Riwayat Tab
-        const f = window._apHistoryFilters;
-        const filterSuppId = f.supplierId;
-        const filterDate = f.date || '';
-        const filterMethod = f.method || '';
-
-        let payments = db.read('supplierPayments').sort((a, b) => new Date(b.date) - new Date(a.date));
-        const suppliers = db.read('suppliers');
-        if (filterSuppId) {
+        const q = (window._apHistoryFilters.q || '').toLowerCase();
+        let payments = [...allPayments].sort((a, b) => new Date(b.date) - new Date(a.date));
+        
+        if (q) {
             payments = payments.filter(p => {
                 const inv = db.findById('purchaseInvoices', p.invoiceId);
-                return (inv && inv.supplierId === filterSuppId);
+                const sName = (suppliers.find(s => s.id === inv?.supplierId || s.name === inv?.supplierId)?.name || '').toLowerCase();
+                return p.paymentNumber.toLowerCase().includes(q) || sName.includes(q);
             });
         }
-        if (filterDate) payments = payments.filter(p => p.date && p.date.startsWith(filterDate));
-        if (filterMethod) payments = payments.filter(p => p.method === filterMethod);
+
+        if (window._apHistoryFilters.dateFrom || window._apHistoryFilters.dateTo) {
+            payments = payments.filter(p => {
+                let ok = true;
+                if (window._apHistoryFilters.dateFrom && p.date < window._apHistoryFilters.dateFrom) ok = false;
+                if (window._apHistoryFilters.dateTo && p.date > window._apHistoryFilters.dateTo) ok = false;
+                return ok;
+            });
+        }
 
         contentHtml = `
-            <!-- Filter Section (History) -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-100 mb-6 overflow-hidden">
-                <div onclick="toggleAPHistFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition-colors select-none">
-                    <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
-                        <i class="fas fa-filter text-blue-600"></i> FILTER RIWAYAT
-                        ${(filterSuppId || filterDate || filterMethod) ? `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
-                    </h3>
-                    <div class="flex items-center gap-3">
-                        <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.apHistFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
-                        <i class="fas fa-chevron-${window._uiState.apHistFilterOpen ? 'up' : 'down'} text-slate-300 text-xs"></i>
+            <div class="flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-6">
+                <div class="flex items-center gap-4 w-full md:w-auto flex-1">
+                    <div class="relative flex-1 md:flex-none md:w-80 group">
+                        <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                            <i class="fas fa-search text-slate-400 group-focus-within:text-blue-500 transition-colors"></i>
+                        </div>
+                        <input type="text" id="apHistSearchInput" value="${window._apHistoryFilters.q || ''}" 
+                            onkeyup="if(event.key==='Enter') applyAPHistSearch()"
+                            placeholder="Cari No. Ref atau Supplier..." 
+                            class="block w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all">
+                    </div>
+                    
+                    <div class="relative flex items-center bg-white border border-slate-200 rounded-xl overflow-visible shadow-sm h-10">
+                        <div class="w-10 h-full flex items-center justify-center bg-slate-50 border-r border-slate-200 text-slate-500">
+                            <i class="fas fa-calendar-alt text-xs"></i>
+                        </div>
+                        <div onclick="window._uiState.apHistDatePopoverOpen = !window._uiState.apHistDatePopoverOpen; renderFinanceAP()" 
+                            class="relative flex items-center h-full px-4 cursor-pointer hover:bg-slate-50 transition-all group min-w-[100px]">
+                            <span class="text-sm font-bold text-blue-600 mr-3">Date</span>
+                            <i class="fas fa-chevron-down text-blue-300 text-[10px] transition-transform ${window._uiState.apHistDatePopoverOpen ? 'rotate-180' : ''}"></i>
+                        </div>
+
+                        <div class="${window._uiState.apHistDatePopoverOpen ? 'block' : 'hidden'} absolute top-full left-0 mt-3 w-80 bg-white rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.2)] border border-slate-100 p-6 z-[100]">
+                            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-5">FILTER RIWAYAT</div>
+                            <div class="grid grid-cols-2 gap-4 mb-6">
+                                <div class="space-y-1.5">
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">DARI</label>
+                                    <input type="date" id="apHistDateFrom" value="${window._apHistoryFilters.dateFrom || ''}" class="w-full bg-slate-50 border-none rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 outline-none">
+                                </div>
+                                <div class="space-y-1.5">
+                                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">KE</label>
+                                    <input type="date" id="apHistDateTo" value="${window._apHistoryFilters.dateTo || ''}" class="w-full bg-slate-50 border-none rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 outline-none">
+                                </div>
+                            </div>
+                            <div class="flex gap-3">
+                                <button onclick="applyAPHistDateRange()" class="flex-1 bg-blue-600 text-white py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-200">APPLY</button>
+                                <button onclick="resetAPHistDateRange()" class="flex-1 bg-slate-50 text-slate-400 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest">RESET</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div class="${window._uiState.apHistFilterOpen ? 'block' : 'hidden'} p-5 border-t border-slate-50 animate-in slide-in-from-top-2 duration-200">
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Supplier</label>
-                            <select id="apHistFilterSupplier" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50">
-                                <option value="">Semua Supplier</option>
-                                ${suppliers.map(s => `<option value="${s.id}" ${f.supplierId === s.id ? 'selected' : ''}>${s.name}</option>`).join('')}
-                            </select>
-                        </div>
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Bulan Pembayaran</label>
-                            <input type="month" id="apHistFilterDate" value="${f.date}" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50">
-                        </div>
-                        <div class="space-y-1.5">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Metode</label>
-                            <select id="apHistFilterMethod" class="w-full border-2 border-slate-100 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50">
-                                <option value="">Semua Metode</option>
-                                <option value="Transfer Bank" ${f.method === 'Transfer Bank' ? 'selected' : ''}>Transfer Bank</option>
-                                <option value="Tunai" ${f.method === 'Tunai' ? 'selected' : ''}>Tunai / Cash</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="flex gap-2 pt-4 mt-4 border-t border-slate-50">
-                        <button onclick="applyAPHistFilters()" class="bg-blue-600 hover:bg-slate-900 text-white px-8 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">TAMPILKAN</button>
-                        <button onclick="resetAPHistoryFilters()" class="bg-slate-50 hover:bg-slate-100 text-slate-400 px-5 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all">RESET</button>
-                    </div>
+                <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    TOTAL: ${payments.length} PEMBAYARAN
                 </div>
             </div>
 
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div class="p-4 border-b border-gray-100 bg-slate-50/50">
-                    <h3 class="font-bold text-gray-700">Riwayat Pembayaran Supplier</h3>
-                </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse">
-                        <thead class="bg-gray-50 text-slate-500 text-[11px] uppercase tracking-wider font-semibold">
-                            <tr>
-                                <th class="px-6 py-3 border-b border-gray-100">Tgl & Ref</th>
-                                <th class="px-6 py-3 border-b border-gray-100">Tagihan</th>
-                                <th class="px-6 py-3 border-b border-gray-100">Supplier</th>
-                                <th class="px-6 py-3 border-b border-gray-100 text-right">Jumlah</th>
-                            </tr>
-                        </thead>
-                        <tbody class="text-sm divide-y divide-gray-100">
-                            ${payments.map(p => {
-                                const inv = db.findById('purchaseInvoices', p.invoiceId) || { invoiceNumber: '-', supplierId: null };
-                                const foundSupp = suppliers.find(s => s.id === inv.supplierId || s.name === inv.supplierId);
-                                const suppName = foundSupp ? foundSupp.name : (inv.supplierId || '-');
-                                return `
-                                <tr>
-                                    <td class="px-6 py-4">
-                                        <div class="text-[10px] text-gray-400 font-bold">${formatDate(p.date).slice(0, 10)}</div>
-                                        <div class="font-bold text-gray-800">${p.paymentNumber}</div>
-                                    </td>
-                                    <td class="px-6 py-4 text-gray-600 font-medium">${inv.invoiceNumber}</td>
-                                    <td class="px-6 py-4 text-gray-600">${suppName}</td>
-                                    <td class="px-6 py-4 text-right font-bold text-red-600">${formatCurrency(p.amount)}</td>
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50/50">
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Tanggal</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">No. Ref</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Tagihan</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Supplier</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">Jumlah</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-50">
+                        ${payments.map(p => {
+                            const inv = db.findById('purchaseInvoices', p.invoiceId) || { invNumber: '-', invoiceNumber: '-', supplierId: null };
+                            const supp = suppliers.find(s => s.id === inv.supplierId || s.name === inv.supplierId) || { name: '-' };
+                            return `
+                                <tr class="hover:bg-slate-50/50 transition-colors group">
+                                    <td class="px-6 py-4 text-xs font-bold text-slate-500">${p.date.split('T')[0].split('-').reverse().join('-')}</td>
+                                    <td class="px-6 py-4 font-black text-slate-700">${p.paymentNumber}</td>
+                                    <td class="px-6 py-4 text-xs text-slate-500 font-bold">${inv.invNumber || inv.invoiceNumber || '-'}</td>
+                                    <td class="px-6 py-4 text-sm font-bold text-slate-600">${supp.name}</td>
+                                    <td class="px-6 py-4 text-right font-black text-rose-600">${formatCurrency(p.amount)}</td>
                                 </tr>
-                            `}).join('') || '<tr><td colspan="4" class="px-6 py-12 text-center text-gray-400">Belum ada riwayat.</td></tr>'}
-                        </tbody>
-                    </table>
-                </div>
+                            `;
+                        }).join('') || '<tr><td colspan="5" class="px-6 py-12 text-center text-slate-400 italic">Belum ada riwayat.</td></tr>'}
+                    </tbody>
+                </table>
             </div>
         `;
     }
 
     mc.innerHTML = `
         <div class="space-y-6">
-            <!-- Tab Navigation -->
             <div class="flex items-center gap-8 border-b border-slate-200 mb-6 px-2">
-                <button onclick="window._uiState.apActiveTab='unpaid'; renderFinanceAP()" 
-                    class="pb-4 text-sm font-bold transition-all relative ${activeTab === 'unpaid' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
-                    Antrean Hutang
-                    ${activeTab === 'unpaid' ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-[0_2px_10px_rgba(37,99,235,0.3)]"></div>' : ''}
-                </button>
-                <button onclick="window._uiState.apActiveTab='history'; renderFinanceAP()" 
-                    class="pb-4 text-sm font-bold transition-all relative ${activeTab === 'history' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
-                    Riwayat Pembayaran
-                    ${activeTab === 'history' ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-[0_2px_10px_rgba(37,99,235,0.3)]"></div>' : ''}
-                </button>
+                ${tabs.map(t => `
+                    <button onclick="window._uiState.apActiveTab='${t.id}'; renderFinanceAP()" 
+                        class="pb-4 text-sm font-bold transition-all relative ${activeTab === t.id ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
+                        ${t.label}
+                        ${activeTab === t.id ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-[0_2px_10px_rgba(37,99,235,0.3)]"></div>' : ''}
+                    </button>
+                `).join('')}
             </div>
-
             ${contentHtml}
         </div>
     `;
+
+    // Maintain focus
+    const input = document.getElementById('apSearchInput') || document.getElementById('apHistSearchInput');
+    if (input) {
+        input.focus();
+        const val = input.value; input.value = ''; input.value = val;
+    }
 };
 
-window.toggleAPHistFilter = function() {
-    window._uiState.apHistFilterOpen = !window._uiState.apHistFilterOpen;
+window.applyAPSearch = function() {
+    window._apFilters.q = document.getElementById('apSearchInput')?.value || '';
     renderFinanceAP();
 };
 
-window.applyAPHistFilters = function() {
-    window._apHistoryFilters = {
-        supplierId: document.getElementById('apHistFilterSupplier').value,
-        date: document.getElementById('apHistFilterDate').value,
-        method: document.getElementById('apHistFilterMethod').value
-    };
+window.applyAPDateRange = function() {
+    window._apFilters.dateFrom = document.getElementById('apDateFrom')?.value || '';
+    window._apFilters.dateTo = document.getElementById('apDateTo')?.value || '';
+    window._uiState.apDatePopoverOpen = false;
     renderFinanceAP();
 };
 
-window.resetAPHistoryFilters = function() {
-    window._apHistoryFilters = { supplierId: '', date: '', method: '' };
+window.resetAPDateRange = function() {
+    window._apFilters.dateFrom = '';
+    window._apFilters.dateTo = '';
+    window._uiState.apDatePopoverOpen = false;
     renderFinanceAP();
+};
+
+window.applyAPHistSearch = function() {
+    window._apHistoryFilters.q = document.getElementById('apHistSearchInput')?.value || '';
+    renderFinanceAP();
+};
+
+window.applyAPHistDateRange = function() {
+    window._apHistoryFilters.dateFrom = document.getElementById('apHistDateFrom')?.value || '';
+    window._apHistoryFilters.dateTo = document.getElementById('apHistDateTo')?.value || '';
+    window._uiState.apHistDatePopoverOpen = false;
+    renderFinanceAP();
+};
+
+window.resetAPHistDateRange = function() {
+    window._apHistoryFilters.q = '';
+    window._apHistoryFilters.dateFrom = '';
+    window._apHistoryFilters.dateTo = '';
+    window._uiState.apHistDatePopoverOpen = false;
+    renderFinanceAP();
+};
+
+window.handleAPAction = function(action, id) {
+    if (!action) return;
+    if (action === 'view') navigateTo('purchase-invoices', { invoiceId: id });
+    else if (action === 'pay') openFinanceAPPaymentModal(id);
 };
 
 // --- Finance AP Payment Feature ---
 window.openFinanceAPPaymentModal = () => {
+    const mc = document.getElementById('main-content');
+    window.renderBreadcrumb(['Finance', 'Data Hutang (AP)', 'Input Pembayaran']);
     const invoices = db.read('purchaseInvoices').filter(i => i.status === 'UNPAID' || i.status === 'PARTIAL');
     const payments = db.read('supplierPayments');
     const suppliers = db.read('suppliers');
@@ -2247,24 +2973,170 @@ window.openFinanceAPPaymentModal = () => {
         </div>
     `;
 
-    const footer = `
-        <button type="button" onclick="saveFinanceAPPayment()" class="w-full sm:w-auto justify-center rounded-md bg-blue-600 px-4 py-2 text-white font-medium hover:bg-blue-700 text-sm shadow-sm transition-colors">Proses Pembayaran</button>
-        <button type="button" onclick="closeModal()" class="mt-3 w-full sm:w-auto justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-gray-700 font-medium hover:bg-gray-50 text-sm transition-colors">Batal</button>
+    mc.innerHTML = `
+        <!-- Action Bar: full-width white bar like Quotation form -->
+        <div class="-mx-4 -mt-4 sm:-mx-6 sm:-mt-6 mb-6 bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-end gap-3 sticky top-0 z-10">
+            <button onclick="renderFinanceAP()" class="px-5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-all">BATAL</button>
+            <button onclick="saveFinanceAPPayment()" class="flex items-center gap-2 px-6 py-2 text-sm font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all active:scale-95">
+                <span class="w-2 h-2 rounded-full bg-white inline-block"></span> PROSES PEMBAYARAN
+            </button>
+        </div>
+        <div class="space-y-6">
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                <div class="px-8 py-4 border-b border-slate-100">
+                    <span class="text-[10px] font-black text-blue-600 uppercase tracking-widest">
+                        <i class="fas fa-circle text-[6px] mr-1"></i> INFORMASI PEMBAYARAN
+                    </span>
+                </div>
+                <div class="px-8 py-6">
+                    <div class="grid grid-cols-1 gap-5">
+                        <!-- Supplier Custom Dropdown -->
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Supplier <span class="text-red-400">*</span></label>
+                            <div class="relative" id="ap_supplier_dropdown_wrapper">
+                                <!-- Trigger -->
+                                <button type="button" id="ap_supplier_trigger"
+                                    onclick="toggleFinanceDropdown('ap_supplier_dropdown')"
+                                    class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all flex items-center justify-between hover:border-blue-400">
+                                    <span id="ap_supplier_label" class="text-slate-400">-- Pilih Supplier --</span>
+                                    <i class="fas fa-chevron-down text-slate-300 text-xs transition-transform" id="ap_supplier_chevron"></i>
+                                </button>
+                                <input type="hidden" id="fap_supplier_id">
+                                <!-- Dropdown Panel -->
+                                <div id="ap_supplier_dropdown" class="hidden absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                    <!-- Search -->
+                                    <div class="p-3 border-b border-slate-100">
+                                        <div class="relative">
+                                            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+                                            <input type="text" id="ap_supplier_search_input" placeholder="Cari supplier..." oninput="filterFinanceDropdown('ap_supplier', this.value)"
+                                                class="w-full pl-9 pr-4 py-2 bg-slate-50 rounded-xl border border-slate-100 text-sm font-semibold text-slate-700 outline-none focus:border-blue-400">
+                                        </div>
+                                    </div>
+                                    <!-- Options List -->
+                                    <div id="ap_supplier_options" class="max-h-56 overflow-y-auto py-1">
+                                        ${supplierIdsWithUnpaid.map(sId => {
+                                            const s = suppliers.find(x => x.id === sId || x.name === sId);
+                                            const displayName = s ? s.name : (sId || 'Unknown Supplier');
+                                            return `<div class="px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer transition-colors" onclick="selectFinanceDropdown('ap_supplier', '${sId}', '${displayName}', 'updateAPInvoicesBySupplier')">${displayName}</div>`;
+                                        }).join('')}
+                                    </div>
+                                    <!-- Footer Actions -->
+                                    <div class="border-t border-slate-100 py-1">
+                                        <div onclick="navigateTo('suppliers-new')" class="px-4 py-3 flex items-center gap-3 text-sm font-semibold text-slate-500 hover:bg-slate-50 cursor-pointer transition-colors">
+                                            <span class="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 text-xs"><i class="fas fa-plus"></i></span>
+                                            Buat Supplier Baru
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Tagihan Custom Dropdown -->
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Pilih Tagihan Supplier (AP) <span class="text-red-400">*</span></label>
+                            <div class="relative" id="ap_invoice_dropdown_wrapper">
+                                <!-- Trigger -->
+                                <button type="button" id="ap_invoice_trigger" disabled
+                                    onclick="toggleFinanceDropdown('ap_invoice_dropdown')"
+                                    class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all flex items-center justify-between hover:border-blue-400 disabled:opacity-50 disabled:cursor-not-allowed">
+                                    <span id="ap_invoice_label" class="text-slate-400">-- Pilih Supplier terlebih dahulu --</span>
+                                    <i class="fas fa-chevron-down text-slate-300 text-xs transition-transform" id="ap_invoice_chevron"></i>
+                                </button>
+                                <input type="hidden" id="fap_invoice_id">
+                                <!-- Dropdown Panel -->
+                                <div id="ap_invoice_dropdown" class="hidden absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                    <!-- Search -->
+                                    <div class="p-3 border-b border-slate-100">
+                                        <div class="relative">
+                                            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+                                            <input type="text" id="ap_invoice_search_input" placeholder="Cari tagihan/invoice..." oninput="filterFinanceDropdown('ap_invoice', this.value)"
+                                                class="w-full pl-9 pr-4 py-2 bg-slate-50 rounded-xl border border-slate-100 text-sm font-semibold text-slate-700 outline-none focus:border-blue-400">
+                                        </div>
+                                    </div>
+                                    <!-- Options List -->
+                                    <div id="ap_invoice_options" class="max-h-56 overflow-y-auto py-1">
+                                        <!-- Dynamically Populated -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Tanggal & Kas/Bank -->
+                        <div class="grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Tanggal Bayar <span class="text-red-400">*</span></label>
+                                <input type="date" id="fap_date" value="${new Date().toISOString().split('T')[0]}" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Bayar Dari (Kas/Bank) <span class="text-red-400">*</span></label>
+                                <select id="fap_account_id" onchange="updateFinanceAPPaymentDefaultAmount()" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all">
+                                    ${assetAccounts.map(a => `<option value="${a.id}">${a.name} (${a.code})</option>`).join('')}
+                                </select>
+                                <div id="fap_balance_info" class="mt-1 text-[10px] font-bold text-slate-400">Saldo: <span id="fap_current_balance">${formatCurrency(db.getAccountBalance(assetAccounts[0]?.id))}</span></div>
+                            </div>
+                        </div>
+                        <!-- Metode & Jumlah -->
+                        <div class="grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Metode Pembayaran</label>
+                                <select id="fap_method" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all">
+                                    <option>Transfer Bank</option>
+                                    <option>Tunai / Cash</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Jumlah Bayar (Rp) <span class="text-red-400">*</span></label>
+                                <input type="number" id="fap_amount" placeholder="0" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-rose-600 outline-none focus:border-blue-500 focus:bg-white transition-all">
+                            </div>
+                        </div>
+                        <!-- Bank Info Supplier -->
+                        <div id="fap_bank_info" class="hidden p-4 bg-blue-50 border border-blue-100 rounded-xl">
+                            <p class="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-3">Detail Rekening Penerima (Supplier)</p>
+                            <div class="grid grid-cols-3 gap-3">
+                                <div><p class="text-[10px] text-slate-400">Bank</p><p id="fap_bank_name" class="text-sm font-bold text-slate-700">-</p></div>
+                                <div><p class="text-[10px] text-slate-400">No. Rekening</p><p id="fap_bank_account" class="text-sm font-bold text-slate-700">-</p></div>
+                                <div><p class="text-[10px] text-slate-400">Atas Nama</p><p id="fap_bank_holder" class="text-sm font-bold text-slate-700">-</p></div>
+                            </div>
+                        </div>
+                        <!-- Catatan -->
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Catatan / No. Referensi Bank</label>
+                            <textarea id="fap_notes" rows="2" placeholder="No. Referensi Bank / Catatan tambahan..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all resize-none"></textarea>
+                        </div>
+                        <!-- Upload -->
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Upload Bukti Transfer <span class="text-slate-300 font-normal">(Opsional)</span></label>
+                            <input type="file" id="fap_receipt" accept="image/*,application/pdf" class="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 border border-slate-200 rounded-xl bg-slate-50 p-1">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     `;
-
-    showModal('Input Pelunasan Hutang (AP)', body, footer, 'full');
 };
 
 window.updateAPInvoicesBySupplier = () => {
     const supplierId = document.getElementById('fap_supplier_id').value;
-    const invoiceSelect = document.getElementById('fap_invoice_id');
+    const hiddenInput = document.getElementById('fap_invoice_id');
+    const triggerBtn = document.getElementById('ap_invoice_trigger');
+    const labelEl = document.getElementById('ap_invoice_label');
+    const optionsContainer = document.getElementById('ap_invoice_options');
     const amountInput = document.getElementById('fap_amount');
 
+    // Reset values first
+    if (hiddenInput) {
+        hiddenInput.value = '';
+        delete hiddenInput.dataset.balance;
+    }
+    if (amountInput) amountInput.value = '0';
+    updateFinanceAPPaymentDefaultAmount();
+
     if (!supplierId) {
-        invoiceSelect.innerHTML = '<option value="" disabled selected>-- Pilih Supplier terlebih dahulu --</option>';
-        invoiceSelect.disabled = true;
-        if (amountInput) amountInput.value = '0';
-        updateFinanceAPPaymentDefaultAmount(); // Update bank info to hidden
+        if (labelEl) {
+            labelEl.textContent = '-- Pilih Supplier terlebih dahulu --';
+            labelEl.classList.add('text-slate-400');
+            labelEl.classList.remove('text-slate-700');
+        }
+        if (triggerBtn) triggerBtn.disabled = true;
+        if (optionsContainer) optionsContainer.innerHTML = '';
         return;
     }
 
@@ -2272,28 +3144,37 @@ window.updateAPInvoicesBySupplier = () => {
     const payments = db.read('supplierPayments');
 
     if (invoices.length === 0) {
-        invoiceSelect.innerHTML = '<option value="" disabled selected>Tidak ada tagihan UNPAID untuk supplier ini</option>';
-        invoiceSelect.disabled = true;
-        if (amountInput) amountInput.value = '0';
-        updateFinanceAPPaymentDefaultAmount();
+        if (labelEl) {
+            labelEl.textContent = 'Tidak ada tagihan UNPAID untuk supplier ini';
+            labelEl.classList.add('text-slate-400');
+            labelEl.classList.remove('text-slate-700');
+        }
+        if (triggerBtn) triggerBtn.disabled = true;
+        if (optionsContainer) optionsContainer.innerHTML = '';
         return;
     }
 
-    const options = invoices.map(inv => {
+    if (labelEl) {
+        labelEl.textContent = 'Pilih Tagihan...';
+        labelEl.classList.add('text-slate-400');
+        labelEl.classList.remove('text-slate-700');
+    }
+    if (triggerBtn) triggerBtn.disabled = false;
+
+    const itemsHtml = invoices.map(inv => {
         const invPayments = payments.filter(p => p.invoiceId === inv.id);
         const totalPaid = invPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
         const balance = inv.totalAmount - totalPaid;
-        return `<option value="${inv.id}" data-balance="${balance}">${inv.invoiceNumber} (Sisa: ${formatCurrency(balance)})</option>`;
+        const displayLabel = `${inv.invNumber || inv.invoiceNumber || '-'} (Sisa: ${formatCurrency(balance)})`;
+        return `<div class="px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer transition-colors" 
+            onclick="selectFinanceDropdown('ap_invoice', '${inv.id}', '${displayLabel}', 'updateFinanceAPPaymentDefaultAmount', '${balance}')">${displayLabel}</div>`;
     }).join('');
 
-    invoiceSelect.innerHTML = '<option value="" disabled selected>Pilih Tagihan...</option>' + options;
-    invoiceSelect.disabled = false;
-    if (amountInput) amountInput.value = '0';
-    updateFinanceAPPaymentDefaultAmount(); // Clear bank info as invoice is deselected
+    if (optionsContainer) optionsContainer.innerHTML = itemsHtml;
 };
 
 window.updateFinanceAPPaymentDefaultAmount = () => {
-    const select = document.getElementById('fap_invoice_id');
+    const hiddenInput = document.getElementById('fap_invoice_id');
     const accSelect = document.getElementById('fap_account_id');
     const bankInfoContainer = document.getElementById('fap_bank_info');
     
@@ -2308,12 +3189,11 @@ window.updateFinanceAPPaymentDefaultAmount = () => {
         }
     }
 
-    if (select && select.selectedIndex > 0) {
-        const invId = select.value;
-        const balance = select.options[select.selectedIndex].dataset.balance;
+    if (hiddenInput && hiddenInput.value) {
+        const balance = hiddenInput.dataset.balance || '0';
         document.getElementById('fap_amount').value = balance;
 
-        // Populate Bank Info
+        const invId = hiddenInput.value;
         const inv = db.findById('purchaseInvoices', invId);
         if (inv && (inv.bankName || inv.bankAccount || inv.bankHolder)) {
             bankInfoContainer.classList.remove('hidden');
@@ -2400,7 +3280,7 @@ window.saveFinanceAPPayment = async () => {
         db.addJournalEntry({
             date: new Date(dateInput).toISOString(),
             journalNo: paymentNumber,
-            description: `Pelunasan Hutang (AP) ke ${db.findById('suppliers', inv.supplierId)?.name || 'Supplier'} - ${inv.invoiceNumber}`,
+            description: `Pelunasan Hutang (AP) ke ${db.findById('suppliers', inv.supplierId)?.name || 'Supplier'} - ${inv.invNumber || inv.invoiceNumber || '-'}`,
             items: [
                 { accountId: 'acc_ap', debit: inputAmount, credit: 0 }, // Debit AP (Hutang berkurang)
                 { accountId: accountId, debit: 0, credit: inputAmount } // Credit Kas/Bank (Uang berkurang)
@@ -2668,85 +3548,128 @@ window.renderFinanceCreditNotes = function () {
     document.getElementById('pageTitle').innerText = 'Credit Notes (Penyesuaian Piutang)';
     const mc = document.getElementById('main-content');
     
-    // Filters logic
-    const filterCust = (window._cnFilters?.customer || '').toLowerCase();
-    const filterDate = window._cnFilters?.date || '';
+    window._uiState.creditNoteActiveTab = window._uiState.creditNoteActiveTab || 'list';
+    const activeTab = window._uiState.creditNoteActiveTab;
+
+    window._cnFilters = window._cnFilters || { q: '' };
+    const f = window._cnFilters;
     
-    let notes = db.read('creditNotes');
-    if (filterCust) {
+    let notes = db.read('creditNotes') || [];
+    if (f.q) {
+        const q = f.q.toLowerCase();
         notes = notes.filter(n => {
             const cName = (db.findById('customers', n.customerId)?.name || '').toLowerCase();
-            return cName.includes(filterCust);
+            return n.noteNumber.toLowerCase().includes(q) || (n.notes && n.notes.toLowerCase().includes(q)) || cName.includes(q);
         });
     }
-    if (filterDate) {
-        notes = notes.filter(n => n.date && n.date.startsWith(filterDate));
-    }
 
-    mc.innerHTML = `
-        <div class="space-y-6">
-            <!-- Compact Filter Section -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-5 mb-5">
-                <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-2"><i class="fas fa-filter text-blue-500"></i> Filter Pencarian</h3>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end mb-4">
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Cari Customer</label>
-                        <input type="text" id="cnFilterCustomer" placeholder="Nama customer..." class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all" value="${window._cnFilters?.customer || ''}" onkeyup="if(event.key === 'Enter') updateCNFilters()">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Cari Tanggal</label>
-                        <input type="date" id="cnFilterDate" class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all" value="${window._cnFilters?.date || ''}">
-                    </div>
+    const totalAmount = notes.reduce((sum, n) => sum + (parseFloat(n.amount) || 0), 0);
+
+    let contentHtml = '';
+    // Reusable Filter Bar
+    const filterBarHtml = `
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex flex-col md:flex-row items-center gap-3 mb-4">
+            <div class="relative flex-1 group w-full">
+                <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors"></i>
+                <input type="text" onkeyup="if(event.key==='Enter') { window._cnFilters.q=this.value; renderFinanceCreditNotes(); }"
+                    value="${f.q || ''}" placeholder="Cari di ${activeTab === 'list' ? 'Daftar' : 'Riwayat'}..." 
+                    class="w-full pl-11 pr-4 py-2.5 bg-slate-50/50 rounded-xl border border-slate-100 focus:border-blue-500 focus:bg-white text-sm font-semibold text-slate-700 outline-none transition-all">
+            </div>
+            <div class="flex items-center gap-3 w-full md:w-auto px-1">
+                <div class="px-5 py-1.5 bg-blue-50 rounded-xl border border-blue-100 flex flex-col items-center justify-center min-w-[160px] h-10 shadow-sm">
+                    <span class="text-[9px] font-black text-blue-400 uppercase tracking-widest leading-none mb-0.5">Total ${activeTab === 'list' ? 'Item' : 'Riwayat'}</span>
+                    <span class="text-sm font-black text-blue-700 leading-none">${formatCurrency(totalAmount)}</span>
                 </div>
-                <div class="flex gap-2">
-                    <button onclick="updateCNFilters()" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all active:scale-95 shadow-sm shadow-blue-100">
-                        <i class="fas fa-search mr-2"></i> TAMPILKAN
-                    </button>
-                    <button onclick="document.getElementById('cnFilterCustomer').value=''; document.getElementById('cnFilterDate').value=''; updateCNFilters()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-lg transition-all active:scale-95 shadow-sm" title="Reset Filter">
-                        <i class="fas fa-undo"></i>
-                    </button>
+                ${activeTab === 'list' ? `
+                <button onclick="openCreditNoteModal()" class="flex items-center justify-center gap-2 px-6 h-10 bg-blue-600 hover:bg-slate-900 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-200 transition-all active:scale-95 whitespace-nowrap">
+                    <i class="fas fa-plus"></i> BUAT CREDIT NOTE
+                </button>` : ''}
+            </div>
+        </div>
+    `;
+
+    if (activeTab === 'list') {
+        contentHtml = filterBarHtml + `
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50/50">
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">TGL & REFERENSI</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">KETERANGAN</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">PELANGGAN</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">JUMLAH</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">AKSI</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50">
+                            ${notes.map(n => `
+                                <tr class="hover:bg-slate-50/50 transition-colors group">
+                                    <td class="px-6 py-4">
+                                        <div class="text-[10px] text-slate-400 font-bold mb-1">${formatDate(n.date).slice(0, 10)}</div>
+                                        <div class="inline-flex items-center px-2 py-1 bg-blue-50 text-blue-600 rounded-lg font-bold text-[10px] border border-blue-100">${n.noteNumber}</div>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <div class="text-sm font-bold text-slate-700">${n.notes || '-'}</div>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <span class="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[9px] font-black uppercase tracking-widest">${db.findById('customers', n.customerId)?.name || 'N/A'}</span>
+                                    </td>
+                                    <td class="px-6 py-4 text-right font-black text-blue-600">${formatCurrency(n.amount)}</td>
+                                    <td class="px-6 py-4 text-right">
+                                        <button onclick="viewCreditNote('${n.id}')" class="w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-blue-600 transition-all">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            `).join('') || '<tr><td colspan="5" class="px-6 py-10 text-center text-slate-400 italic">Tidak ada data.</td></tr>'}
+                        </tbody>
+                    </table>
                 </div>
             </div>
-
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div class="p-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center flex-wrap gap-4">
-                    <div>
-                        <h3 class="text-lg font-bold text-gray-800">Riwayat Credit Note</h3>
-                        <p class="text-xs text-gray-500 font-medium">Dokumen untuk pengurangan piutang (Retur/Diskon).</p>
-                    </div>
-                    <button onclick="openCreditNoteModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-all flex items-center gap-2">
-                        <i class="fas fa-plus"></i> Buat Credit Note
-                    </button>
-                </div>
-
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        `;
+    } else if (activeTab === 'history') {
+        contentHtml = filterBarHtml + `
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in slide-in-from-bottom-4 duration-500">
                 <table class="w-full text-left border-collapse">
-                    <thead class="bg-gray-50 text-slate-500 text-[11px] uppercase tracking-wider font-semibold">
-                        <tr>
-                            <th class="px-6 py-3 border-b border-gray-100">No. Nota</th>
-                            <th class="px-6 py-3 border-b border-gray-100">Tanggal</th>
-                            <th class="px-6 py-3 border-b border-gray-100">Pelanggan</th>
-                            <th class="px-6 py-3 border-b border-gray-100">Alasan / Note</th>
-                            <th class="px-6 py-3 border-b border-gray-100 text-right">Total</th>
-                            <th class="px-6 py-3 border-b border-gray-100 text-right">Aksi</th>
+                    <thead>
+                        <tr class="bg-slate-50/50">
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">TANGGAL</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">NOMOR</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">KETERANGAN</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">JUMLAH</th>
                         </tr>
                     </thead>
-                    <tbody class="text-sm divide-y divide-gray-100">
+                    <tbody class="divide-y divide-slate-50">
                         ${notes.map(n => `
-                            <tr class="hover:bg-gray-50/50 transition-colors">
-                                <td class="px-6 py-4 font-bold text-gray-800">${n.noteNumber}</td>
-                                <td class="px-6 py-4 text-gray-600">${formatDate(n.date).slice(0, 10)}</td>
-                                <td class="px-6 py-4 text-gray-700">${db.findById('customers', n.customerId)?.name || 'N/A'}</td>
-                                <td class="px-6 py-4 text-gray-500 italic">${n.notes || '-'}</td>
-                                <td class="px-6 py-4 text-right font-bold text-red-600">(${formatCurrency(n.amount)})</td>
-                                <td class="px-6 py-4 text-right">
-                                    <button onclick="viewCreditNote('${n.id}')" class="text-gray-400 hover:text-indigo-600 transition-colors" title="Lihat Detail"><i class="fas fa-eye"></i></button>
-                                </td>
+                            <tr class="hover:bg-slate-50 transition-colors">
+                                <td class="px-6 py-4 text-sm text-slate-600">${formatDate(n.date).slice(0, 10)}</td>
+                                <td class="px-6 py-4 font-bold text-slate-700">${n.noteNumber}</td>
+                                <td class="px-6 py-4 text-sm text-slate-500">${n.notes || '-'}</td>
+                                <td class="px-6 py-4 text-right font-black text-blue-600">${formatCurrency(n.amount)}</td>
                             </tr>
-                        `).join('') || '<tr><td colspan="6" class="px-6 py-12 text-center text-gray-400 italic">Belum ada data Credit Note.</td></tr>'}
+                        `).join('') || '<tr><td colspan="4" class="px-6 py-10 text-center text-slate-400">Belum ada riwayat.</td></tr>'}
                     </tbody>
                 </table>
             </div>
+        `;
+    }
+
+    mc.innerHTML = `
+        <div class="flex flex-col gap-4 animate-in fade-in duration-500">
+            <div class="flex items-center gap-8 border-b border-slate-200 mb-2 px-2">
+                <button onclick="window._uiState.creditNoteActiveTab='list'; renderFinanceCreditNotes()" 
+                    class="pb-3 text-sm font-bold transition-all relative ${activeTab === 'list' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
+                    Daftar Credit Note
+                    ${activeTab === 'list' ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-sm"></div>' : ''}
+                </button>
+                <button onclick="window._uiState.creditNoteActiveTab='history'; renderFinanceCreditNotes()" 
+                    class="pb-3 text-sm font-bold transition-all relative ${activeTab === 'history' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
+                    Riwayat Credit Note
+                    ${activeTab === 'history' ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-sm"></div>' : ''}
+                </button>
+            </div>
+            ${contentHtml}
         </div>
     `;
 };
@@ -2822,58 +3745,69 @@ window.updateDNNumberPreview = function() {
 };
 
 window.openCreditNoteModal = function () {
+    const mc = document.getElementById('main-content');
     const customers = db.read('customers');
-    const body = `
-        <div class="space-y-4 text-left">
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Pelanggan</label>
-                    <select id="cn_customer" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white" onchange="updateCNInvoiceList()">
-                        <option value="">-- Pilih Pelanggan --</option>
-                        ${customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
-                    </select>
+    
+    mc.innerHTML = `
+        <div class="-mx-4 -mt-4 sm:-mx-6 sm:-mt-6 mb-6 bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-end gap-3 sticky top-0 z-10">
+            <button onclick="renderFinanceCreditNotes()" class="px-5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-all">BATAL</button>
+            <button onclick="saveCreditNote()" class="flex items-center gap-2 px-6 py-2 text-sm font-bold bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 shadow-lg shadow-indigo-200 transition-all active:scale-95">
+                <span class="w-2 h-2 rounded-full bg-white inline-block"></span> SIMPAN CREDIT NOTE
+            </button>
+        </div>
+        <div class="space-y-6 animate-in fade-in duration-500">
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                <div class="px-8 py-4 border-b border-slate-100">
+                    <span class="text-[10px] font-black text-indigo-600 uppercase tracking-widest">
+                        <i class="fas fa-circle text-[6px] mr-1"></i> INFORMASI CREDIT NOTE
+                    </span>
                 </div>
-                <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Pilih Invoice (Opsional)</label>
-                    <select id="cn_invoice" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
-                        <option value="">-- Pilih Pelanggan Dahulu --</option>
-                    </select>
-                </div>
-            </div>
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Tanggal</label>
-                    <input type="date" id="cn_date" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value="${new Date().toISOString().split('T')[0]}" required>
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">No. Credit Note <span class="text-red-500 text-[10px] font-normal italic">(Wajib)</span></label>
-                    <div class="flex">
-                         <select id="cn_is_tax" onchange="updateCNNumberPreview()" class="border border-gray-300 border-r-0 rounded-l-lg px-2 py-2 bg-gray-50 text-xs font-bold focus:outline-none focus:ring-0 text-gray-700">
-                            <option value="true">TAX</option>
-                            <option value="false">NT</option>
-                         </select>
-                         <input type="text" id="cn_number" value="${generateCreditNoteNumber(true)}" class="w-full border border-gray-300 rounded-r-lg px-3 py-2 bg-gray-50 font-mono text-xs focus:outline-none text-gray-700" readonly>
+                <div class="px-8 py-6">
+                    <div class="grid grid-cols-1 gap-5">
+                        <div class="grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Pelanggan <span class="text-red-400">*</span></label>
+                                <select id="cn_customer" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-indigo-500 focus:bg-white transition-all" onchange="updateCNInvoiceList()">
+                                    <option value="">-- Pilih Pelanggan --</option>
+                                    ${customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Pilih Tagihan (Opsional)</label>
+                                <select id="cn_invoice" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-indigo-500 focus:bg-white transition-all">
+                                    <option value="">-- Pilih Pelanggan Dahulu --</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Tanggal <span class="text-red-400">*</span></label>
+                                <input type="date" id="cn_date" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-indigo-500 focus:bg-white transition-all" value="${new Date().toISOString().split('T')[0]}" required>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">No. Credit Note <span class="text-red-400">*</span></label>
+                                <div class="flex">
+                                     <select id="cn_is_tax" onchange="updateCNNumberPreview()" class="border border-slate-200 border-r-0 rounded-l-xl px-4 py-3 bg-slate-50 text-sm font-semibold focus:outline-none focus:ring-0 text-slate-700 transition-all">
+                                        <option value="true">TAX</option>
+                                        <option value="false">NT</option>
+                                     </select>
+                                     <input type="text" id="cn_number" value="${generateCreditNoteNumber(true)}" class="w-full bg-slate-50 border border-slate-200 rounded-r-xl px-4 py-3 text-sm font-mono focus:outline-none text-slate-700 focus:border-indigo-500 focus:bg-white transition-all" readonly>
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Jumlah Pemotongan (Amount) <span class="text-red-400">*</span></label>
+                            <input type="text" id="cn_amount" oninput="this.value=formatAmountInput(this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-red-600 outline-none focus:border-indigo-500 focus:bg-white transition-all" placeholder="0">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Alasan / Catatan</label>
+                            <textarea id="cn_notes" rows="3" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-indigo-500 focus:bg-white transition-all resize-none" placeholder="Contoh: Barang rusak / Retur unit..."></textarea>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div>
-                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Jumlah Pemotongan (Amount)</label>
-                <div class="relative">
-                    <span class="absolute left-3 top-2 text-gray-400 text-sm">Rp</span>
-                    <input type="number" id="cn_amount" class="w-full border border-gray-300 rounded-lg pl-10 pr-3 py-2 text-sm font-bold text-red-600 focus:ring-2 focus:ring-red-500" placeholder="0">
-                </div>
-            </div>
-            <div>
-                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Alasan / Catatan</label>
-                <textarea id="cn_notes" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Contoh: Barang rusak / Retur unit..."></textarea>
-            </div>
         </div>
     `;
-    const footer = `
-        <button onclick="saveCreditNote()" class="bg-indigo-600 text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-indigo-700 transition-all shadow-md">Simpan Credit Note</button>
-        <button onclick="closeModal()" class="px-6 py-2 text-sm font-bold text-gray-500 hover:bg-gray-100 rounded-lg transition-all">Batal</button>
-    `;
-    showModal('Buat Credit Note Baru', body, footer);
 };
 
 window.updateCNInvoiceList = function () {
@@ -2887,7 +3821,8 @@ window.updateCNInvoiceList = function () {
 
 window.saveCreditNote = function () {
     const customerId = document.getElementById('cn_customer').value;
-    const amount = parseFloat(document.getElementById('cn_amount').value) || 0;
+    const amountVal = document.getElementById('cn_amount').value;
+    const amount = parseAmountInput(amountVal) || 0;
     const notes = document.getElementById('cn_notes').value.trim();
     const invoiceId = document.getElementById('cn_invoice').value;
     const dateInput = document.getElementById('cn_date')?.value || new Date().toISOString().split('T')[0];
@@ -2913,7 +3848,7 @@ window.saveCreditNote = function () {
         });
     }
     showToast('Credit Note berhasil disimpan dan Jurnal dibuat.');
-    closeModal(); renderFinanceCreditNotes();
+    renderFinanceCreditNotes();
 };
 
 // --- DEBIT NOTES (Purchase Returns / Adjustments) ---
@@ -2921,85 +3856,128 @@ window.renderFinanceDebitNotes = function () {
     document.getElementById('pageTitle').innerText = 'Debit Notes (Penyesuaian Hutang)';
     const mc = document.getElementById('main-content');
     
-    // Filters logic
-    const filterSupp = (window._dnFilters?.supplier || '').toLowerCase();
-    const filterDate = window._dnFilters?.date || '';
+    window._uiState.debitNoteActiveTab = window._uiState.debitNoteActiveTab || 'list';
+    const activeTab = window._uiState.debitNoteActiveTab;
+
+    window._dnFilters = window._dnFilters || { q: '' };
+    const f = window._dnFilters;
     
-    let notes = db.read('debitNotes');
-    if (filterSupp) {
+    let notes = db.read('debitNotes') || [];
+    if (f.q) {
+        const q = f.q.toLowerCase();
         notes = notes.filter(n => {
             const sName = (db.findById('suppliers', n.supplierId)?.name || '').toLowerCase();
-            return sName.includes(filterSupp);
+            return n.noteNumber.toLowerCase().includes(q) || (n.notes && n.notes.toLowerCase().includes(q)) || sName.includes(q);
         });
     }
-    if (filterDate) {
-        notes = notes.filter(n => n.date && n.date.startsWith(filterDate));
-    }
 
-    mc.innerHTML = `
-        <div class="space-y-6">
-            <!-- Compact Filter Section -->
-            <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-5 mb-5">
-                <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center gap-2"><i class="fas fa-filter text-blue-500"></i> Filter Pencarian</h3>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end mb-4">
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Cari Supplier</label>
-                        <input type="text" id="dnFilterSupplier" placeholder="Nama supplier..." class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all" value="${window._dnFilters?.supplier || ''}" onkeyup="if(event.key === 'Enter') updateDNFilters()">
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Cari Tanggal</label>
-                        <input type="date" id="dnFilterDate" class="w-full border-2 border-slate-200 rounded-lg px-3 py-2 text-sm bg-white font-bold text-slate-700 focus:border-blue-500 outline-none transition-all" value="${window._dnFilters?.date || ''}">
-                    </div>
+    const totalAmount = notes.reduce((sum, n) => sum + (parseFloat(n.amount) || 0), 0);
+
+    let contentHtml = '';
+    // Reusable Filter Bar
+    const filterBarHtml = `
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex flex-col md:flex-row items-center gap-3 mb-4">
+            <div class="relative flex-1 group w-full">
+                <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors"></i>
+                <input type="text" onkeyup="if(event.key==='Enter') { window._dnFilters.q=this.value; renderFinanceDebitNotes(); }"
+                    value="${f.q || ''}" placeholder="Cari di ${activeTab === 'list' ? 'Daftar' : 'Riwayat'}..." 
+                    class="w-full pl-11 pr-4 py-2.5 bg-slate-50/50 rounded-xl border border-slate-100 focus:border-blue-500 focus:bg-white text-sm font-semibold text-slate-700 outline-none transition-all">
+            </div>
+            <div class="flex items-center gap-3 w-full md:w-auto px-1">
+                <div class="px-5 py-1.5 bg-blue-50 rounded-xl border border-blue-100 flex flex-col items-center justify-center min-w-[160px] h-10 shadow-sm">
+                    <span class="text-[9px] font-black text-blue-400 uppercase tracking-widest leading-none mb-0.5">Total ${activeTab === 'list' ? 'Item' : 'Riwayat'}</span>
+                    <span class="text-sm font-black text-blue-700 leading-none">${formatCurrency(totalAmount)}</span>
                 </div>
-                <div class="flex gap-2">
-                    <button onclick="updateDNFilters()" class="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all active:scale-95 shadow-sm shadow-blue-100">
-                        <i class="fas fa-search mr-2"></i> TAMPILKAN
-                    </button>
-                    <button onclick="document.getElementById('dnFilterSupplier').value=''; document.getElementById('dnFilterDate').value=''; updateDNFilters()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-lg transition-all active:scale-95 shadow-sm" title="Reset Filter">
-                        <i class="fas fa-undo"></i>
-                    </button>
+                ${activeTab === 'list' ? `
+                <button onclick="openDebitNoteModal()" class="flex items-center justify-center gap-2 px-6 h-10 bg-blue-600 hover:bg-slate-900 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-200 transition-all active:scale-95 whitespace-nowrap">
+                    <i class="fas fa-plus"></i> BUAT DEBIT NOTE
+                </button>` : ''}
+            </div>
+        </div>
+    `;
+
+    if (activeTab === 'list') {
+        contentHtml = filterBarHtml + `
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50/50">
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">TGL & REFERENSI</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">KETERANGAN</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">SUPPLIER</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">JUMLAH</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">AKSI</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50">
+                            ${notes.map(n => `
+                                <tr class="hover:bg-slate-50/50 transition-colors group">
+                                    <td class="px-6 py-4">
+                                        <div class="text-[10px] text-slate-400 font-bold mb-1">${formatDate(n.date).slice(0, 10)}</div>
+                                        <div class="inline-flex items-center px-2 py-1 bg-blue-50 text-blue-600 rounded-lg font-bold text-[10px] border border-blue-100">${n.noteNumber}</div>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <div class="text-sm font-bold text-slate-700">${n.notes || '-'}</div>
+                                    </td>
+                                    <td class="px-6 py-4">
+                                        <span class="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[9px] font-black uppercase tracking-widest">${db.findById('suppliers', n.supplierId)?.name || 'N/A'}</span>
+                                    </td>
+                                    <td class="px-6 py-4 text-right font-black text-blue-600">${formatCurrency(n.amount)}</td>
+                                    <td class="px-6 py-4 text-right">
+                                        <button onclick="viewDebitNote('${n.id}')" class="w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-blue-600 transition-all">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            `).join('') || '<tr><td colspan="5" class="px-6 py-10 text-center text-slate-400 italic">Tidak ada data.</td></tr>'}
+                        </tbody>
+                    </table>
                 </div>
             </div>
-
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-                <div class="p-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center flex-wrap gap-4">
-                    <div>
-                        <h3 class="text-lg font-bold text-gray-800">Riwayat Debit Note</h3>
-                        <p class="text-xs text-gray-500 font-medium">Dokumen untuk pengurangan hutang (Retur Pembelian).</p>
-                    </div>
-                    <button onclick="openDebitNoteModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition-all flex items-center gap-2">
-                        <i class="fas fa-plus"></i> Buat Debit Note
-                    </button>
-                </div>
-
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        `;
+    } else if (activeTab === 'history') {
+        contentHtml = filterBarHtml + `
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in slide-in-from-bottom-4 duration-500">
                 <table class="w-full text-left border-collapse">
-                    <thead class="bg-gray-50 text-slate-500 text-[11px] uppercase tracking-wider font-semibold">
-                        <tr>
-                            <th class="px-6 py-3 border-b border-gray-100">No. Nota</th>
-                            <th class="px-6 py-3 border-b border-gray-100">Tanggal</th>
-                            <th class="px-6 py-3 border-b border-gray-100">Supplier</th>
-                            <th class="px-6 py-3 border-b border-gray-100">Alasan / Note</th>
-                            <th class="px-6 py-3 border-b border-gray-100 text-right">Total</th>
-                            <th class="px-6 py-3 border-b border-gray-100 text-right">Aksi</th>
+                    <thead>
+                        <tr class="bg-slate-50/50">
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">TANGGAL</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">NOMOR</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">KETERANGAN</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">JUMLAH</th>
                         </tr>
                     </thead>
-                    <tbody class="text-sm divide-y divide-gray-100">
+                    <tbody class="divide-y divide-slate-50">
                         ${notes.map(n => `
-                            <tr class="hover:bg-gray-50/50 transition-colors">
-                                <td class="px-6 py-4 font-bold text-gray-800">${n.noteNumber}</td>
-                                <td class="px-6 py-4 text-gray-600">${formatDate(n.date).slice(0, 10)}</td>
-                                <td class="px-6 py-4 text-gray-700">${db.findById('suppliers', n.supplierId)?.name || 'N/A'}</td>
-                                <td class="px-6 py-4 text-gray-500 italic">${n.notes || '-'}</td>
-                                <td class="px-6 py-4 text-right font-bold text-green-600">(${formatCurrency(n.amount)})</td>
-                                <td class="px-6 py-4 text-right">
-                                    <button onclick="viewDebitNote('${n.id}')" class="text-gray-400 hover:text-blue-600 transition-colors" title="Lihat Detail"> <i class="fas fa-eye"></i></button>
-                                </td>
+                            <tr class="hover:bg-slate-50 transition-colors">
+                                <td class="px-6 py-4 text-sm text-slate-600">${formatDate(n.date).slice(0, 10)}</td>
+                                <td class="px-6 py-4 font-bold text-slate-700">${n.noteNumber}</td>
+                                <td class="px-6 py-4 text-sm text-slate-500">${n.notes || '-'}</td>
+                                <td class="px-6 py-4 text-right font-black text-blue-600">${formatCurrency(n.amount)}</td>
                             </tr>
-                        `).join('') || '<tr><td colspan="6" class="px-6 py-12 text-center text-gray-400 italic">Belum ada data Debit Note.</td></tr>'}
+                        `).join('') || '<tr><td colspan="4" class="px-6 py-10 text-center text-slate-400">Belum ada riwayat.</td></tr>'}
                     </tbody>
                 </table>
             </div>
+        `;
+    }
+
+    mc.innerHTML = `
+        <div class="flex flex-col gap-4 animate-in fade-in duration-500">
+            <div class="flex items-center gap-8 border-b border-slate-200 mb-2 px-2">
+                <button onclick="window._uiState.debitNoteActiveTab='list'; renderFinanceDebitNotes()" 
+                    class="pb-3 text-sm font-bold transition-all relative ${activeTab === 'list' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
+                    Daftar Debit Note
+                    ${activeTab === 'list' ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-sm"></div>' : ''}
+                </button>
+                <button onclick="window._uiState.debitNoteActiveTab='history'; renderFinanceDebitNotes()" 
+                    class="pb-3 text-sm font-bold transition-all relative ${activeTab === 'history' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
+                    Riwayat Debit Note
+                    ${activeTab === 'history' ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-sm"></div>' : ''}
+                </button>
+            </div>
+            ${contentHtml}
         </div>
     `;
 };
@@ -3013,58 +3991,69 @@ window.updateDNFilters = function() {
 };
 
 window.openDebitNoteModal = function () {
+    const mc = document.getElementById('main-content');
     const suppliers = db.read('suppliers');
-    const body = `
-        <div class="space-y-4 text-left">
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Supplier</label>
-                    <select id="dn_supplier" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white" onchange="updateDNInvoiceList()">
-                        <option value="">-- Pilih Supplier --</option>
-                        ${suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
-                    </select>
+    
+    mc.innerHTML = `
+        <div class="-mx-4 -mt-4 sm:-mx-6 sm:-mt-6 mb-6 bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-end gap-3 sticky top-0 z-10">
+            <button onclick="renderFinanceDebitNotes()" class="px-5 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-all">BATAL</button>
+            <button onclick="saveDebitNote()" class="flex items-center gap-2 px-6 py-2 text-sm font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all active:scale-95">
+                <span class="w-2 h-2 rounded-full bg-white inline-block"></span> SIMPAN DEBIT NOTE
+            </button>
+        </div>
+        <div class="space-y-6 animate-in fade-in duration-500">
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                <div class="px-8 py-4 border-b border-slate-100">
+                    <span class="text-[10px] font-black text-blue-600 uppercase tracking-widest">
+                        <i class="fas fa-circle text-[6px] mr-1"></i> INFORMASI DEBIT NOTE
+                    </span>
                 </div>
-                <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Pilih Tagihan (Opsional)</label>
-                    <select id="dn_invoice" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">
-                        <option value="">-- Pilih Supplier Dahulu --</option>
-                    </select>
-                </div>
-            </div>
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Tanggal</label>
-                    <input type="date" id="dn_date" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" value="${new Date().toISOString().split('T')[0]}" required>
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-gray-500 uppercase mb-1">No. Debit Note <span class="text-red-500 text-[10px] font-normal italic">(Wajib)</span></label>
-                    <div class="flex">
-                         <select id="dn_is_tax" onchange="updateDNNumberPreview()" class="border border-gray-300 border-r-0 rounded-l-lg px-2 py-2 bg-gray-50 text-xs font-bold focus:outline-none focus:ring-0 text-gray-700">
-                            <option value="true">TAX</option>
-                            <option value="false">NT</option>
-                         </select>
-                         <input type="text" id="dn_number" value="${generateDebitNoteNumber(true)}" class="w-full border border-gray-300 rounded-r-lg px-3 py-2 bg-gray-50 font-mono text-xs focus:outline-none text-gray-700" readonly>
+                <div class="px-8 py-6">
+                    <div class="grid grid-cols-1 gap-5">
+                        <div class="grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Supplier <span class="text-red-400">*</span></label>
+                                <select id="dn_supplier" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all" onchange="updateDNInvoiceList()">
+                                    <option value="">-- Pilih Supplier --</option>
+                                    ${suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Pilih Tagihan (Opsional)</label>
+                                <select id="dn_invoice" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all">
+                                    <option value="">-- Pilih Supplier Dahulu --</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Tanggal <span class="text-red-400">*</span></label>
+                                <input type="date" id="dn_date" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all" value="${new Date().toISOString().split('T')[0]}" required>
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">No. Debit Note <span class="text-red-400">*</span></label>
+                                <div class="flex">
+                                     <select id="dn_is_tax" onchange="updateDNNumberPreview()" class="border border-slate-200 border-r-0 rounded-l-xl px-4 py-3 bg-slate-50 text-sm font-semibold focus:outline-none focus:ring-0 text-slate-700 transition-all">
+                                        <option value="true">TAX</option>
+                                        <option value="false">NT</option>
+                                     </select>
+                                     <input type="text" id="dn_number" value="${generateDebitNoteNumber(true)}" class="w-full bg-slate-50 border border-slate-200 rounded-r-xl px-4 py-3 text-sm font-mono focus:outline-none text-slate-700 focus:border-blue-500 focus:bg-white transition-all" readonly>
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Jumlah Pemotongan (Amount) <span class="text-red-400">*</span></label>
+                            <input type="text" id="dn_amount" oninput="this.value=formatAmountInput(this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-green-600 outline-none focus:border-blue-500 focus:bg-white transition-all" placeholder="0">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Alasan / Catatan</label>
+                            <textarea id="dn_notes" rows="3" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all resize-none" placeholder="Contoh: Retur bahan baku / Koreksi harga..."></textarea>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div>
-                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Jumlah Pemotongan (Amount)</label>
-                <div class="relative">
-                    <span class="absolute left-3 top-2 text-gray-400 text-sm">Rp</span>
-                    <input type="number" id="dn_amount" class="w-full border border-gray-300 rounded-lg pl-10 pr-3 py-2 text-sm font-bold text-green-600 focus:ring-2 focus:ring-green-500" placeholder="0">
-                </div>
-            </div>
-            <div>
-                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Alasan / Catatan</label>
-                <textarea id="dn_notes" rows="3" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm" placeholder="Contoh: Retur bahan baku / Koreksi harga..."></textarea>
-            </div>
         </div>
     `;
-    const footer = `
-        <button onclick="saveDebitNote()" class="bg-blue-600 text-white px-6 py-2 rounded-lg text-sm font-bold hover:bg-blue-700 transition-all shadow-md">Simpan Debit Note</button>
-        <button onclick="closeModal()" class="px-6 py-2 text-sm font-bold text-gray-500 hover:bg-gray-100 rounded-lg transition-all">Batal</button>
-    `;
-    showModal('Buat Debit Note Baru', body, footer);
 };
 
 window.updateDNInvoiceList = function () {
@@ -3073,12 +4062,13 @@ window.updateDNInvoiceList = function () {
     if (!supplierId) { invSelect.innerHTML = '<option value="">-- Pilih Supplier Dahulu --</option>'; return; }
     const invoices = db.read('purchaseInvoices').filter(i => i.supplierId === supplierId);
     invSelect.innerHTML = '<option value="">-- Tidak Terkait Tagihan Spesifik --</option>' +
-        invoices.map(i => `<option value="${i.id}">${i.invoiceNumber} (Total: ${formatCurrency(i.totalAmount)})</option>`).join('');
+        invoices.map(i => `<option value="${i.id}">${i.invNumber || i.invoiceNumber || '-'} (Total: ${formatCurrency(i.totalAmount)})</option>`).join('');
 };
 
 window.saveDebitNote = function () {
     const supplierId = document.getElementById('dn_supplier').value;
-    const amount = parseFloat(document.getElementById('dn_amount').value) || 0;
+    const amountVal = document.getElementById('dn_amount').value;
+    const amount = parseAmountInput(amountVal) || 0;
     const notes = document.getElementById('dn_notes').value.trim();
     const invoiceId = document.getElementById('dn_invoice').value;
     const dateInput = document.getElementById('dn_date')?.value || new Date().toISOString().split('T')[0];
@@ -3103,7 +4093,7 @@ window.saveDebitNote = function () {
         });
     }
     showToast('Debit Note berhasil disimpan dan Jurnal dibuat.');
-    closeModal(); renderFinanceDebitNotes();
+    renderFinanceDebitNotes();
 };
 
 // --- View & PDF Notes ---
@@ -3254,7 +4244,7 @@ window.viewDebitNote = function (id) {
                         REFERENSI <i class="fas fa-receipt text-blue-500 text-sm"></i>
                     </h3>
                     <p class="text-xs text-slate-500 font-bold uppercase tracking-tighter mb-1">Tagihan Terkait</p>
-                    <p class="text-sm font-black text-slate-800 mb-4">${invoice ? invoice.invoiceNumber : 'Umum / Tanpa Invoice'}</p>
+                    <p class="text-sm font-black text-slate-800 mb-4">${invoice ? (invoice.invNumber || invoice.invoiceNumber || '-') : 'Umum / Tanpa Invoice'}</p>
                     <p class="text-xs text-slate-500 font-bold uppercase tracking-tighter mb-1">Status Dokumen</p>
                     <span class="inline-block px-4 py-1 rounded-full text-[10px] font-black tracking-widest bg-blue-600 text-white shadow-sm uppercase tracking-tighter">Debit Authorization</span>
                 </div>

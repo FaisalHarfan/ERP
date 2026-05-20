@@ -136,10 +136,14 @@ const BREADCRUMB_MAP = {
     'master-machines': ['Produksi', 'Master', 'Machine Master'],
     'production-reports': ['Produksi', 'Reports', 'Production Reports'],
     'finance-dashboard': ['Finance', 'Dashboard'],
-    'finance-ar': ['Finance', 'Accounts Receivable'],
-    'finance-ap': ['Finance', 'Accounts Payable'],
-    'finance-journal': ['Finance', 'General Ledger'],
     'finance-coa': ['Finance', 'Chart of Accounts'],
+    'finance-ar': ['Finance', 'Data Piutang (AR)'],
+    'finance-ap': ['Finance', 'Data Hutang (AP)'],
+    'finance-journal': ['Finance', 'General Ledger'],
+    'finance-receipts': ['Finance', 'Penerimaan Kas & Bank'],
+    'finance-expenses': ['Finance', 'Pengeluaran Kas & Bank'],
+    'finance-credit-notes': ['Finance', 'Credit Notes'],
+    'finance-debit-notes': ['Finance', 'Debit Notes'],
     'settings-dashboard': ['Pengaturan', 'Overview'],
     'settings-users': ['Pengaturan', 'Users'],
     'settings-roles': ['Pengaturan', 'Roles'],
@@ -360,7 +364,34 @@ function updateSidebarVisibility() {
     try {
         const sess = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
         const user = db.findById('users', sess.userId);
-        if (!user) return;
+
+        // If user data isn't in cache yet but we have a session + active dept,
+        // still show the correct nav group so the sidebar isn't blank.
+        if (!user) {
+            if (window.activeDepartment) {
+                document.querySelectorAll('.nav-group-parent').forEach(groupParent => {
+                    const innerGroup = groupParent.querySelector('[id$="-group"]');
+                    if (!innerGroup) return;
+                    const groupName = innerGroup.id.replace('-group', '');
+                    const deptAliases = {
+                        'sales': 'penjualan', 'penjualan': 'penjualan',
+                        'purchase': 'pembelian', 'pembelian': 'pembelian',
+                        'inventory': 'logistik', 'logistik': 'logistik',
+                        'production': 'produksi', 'produksi': 'produksi',
+                        'finance': 'finance',
+                        'settings': 'pengaturan', 'pengaturan': 'pengaturan'
+                    };
+                    const resolved = deptAliases[groupName];
+                    const activeDeptResolved = deptAliases[window.activeDepartment] || window.activeDepartment;
+                    if (resolved === activeDeptResolved) {
+                        groupParent.classList.remove('hidden');
+                    } else {
+                        groupParent.classList.add('hidden');
+                    }
+                });
+            }
+            return;
+        }
 
         const roles = db.read('roles');
         const role = roles.find(r => r.id === user.roleId);
@@ -516,6 +547,10 @@ async function navigateTo(viewId, isBack = false) {
         document.getElementById('modal-container').innerHTML = '';
     }
 
+    // Clear topbar action buttons (used by inline forms like AR/AP payment)
+    const topbarActions = document.getElementById('topbar-actions');
+    if (topbarActions) topbarActions.innerHTML = '';
+
     const sidebar = document.getElementById('sidebar');
     const mainContent = document.getElementById('main-content');
 
@@ -530,6 +565,12 @@ async function navigateTo(viewId, isBack = false) {
         }
     }
     window._currentView = viewId;
+    // Persist last visited view for restore-on-refresh
+    if (viewId !== 'launcher') {
+        localStorage.setItem('unityerp_last_view', viewId);
+    } else {
+        localStorage.removeItem('unityerp_last_view');
+    }
 
     // Toggle sidebar visibility for launcher vs inner apps
 
@@ -607,66 +648,112 @@ async function navigateTo(viewId, isBack = false) {
     // --- DATABASE SYNC ---
     // Sync necessary tables before rendering
     const tableSyncMap = {
+        // ── Launcher ──────────────────────────────────────────────────────────
         'launcher': ['notifications', 'systemLogs'],
-        'sales-dashboard': ['salesOrders', 'customers', 'salesInvoices'],
-        'purchase-dashboard': ['purchaseOrders', 'suppliers', 'purchaseRequests', 'purchaseRFQs'],
-        'inventory-master': ['inventoryItems', 'stockTransactions'],
-        'sales-customers': ['customers', 'inventoryItems', 'stockTransactions'],
-        'sales-quotations': ['salesQuotations', 'customers', 'inventoryItems'],
-        'sales-orders': ['salesOrders', 'customers', 'inventoryItems'],
-        'sales-invoices': ['salesInvoices', 'customers', 'inventoryItems'],
-        'purchase-requests': ['purchaseRequests', 'suppliers', 'inventoryItems'],
-        'purchase-rfqs': ['purchaseRFQs', 'suppliers', 'inventoryItems'],
-        'purchase-orders': ['purchaseOrders', 'suppliers', 'inventoryItems'],
-        'purchase-invoices': ['purchaseInvoices', 'suppliers', 'inventoryItems'],
-        'supplier-payments': ['supplierPayments', 'suppliers', 'accounts'],
-        'production-dashboard': ['productionOrders', 'stockTransactions', 'inventoryItems'],
-        'production-stock-master': ['inventoryItems', 'stockTransactions'],
-        'production-bom': ['bomHeaders', 'bomMaterials', 'inventoryItems'],
-        'production-mo': ['productionOrders', 'inventoryItems', 'bomHeaders', 'machines'],
-        'production-wip-stock': ['inventoryItems', 'stockTransactions'],
-        'production-reports': ['productionOrders', 'inventoryItems'],
-        'master-machines': ['machines'],
-        'finance-accounts': ['accounts'],
-        'settings-users': ['users', 'roles'],
-        'settings-roles': ['roles'],
-        'sales-delivery-orders': ['deliveryOrders', 'salesOrders', 'customers', 'inventoryItems', 'stockTransactions'],
-        'sales-region-report': ['salesOrders', 'customers'],
-        'sales-report-trends': ['salesInvoices', 'customers', 'inventoryItems'],
-        'sales-quotation-trends': ['salesQuotations', 'customers', 'inventoryItems'],
-        'sales-order-trends': ['salesOrders', 'customers', 'inventoryItems'],
+
+        // ── Sales (Penjualan) ─────────────────────────────────────────────────
+        'sales-dashboard':        ['salesOrders', 'salesInvoices', 'customers', 'deliveryOrders'],
+        'sales-quotations':       ['salesQuotations', 'customers', 'inventoryItems'],
+        'sales-orders':           ['salesOrders', 'customers', 'inventoryItems'],
+        'sales-invoices':         ['salesInvoices', 'customers', 'inventoryItems'],
+        'sales-payments':         ['salesInvoices', 'customers', 'accounts', 'bankAccounts'],
+        'sales-customers':        ['customers', 'inventoryItems'],
+        'sales-delivery-orders':  ['deliveryOrders', 'salesOrders', 'customers', 'inventoryItems', 'stockTransactions'],
+        'sales-returns':          ['salesReturns', 'salesOrders', 'customers', 'inventoryItems'],
+        'sales-exchanges':        ['productExchanges', 'salesOrders', 'customers', 'inventoryItems'],
+        'sales-return-reports':   ['salesReturns', 'productExchanges', 'customers', 'inventoryItems'],
+        'sales-reports':          ['salesInvoices', 'salesOrders', 'customers', 'inventoryItems'],
         'sales-report-analytics': ['salesInvoices', 'salesOrders', 'customers', 'inventoryItems'],
-        'purchase-receiving': ['purchaseOrders', 'inventoryItems', 'stockTransactions'],
-        'purchase-reports': ['purchaseOrders', 'purchaseInvoices', 'suppliers', 'inventoryItems'],
-        'finance-dashboard': ['accounts', 'journalEntries', 'bankAccounts']
+        'sales-report-trends':    ['salesInvoices', 'customers', 'inventoryItems'],
+        'sales-quotation-trends': ['salesQuotations', 'customers', 'inventoryItems'],
+        'sales-order-trends':     ['salesOrders', 'customers', 'inventoryItems'],
+        'sales-region-report':    ['salesOrders', 'customers'],
+        'sales-report-address':   ['customers'],
+
+        // ── Purchase (Pembelian) ──────────────────────────────────────────────
+        'purchase-dashboard':         ['purchaseOrders', 'purchaseInvoices', 'suppliers', 'purchaseRFQs'],
+        'purchase-rfqs':              ['purchaseRFQs', 'suppliers', 'inventoryItems'],
+        'purchase-orders':            ['purchaseOrders', 'suppliers', 'inventoryItems'],
+        'purchase-invoices':          ['purchaseInvoices', 'suppliers', 'inventoryItems', 'purchaseOrders'],
+        'purchase-receiving':         ['purchaseOrders', 'inventoryItems', 'stockTransactions'],
+        'purchase-receiving-history': ['purchaseOrders', 'inventoryItems', 'stockTransactions'],
+        'purchase-requests':          ['purchaseRequests', 'suppliers', 'inventoryItems'],
+        'supplier-payments':          ['supplierPayments', 'suppliers', 'purchaseInvoices', 'accounts', 'bankAccounts'],
+        'master-suppliers':           ['suppliers'],
+        'purchase-reports':           ['purchaseOrders', 'purchaseInvoices', 'suppliers', 'inventoryItems'],
+        'purchase-report-analytics':  ['purchaseOrders', 'purchaseInvoices', 'suppliers', 'inventoryItems'],
+        'purchase-report-trends':     ['purchaseInvoices', 'suppliers', 'inventoryItems'],
+        'purchase-rfq-trends':        ['purchaseRFQs', 'suppliers', 'inventoryItems'],
+        'purchase-order-trends':      ['purchaseOrders', 'suppliers', 'inventoryItems'],
+
+        // ── Inventory (Logistik) ──────────────────────────────────────────────
+        'inventory-dashboard':        ['inventoryItems', 'stockTransactions', 'deliveryOrders'],
+        'inventory-master':           ['inventoryItems', 'stockTransactions'],
+        'inventory-logs':             ['inventoryItems', 'stockTransactions'],
+        'inventory-judgment':         ['inventoryJudgments', 'inventoryItems', 'stockTransactions'],
+        'inventory-incoming-returns': ['salesReturns', 'productExchanges', 'inventoryItems', 'stockTransactions'],
+        'inventory-shrinkage':        ['inventoryItems', 'stockTransactions'],
+        'inventory-transfer':         ['inventoryItems', 'stockTransactions'],
+        'inventory-conversion':       ['inventoryConversions', 'inventoryItems', 'stockTransactions'],
+        'inventory-monthly-report':   ['inventoryItems', 'stockTransactions'],
+        'inventory-po-receipt':       ['purchaseOrders', 'inventoryItems', 'stockTransactions'],
+        'inventory-delivery':         ['deliveryOrders', 'salesOrders', 'inventoryItems', 'stockTransactions'],
+
+        // ── Production (Produksi) ─────────────────────────────────────────────
+        'production-dashboard':    ['productionOrders', 'inventoryItems', 'stockTransactions', 'machines'],
+        'production-mo':           ['productionOrders', 'inventoryItems', 'bomHeaders', 'machines'],
+        'production-bom':          ['bomHeaders', 'bomMaterials', 'inventoryItems'],
+        'master-machines':         ['machines'],
+        'production-stock':        ['inventoryItems', 'stockTransactions'],
+        'production-stock-master': ['inventoryItems', 'stockTransactions'],
+        'production-wip-stock':    ['inventoryItems', 'stockTransactions'],
+        'production-reports':      ['productionOrders', 'inventoryItems', 'stockTransactions'],
+        'production-shift-report': ['productionOrders', 'dailyProductionLogs', 'machines'],
+
+        // ── Finance ───────────────────────────────────────────────────────────
+        'finance-dashboard':      ['accounts', 'journalEntries', 'bankAccounts', 'salesInvoices', 'purchaseInvoices'],
+        'finance-accounts':       ['accounts'],
+        'finance-coa':            ['accounts'],
+        'finance-ar':             ['salesInvoices', 'customers', 'journalEntries', 'accounts'],
+        'finance-ar-history':     ['salesInvoices', 'customers', 'journalEntries'],
+        'finance-ar-aging':       ['salesInvoices', 'customers'],
+        'finance-ap':             ['purchaseInvoices', 'suppliers', 'journalEntries', 'accounts'],
+        'finance-ap-history':     ['purchaseInvoices', 'suppliers', 'journalEntries'],
+        'finance-ap-aging':       ['purchaseInvoices', 'suppliers'],
+        'finance-partner-ledger': ['journalEntries', 'accounts', 'customers', 'suppliers'],
+        'finance-journal':        ['journalEntries', 'accounts'],
+        'finance-receipts':       ['receipts', 'accounts', 'bankAccounts', 'customers'],
+        'finance-expenses':       ['expenses', 'accounts', 'bankAccounts'],
+        'finance-credit-notes':   ['creditNotes', 'customers', 'salesInvoices', 'accounts'],
+        'finance-debit-notes':    ['debitNotes', 'suppliers', 'purchaseInvoices', 'accounts'],
+        'finance-hpp':            ['productionOrders', 'inventoryItems', 'stockTransactions', 'journalEntries'],
+        'finance-rugilaba':       ['journalEntries', 'accounts', 'salesInvoices', 'purchaseInvoices'],
+        'finance-neracasaldo':    ['journalEntries', 'accounts'],
+        'finance-settings':       ['accounts', 'bankAccounts'],
+
+        // ── Settings (Pengaturan) ─────────────────────────────────────────────
+        'settings-dashboard': ['users', 'roles'],
+        'settings-users':     ['users', 'roles'],
+        'settings-roles':     ['roles'],
+        'settings-company':   [],
+        'settings-system':    [],
     };
     
     const tablesToSync = tableSyncMap[viewId] || [];
-    if (tablesToSync.length > 0) {
-        // Show loading state if needed, or just sync silently
-        try {
-            for (const table of tablesToSync) {
-                await db.sync(table);
-            }
-        } catch (err) {
-            console.warn('Sync warning:', err.message);
-            // Don't block the UI if background sync fails
-        }
-    }
 
+    // --- OPTIMISTIC RENDER: Render immediately from cache, then background-sync ---
+    // This eliminates VPS network latency from blocking the UI.
+    const allTablesToSync = [...new Set([...tablesToSync, ...(requiredModule ? ['users', 'roles'] : [])])];
+
+    // Access Control Check using CACHED data (fast, no network wait)
     if (requiredModule) {
         try {
             const sess = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
-            // Ensure users and roles are synced for permission checks
-            await db.sync('users');
-            await db.sync('roles');
-            
             const user = db.findById('users', sess.userId);
             if (user && user.id !== 'user_admin') {
                 const roles = db.read('roles');
                 const role = roles.find(r => r.id === user.roleId);
                 if (role?.id !== 'role_admin') {
-                    // Per-user permissions take priority, fall back to role
                     const perms = user.permissions || role?.permissions || {};
                     if (!perms[requiredModule]?.view) {
                         mainContent.innerHTML = `
@@ -682,6 +769,18 @@ async function navigateTo(viewId, isBack = false) {
                 }
             }
         } catch (e) { /* skip check on error */ }
+    }
+
+    // Background sync: fire all requests in PARALLEL, then re-render when done
+    if (allTablesToSync.length > 0) {
+        Promise.all(allTablesToSync.map(table => db.sync(table)))
+            .then(() => {
+                // Only re-render if user hasn't navigated away
+                if (window._currentView === viewId && views[viewId]) {
+                    views[viewId]();
+                }
+            })
+            .catch(err => console.warn('Background sync warning:', err.message));
     }
 
     // Render the view
@@ -14091,7 +14190,7 @@ window.viewProduction = (id) => {
 };
 
 // --- Initialization ---
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
 
     // Notification Logic
     window.renderNotifications = () => {
@@ -14259,9 +14358,27 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Load initial view
-    navigateTo('launcher');
+    // Load initial view — restore last state if user was already in a department
     window.navigateTo = navigateTo;
+
+    const session = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
+
+    // ⬇ CRITICAL: Wait for users & roles to be in cache BEFORE first render.
+    // Without this, updateSidebarVisibility() finds no user and hides all nav groups.
+    if (session.token) {
+        await Promise.all([db.sync('users'), db.sync('roles')]);
+    }
+
+    const lastDept = localStorage.getItem('unityerp_active_dept');
+    const lastView = localStorage.getItem('unityerp_last_view');
+
+    if (lastDept && lastView && session.token) {
+        // Restore active department & navigate to last viewed page
+        window.activeDepartment = lastDept;
+        navigateTo(lastView);
+    } else {
+        navigateTo('launcher');
+    }
 });
 
 // --- Date Filter Event Handlers ---
