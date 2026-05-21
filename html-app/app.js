@@ -457,12 +457,24 @@ function updateSidebarVisibility() {
             const children = innerGroup.querySelectorAll('a[data-view]');
             const visibleChildren = Array.from(children).filter(c => !c.classList.contains('hidden'));
 
-            // Always hide if no active department (Launcher)
+             // Always hide if no active department (Launcher)
             // If active department, only show the matching group
             if (!window.activeDepartment || !isDepartmentMatch || (visibleChildren.length === 0 && !isAdmin)) {
                 groupParent.classList.add('hidden');
             } else {
                 groupParent.classList.remove('hidden');
+                // Auto-expand all dropdowns inside the active department on refresh/load
+                groupParent.querySelectorAll('.nav-dropdown-wrapper').forEach(wrapper => {
+                    const dropdownPanel = wrapper.querySelector('div[id$="-dropdown"]');
+                    if (dropdownPanel) {
+                        dropdownPanel.classList.remove('hidden');
+                        dropdownPanel.classList.add('flex');
+                    }
+                    const dropdownIcon = wrapper.querySelector('i[id$="-dropdown-icon"]');
+                    if (dropdownIcon) {
+                        dropdownIcon.classList.add('rotate-180');
+                    }
+                });
             }
         });
 
@@ -2104,7 +2116,7 @@ function renderCustomerRows(customers) {
                 <div class="text-xs text-slate-600 max-w-[200px] line-clamp-2">${c.shippingAddress || c.address || '-'}</div>
             </td>
             <td class="py-4 px-5 text-right">
-                <div class="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div class="flex justify-end gap-2">
                     <button onclick="viewCustomerHistory('${c.id}')" class="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 transition-all" title="History"><i class="fas fa-history text-xs"></i></button>
                     ${canEdit ? `
                     <button onclick="openCustomerModal('${c.id}')" class="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-all" title="Edit"><i class="fas fa-edit text-xs"></i></button>
@@ -2709,7 +2721,7 @@ function renderSupplierRows(suppliers) {
                 <div class="text-xs text-slate-600 max-w-[250px] line-clamp-2">${s.address || '-'}</div>
             </td>
             <td class="py-4 px-5 text-right">
-                <div class="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div class="flex justify-end gap-2">
                     <button onclick="renderSupplierForm('${s.id}')" class="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-all" title="Edit"><i class="fas fa-edit text-xs"></i></button>
                     <button onclick="deleteSupplier('${s.id}')" class="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-600 transition-all" title="Delete"><i class="fas fa-trash text-xs"></i></button>
                 </div>
@@ -5574,7 +5586,7 @@ function renderMasterProducts() {
             <td class="py-4 px-4 text-sm text-slate-800 font-black text-right">${formatNumber(p.minStock)}</td>
             <td class="py-4 px-4 text-sm text-right">
                 ${canEdit ? `
-                <div class="flex justify-end gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                <div class="flex justify-end gap-1">
                     <button onclick="renderInventoryItemForm('${p.id}')" class="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-all" title="Edit"><i class="fas fa-edit"></i></button>
                     <button onclick="deleteInventoryItem('${p.id}')" class="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Delete"><i class="fas fa-trash-alt"></i></button>
                 </div>
