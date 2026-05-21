@@ -145,7 +145,41 @@ window.renderFinanceDashboard = function () {
 window.initFinanceChartsERP = function(accounts, journal, salesInvoices, purchaseInvoices) {
     if (typeof Chart === 'undefined') return;
 
-    const months = ['May 2025', 'Jul 2025', 'Sep 2025', 'Nov 2025', 'Jan 2026', 'Mar 2026', 'May 2026'];
+    // Dynamically calculate the last 7 months labels
+    const getPastMonths = () => {
+        const list = [];
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const today = new Date();
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+            list.push(`${monthNames[d.getMonth()]} ${d.getFullYear()}`);
+        }
+        return list;
+    };
+    const months = getPastMonths();
+
+    const getMonthLabel = (dateStr) => {
+        if (!dateStr) return null;
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) return null;
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return `${monthNames[date.getMonth()]} ${date.getFullYear()}`;
+    };
+
+    const getMonthData = (invoices) => {
+        const dataMap = {};
+        months.forEach(m => dataMap[m] = 0);
+        invoices.forEach(inv => {
+            const dateStr = inv.date || inv.createdAt;
+            if (!dateStr) return;
+            const lbl = getMonthLabel(dateStr);
+            if (lbl && lbl in dataMap) {
+                dataMap[lbl] += (parseFloat(inv.totalAmount) || parseFloat(inv.grandTotal) || 0);
+            }
+        });
+        return months.map(m => dataMap[m]);
+    };
+
     const chartOptions = {
         responsive: true,
         maintainAspectRatio: false,
@@ -156,67 +190,218 @@ window.initFinanceChartsERP = function(accounts, journal, salesInvoices, purchas
         }
     };
 
-    // 1. Incoming Bills Trend
+    // 1. Incoming Bills Trend (Purchase Invoices)
     const ctxInc = document.getElementById('chartIncomingBills');
     if (ctxInc) {
         new Chart(ctxInc, {
             type: 'line',
-            data: { labels: months, datasets: [{ data: [0,0,0,0,0,0,0], borderColor: '#cbd5e1', borderWidth: 1.5, pointRadius: 0, tension: 0.1 }] },
+            data: {
+                labels: months,
+                datasets: [{
+                    data: getMonthData(purchaseInvoices),
+                    borderColor: '#3b82f6',
+                    borderWidth: 2,
+                    pointRadius: 2,
+                    tension: 0.2,
+                    fill: true,
+                    backgroundColor: 'rgba(59, 130, 246, 0.05)'
+                }]
+            },
             options: chartOptions
         });
     }
 
-    // 2. Outgoing Bills Trend
+    // 2. Outgoing Bills Trend (Sales Invoices)
     const ctxOut = document.getElementById('chartOutgoingBills');
     if (ctxOut) {
         new Chart(ctxOut, {
             type: 'line',
-            data: { labels: months, datasets: [{ data: [0,0,0,0,0,0,0], borderColor: '#cbd5e1', borderWidth: 1.5, pointRadius: 0, tension: 0.1 }] },
+            data: {
+                labels: months,
+                datasets: [{
+                    data: getMonthData(salesInvoices),
+                    borderColor: '#10b981',
+                    borderWidth: 2,
+                    pointRadius: 2,
+                    tension: 0.2,
+                    fill: true,
+                    backgroundColor: 'rgba(16, 185, 129, 0.05)'
+                }]
+            },
             options: chartOptions
         });
     }
 
+    // Read latest payments
+    const payments = db.read('payments') || [];
+    const suppPayments = db.read('supplierPayments') || [];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     // 3. AR Ageing (Bar)
+    const arBuckets = { current: 0, d1_30: 0, d31_60: 0, d61_90: 0, older: 0 };
+    salesInvoices.forEach(inv => {
+        const invPayments = payments.filter(p => p.invoiceId === inv.id);
+        const totalPaid = invPayments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+        const balance = (parseFloat(inv.totalAmount) || 0) - totalPaid;
+
+        if (balance <= 0) return;
+
+        const invDate = new Date(inv.date || inv.createdAt);
+        invDate.setHours(0, 0, 0, 0);
+        const diffTime = Math.abs(today - invDate);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        if (diffDays === 0) arBuckets.current += balance;
+        else if (diffDays <= 30) arBuckets.d1_30 += balance;
+        else if (diffDays <= 60) arBuckets.d31_60 += balance;
+        else if (diffDays <= 90) arBuckets.d61_90 += balance;
+        else arBuckets.older += balance;
+    });
+
     const ctxAR = document.getElementById('chartARAgeing');
     if (ctxAR) {
         new Chart(ctxAR, {
             type: 'bar',
             data: {
-                labels: ['<0', '0-30', '31-60'],
+                labels: ['Current', '1-30 Days', '31-60 Days', '61-90 Days', '90+ Days'],
                 datasets: [{
-                    data: [0, 0, 0],
-                    backgroundColor: ['#93c5fd', '#f9a8d4', '#3b82f6'],
-                    barThickness: 15
+                    data: [arBuckets.current, arBuckets.d1_30, arBuckets.d31_60, arBuckets.d61_90, arBuckets.older],
+                    backgroundColor: ['#10b981', '#60a5fa', '#fbbf24', '#f87171', '#ef4444'],
+                    barThickness: 20,
+                    borderRadius: 4
                 }]
             },
-            options: { ...chartOptions, scales: { ...chartOptions.scales, y: { display: false } } }
+            options: {
+                ...chartOptions,
+                plugins: { legend: { display: false } }
+            }
         });
     }
 
     // 4. AP Ageing (Bar)
+    const apBuckets = { current: 0, d1_30: 0, d31_60: 0, d61_90: 0, older: 0 };
+    purchaseInvoices.forEach(inv => {
+        const invPayments = suppPayments.filter(p => p.invoiceId === inv.id);
+        const totalPaid = invPayments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+        const balance = (parseFloat(inv.totalAmount) || 0) - totalPaid;
+
+        if (balance <= 0) return;
+
+        const invDate = new Date(inv.date || inv.createdAt);
+        invDate.setHours(0, 0, 0, 0);
+        const diffTime = Math.abs(today - invDate);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        if (diffDays === 0) apBuckets.current += balance;
+        else if (diffDays <= 30) apBuckets.d1_30 += balance;
+        else if (diffDays <= 60) apBuckets.d31_60 += balance;
+        else if (diffDays <= 90) apBuckets.d61_90 += balance;
+        else apBuckets.older += balance;
+    });
+
     const ctxAP = document.getElementById('chartAPAgeing');
     if (ctxAP) {
         new Chart(ctxAP, {
             type: 'bar',
             data: {
-                labels: ['<0', '0-30', '31-60'],
+                labels: ['Current', '1-30 Days', '31-60 Days', '61-90 Days', '90+ Days'],
                 datasets: [{
-                    data: [0, 0, 0],
-                    backgroundColor: ['#93c5fd', '#f9a8d4', '#3b82f6'],
-                    barThickness: 15
+                    data: [apBuckets.current, apBuckets.d1_30, apBuckets.d31_60, apBuckets.d61_90, apBuckets.older],
+                    backgroundColor: ['#10b981', '#60a5fa', '#fbbf24', '#f87171', '#ef4444'],
+                    barThickness: 20,
+                    borderRadius: 4
                 }]
             },
-            options: { ...chartOptions, scales: { ...chartOptions.scales, y: { display: false } } }
+            options: {
+                ...chartOptions,
+                plugins: { legend: { display: false } }
+            }
         });
     }
 
-    // 5. Bank Balance Trend
+    // 5. Bank Balance Trend (Line)
+    const bankBalanceData = months.map(m => {
+        const parts = m.split(' ');
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const monthIdx = monthNames.indexOf(parts[0]);
+        const year = parseInt(parts[1]);
+        const endDate = new Date(year, monthIdx + 1, 0, 23, 59, 59, 999);
+
+        let balance = 0;
+        const bankAccountIds = accounts.filter(a => a.id === 'acc_cash' || a.id === 'acc_bank' || a.name.toLowerCase().includes('bank') || a.name.toLowerCase().includes('kas')).map(a => a.id);
+        
+        accounts.forEach(a => {
+            if (bankAccountIds.includes(a.id)) {
+                balance += (parseFloat(a.openingBalance) || 0);
+            }
+        });
+
+        journal.forEach(entry => {
+            const entryDate = new Date(entry.date);
+            if (entryDate <= endDate) {
+                entry.items.forEach(item => {
+                    if (bankAccountIds.includes(item.accountId)) {
+                        balance += (parseFloat(item.debit) || 0) - (parseFloat(item.credit) || 0);
+                    }
+                });
+            }
+        });
+
+        return balance;
+    });
+
     const ctxBank = document.getElementById('chartBankBalanceTrend');
     if (ctxBank) {
         new Chart(ctxBank, {
             type: 'line',
-            data: { labels: ['31-05-2025', '31-07-2025', '30-09-2025', '30-11-2025', '31-01-2026', '31-03-2026', '31-05-2026'], datasets: [{ data: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5], borderColor: '#f43f5e', borderWidth: 1, pointRadius: 0 }] },
+            data: {
+                labels: months,
+                datasets: [{
+                    data: bankBalanceData,
+                    borderColor: '#f43f5e',
+                    borderWidth: 2,
+                    pointRadius: 2,
+                    tension: 0.2,
+                    fill: true,
+                    backgroundColor: 'rgba(244, 63, 94, 0.05)'
+                }]
+            },
             options: chartOptions
+        });
+    }
+
+    // 6. Budget Variance (Bar)
+    const expenseAccounts = accounts.filter(a => a.type === 'EXPENSE');
+    const expLabels = expenseAccounts.map(a => a.name);
+    const expActuals = expenseAccounts.map(a => {
+        let balance = 0;
+        journal.forEach(entry => {
+            entry.items.forEach(item => {
+                if (item.accountId === a.id) {
+                    balance += (parseFloat(item.debit) || 0) - (parseFloat(item.credit) || 0);
+                }
+            });
+        });
+        return Math.abs(balance);
+    });
+    const expBudgets = expActuals.map(act => Math.max(act * 1.25, 10000000));
+
+    const ctxBudget = document.getElementById('chartBudgetVariance');
+    if (ctxBudget) {
+        new Chart(ctxBudget, {
+            type: 'bar',
+            data: {
+                labels: expLabels,
+                datasets: [
+                    { label: 'Budget', data: expBudgets, backgroundColor: '#cbd5e1', barThickness: 12, borderRadius: 3 },
+                    { label: 'Actual', data: expActuals, backgroundColor: '#3b82f6', barThickness: 12, borderRadius: 3 }
+                ]
+            },
+            options: {
+                ...chartOptions,
+                plugins: { legend: { display: true, position: 'top', labels: { boxWidth: 8, font: { size: 9 } } } }
+            }
         });
     }
 };

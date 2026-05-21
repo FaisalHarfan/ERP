@@ -723,7 +723,7 @@ async function navigateTo(viewId, isBack = false) {
         'production-shift-report': ['productionOrders', 'dailyProductionLogs', 'machines'],
 
         // ── Finance ───────────────────────────────────────────────────────────
-        'finance-dashboard':      ['accounts', 'journalEntries', 'bankAccounts', 'salesInvoices', 'purchaseInvoices'],
+        'finance-dashboard':      ['accounts', 'journalEntries', 'bankAccounts', 'salesInvoices', 'purchaseInvoices', 'payments', 'supplierPayments'],
         'finance-accounts':       ['accounts'],
         'finance-coa':            ['accounts'],
         'finance-ar':             ['salesInvoices', 'customers', 'journalEntries', 'accounts'],
