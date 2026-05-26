@@ -789,7 +789,23 @@ async function navigateTo(viewId, isBack = false) {
             .then(() => {
                 // Only re-render if user hasn't navigated away
                 if (window._currentView === viewId && views[viewId]) {
-                    views[viewId]();
+                    // Prevent overwriting active form views during background sync
+                    const activeForms = [
+                        'qt-form-view', 'so-form-view', 'si-form-view', 
+                        'sdo-form-view', 'rfq-form-view', 'po-form-view',
+                        'cust-form-view', 'gr-form-view', 'pr-form-view', 
+                        'bom-form-view', 'mo-form-view'
+                    ];
+                    const isFormOpen = activeForms.some(id => {
+                        const el = document.getElementById(id);
+                        return el && !el.classList.contains('hidden');
+                    });
+
+                    if (!isFormOpen) {
+                        views[viewId]();
+                    } else {
+                        console.log('Skipping background sync render because a form is open');
+                    }
                 }
             })
             .catch(err => console.warn('Background sync warning:', err.message));
