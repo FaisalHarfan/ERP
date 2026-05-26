@@ -220,38 +220,83 @@ router.post('/orders/:id/complete', authenticateToken, requirePermission('produk
 
         // --- 3. PROSES PACKING ---
         else if (stage === 'PACKING') {
-            const inputWipId = mo.inputItemId; // Biasanya WIP Oven Kering
-            const outputItemId = mo.outputItemId; // Final Finished Good
-            
-            // OUT dari Oven Kering
-            await StockTransaction.create({
-                id: generateId(),
-                txNo: `PRD-OUT-${Date.now().toString().slice(-6)}`,
-                date: new Date(),
-                itemId: inputWipId,
-                type: 'OUT',
-                qty: parseFloat(mo.inputQty),
-                reference: 'PRODUCTION_OUT',
-                referenceId: moRecord.id,
-                notes: `FINISH Packing MO ${moNumber}: Consumed from Oven Kering`,
-                createdBy: req.user.email,
-                location: 'OVEN_KERING'
-            }, { transaction: t });
+            if (mo.targetProducts && Array.isArray(mo.targetProducts) && mo.targetProducts.length > 0) {
+                for (const tp of mo.targetProducts) {
+                    const inputWipId = await ensureWIPItem(tp.itemId, 'Oven Kering', t);
+                    const outputItemId = tp.itemId; // Final Finished Good
+                    
+                    const inputQty = parseFloat(tp.inputQtyActual || tp.qty || 0);
+                    const outputQty = parseFloat(tp.outputQtyActual || inputQty || 0);
+                    const outputSacks = parseFloat(tp.outputSacks || 0);
+                    
+                    // OUT dari Oven Kering
+                    await StockTransaction.create({
+                        id: generateId(),
+                        txNo: `PRD-OUT-${Date.now().toString().slice(-6)}`,
+                        date: new Date(),
+                        itemId: inputWipId,
+                        itemName: tp.itemName + ' (Oven Kering)',
+                        type: 'OUT',
+                        qty: inputQty,
+                        reference: 'PRODUCTION_OUT',
+                        referenceId: moRecord.id,
+                        notes: `FINISH Packing MO ${moNumber}: Consumed ${tp.itemName} from Oven Kering`,
+                        createdBy: req.user.email,
+                        location: 'OVEN_KERING'
+                    }, { transaction: t });
 
-            // IN ke Gudang Jadi (WHS)
-            await StockTransaction.create({
-                id: generateId(),
-                txNo: `PRD-IN-${Date.now().toString().slice(-6)}`,
-                date: new Date(),
-                itemId: outputItemId,
-                type: 'IN',
-                qty: parseFloat(mo.inputQty),
-                reference: 'PRODUCTION_IN',
-                referenceId: moRecord.id,
-                notes: `FINISH Packing MO ${moNumber}: Produced Finished Goods`,
-                createdBy: req.user.email,
-                location: 'WHS'
-            }, { transaction: t });
+                    // IN ke Gudang Jadi (WHS)
+                    await StockTransaction.create({
+                        id: generateId(),
+                        txNo: `PRD-IN-${Date.now().toString().slice(-6)}`,
+                        date: new Date(),
+                        itemId: outputItemId,
+                        itemName: tp.itemName,
+                        type: 'IN',
+                        qty: outputQty,
+                        reference: 'PRODUCTION_IN',
+                        referenceId: moRecord.id,
+                        notes: `FINISH Packing MO ${moNumber}: Produced Finished Goods ${tp.itemName} (${outputSacks} Sacks)`,
+                        createdBy: req.user.email,
+                        location: 'WHS'
+                    }, { transaction: t });
+                }
+            } else {
+                // Fallback to single product if targetProducts doesn't exist
+                const inputWipId = mo.inputItemId; // Biasanya WIP Oven Kering
+                const outputItemId = mo.outputItemId; // Final Finished Good
+                const inputQty = parseFloat(mo.inputQty || 0);
+                
+                // OUT dari Oven Kering
+                await StockTransaction.create({
+                    id: generateId(),
+                    txNo: `PRD-OUT-${Date.now().toString().slice(-6)}`,
+                    date: new Date(),
+                    itemId: inputWipId,
+                    type: 'OUT',
+                    qty: inputQty,
+                    reference: 'PRODUCTION_OUT',
+                    referenceId: moRecord.id,
+                    notes: `FINISH Packing MO ${moNumber}: Consumed from Oven Kering`,
+                    createdBy: req.user.email,
+                    location: 'OVEN_KERING'
+                }, { transaction: t });
+
+                // IN ke Gudang Jadi (WHS)
+                await StockTransaction.create({
+                    id: generateId(),
+                    txNo: `PRD-IN-${Date.now().toString().slice(-6)}`,
+                    date: new Date(),
+                    itemId: outputItemId,
+                    type: 'IN',
+                    qty: inputQty,
+                    reference: 'PRODUCTION_IN',
+                    referenceId: moRecord.id,
+                    notes: `FINISH Packing MO ${moNumber}: Produced Finished Goods`,
+                    createdBy: req.user.email,
+                    location: 'WHS'
+                }, { transaction: t });
+            }
         }
 
         // Update MO Record

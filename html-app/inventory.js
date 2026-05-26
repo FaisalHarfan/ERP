@@ -371,9 +371,17 @@ window.renderInventoryMaster = async () => {
         let items = await api.getInventoryItems();
         window._tempInventoryItems = items; // Cache for modals
 
+        // Exclude WIP categories — these belong to Manufacturing, not Inventory
+        const WIP_CATEGORIES = ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK', 'BULK_STOCK'];
+        items = items.filter(it => !WIP_CATEGORIES.includes(it.category));
+        window._tempInventoryItems = items; // Update cache after WIP filter
+
         // Persist filters
         window._inventoryFilters = window._inventoryFilters || { category: '', name: '' };
         const f = window._inventoryFilters;
+
+        // Reset category filter if it was set to a WIP category
+        if (WIP_CATEGORIES.includes(f.category)) f.category = '';
 
         // Apply Filters
         if (f.category) {
@@ -390,13 +398,10 @@ window.renderInventoryMaster = async () => {
             });
         }
 
-        // Sort items: Gudang Jadi first, then others by logical order, then alphabetical
+        // Sort items: Gudang Jadi first, then Bahan Baku, then alphabetical
         const catOrder = {
             FINISHED_GOODS: 1,
-            RAW_MATERIAL: 2,
-            OVEN_BASAH_STOCK: 3,
-            OVEN_KERING_STOCK: 4,
-            BULK_STOCK: 5
+            RAW_MATERIAL: 2
         };
         items.sort((a, b) => {
             const orderA = catOrder[a.category] || 99;
@@ -406,8 +411,9 @@ window.renderInventoryMaster = async () => {
         });
 
         const isProdView = document.getElementById('pageTitle')?.innerText === 'Stok Produksi';
+        const HIDDEN_CATS = ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK', 'BULK_STOCK'];
         const filteredCategories = Object.entries(CATEGORY_LABELS)
-            .filter(([v]) => isProdView ? ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'].includes(v) : !['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'].includes(v));
+            .filter(([v]) => isProdView ? ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'].includes(v) : !HIDDEN_CATS.includes(v));
 
         const selectedCatLabel = f.category ? (CATEGORY_LABELS[f.category] || f.category) : 'All Categories';
 
@@ -1334,21 +1340,31 @@ window.saveInventoryConversion = async () => {
         await db.sync('inventoryConversions');
 
         // Update Pack Breakdown (Update saldo 5kg / 800gr)
+        // Use db.update/db.insert to persist to PostgreSQL (not db.save which is memory-only)
         const allPB = db.read('packBreakdowns') || [];
         let pb = allPB.find(b => b.itemId === fromId);
-        if (!pb) {
-            pb = { id: db.uuid(), itemId: fromId, qty25: 0, qty5: 0, qty800: 0 };
-            allPB.push(pb);
+        
+        if (pb) {
+            // Update existing breakdown
+            const updates = {};
+            if (Math.abs(ratio - 5) < 0.1) {
+                updates.qty5 = (parseFloat(pb.qty5) || 0) + resultQty;
+            } else if (Math.abs(ratio - 0.8) < 0.1) {
+                updates.qty800 = (parseFloat(pb.qty800) || 0) + resultQty;
+            }
+            await db.update('packBreakdowns', pb.id, updates);
+        } else {
+            // Insert new breakdown
+            const newPB = { itemId: fromId, qty25: 0, qty5: 0, qty800: 0 };
+            if (Math.abs(ratio - 5) < 0.1) {
+                newPB.qty5 = resultQty;
+            } else if (Math.abs(ratio - 0.8) < 0.1) {
+                newPB.qty800 = resultQty;
+            }
+            await db.insert('packBreakdowns', newPB);
         }
         
-        // Tambah ke bucket yang sesuai
-        if (Math.abs(ratio - 5) < 0.1) {
-            pb.qty5 = (parseFloat(pb.qty5) || 0) + resultQty;
-        } else if (Math.abs(ratio - 0.8) < 0.1) {
-            pb.qty800 = (parseFloat(pb.qty800) || 0) + resultQty;
-        }
-
-        db.save('packBreakdowns', allPB);
+        // Sync cache from server to ensure consistency
         await db.sync('packBreakdowns');
 
         showToast('Konversi kemasan berhasil disimpan', 'success');

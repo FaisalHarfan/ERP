@@ -30,7 +30,9 @@ function getToken() {
 function authHeaders() {
     return {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + getToken()
+        'Authorization': 'Bearer ' + getToken(),
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache'
     };
 }
 
@@ -228,7 +230,9 @@ const api = {
     // ─── Inventory API (Fase 2) ────────────────────────────────
 
     getInventoryItems: async () => {
-        const res = await fetch(`${API_BASE}/inventory/items`, { headers: authHeaders() });
+        // Add timestamp to bust any server-side or proxy cache
+        const ts = Date.now();
+        const res = await fetch(`${API_BASE}/inventory/items?_t=${ts}`, { headers: authHeaders() });
         if (!res.ok) throw new Error('Gagal mengambil data barang');
         return await res.json();
     },

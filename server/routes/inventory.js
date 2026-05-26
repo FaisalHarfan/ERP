@@ -272,16 +272,16 @@ router.post('/transactions', authenticateToken, requirePermission('logistik', 'e
 
         const newTx = await StockTransaction.create({
             id: generateId(),
-            tx_no: txNo,
+            txNo: txNo,
             date: new Date(),
-            item_id: item.id,
-            item_code: item.item_code,
-            item_name: item.item_name,
+            itemId: item.id,
+            itemCode: item.itemCode,
+            itemName: item.itemName,
             type: type,
             qty: parseFloat(qty),
             reference: reference || 'MANUAL',
             notes: notes || 'Manual Transaction',
-            created_by: req.user.email,
+            createdBy: req.user.email,
             location: location || 'WHS'
         }, { transaction: t });
 

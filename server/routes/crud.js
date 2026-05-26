@@ -14,6 +14,29 @@ function getModel(tableName) {
     return models.TABLE_MAP[tableName] || null;
 }
 
+// Helper: detect if model uses "id + data JSONB" pattern
+// These models store all fields inside a single `data` JSONB column
+function isJsonbModel(model) {
+    const attrs = Object.keys(model.rawAttributes);
+    // Models with only id, data, created_at, updated_at are JSONB models
+    const coreAttrs = attrs.filter(a => !['created_at', 'updated_at', 'createdAt', 'updatedAt'].includes(a));
+    return coreAttrs.length === 2 && coreAttrs.includes('id') && coreAttrs.includes('data');
+}
+
+// Helper: wrap payload for JSONB models — puts all non-id fields into `data`
+function wrapForJsonbModel(payload) {
+    const { id, created_at, updated_at, createdAt, updatedAt, ...rest } = payload;
+    const result = { data: rest };
+    if (id) result.id = id;
+    return result;
+}
+
+// Helper: merge updates into existing JSONB data
+function mergeJsonbUpdates(existingData, updates) {
+    const { id, created_at, updated_at, createdAt, updatedAt, ...rest } = updates;
+    return { data: { ...existingData, ...rest } };
+}
+
 // ─── GET /api/data/:table — Read all records ───
 router.get('/:table', authenticateToken, async (req, res) => {
     try {
@@ -69,8 +92,13 @@ router.post('/:table', authenticateToken, async (req, res) => {
         const model = getModel(req.params.table);
         if (!model) return res.status(404).json({ error: `Tabel '${req.params.table}' tidak ditemukan` });
 
-        const data = toSnakeCase(req.body);
+        let data = toSnakeCase(req.body);
         if (!data.id) data.id = generateId();
+
+        // For JSONB models (id + data only), wrap payload into `data` field
+        if (isJsonbModel(model)) {
+            data = wrapForJsonbModel(data);
+        }
 
         const record = await model.create(data);
         res.status(201).json(toCamelCase(record.toJSON()));
@@ -89,8 +117,16 @@ router.put('/:table/:id', authenticateToken, async (req, res) => {
         const record = await model.findByPk(req.params.id);
         if (!record) return res.status(404).json({ error: 'Record tidak ditemukan' });
 
-        const updates = toSnakeCase(req.body);
+        let updates = toSnakeCase(req.body);
         updates.updated_at = new Date();
+
+        // For JSONB models, merge updates into existing data
+        if (isJsonbModel(model)) {
+            const existingData = record.data || {};
+            updates = mergeJsonbUpdates(existingData, updates);
+            updates.updated_at = new Date();
+        }
+
         await record.update(updates);
 
         res.json(toCamelCase(record.toJSON()));
@@ -127,9 +163,16 @@ router.post('/:table/bulk', authenticateToken, async (req, res) => {
 
         // Upsert each record
         const results = [];
+        const isJsonb = isJsonbModel(model);
         for (const rec of records) {
-            const data = toSnakeCase(rec);
+            let data = toSnakeCase(rec);
             if (!data.id) data.id = generateId();
+
+            // For JSONB models (id + data only), wrap payload
+            if (isJsonb) {
+                data = wrapForJsonbModel(data);
+            }
+
             const [record] = await model.upsert(data);
             results.push(record);
         }

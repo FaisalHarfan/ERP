@@ -12030,7 +12030,7 @@ function renderSalesAnalytics() {
     updateSalesAnalytics();
 }
 
-window.updateSalesAnalytics = () => {
+window.updateSalesAnalytics = async () => {
     const basedOn   = document.getElementById('sa_based_on')?.value || 'Customer';
     const valueField= document.getElementById('sa_value_field')?.value || 'amount';
     const period    = document.getElementById('sa_period')?.value || 'Monthly';
@@ -12040,6 +12040,17 @@ window.updateSalesAnalytics = () => {
     const from = fromStr ? new Date(fromStr) : new Date(new Date().getFullYear(), 0, 1);
     const to   = toStr   ? new Date(toStr)   : new Date(new Date().getFullYear(), 11, 31);
     from.setHours(0,0,0,0); to.setHours(23,59,59,999);
+
+    // Sync fresh data from server before building chart
+    try {
+        await Promise.all([
+            db.sync('salesOrders'),
+            db.sync('salesInvoices'),
+            db.sync('salesQuotations'),
+            db.sync('deliveryOrders'),
+            db.sync('customers')
+        ]);
+    } catch(e) { console.warn('SA sync error:', e); }
 
     // Build period buckets
     const buckets = [];
@@ -12085,7 +12096,7 @@ window.updateSalesAnalytics = () => {
     const inventoryItems = db.read('inventoryItems') || [];
 
     const getDocDate = (doc) => doc.date || doc.createdAt || doc.invoiceDate || '';
-    const getDocValue = (doc) => (doc.totalAmount || doc.grandTotal || doc.amount || 0);
+    const getDocValue = (doc) => parseFloat(doc.totalAmount || doc.grandTotal || doc.amount || 0) || 0;
 
     // Filter documents by overall date range
     const filterByRange = (docs) => docs.filter(doc => {
@@ -12143,7 +12154,7 @@ window.updateSalesAnalytics = () => {
                     }
                 }
             });
-            return sum;
+            return parseFloat(sum) || 0;
         });
 
         return {
@@ -12180,13 +12191,27 @@ window.updateSalesAnalytics = () => {
             responsive: true,
             maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
+            spanGaps: true,
             plugins: {
                 legend: { display: groups.length > 1, position: 'top', align: 'end', labels: { boxWidth: 10, font: { size: 10, weight: 'bold' } } },
                 tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: Rp ${formatNumber(ctx.parsed.y)}` } }
             },
             scales: {
                 x: { grid: { color: 'rgba(51, 65, 85, 0.05)' }, ticks: { color: '#94a3b8', font: { size: 10 } } },
-                y: { grid: { color: 'rgba(51, 65, 85, 0.05)' }, ticks: { color: '#94a3b8', font: { size: 10 }, callback: v => formatNumber(v) } }
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(51, 65, 85, 0.05)' },
+                    ticks: {
+                        color: '#94a3b8',
+                        font: { size: 10 },
+                        callback: v => {
+                            if (v >= 1000000000) return (v/1000000000).toFixed(1) + ' M';
+                            if (v >= 1000000) return (v/1000000).toFixed(0) + ' jt';
+                            if (v >= 1000) return (v/1000).toFixed(0) + ' rb';
+                            return formatNumber(v);
+                        }
+                    }
+                }
             }
         }
     });
