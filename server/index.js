@@ -17,17 +17,10 @@ const isProd = process.env.NODE_ENV === 'production';
 // ─── Security Headers (Helmet) ─────────────────
 // CSP diaktifkan dengan whitelist CDN yang dipakai frontend
 app.use(helmet({
-    contentSecurityPolicy: isProd ? {
-        directives: {
-            defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.tailwindcss.com", "https://cdnjs.cloudflare.com", "https://cdn.jsdelivr.net"],
-            styleSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://fonts.googleapis.com"],
-            fontSrc: ["'self'", "https://cdnjs.cloudflare.com", "https://fonts.gstatic.com"],
-            imgSrc: ["'self'", "data:", "blob:"],
-            connectSrc: ["'self'"],
-        }
-    } : false, // dev: matikan CSP agar tidak ganggu development
-    crossOriginEmbedderPolicy: false // izinkan load resource eksternal
+    contentSecurityPolicy: false,   // matikan CSP — aktifkan kembali setelah HTTPS setup
+    crossOriginEmbedderPolicy: false,
+    crossOriginOpenerPolicy: false, // ini yang menyebabkan browser block HTTP origin
+    crossOriginResourcePolicy: false
 }));
 
 // ─── CORS ──────────────────────────────────────
