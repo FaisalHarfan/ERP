@@ -171,10 +171,12 @@
 
             try {
                 // Call backend API for authentication
+                console.log('[Login] Attempting login for:', email);
                 const result = await api.login(email, password);
+                console.log('[Login] Login successful, result:', result);
 
                 // Save session with JWT token
-                localStorage.setItem('unityerp_session', JSON.stringify({
+                const sessionData = {
                     token: result.token,
                     userId: result.user.userId,
                     email: result.user.email,
@@ -184,10 +186,15 @@
                     roleName: result.user.roleName,
                     permissions: result.user.permissions || {},
                     loginAt: result.user.loginAt
-                }));
+                };
+                
+                console.log('[Login] Saving session:', sessionData);
+                localStorage.setItem('unityerp_session', JSON.stringify(sessionData));
 
+                console.log('[Login] Redirecting to index.html');
                 window.location.href = 'index.html';
             } catch (err) {
+                console.error('[Login] Login failed:', err);
                 showError('login_error', err.message || 'Email atau password salah.');
             }
         }

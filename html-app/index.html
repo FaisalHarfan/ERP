@@ -579,15 +579,24 @@
 
                 const session = localStorage.getItem('unityerp_session');
                 if (!session) { 
+                    console.log('[Index] No session found, redirecting to login');
                     sessionStorage.setItem('redirected_from_index', '1');
                     window.location.href = 'login.html'; 
                     return; 
                 }
                 try {
                     const s = JSON.parse(session);
-                    if (!s || !s.userId) throw new Error();
+                    // Check userId OR id (untuk backward compatibility)
+                    if (!s || (!s.userId && !s.id)) {
+                        console.error('[Index] Invalid session structure:', s);
+                        throw new Error('Invalid session');
+                    }
+                    // Normalize: pastikan userId ada
+                    if (!s.userId && s.id) s.userId = s.id;
                     window._session = s;
+                    console.log('[Index] Session loaded:', s.email || s.userId);
                 } catch (e) {
+                    console.error('[Index] Session parse error:', e);
                     localStorage.removeItem('unityerp_session');
                     sessionStorage.setItem('redirected_from_index', '1');
                     window.location.href = 'login.html';
