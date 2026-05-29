@@ -430,10 +430,15 @@ const api = {
     /**
      * Pull all data from Postgres to LocalStorage (Sync Down)
      * Useful for initial load or manual refresh to stay synced with other users
+     * Note: users, roles, systemLogs are excluded — they use dedicated /api/settings endpoints
      */
     pullAll: async () => {
+        // Tables blocked from generic CRUD — use dedicated endpoints instead
+        const BLOCKED_TABLES = ['users', 'roles', 'systemLogs'];
+
         try {
-            const promises = TABLES.map(table => api.read(table).then(data => ({ table, data })));
+            const pullableTables = TABLES.filter(t => !BLOCKED_TABLES.includes(t));
+            const promises = pullableTables.map(table => api.read(table).then(data => ({ table, data })));
             const results = await Promise.all(promises);
             
             let synced = 0;
@@ -448,7 +453,7 @@ const api = {
                     synced++;
                 }
             });
-            console.log(`✅ Synced ${synced}/${TABLES.length} tables from PostgreSQL to LocalStorage.`);
+            console.log(`✅ Synced ${synced}/${pullableTables.length} tables from PostgreSQL to LocalStorage.`);
             return true;
         } catch (err) {
             console.error('Error pulling data from server:', err);

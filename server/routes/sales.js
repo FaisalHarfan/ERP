@@ -1,7 +1,7 @@
 // server/routes/sales.js — API untuk Modul Penjualan (Atomic Transactions)
 const router = require('express').Router();
 const { SalesOrder, DeliveryOrder, InventoryItem, StockTransaction, SystemLog, JournalEntry, SalesReturn, ProductExchange, InventoryJudgment, sequelize } = require('../models');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requirePermission } = require('../middleware/auth');
 const { v4: uuidv4 } = require('uuid');
 
 function genId() { return Date.now().toString() + Math.random().toString(36).substr(2, 5); }
@@ -10,7 +10,7 @@ function genId() { return Date.now().toString() + Math.random().toString(36).sub
 // SALES ORDER
 // ═══════════════════════════════════════════════
 
-router.post('/orders/:id/approve', authenticateToken, async (req, res) => {
+router.post('/orders/:id/approve', authenticateToken, requirePermission('penjualan', 'edit'), async (req, res) => {
     const t = await sequelize.transaction();
     try {
         const so = await SalesOrder.findByPk(req.params.id, { transaction: t });
@@ -42,7 +42,7 @@ router.post('/orders/:id/approve', authenticateToken, async (req, res) => {
 // DELIVERY ORDER
 // ═══════════════════════════════════════════════
 
-router.post('/delivery/:id/ship', authenticateToken, async (req, res) => {
+router.post('/delivery/:id/ship', authenticateToken, requirePermission('penjualan', 'edit'), async (req, res) => {
     const t = await sequelize.transaction();
     try {
         const doRecord = await DeliveryOrder.findByPk(req.params.id, { transaction: t });
@@ -110,7 +110,7 @@ router.post('/delivery/:id/ship', authenticateToken, async (req, res) => {
  * POST /api/sales/returns
  * Sales buat Sales Return baru — status PENDING
  */
-router.post('/returns', authenticateToken, async (req, res) => {
+router.post('/returns', authenticateToken, requirePermission('penjualan', 'edit'), async (req, res) => {
     const t = await sequelize.transaction();
     try {
         const { soId, soNumber, customerId, items, refundMethod, reason, notes } = req.body;
@@ -165,7 +165,7 @@ router.post('/returns', authenticateToken, async (req, res) => {
  * POST /api/sales/returns/:id/approve
  * Sales setujui → PENDING → APPROVED
  */
-router.post('/returns/:id/approve', authenticateToken, async (req, res) => {
+router.post('/returns/:id/approve', authenticateToken, requirePermission('penjualan', 'edit'), async (req, res) => {
     const t = await sequelize.transaction();
     try {
         const ret = await SalesReturn.findByPk(req.params.id, { transaction: t });
@@ -186,7 +186,7 @@ router.post('/returns/:id/approve', authenticateToken, async (req, res) => {
 /**
  * POST /api/sales/returns/:id/reject
  */
-router.post('/returns/:id/reject', authenticateToken, async (req, res) => {
+router.post('/returns/:id/reject', authenticateToken, requirePermission('penjualan', 'edit'), async (req, res) => {
     const t = await sequelize.transaction();
     try {
         const ret = await SalesReturn.findByPk(req.params.id, { transaction: t });
@@ -209,7 +209,7 @@ router.post('/returns/:id/reject', authenticateToken, async (req, res) => {
  * Good → RETURN_IN ke stok dengan keterangan mutasi lengkap
  * Damaged → InventoryJudgment + NG_IN
  */
-router.post('/returns/:id/receive', authenticateToken, async (req, res) => {
+router.post('/returns/:id/receive', authenticateToken, requirePermission('logistik', 'edit'), async (req, res) => {
     const t = await sequelize.transaction();
     try {
         const ret = await SalesReturn.findByPk(req.params.id, { transaction: t });
@@ -273,7 +273,7 @@ router.post('/returns/:id/receive', authenticateToken, async (req, res) => {
  * POST /api/sales/exchanges
  * Sales buat Tukar Guling — status PENDING
  */
-router.post('/exchanges', authenticateToken, async (req, res) => {
+router.post('/exchanges', authenticateToken, requirePermission('penjualan', 'edit'), async (req, res) => {
     const t = await sequelize.transaction();
     try {
         const { soId, soNumber, customerId, returnedProductId, returnedProductName, returnedQty, returnedPrice, returnedCondition, replacementProductId, replacementProductName, replacementQty, replacementPrice, priceDifference, reason } = req.body;
@@ -305,7 +305,7 @@ router.post('/exchanges', authenticateToken, async (req, res) => {
  * POST /api/sales/exchanges/:id/approve
  * Sales approve → PENDING → APPROVED
  */
-router.post('/exchanges/:id/approve', authenticateToken, async (req, res) => {
+router.post('/exchanges/:id/approve', authenticateToken, requirePermission('penjualan', 'edit'), async (req, res) => {
     const t = await sequelize.transaction();
     try {
         const ex = await ProductExchange.findByPk(req.params.id, { transaction: t });
@@ -323,7 +323,7 @@ router.post('/exchanges/:id/approve', authenticateToken, async (req, res) => {
     }
 });
 
-router.post('/exchanges/:id/reject', authenticateToken, async (req, res) => {
+router.post('/exchanges/:id/reject', authenticateToken, requirePermission('penjualan', 'edit'), async (req, res) => {
     try {
         const ex = await ProductExchange.findByPk(req.params.id);
         if (!ex) return res.status(404).json({ error: 'Data tidak ditemukan' });
@@ -340,7 +340,7 @@ router.post('/exchanges/:id/reject', authenticateToken, async (req, res) => {
  * POST /api/sales/exchanges/:id/receive
  * INVENTORY terima barang retur — APPROVED → RETURN_RECEIVED
  */
-router.post('/exchanges/:id/receive', authenticateToken, async (req, res) => {
+router.post('/exchanges/:id/receive', authenticateToken, requirePermission('logistik', 'edit'), async (req, res) => {
     const t = await sequelize.transaction();
     try {
         const ex = await ProductExchange.findByPk(req.params.id, { transaction: t });
@@ -396,7 +396,7 @@ router.post('/exchanges/:id/receive', authenticateToken, async (req, res) => {
  * POST /api/sales/exchanges/:id/ship
  * Kirim barang pengganti — RETURN_RECEIVED → COMPLETED
  */
-router.post('/exchanges/:id/ship', authenticateToken, async (req, res) => {
+router.post('/exchanges/:id/ship', authenticateToken, requirePermission('logistik', 'edit'), async (req, res) => {
     const t = await sequelize.transaction();
     try {
         const ex = await ProductExchange.findByPk(req.params.id, { transaction: t });

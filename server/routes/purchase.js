@@ -1,7 +1,7 @@
 // server/routes/purchase.js — API untuk Modul Pembelian (Atomic Transactions)
 const router = require('express').Router();
 const { PurchaseOrder, InventoryItem, StockTransaction, JournalEntry, PurchaseInvoice, SupplierPayment, SystemLog, sequelize } = require('../models');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, requirePermission } = require('../middleware/auth');
 const { v4: uuidv4 } = require('uuid');
 
 /**
@@ -12,7 +12,7 @@ const { v4: uuidv4 } = require('uuid');
  * 3. Buat Jurnal Akuntansi (Debit Persediaan, Kredit Hutang Usaha)
  * 4. Update status PO (PARTIALLY RECEIVED / RECEIVED)
  */
-router.post('/orders/:id/receive', authenticateToken, async (req, res) => {
+router.post('/orders/:id/receive', authenticateToken, requirePermission('pembelian', 'edit'), async (req, res) => {
     const t = await sequelize.transaction();
     try {
         // The PO model uses JSONB `data` column OR explicit columns.
@@ -188,7 +188,7 @@ router.post('/orders/:id/receive', authenticateToken, async (req, res) => {
  * 2. Buat Jurnal (Debit Hutang Usaha, Kredit Kas/Bank)
  * 3. Update status PurchaseInvoice jika lunas
  */
-router.post('/payments/:invoiceId/pay', authenticateToken, async (req, res) => {
+router.post('/payments/:invoiceId/pay', authenticateToken, requirePermission('pembelian', 'edit'), async (req, res) => {
     const t = await sequelize.transaction();
     try {
         const inv = await PurchaseInvoice.findByPk(req.params.invoiceId, { transaction: t });

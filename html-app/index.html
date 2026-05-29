@@ -568,6 +568,8 @@
     <!-- Application Scripts -->
     <script>
             // ── Session Guard ──────────────────────────────────────────
+            // Hanya cek apakah session ada — verify permissions dilakukan
+            // setelah semua script di-load (lihat script paling bawah)
             (function () {
                 // Support migration for the very first time
                 if (!localStorage.getItem('unityerp_session') && localStorage.getItem('nexerp_session')) {
@@ -580,13 +582,7 @@
                 try {
                     const s = JSON.parse(session);
                     if (!s || !s.userId) throw new Error();
-                    // Inject user info in sidebar
                     window._session = s;
-
-                    // Background sync: Pull latest data from PostgreSQL
-                    if (window.api && typeof window.api.pullAll === 'function') {
-                        window.api.pullAll().catch(e => console.error('Sync error:', e));
-                    }
                 } catch (e) {
                     localStorage.removeItem('unityerp_session');
                     window.location.href = 'login.html';
@@ -621,16 +617,117 @@
             const roleEl = document.getElementById('sidebar-role');
             if (avatarEl) avatarEl.textContent = s.avatar || s.fullName?.slice(0, 2).toUpperCase() || '--';
             if (nameEl) nameEl.textContent = s.fullName || s.email || s.username;
-            // Get role name — try db.read first (backward compat), fallback to roleId
-            try {
-                const roles = db.read('roles');
-                const role = roles.find(r => r.id === s.roleId);
-                if (roleEl) roleEl.textContent = role ? role.name : (s.roleId || 'User');
-            } catch(e) {
-                if (roleEl) roleEl.textContent = s.roleId || 'User';
-            }
+            // Baca roleName dari session langsung — tidak perlu db.read('roles')
+            if (roleEl) roleEl.textContent = s.roleName || s.roleId || 'User';
             const headerUserEl = document.getElementById('header-user-name');
             if (headerUserEl && s.fullName) headerUserEl.textContent = s.fullName;
+        })();
+
+        // ── Verify session & refresh permissions setelah semua script di-load ──
+        // Ini harus jalan SETELAH api.js dan app.js di-load
+        (async function () {
+            try {
+                const verified = await api.verifySession();
+                if (!verified) {
+                    // Token expired atau user dinonaktifkan
+                    localStorage.removeItem('unityerp_session');
+                    window.location.href = 'login.html';
+                    return;
+                }
+
+                // Update permissions di session dari server (sumber kebenaran)
+                const current = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
+                current.permissions = verified.permissions || {};
+                current.roleId     = verified.roleId     || current.roleId;
+                current.roleName   = verified.roleName   || current.roleName;
+                localStorage.setItem('unityerp_session', JSON.stringify(current));
+                window._session = current;
+
+                // Update tampilan role di sidebar
+                const roleEl = document.getElementById('sidebar-role');
+                if (roleEl) roleEl.textContent = current.roleName || current.roleId || 'User';
+
+                // ── Tentukan navigasi awal ──────────────────────────────────
+                const isAdmin = (current.userId || '').toLowerCase() === 'user_admin'
+                             || (current.roleId || '').toLowerCase() === 'role_admin';
+
+                const lastDept = localStorage.getItem('unityerp_active_dept');
+                const lastView = localStorage.getItem('unityerp_last_view');
+                const perms    = current.permissions || {};
+
+                // Mapping modul → default dashboard view
+                const DEPT_DEFAULT_VIEW = {
+                    penjualan: 'sales-dashboard',
+                    pembelian: 'purchase-dashboard',
+                    logistik:  'inventory-dashboard',
+                    produksi:  'production-dashboard',
+                    finance:   'finance-dashboard',
+                    pengaturan:'settings-dashboard'
+                };
+
+                // Urutan prioritas departemen (kalau user punya akses ke beberapa)
+                const DEPT_ORDER = ['penjualan','pembelian','logistik','produksi','finance','pengaturan'];
+
+                // Cari departemen utama user berdasarkan permissions
+                function getPrimaryDept(permissions) {
+                    return DEPT_ORDER.find(d => permissions[d]?.view) || null;
+                }
+
+                if (isAdmin) {
+                    // Admin: restore last view atau ke launcher
+                    if (lastDept && lastView) {
+                        window.activeDepartment = lastDept;
+                        navigateTo(lastView);
+                    } else {
+                        navigateTo('launcher');
+                    }
+                } else {
+                    // Non-admin: cek apakah lastView masih valid untuk permissions saat ini
+                    const primaryDept = getPrimaryDept(perms);
+
+                    if (lastDept && lastView) {
+                        // Validasi: apakah user masih punya akses ke lastDept?
+                        const lastDeptModule = lastDept === 'penjualan' ? 'penjualan'
+                            : lastDept === 'pembelian' ? 'pembelian'
+                            : lastDept === 'logistik'  ? 'logistik'
+                            : lastDept === 'produksi'  ? 'produksi'
+                            : lastDept === 'finance'   ? 'finance'
+                            : lastDept === 'pengaturan'? 'pengaturan' : null;
+
+                        if (lastDeptModule && perms[lastDeptModule]?.view) {
+                            // lastView masih valid — restore
+                            window.activeDepartment = lastDept;
+                            navigateTo(lastView);
+                        } else if (primaryDept) {
+                            // lastView tidak valid lagi — arahkan ke dept utama
+                            window.activeDepartment = primaryDept;
+                            localStorage.setItem('unityerp_active_dept', primaryDept);
+                            localStorage.removeItem('unityerp_last_view');
+                            navigateTo(DEPT_DEFAULT_VIEW[primaryDept]);
+                        } else {
+                            navigateTo('launcher');
+                        }
+                    } else if (primaryDept) {
+                        // Login pertama kali atau tidak ada lastView — langsung ke dept utama
+                        window.activeDepartment = primaryDept;
+                        localStorage.setItem('unityerp_active_dept', primaryDept);
+                        navigateTo(DEPT_DEFAULT_VIEW[primaryDept]);
+                    } else {
+                        // Tidak punya akses ke modul apapun
+                        navigateTo('launcher');
+                    }
+                }
+
+            } catch (e) {
+                console.warn('Session verify error:', e);
+                // Fallback: navigate ke launcher
+                if (typeof navigateTo === 'function') navigateTo('launcher');
+            }
+
+            // Background sync data setelah permissions sudah benar
+            if (typeof api !== 'undefined' && typeof api.pullAll === 'function') {
+                api.pullAll().catch(e => console.error('Sync error:', e));
+            }
         })();
     </script>
 </body>

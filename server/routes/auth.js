@@ -44,6 +44,7 @@ router.post('/login', async (req, res) => {
                 avatar: user.avatar || user.full_name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase(),
                 roleId: user.role_id,
                 roleName: user.role ? user.role.name : 'User',
+                permissions: user.permissions || (user.role ? user.role.permissions : {}) || {},
                 loginAt: new Date().toISOString()
             }
         });

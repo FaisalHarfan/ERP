@@ -322,6 +322,8 @@ const MODULE_VIEW_MAP = {
     'sales-delivery-orders': 'penjualan',
     'sales-region-report': 'penjualan'
 };
+// Expose globally so scripts loaded after app.js can access it
+window.MODULE_VIEW_MAP = MODULE_VIEW_MAP;
 
 // --- Global Auth Helpers ---
 window.isCurrentUserAdmin = function () {
@@ -341,17 +343,15 @@ function getModulePermission(module) {
         const sess = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
         if (!sess.userId) return { view: false, edit: false };
 
-        const user = db.findById('users', sess.userId);
-        if (!user) return { view: false, edit: false };
+        // Admin bypass — check by userId or roleId stored in session
+        const userId = (sess.userId || '').toLowerCase();
+        const roleId = (sess.roleId || '').toLowerCase();
+        if (userId === 'user_admin' || roleId === 'role_admin') {
+            return { view: true, edit: true };
+        }
 
-        const roles = db.read('roles');
-        const role = roles.find(r => r.id === user.roleId);
-        const isAdmin = user.id === 'user_admin' || (role && role.id === 'role_admin');
-
-        if (isAdmin) return { view: true, edit: true };
-
-        // Per-user permissions override role permissions
-        const perms = user.permissions || (role ? role.permissions : {}) || {};
+        // Permissions are stored directly in session (set at login + refreshed on verify)
+        const perms = sess.permissions || {};
         const p = perms[module] || { view: false, edit: false };
         return { view: !!p.view, edit: !!p.edit };
     } catch (e) {
@@ -363,47 +363,17 @@ function getModulePermission(module) {
 function updateSidebarVisibility() {
     try {
         const sess = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
-        const user = db.findById('users', sess.userId);
+        if (!sess.userId) return;
 
-        // If user data isn't in cache yet but we have a session + active dept,
-        // still show the correct nav group so the sidebar isn't blank.
-        if (!user) {
-            if (window.activeDepartment) {
-                document.querySelectorAll('.nav-group-parent').forEach(groupParent => {
-                    const innerGroup = groupParent.querySelector('[id$="-group"]');
-                    if (!innerGroup) return;
-                    const groupName = innerGroup.id.replace('-group', '');
-                    const deptAliases = {
-                        'sales': 'penjualan', 'penjualan': 'penjualan',
-                        'purchase': 'pembelian', 'pembelian': 'pembelian',
-                        'inventory': 'logistik', 'logistik': 'logistik',
-                        'production': 'produksi', 'produksi': 'produksi',
-                        'finance': 'finance',
-                        'settings': 'pengaturan', 'pengaturan': 'pengaturan'
-                    };
-                    const resolved = deptAliases[groupName];
-                    const activeDeptResolved = deptAliases[window.activeDepartment] || window.activeDepartment;
-                    if (resolved === activeDeptResolved) {
-                        groupParent.classList.remove('hidden');
-                    } else {
-                        groupParent.classList.add('hidden');
-                    }
-                });
-            }
-            return;
-        }
-
-        const roles = db.read('roles');
-        const role = roles.find(r => r.id === user.roleId);
-        const isAdmin = user.id === 'user_admin' || role?.id === 'role_admin';
+        const userId = (sess.userId || '').toLowerCase();
+        const roleId = (sess.roleId || '').toLowerCase();
+        const isAdmin = userId === 'user_admin' || roleId === 'role_admin';
+        const perms = sess.permissions || {};
 
         // Load active department if not set
         if (!window.activeDepartment) {
             window.activeDepartment = localStorage.getItem('unityerp_active_dept');
         }
-
-        // Get effective permissions
-        const perms = user.permissions || role?.permissions || {};
 
         // 1. Hide/Show individual links based on permissions
         document.querySelectorAll('a[data-view]').forEach(link => {
@@ -424,7 +394,6 @@ function updateSidebarVisibility() {
             if (!innerGroup) return;
             const groupName = innerGroup.id.replace('-group', '');
 
-            // Mapping izin
             const moduleMap = {
                 'sales': 'penjualan', 'penjualan': 'penjualan',
                 'purchase': 'pembelian', 'pembelian': 'pembelian',
@@ -432,15 +401,11 @@ function updateSidebarVisibility() {
                 'production': 'produksi', 'produksi': 'produksi',
                 'finance': 'finance',
                 'settings': 'pengaturan', 'pengaturan': 'pengaturan',
-                'logistik': 'logistik', 'warehouse': 'logistik'
+                'warehouse': 'logistik'
             };
 
             const module = moduleMap[groupName] || groupName;
 
-            // Logic: Hide if:
-            // 1. activeDepartment is null (Launcher)
-            // 2. OR activeDepartment doesn't match this group
-            // This applies even to Admins to keep the sidebar clean.
             const isDepartmentMatch = window.activeDepartment === groupName ||
                 (groupName === 'sales' && window.activeDepartment === 'penjualan') ||
                 (groupName === 'penjualan' && window.activeDepartment === 'sales') ||
@@ -453,17 +418,13 @@ function updateSidebarVisibility() {
                 (groupName === 'settings' && window.activeDepartment === 'pengaturan') ||
                 (groupName === 'pengaturan' && window.activeDepartment === 'settings');
 
-            // Check if any children are visible (permissions)
             const children = innerGroup.querySelectorAll('a[data-view]');
             const visibleChildren = Array.from(children).filter(c => !c.classList.contains('hidden'));
 
-             // Always hide if no active department (Launcher)
-            // If active department, only show the matching group
             if (!window.activeDepartment || !isDepartmentMatch || (visibleChildren.length === 0 && !isAdmin)) {
                 groupParent.classList.add('hidden');
             } else {
                 groupParent.classList.remove('hidden');
-                // Auto-expand all dropdowns inside the active department on refresh/load
                 groupParent.querySelectorAll('.nav-dropdown-wrapper').forEach(wrapper => {
                     const dropdownPanel = wrapper.querySelector('div[id$="-dropdown"]');
                     if (dropdownPanel) {
@@ -471,29 +432,18 @@ function updateSidebarVisibility() {
                         dropdownPanel.classList.add('flex');
                     }
                     const dropdownIcon = wrapper.querySelector('i[id$="-dropdown-icon"]');
-                    if (dropdownIcon) {
-                        dropdownIcon.classList.add('rotate-180');
-                    }
+                    if (dropdownIcon) dropdownIcon.classList.add('rotate-180');
                 });
             }
         });
 
-        // 3. Launcher tiles visibility
-        const appMapLauncher = {
-            'penjualan': 'penjualan',
-            'pembelian': 'pembelian',
-            'logistik': 'logistik',
-            'produksi': 'produksi',
-            'finance': 'finance',
-            'pengaturan': 'pengaturan'
-        };
+        // 3. Launcher tiles visibility — hide tiles user has no access to
         document.querySelectorAll('button[onclick^="openApp"]').forEach(btn => {
             const match = btn.getAttribute('onclick').match(/'([^']+)'/);
             if (match && !isAdmin) {
                 const appName = match[1];
-                const module = appMapLauncher[appName]; // Fixed typo: was appMap
-                if (module && !perms[module]?.view) {
-                    btn.style.display = 'none'; // Use style.display to be sure it's hidden
+                if (!perms[appName]?.view) {
+                    btn.style.display = 'none';
                 } else {
                     btn.style.display = '';
                 }
@@ -628,10 +578,9 @@ async function navigateTo(viewId, isBack = false) {
     // Maintenance Mode Guard
     const isMaintenance = localStorage.getItem('unityerp_maintenance_mode') === 'true';
     const sess = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
-    const userInfo = db.findById('users', sess.userId);
-    const userRoles = db.read('roles');
-    const userRole = userRoles.find(r => r.id === userInfo?.roleId);
-    const isAdmin = userInfo?.id === 'user_admin' || userRole?.id === 'role_admin';
+    const userId = (sess.userId || '').toLowerCase();
+    const roleId = (sess.roleId || '').toLowerCase();
+    const isAdmin = userId === 'user_admin' || roleId === 'role_admin';
 
     if (isMaintenance && !isAdmin && viewId !== 'launcher') {
         const mainContent = document.getElementById('main-content');
@@ -757,27 +706,26 @@ async function navigateTo(viewId, isBack = false) {
     // This eliminates VPS network latency from blocking the UI.
     const allTablesToSync = [...new Set([...tablesToSync, ...(requiredModule ? ['users', 'roles'] : [])])];
 
-    // Access Control Check using CACHED data (fast, no network wait)
+    // Access Control Check using session permissions (fast, no db lookup)
     if (requiredModule) {
         try {
-            const sess = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
-            const user = db.findById('users', sess.userId);
-            if (user && user.id !== 'user_admin') {
-                const roles = db.read('roles');
-                const role = roles.find(r => r.id === user.roleId);
-                if (role?.id !== 'role_admin') {
-                    const perms = user.permissions || role?.permissions || {};
-                    if (!perms[requiredModule]?.view) {
-                        mainContent.innerHTML = `
-                            <div class="flex flex-col items-center justify-center h-64 text-center py-16">
-                                <div class="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mb-4">
-                                    <i class="fas fa-lock text-red-400 text-2xl"></i>
-                                    </div>
-                                <h3 class="text-lg font-semibold text-gray-700 mb-2">Akses Ditolak</h3>
-                                <p class="text-sm text-gray-400">Anda tidak memiliki izin untuk mengakses halaman ini.<br>Hubungi Administrator untuk mendapatkan akses.</p>
-                            </div>`;
-                        return;
-                    }
+            const sessCheck = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
+            const uId = (sessCheck.userId || '').toLowerCase();
+            const rId = (sessCheck.roleId || '').toLowerCase();
+            const isAdminCheck = uId === 'user_admin' || rId === 'role_admin';
+
+            if (!isAdminCheck) {
+                const perms = sessCheck.permissions || {};
+                if (!perms[requiredModule]?.view) {
+                    mainContent.innerHTML = `
+                        <div class="flex flex-col items-center justify-center h-64 text-center py-16">
+                            <div class="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center mb-4">
+                                <i class="fas fa-lock text-red-400 text-2xl"></i>
+                            </div>
+                            <h3 class="text-lg font-semibold text-gray-700 mb-2">Akses Ditolak</h3>
+                            <p class="text-sm text-gray-400">Anda tidak memiliki izin untuk mengakses halaman ini.<br>Hubungi Administrator untuk mendapatkan akses.</p>
+                        </div>`;
+                    return;
                 }
             }
         } catch (e) { /* skip check on error */ }
@@ -14416,22 +14364,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const session = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
 
-    // ⬇ CRITICAL: Wait for users & roles to be in cache BEFORE first render.
-    // Without this, updateSidebarVisibility() finds no user and hides all nav groups.
-    if (session.token) {
-        await Promise.all([db.sync('users'), db.sync('roles')]);
-    }
-
     const lastDept = localStorage.getItem('unityerp_active_dept');
     const lastView = localStorage.getItem('unityerp_last_view');
 
-    if (lastDept && lastView && session.token) {
-        // Restore active department & navigate to last viewed page
-        window.activeDepartment = lastDept;
-        navigateTo(lastView);
-    } else {
+    // Set active department sekarang agar sidebar tahu konteksnya
+    if (lastDept) window.activeDepartment = lastDept;
+
+    // Navigasi awal ditangani oleh verify session di index.html (setelah permissions di-load).
+    // DOMContentLoaded hanya navigate ke launcher sebagai fallback jika tidak ada session token.
+    if (!session.token) {
         navigateTo('launcher');
     }
+    // Jika ada token, index.html akan memanggil navigateTo setelah verify selesai.
 });
 
 // --- Date Filter Event Handlers ---

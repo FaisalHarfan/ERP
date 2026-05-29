@@ -6,6 +6,7 @@ const MODULE_LABELS = {
     pembelian: 'Pembelian',
     logistik: 'Logistik',
     produksi: 'Produksi',
+    finance: 'Finance',
     pengaturan: 'Pengaturan'
 };
 
@@ -555,7 +556,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ─── 4. SYSTEM SETTINGS (TECHNICAL) ───────────────────────────
-window.renderSettingsSystem = () => {
+window.renderSettingsSystem = async () => {
     document.getElementById('pageTitle').innerText = 'Pengaturan Sistem';
     const mc = document.getElementById('main-content');
 
@@ -565,7 +566,15 @@ window.renderSettingsSystem = () => {
     }
 
     const isMaintenance = localStorage.getItem('unityerp_maintenance_mode') === 'true';
-    const logs = db.read('systemLogs').sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 50);
+
+    // Load system logs from API (not localStorage)
+    let logs = [];
+    try {
+        const allLogs = await api.read('systemLogs');
+        logs = (allLogs || []).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)).slice(0, 50);
+    } catch (e) {
+        console.warn('Gagal memuat system logs:', e);
+    }
 
     mc.innerHTML = `
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -746,11 +755,17 @@ window.toggleMaintenanceMode = () => {
     showToast(`Maintenance mode ${!current ? 'AKTIF' : 'NONAKTIF'}`, 'warning');
 };
 
-window.clearSystemLogs = () => {
-    if (!confirm('Hapus semua log aktivitas?')) return;
-    db.save('systemLogs', []);
-    db.logSystemActivity('LOG_CLEAR', 'Logs dihapus oleh Administrator');
-    renderSettingsSystem();
+window.clearSystemLogs = async () => {
+    if (!confirm('Hapus semua log aktivitas? Tindakan ini tidak dapat dibatalkan.')) return;
+    try {
+        // Hapus semua log via API — ambil dulu semua ID lalu delete satu per satu
+        const logs = await api.read('systemLogs');
+        await Promise.all((logs || []).map(log => api.delete('systemLogs', log.id)));
+        showToast('Log aktivitas berhasil dihapus', 'success');
+        renderSettingsSystem();
+    } catch (err) {
+        showToast('Gagal menghapus log: ' + err.message, 'error');
+    }
 };
 
 // Expose views

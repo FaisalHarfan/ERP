@@ -193,7 +193,7 @@ router.post('/receipts', authenticateToken, requirePermission('finance', 'edit')
 });
 
 // ─── LEDGER / MUTASI ───
-router.get('/ledger/:accountId', authenticateToken, async (req, res) => {
+router.get('/ledger/:accountId', authenticateToken, requirePermission('finance', 'view'), async (req, res) => {
     try {
         const { accountId } = req.params;
         const { startDate, endDate } = req.query;
