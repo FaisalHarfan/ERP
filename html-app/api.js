@@ -47,9 +47,16 @@ const api = {
             console.log(`[API] Reading table: ${table}...`);
             const res = await fetch(`${API_BASE}/data/${table}`, { headers: authHeaders() });
             if (!res.ok) {
-                if (res.status === 401 || res.status === 403) {
+                if (res.status === 401) {
+                    // Token benar-benar tidak valid — redirect ke login
                     console.error('[API] Unauthorized. Redirecting to login.');
                     window.location.href = 'login.html';
+                    return [];
+                }
+                if (res.status === 403) {
+                    // Akses ditolak (tabel BLOCKED atau tidak punya permission)
+                    // Jangan redirect — cukup return kosong
+                    console.warn(`[API] Access denied for table: ${table}`);
                     return [];
                 }
                 const errBody = await res.json().catch(() => ({}));
