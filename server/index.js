@@ -15,19 +15,10 @@ const PORT = process.env.PORT || 3000;
 const isProd = process.env.NODE_ENV === 'production';
 
 // ─── Security Headers (Helmet) ─────────────────
-// CSP diaktifkan dengan whitelist CDN yang dipakai frontend
+// CSP: Untuk sementara dinonaktifkan karena blocking inline scripts
+// TODO: Refactor frontend untuk CSP-compliant (pindahkan inline scripts ke file terpisah)
 app.use(helmet({
-    contentSecurityPolicy: isProd ? {
-        directives: {
-            defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdn.tailwindcss.com", "https://cdnjs.cloudflare.com", "https://cdn.jsdelivr.net"],
-            scriptSrcAttr: ["'unsafe-inline'"], // Izinkan inline event handlers (onclick, onkeydown, dll)
-            styleSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://fonts.googleapis.com"],
-            fontSrc: ["'self'", "https://cdnjs.cloudflare.com", "https://fonts.gstatic.com"],
-            imgSrc: ["'self'", "data:", "blob:"],
-            connectSrc: ["'self'", "https://cdn.jsdelivr.net"], // Izinkan Chart.js dari CDN
-        }
-    } : false, // dev: matikan CSP agar tidak ganggu development
+    contentSecurityPolicy: false, // Nonaktifkan CSP untuk sementara
     crossOriginEmbedderPolicy: false // izinkan load resource eksternal
 }));
 
@@ -46,24 +37,25 @@ app.use(cors({
 }));
 
 // ─── Rate Limiting ─────────────────────────────
-// Login: max 10 percobaan per 15 menit per IP
+// Login: max 20 percobaan per 15 menit per IP (dinaikkan)
 const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 10,
+    max: 20,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Terlalu banyak percobaan login. Coba lagi dalam 15 menit.' },
     skipSuccessfulRequests: true // hanya hitung yang gagal
 });
 
-// API umum: rate limit hanya di production
-const apiLimiter = isProd ? rateLimit({
+// API umum: rate limit longgar untuk mencegah 429 error
+const apiLimiter = rateLimit({
     windowMs: 60 * 1000,
-    max: 1000, // 1000 request per menit
+    max: 2000, // 2000 request per menit (sangat longgar)
     standardHeaders: true,
     legacyHeaders: false,
-    message: { error: 'Terlalu banyak request. Coba lagi sebentar.' }
-}) : (req, res, next) => next(); // Skip rate limit di development
+    message: { error: 'Terlalu banyak request. Coba lagi sebentar.' },
+    skip: (req) => !isProd // Skip di development
+});
 
 // ─── Logging & Parsing ─────────────────────────
 app.use(isProd ? morgan('combined') : morgan('short'));
