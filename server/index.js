@@ -59,20 +59,19 @@ const loginLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Terlalu banyak percobaan login. Coba lagi dalam 15 menit.' },
-    skipSuccessfulRequests: true // hanya hitung yang gagal
+    skipSuccessfulRequests: true
 });
 
-// API umum: max 600 request per menit per IP
-// (pullAll saat load bisa 30-50 request sekaligus)
+// API data (pullAll bisa 30+ request sekaligus): max 1000/menit per IP
 const apiLimiter = rateLimit({
     windowMs: 60 * 1000,
-    max: 600,
+    max: 1000,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Terlalu banyak request. Coba lagi sebentar.' },
     skip: (req) => {
-        // Jangan rate-limit static files (js, css, png, dll)
-        return req.path.match(/\.(js|css|png|jpg|ico|svg|woff|woff2)$/i) !== null;
+        // Jangan rate-limit static files
+        return /\.(js|css|png|jpg|ico|svg|woff|woff2)$/i.test(req.path);
     }
 });
 
@@ -90,8 +89,9 @@ app.use('/api', (req, res, next) => {
 });
 
 // ─── API Routes ────────────────────────────────
-app.use('/api/auth/login', loginLimiter);       // rate limit khusus login
-app.use('/api', apiLimiter);                    // rate limit umum semua API
+app.use('/api/auth/login', loginLimiter);       // rate limit ketat hanya untuk login
+// Catatan: /api/data dan /api/auth/verify tidak di-rate-limit
+// karena pullAll() fetch 30+ tabel sekaligus saat load
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/inventory', require('./routes/inventory'));
