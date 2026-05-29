@@ -192,44 +192,20 @@
             }
         }
 
-        // Check if already logged in with valid token
-        (async function() {
+        // Check if already logged in - SIMPLIFIED to prevent loop
+        (function() {
             // Cek apakah baru saja redirect dari index (untuk mencegah loop)
             const redirectedFromIndex = sessionStorage.getItem('redirected_from_index');
             if (redirectedFromIndex) {
                 console.log('[Login] Redirected from index, clearing session');
                 sessionStorage.removeItem('redirected_from_index');
                 localStorage.removeItem('unityerp_session');
-                return; // Jangan auto-redirect lagi
+                return;
             }
 
-            const existingSession = localStorage.getItem('unityerp_session');
-            if (existingSession) {
-                try {
-                    const s = JSON.parse(existingSession);
-                    if (s.token && s.userId) {
-                        console.log('[Login] Found existing session, verifying...');
-                        
-                        // Add delay to prevent rapid redirect loop
-                        await new Promise(resolve => setTimeout(resolve, 500));
-                        
-                        // Verify token with backend
-                        const valid = await api.verifySession();
-                        if (valid) {
-                            console.log('[Login] Session valid, redirecting to index');
-                            window.location.href = 'index.html';
-                            return;
-                        } else {
-                            console.log('[Login] Session invalid, clearing');
-                        }
-                    }
-                    // Token invalid/expired — clear it
-                    localStorage.removeItem('unityerp_session');
-                } catch (e) {
-                    console.error('[Login] Session check error:', e);
-                    localStorage.removeItem('unityerp_session');
-                }
-            }
+            // DISABLE auto-verify untuk mencegah loop
+            // User harus login manual jika session expired
+            console.log('[Login] Ready for login');
         })();
     </script>
 </body>

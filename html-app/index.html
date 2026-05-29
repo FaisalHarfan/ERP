@@ -629,44 +629,42 @@
         })();
 
         // ── Verify session & refresh permissions setelah semua script di-load ──
-        // Ini harus jalan SETELAH api.js dan app.js di-load
+        // SIMPLIFIED: Jika verify gagal, tetap lanjut tapi dengan permissions terbatas
         (async function () {
             try {
-                // Retry logic: coba 3x dengan delay jika gagal (untuk handle rate limit)
-                let verified = null;
-                let retries = 3;
+                console.log('[Auth] Starting session verification...');
+                const verified = await api.verifySession();
                 
-                while (retries > 0 && !verified) {
-                    verified = await api.verifySession();
-                    if (!verified && retries > 1) {
-                        console.log(`[Auth] Verify failed, retrying... (${retries - 1} attempts left)`);
-                        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
-                    }
-                    retries--;
-                }
-
                 if (!verified) {
-                    // Token expired atau user dinonaktifkan setelah 3x retry
-                    console.error('[Auth] Session verification failed after retries. Redirecting to login.');
-                    localStorage.removeItem('unityerp_session');
-                    sessionStorage.setItem('redirected_from_index', '1');
-                    window.location.href = 'login.html';
-                    return;
+                    console.warn('[Auth] Session verification failed - using cached session');
+                    // Jangan langsung redirect, gunakan cached session dulu
+                    // Hanya redirect jika benar-benar tidak ada session sama sekali
+                    const cached = localStorage.getItem('unityerp_session');
+                    if (!cached) {
+                        console.error('[Auth] No cached session found, redirecting to login');
+                        sessionStorage.setItem('redirected_from_index', '1');
+                        window.location.href = 'login.html';
+                        return;
+                    }
+                    // Ada cached session, gunakan itu dulu (mungkin network issue)
+                    window._session = JSON.parse(cached);
+                    console.log('[Auth] Using cached session');
+                } else {
+                    console.log('[Auth] Session verified successfully');
+                    // Update permissions di session dari server (sumber kebenaran)
+                    const current = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
+                    current.permissions = verified.permissions || {};
+                    current.roleId     = verified.roleId     || current.roleId;
+                    current.roleName   = verified.roleName   || current.roleName;
+                    localStorage.setItem('unityerp_session', JSON.stringify(current));
+                    window._session = current;
                 }
-
-                console.log('[Auth] Session verified successfully');
-
-                // Update permissions di session dari server (sumber kebenaran)
-                const current = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
-                current.permissions = verified.permissions || {};
-                current.roleId     = verified.roleId     || current.roleId;
-                current.roleName   = verified.roleName   || current.roleName;
-                localStorage.setItem('unityerp_session', JSON.stringify(current));
-                window._session = current;
 
                 // Update tampilan role di sidebar
                 const roleEl = document.getElementById('sidebar-role');
-                if (roleEl) roleEl.textContent = current.roleName || current.roleId || 'User';
+                if (roleEl && window._session) {
+                    roleEl.textContent = window._session.roleName || window._session.roleId || 'User';
+                }
 
                 // ── Tentukan navigasi awal ──────────────────────────────────
                 const isAdmin = (current.userId || '').toLowerCase() === 'user_admin'
