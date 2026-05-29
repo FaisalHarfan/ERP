@@ -610,7 +610,7 @@ async function navigateTo(viewId, isBack = false) {
     // Sync necessary tables before rendering
     const tableSyncMap = {
         // ── Launcher ──────────────────────────────────────────────────────────
-        'launcher': ['notifications', 'systemLogs'],
+        'launcher': ['notifications'],
 
         // ── Sales (Penjualan) ─────────────────────────────────────────────────
         'sales-dashboard':        ['salesOrders', 'salesInvoices', 'customers', 'deliveryOrders'],
@@ -693,9 +693,10 @@ async function navigateTo(viewId, isBack = false) {
         'finance-settings':       ['accounts', 'bankAccounts'],
 
         // ── Settings (Pengaturan) ─────────────────────────────────────────────
-        'settings-dashboard': ['users', 'roles'],
-        'settings-users':     ['users', 'roles'],
-        'settings-roles':     ['roles'],
+        // users & roles diambil via /api/settings, bukan generic CRUD
+        'settings-dashboard': [],
+        'settings-users':     [],
+        'settings-roles':     [],
         'settings-company':   [],
         'settings-system':    [],
     };
@@ -703,8 +704,8 @@ async function navigateTo(viewId, isBack = false) {
     const tablesToSync = tableSyncMap[viewId] || [];
 
     // --- OPTIMISTIC RENDER: Render immediately from cache, then background-sync ---
-    // This eliminates VPS network latency from blocking the UI.
-    const allTablesToSync = [...new Set([...tablesToSync, ...(requiredModule ? ['users', 'roles'] : [])])];
+    // users & roles tidak di-sync via generic CRUD (BLOCKED) — permissions dari session
+    const allTablesToSync = [...new Set([...tablesToSync])];
 
     // Access Control Check using session permissions (fast, no db lookup)
     if (requiredModule) {
