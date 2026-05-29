@@ -628,10 +628,27 @@
         (async function () {
             try {
                 const verified = await api.verifySession();
-                if (!verified) {
-                    // Token expired atau user dinonaktifkan
+
+                if (verified === null) {
+                    // Token benar-benar invalid atau expired (401/403) → logout
                     localStorage.removeItem('unityerp_session');
                     window.location.href = 'login.html';
+                    return;
+                }
+
+                if (verified === 'error') {
+                    // Network/server error sementara — jangan logout
+                    // Pakai permissions dari session yang ada (mungkin sudah ada dari login sebelumnya)
+                    console.warn('Session verify gagal sementara, pakai session cache');
+                    const current = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
+                    const lastDept = localStorage.getItem('unityerp_active_dept');
+                    const lastView = localStorage.getItem('unityerp_last_view');
+                    if (lastDept && lastView) {
+                        window.activeDepartment = lastDept;
+                        navigateTo(lastView);
+                    } else {
+                        navigateTo('launcher');
+                    }
                     return;
                 }
 

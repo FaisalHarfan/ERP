@@ -418,13 +418,17 @@ const api = {
 
     /**
      * Verify current session
+     * Returns: user object jika valid
+     *          null jika token expired/invalid (401/403) → harus logout
+     *          'error' jika network/server error → jangan logout, coba lagi
      */
     verifySession: async () => {
         try {
             const res = await fetch(`${API_BASE}/auth/verify`, { headers: authHeaders() });
-            if (!res.ok) return null;
+            if (res.status === 401 || res.status === 403) return null; // token invalid → logout
+            if (!res.ok) return 'error'; // server/network error → jangan logout
             return await res.json();
-        } catch { return null; }
+        } catch { return 'error'; } // network error → jangan logout
     },
 
     /**
