@@ -14,6 +14,10 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const isProd = process.env.NODE_ENV === 'production';
 
+// Trust proxy — wajib karena pakai Nginx sebagai reverse proxy
+// Tanpa ini, express-rate-limit error karena X-Forwarded-For header
+app.set('trust proxy', 1);
+
 // ─── Security Headers (Helmet) ─────────────────
 // CSP diaktifkan dengan whitelist CDN yang dipakai frontend
 app.use(helmet({
