@@ -2,7 +2,13 @@
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret';
+// Crash saat startup jika JWT_SECRET tidak di-set atau masih default
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || JWT_SECRET === 'change_this_to_a_random_64_character_string') {
+    console.error('❌ FATAL: JWT_SECRET tidak di-set atau masih menggunakan nilai default.');
+    console.error('   Set JWT_SECRET di file .env dengan string acak minimal 64 karakter.');
+    process.exit(1);
+}
 
 /**
  * Generate JWT token for a user

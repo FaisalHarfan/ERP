@@ -1,16 +1,24 @@
 // server/routes/auth.js — Login, verify session
 const router = require('express').Router();
 const bcrypt = require('bcryptjs');
+const { body, validationResult } = require('express-validator');
 const { User, Role } = require('../models');
 const { generateToken, authenticateToken } = require('../middleware/auth');
 
 // POST /api/auth/login
-router.post('/login', async (req, res) => {
+router.post('/login',
+    // Input validation
+    body('email').isEmail().normalizeEmail().withMessage('Format email tidak valid'),
+    body('password').isLength({ min: 6 }).withMessage('Password minimal 6 karakter'),
+    async (req, res) => {
     try {
-        const { email, password } = req.body;
-        if (!email || !password) {
-            return res.status(400).json({ error: 'Email dan password wajib diisi' });
+        // Cek hasil validasi
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ error: errors.array()[0].msg });
         }
+
+        const { email, password } = req.body;
 
         // Find user by email or username
         const user = await User.findOne({
