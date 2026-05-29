@@ -632,14 +632,29 @@
         // Ini harus jalan SETELAH api.js dan app.js di-load
         (async function () {
             try {
-                const verified = await api.verifySession();
+                // Retry logic: coba 3x dengan delay jika gagal (untuk handle rate limit)
+                let verified = null;
+                let retries = 3;
+                
+                while (retries > 0 && !verified) {
+                    verified = await api.verifySession();
+                    if (!verified && retries > 1) {
+                        console.log(`[Auth] Verify failed, retrying... (${retries - 1} attempts left)`);
+                        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+                    }
+                    retries--;
+                }
+
                 if (!verified) {
-                    // Token expired atau user dinonaktifkan
+                    // Token expired atau user dinonaktifkan setelah 3x retry
+                    console.error('[Auth] Session verification failed after retries. Redirecting to login.');
                     localStorage.removeItem('unityerp_session');
                     sessionStorage.setItem('redirected_from_index', '1');
                     window.location.href = 'login.html';
                     return;
                 }
+
+                console.log('[Auth] Session verified successfully');
 
                 // Update permissions di session dari server (sumber kebenaran)
                 const current = JSON.parse(localStorage.getItem('unityerp_session') || '{}');

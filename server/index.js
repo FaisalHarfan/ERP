@@ -25,7 +25,7 @@ app.use(helmet({
             styleSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://fonts.googleapis.com"],
             fontSrc: ["'self'", "https://cdnjs.cloudflare.com", "https://fonts.gstatic.com"],
             imgSrc: ["'self'", "data:", "blob:"],
-            connectSrc: ["'self'"],
+            connectSrc: ["'self'", "https://cdn.jsdelivr.net"], // Izinkan Chart.js dari CDN
         }
     } : false, // dev: matikan CSP agar tidak ganggu development
     crossOriginEmbedderPolicy: false // izinkan load resource eksternal
@@ -56,14 +56,14 @@ const loginLimiter = rateLimit({
     skipSuccessfulRequests: true // hanya hitung yang gagal
 });
 
-// API umum: max 300 request per menit per IP
-const apiLimiter = rateLimit({
+// API umum: rate limit hanya di production
+const apiLimiter = isProd ? rateLimit({
     windowMs: 60 * 1000,
-    max: 300,
+    max: 1000, // 1000 request per menit
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Terlalu banyak request. Coba lagi sebentar.' }
-});
+}) : (req, res, next) => next(); // Skip rate limit di development
 
 // ─── Logging & Parsing ─────────────────────────
 app.use(isProd ? morgan('combined') : morgan('short'));
