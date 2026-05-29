@@ -57,13 +57,18 @@ const loginLimiter = rateLimit({
     skipSuccessfulRequests: true // hanya hitung yang gagal
 });
 
-// API umum: max 300 request per menit per IP
+// API umum: max 600 request per menit per IP
+// (pullAll saat load bisa 30-50 request sekaligus)
 const apiLimiter = rateLimit({
     windowMs: 60 * 1000,
-    max: 300,
+    max: 600,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { error: 'Terlalu banyak request. Coba lagi sebentar.' }
+    message: { error: 'Terlalu banyak request. Coba lagi sebentar.' },
+    skip: (req) => {
+        // Jangan rate-limit static files (js, css, png, dll)
+        return req.path.match(/\.(js|css|png|jpg|ico|svg|woff|woff2)$/i) !== null;
+    }
 });
 
 // ─── Logging & Parsing ─────────────────────────
