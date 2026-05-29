@@ -201,7 +201,8 @@
                     if (s.token && s.userId) {
                         // Verify token with backend
                         const valid = await api.verifySession();
-                        if (valid) {
+                        // Hanya redirect kalau benar-benar valid (object), bukan 'error' atau null
+                        if (valid && typeof valid === 'object') {
                             window.location.href = 'index.html';
                             return;
                         }
