@@ -578,13 +578,18 @@
                 }
 
                 const session = localStorage.getItem('unityerp_session');
-                if (!session) { window.location.href = 'login.html'; return; }
+                if (!session) { 
+                    sessionStorage.setItem('redirected_from_index', '1');
+                    window.location.href = 'login.html'; 
+                    return; 
+                }
                 try {
                     const s = JSON.parse(session);
                     if (!s || !s.userId) throw new Error();
                     window._session = s;
                 } catch (e) {
                     localStorage.removeItem('unityerp_session');
+                    sessionStorage.setItem('redirected_from_index', '1');
                     window.location.href = 'login.html';
                 }
             })();
@@ -631,6 +636,7 @@
                 if (!verified) {
                     // Token expired atau user dinonaktifkan
                     localStorage.removeItem('unityerp_session');
+                    sessionStorage.setItem('redirected_from_index', '1');
                     window.location.href = 'login.html';
                     return;
                 }

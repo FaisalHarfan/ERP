@@ -194,6 +194,14 @@
 
         // Check if already logged in with valid token
         (async function() {
+            // Cek apakah baru saja redirect dari index (untuk mencegah loop)
+            const redirectedFromIndex = sessionStorage.getItem('redirected_from_index');
+            if (redirectedFromIndex) {
+                sessionStorage.removeItem('redirected_from_index');
+                localStorage.removeItem('unityerp_session');
+                return; // Jangan auto-redirect lagi
+            }
+
             const existingSession = localStorage.getItem('unityerp_session');
             if (existingSession) {
                 try {
@@ -209,6 +217,7 @@
                     // Token invalid/expired — clear it
                     localStorage.removeItem('unityerp_session');
                 } catch (e) {
+                    console.error('Session check error:', e);
                     localStorage.removeItem('unityerp_session');
                 }
             }

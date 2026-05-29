@@ -421,10 +421,24 @@ const api = {
      */
     verifySession: async () => {
         try {
+            const token = getToken();
+            if (!token) {
+                console.log('[API] No token found for verification');
+                return null;
+            }
+            
             const res = await fetch(`${API_BASE}/auth/verify`, { headers: authHeaders() });
-            if (!res.ok) return null;
-            return await res.json();
-        } catch { return null; }
+            if (!res.ok) {
+                console.log(`[API] Token verification failed: ${res.status}`);
+                return null;
+            }
+            const data = await res.json();
+            console.log('[API] Token verified successfully');
+            return data;
+        } catch (err) {
+            console.error('[API] verifySession error:', err);
+            return null;
+        }
     },
 
     /**
