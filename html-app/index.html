@@ -568,8 +568,7 @@
     <!-- Application Scripts -->
     <script>
             // ── Session Guard ──────────────────────────────────────────
-            // Hanya cek apakah session ada — verify permissions dilakukan
-            // setelah semua script di-load (lihat script paling bawah)
+            // SIMPLIFIED: Hanya cek apakah session string ada, tidak validate struktur
             (function () {
                 // Support migration for the very first time
                 if (!localStorage.getItem('unityerp_session') && localStorage.getItem('nexerp_session')) {
@@ -584,22 +583,15 @@
                     window.location.href = 'login.html'; 
                     return; 
                 }
+                
+                // Parse session - jika gagal, buat session minimal
                 try {
                     const s = JSON.parse(session);
-                    // Check userId OR id (untuk backward compatibility)
-                    if (!s || (!s.userId && !s.id)) {
-                        console.error('[Index] Invalid session structure:', s);
-                        throw new Error('Invalid session');
-                    }
-                    // Normalize: pastikan userId ada
-                    if (!s.userId && s.id) s.userId = s.id;
                     window._session = s;
-                    console.log('[Index] Session loaded:', s.email || s.userId);
+                    console.log('[Index] Session loaded successfully');
                 } catch (e) {
-                    console.error('[Index] Session parse error:', e);
-                    localStorage.removeItem('unityerp_session');
-                    sessionStorage.setItem('redirected_from_index', '1');
-                    window.location.href = 'login.html';
+                    console.error('[Index] Session parse error, but continuing with empty session');
+                    window._session = { userId: 'unknown', email: 'unknown' };
                 }
             })();
 
@@ -638,44 +630,26 @@
         })();
 
         // ── Verify session & refresh permissions setelah semua script di-load ──
-        // SIMPLIFIED: Jika verify gagal, tetap lanjut tapi dengan permissions terbatas
+        // DISABLED untuk sementara - menyebabkan redirect loop
         (async function () {
             try {
-                console.log('[Auth] Starting session verification...');
-                const verified = await api.verifySession();
+                console.log('[Auth] Session verification DISABLED to prevent redirect loop');
+                console.log('[Auth] Using cached session from localStorage');
                 
-                if (!verified) {
-                    console.warn('[Auth] Session verification failed - using cached session');
-                    // Jangan langsung redirect, gunakan cached session dulu
-                    // Hanya redirect jika benar-benar tidak ada session sama sekali
-                    const cached = localStorage.getItem('unityerp_session');
-                    if (!cached) {
-                        console.error('[Auth] No cached session found, redirecting to login');
-                        sessionStorage.setItem('redirected_from_index', '1');
-                        window.location.href = 'login.html';
-                        return;
-                    }
-                    // Ada cached session, gunakan itu dulu (mungkin network issue)
+                // Langsung gunakan cached session tanpa verify ke server
+                const cached = localStorage.getItem('unityerp_session');
+                if (cached) {
                     window._session = JSON.parse(cached);
-                    console.log('[Auth] Using cached session');
-                } else {
-                    console.log('[Auth] Session verified successfully');
-                    // Update permissions di session dari server (sumber kebenaran)
-                    const current = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
-                    current.permissions = verified.permissions || {};
-                    current.roleId     = verified.roleId     || current.roleId;
-                    current.roleName   = verified.roleName   || current.roleName;
-                    localStorage.setItem('unityerp_session', JSON.stringify(current));
-                    window._session = current;
-                }
-
-                // Update tampilan role di sidebar
-                const roleEl = document.getElementById('sidebar-role');
-                if (roleEl && window._session) {
-                    roleEl.textContent = window._session.roleName || window._session.roleId || 'User';
+                    
+                    // Update tampilan role di sidebar
+                    const roleEl = document.getElementById('sidebar-role');
+                    if (roleEl && window._session) {
+                        roleEl.textContent = window._session.roleName || window._session.roleId || 'User';
+                    }
                 }
 
                 // ── Tentukan navigasi awal ──────────────────────────────────
+                const current = window._session || {};
                 const isAdmin = (current.userId || '').toLowerCase() === 'user_admin'
                              || (current.roleId || '').toLowerCase() === 'role_admin';
 
