@@ -610,7 +610,7 @@ async function navigateTo(viewId, isBack = false) {
     // Sync necessary tables before rendering
     const tableSyncMap = {
         // ── Launcher ──────────────────────────────────────────────────────────
-        'launcher': ['notifications', 'systemLogs'],
+        'launcher': ['notifications'],
 
         // ── Sales (Penjualan) ─────────────────────────────────────────────────
         'sales-dashboard':        ['salesOrders', 'salesInvoices', 'customers', 'deliveryOrders'],
@@ -693,9 +693,10 @@ async function navigateTo(viewId, isBack = false) {
         'finance-settings':       ['accounts', 'bankAccounts'],
 
         // ── Settings (Pengaturan) ─────────────────────────────────────────────
-        'settings-dashboard': ['users', 'roles'],
-        'settings-users':     ['users', 'roles'],
-        'settings-roles':     ['roles'],
+        // users & roles diambil via /api/settings, bukan generic CRUD
+        'settings-dashboard': [],
+        'settings-users':     [],
+        'settings-roles':     [],
         'settings-company':   [],
         'settings-system':    [],
     };
@@ -703,8 +704,8 @@ async function navigateTo(viewId, isBack = false) {
     const tablesToSync = tableSyncMap[viewId] || [];
 
     // --- OPTIMISTIC RENDER: Render immediately from cache, then background-sync ---
-    // This eliminates VPS network latency from blocking the UI.
-    const allTablesToSync = [...new Set([...tablesToSync, ...(requiredModule ? ['users', 'roles'] : [])])];
+    // users & roles tidak di-sync via generic CRUD (BLOCKED) — permissions dari session
+    const allTablesToSync = [...new Set([...tablesToSync])];
 
     // Access Control Check using session permissions (fast, no db lookup)
     if (requiredModule) {
@@ -1815,19 +1816,28 @@ function renderPurchaseDashboard() {
 
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ SETTINGS DASHBOARD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-function renderSettingsDashboard() {
+async function renderSettingsDashboard() {
     document.getElementById('pageTitle').innerText = 'Dashboard Pengaturan';
     const mc = document.getElementById('main-content');
 
-    const users = db.read('users') || [];
-    const roles = db.read('roles') || [];
-    const config = db.read('company_config') || {};
+    // Tampilkan loading dulu
+    mc.innerHTML = `<div class="p-10 text-center"><i class="fas fa-spinner fa-spin text-3xl text-blue-500"></i></div>`;
+
+    // Baca dari API langsung (bukan db cache yang kosong)
+    let users = [], roles = [];
+    try {
+        [users, roles] = await Promise.all([api.getUsers(), api.getRoles()]);
+    } catch (e) {
+        console.warn('Gagal load users/roles untuk dashboard:', e);
+    }
+
+    const config = JSON.parse(localStorage.getItem('unityerp_company_config') || '{}');
 
     mc.innerHTML = `
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div onclick="navigateTo('settings-users')" class="bg-white p-6 rounded-xl border border-gray-100 shadow-sm cursor-pointer hover:border-blue-500 transition-all">
                 <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">User Aktif</p>
-                <p class="text-3xl font-black text-blue-600 mt-1">${users.length}</p>
+                <p class="text-3xl font-black text-blue-600 mt-1">${users.filter(u => u.status === 'AKTIF').length}</p>
                 <p class="text-xs text-blue-400 mt-2">Klik untuk manajemen user</p>
             </div>
             <div onclick="navigateTo('settings-roles')" class="bg-white p-6 rounded-xl border border-gray-100 shadow-sm cursor-pointer hover:border-purple-500 transition-all">
@@ -1836,7 +1846,7 @@ function renderSettingsDashboard() {
                 <p class="text-xs text-purple-400 mt-2">Klik untuk atur izin modul</p>
             </div>
             <div onclick="navigateTo('settings-company')" class="bg-white p-6 rounded-xl border border-gray-100 shadow-sm cursor-pointer hover:border-green-500 transition-all">
-                <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">Pruduktivitas Profil</p>
+                <p class="text-xs font-bold text-gray-400 uppercase tracking-widest">Profil Perusahaan</p>
                 <div class="flex items-center gap-2 mt-1">
                     <span class="text-3xl font-black text-green-600">${config.companyName ? 'OK' : 'EMPTY'}</span>
                     ${config.companyName ? '<i class="fas fa-check-circle text-green-500"></i>' : '<i class="fas fa-exclamation-circle text-orange-500"></i>'}

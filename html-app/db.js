@@ -102,8 +102,8 @@ const db = {
             'inventoryItems', 'stockTransactions', 'notifications',
             'machines', 'bomHeaders', 'bomMaterials', 'manufacturingOrders', 'dailyProductionLogs', 'productionLineBatches',
             'accounts', 'expenses', 'journalEntries', 'bankAccounts', 'departments', 'creditNotes', 'debitNotes',
-            'salesReturns', 'productExchanges', 'deliveryOrders', 'inventoryJudgments', 'inventoryConversions', 'packBreakdowns',
-            'users', 'roles', 'systemLogs'];
+            'salesReturns', 'productExchanges', 'deliveryOrders', 'inventoryJudgments', 'inventoryConversions', 'packBreakdowns'];
+        // users, roles, systemLogs dikecualikan — BLOCKED di generic CRUD, pakai /api/settings
     },
 
     uuid: () => {
@@ -112,9 +112,8 @@ const db = {
 
     init: async () => {
         console.log("🚀 UnityERP: Database layer initialized (API Mode)");
-        // Pre-sync essential tables
-        await db.sync('users');
-        await db.sync('roles');
+        // users dan roles tidak di-sync via generic CRUD (BLOCKED)
+        // permissions dibaca dari session yang di-verify oleh /api/auth/verify
     },
 
 
