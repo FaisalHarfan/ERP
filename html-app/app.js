@@ -115,6 +115,7 @@ const BREADCRUMB_MAP = {
     'purchase-orders': ['Pembelian', 'Purchase Orders'],
     'purchase-invoices': ['Pembelian', 'Purchase Invoice'],
     'purchase-receiving': ['Pembelian', 'Purchase Received'],
+    'purchase-master-items': ['Pembelian', 'Master Item Pembelian'],
     'purchase-reports': ['Pembelian', 'Reports'],
     'purchase-report-analytics': ['Pembelian', 'Reports', 'Purchasing Analytics'],
     'master-suppliers': ['Pembelian', 'Reports', 'Supplier Addresses & Contacts'],
@@ -211,6 +212,7 @@ const views = {
     'purchase-dashboard': renderPurchaseDashboard,
     'settings-dashboard': renderSettingsDashboard,
     'master-products': renderMasterProducts,
+    'purchase-master-items': renderPurchaseMasterItems,
     'stock-card': renderStockCard,
     // Inventory Module (New)
     'inventory-dashboard': window.renderInventoryDashboard,
@@ -299,6 +301,7 @@ const MODULE_VIEW_MAP = {
     'sales-payments': 'penjualan', 'sales-reports': 'penjualan', 'sales-customers': 'penjualan',
     'purchase-orders': 'pembelian', 'purchase-invoices': 'pembelian', 'purchase-dashboard': 'pembelian', 'purchase-dashboard': 'pembelian',
     'supplier-payments': 'pembelian', 'purchase-reports': 'pembelian', 'master-suppliers': 'pembelian', 'purchase-receiving': 'pembelian', 'purchase-receiving-history': 'pembelian',
+    'purchase-master-items': 'pembelian',
     'master-products': 'logistik', 'stock-card': 'logistik',
     'inventory-dashboard': 'logistik', 'inventory-master': 'logistik', 'inventory-po-receipt': 'logistik', 'inventory-delivery': 'logistik', 'inventory-monthly-report': 'logistik', 'inventory-shrinkage': 'logistik', 'inventory-judgment': 'logistik',
     'inventory-card': 'logistik', 'inventory-shrinkage': 'produksi', 'inventory-monthly-report': 'logistik', 'inventory-conversion': 'logistik',
@@ -633,6 +636,7 @@ async function navigateTo(viewId, isBack = false) {
 
         // ── Purchase (Pembelian) ──────────────────────────────────────────────
         'purchase-dashboard':         ['purchaseOrders', 'purchaseInvoices', 'suppliers', 'purchaseRFQs'],
+        'purchase-master-items':      ['inventoryItems'],
         'purchase-rfqs':              ['purchaseRFQs', 'suppliers', 'inventoryItems'],
         'purchase-orders':            ['purchaseOrders', 'suppliers', 'inventoryItems'],
         'purchase-invoices':          ['purchaseInvoices', 'suppliers', 'inventoryItems', 'purchaseOrders'],
@@ -2260,7 +2264,7 @@ window.openCustomerModal = async (id = null, afterView = null) => {
                                 <select id="cust_payment_term" class="w-full bg-slate-50 border-2 border-transparent rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:bg-white focus:border-blue-400 outline-none cursor-pointer transition-all appearance-none">
                                     <option value="" ${!customer.paymentTerm ? 'selected' : ''}>-- Pilih Term --</option>
                                     <option value="Cash" ${customer.paymentTerm === 'Cash' ? 'selected' : ''}>Cash</option>
-                                    <option value="Tempo 7 S/d 10 Hari" ${customer.paymentTerm === 'Tempo 7 S/d 10 Hari' ? 'selected' : ''}>Tempo 7 S/d 10 Hari</option>
+                                    <option value="Tempo 7 S/d 14 Hari" ${customer.paymentTerm === 'Tempo 7 S/d 14 Hari' ? 'selected' : ''}>Tempo 7 S/d 14 Hari</option>
                                     <option value="30 Hari" ${customer.paymentTerm === '30 Hari' ? 'selected' : ''}>30 Hari</option>
                                     <option value="45 Hari" ${customer.paymentTerm === '45 Hari' ? 'selected' : ''}>45 Hari</option>
                                 </select>
@@ -2593,7 +2597,7 @@ window.updatePODueDate = () => {
 
     let days = 0;
     if (term === 'Cash' || term === 'COD') days = 0;
-    else if (term === '7 S/d 10 Hari') days = 10;
+    else if (term === '7 S/d 14 Hari') days = 14;
     else if (term === '30 Hari') days = 30;
     else if (term === '45 Hari') days = 45;
     else if (term === '60 Hari') days = 60;
@@ -2846,7 +2850,7 @@ window.renderSupplierForm = (id = null) => {
                                     <option value="" ${!s.paymentTerm ? 'selected' : ''}>-- Pilih Term --</option>
                                     <option value="Cash" ${s.paymentTerm === 'Cash' ? 'selected' : ''}>Cash</option>
                                     <option value="COD" ${s.paymentTerm === 'COD' ? 'selected' : ''}>COD</option>
-                                    <option value="7 S/d 10 Hari" ${s.paymentTerm === '7 S/d 10 Hari' ? 'selected' : ''}>7 S/d 10 Hari</option>
+                                    <option value="7 S/d 14 Hari" ${s.paymentTerm === '7 S/d 14 Hari' ? 'selected' : ''}>7 S/d 14 Hari</option>
                                     <option value="30 Hari" ${s.paymentTerm === '30 Hari' ? 'selected' : ''}>30 Hari</option>
                                     <option value="45 Hari" ${s.paymentTerm === '45 Hari' ? 'selected' : ''}>45 Hari</option>
                                     <option value="60 Hari" ${s.paymentTerm === '60 Hari' ? 'selected' : ''}>60 Hari</option>
@@ -2985,25 +2989,86 @@ window.handleSupplierChange = (suppId, mode = 'PO') => {
     const supp = db.findById('suppliers', suppId);
     if (!supp) return;
 
+    console.log(`[handleSupplierChange] Supplier selected: ${supp.name}, Mode: ${mode}`);
+
     if (mode === 'PO') {
+        // Set Category
         const catEl = document.getElementById('po_category');
         const catDispEl = document.getElementById('po_category_display');
         if (supp.category) {
             if (catEl) catEl.value = supp.category;
             if (catDispEl) catDispEl.value = supp.category;
+            
+            // Update highlight in category dropdown
+            const catList = document.getElementById('po_category_list');
+            if (catList) {
+                catList.querySelectorAll('[data-category-name]').forEach(item => {
+                    item.classList.remove('bg-slate-50');
+                });
+                const catLower = supp.category.toLowerCase();
+                const items = catList.querySelectorAll('[data-category-name]');
+                items.forEach(item => {
+                    if (item.getAttribute('data-category-name') === catLower) {
+                        item.classList.add('bg-slate-50');
+                    }
+                });
+            }
+            console.log(`[handleSupplierChange] Category set to: ${supp.category}`);
         }
 
+        // Set Payment Term
         const termEl = document.getElementById('po_payment_terms');
-        if (termEl && supp.paymentTerm) {
-            termEl.value = supp.paymentTerm;
+        const termDispEl = document.getElementById('po_payment_terms_display');
+        if (supp.paymentTerm) {
+            const normalizedTerm = supp.paymentTerm.trim();
+            if (termEl) termEl.value = normalizedTerm;
+            if (termDispEl) termDispEl.value = normalizedTerm;
+            
+            // Update highlight in payment terms dropdown
+            const termList = document.getElementById('po_payment_terms_list');
+            if (termList) {
+                termList.querySelectorAll('[data-term-name]').forEach(item => {
+                    item.classList.remove('bg-slate-50');
+                });
+                const termLower = normalizedTerm.toLowerCase();
+                const items = termList.querySelectorAll('[data-term-name]');
+                items.forEach(item => {
+                    if (item.getAttribute('data-term-name') === termLower) {
+                        item.classList.add('bg-slate-50');
+                    }
+                });
+            }
+            console.log(`[handleSupplierChange] Payment Term set to: ${normalizedTerm}`);
+            
             if(window.updatePODueDate) updatePODueDate();
         }
         
+        // Set Tax Rate
         const taxEl = document.getElementById('po_tax_rate');
+        const taxDispEl = document.getElementById('po_tax_rate_display');
         if (taxEl && (supp.ppn !== undefined && supp.ppn !== null)) {
-            taxEl.value = parseInt(supp.ppn); // Convert 0.00 to 0 or 11.00 to 11
+            const ppnVal = parseInt(supp.ppn); // Convert 0.00 to 0 or 11.00 to 11
+            taxEl.value = ppnVal.toString();
+            
+            // Update display input
+            if (taxDispEl) {
+                const displayLabel = ppnVal === 0 ? '0% (Tanpa Pajak)' : '11% (PPN)';
+                taxDispEl.value = displayLabel;
+            }
+            
+            // Update highlight in tax rate dropdown
+            const taxList = document.getElementById('po_tax_rate_list');
+            if (taxList) {
+                taxList.querySelectorAll('[data-tax-name]').forEach(item => {
+                    item.classList.remove('bg-slate-50');
+                });
+                const selectedItem = taxList.querySelector(`[onclick*="'${ppnVal}'"]`);
+                if (selectedItem) selectedItem.classList.add('bg-slate-50');
+            }
+            console.log(`[handleSupplierChange] Tax Rate set to: ${ppnVal}%`);
+            
             // Sync badge TAX/NT dan nomor PO sesuai pajak supplier
-            const isTax = parseInt(supp.ppn) > 0;
+            const isTax = ppnVal > 0;
             const taxTypeEl = document.getElementById('po_tax_type');
             if (taxTypeEl) taxTypeEl.value = isTax ? 'A' : 'B';
             const dateVal = document.getElementById('po_date')?.value;
@@ -3043,6 +3108,22 @@ window.handleSupplierChange = (suppId, mode = 'PO') => {
         if (supp.category) {
             if (catEl) catEl.value = supp.category;
             if (catDispEl) catDispEl.value = supp.category;
+            
+            // Update highlight in category dropdown
+            const catList = document.getElementById('rfq_category_list');
+            if (catList) {
+                catList.querySelectorAll('[data-category-name]').forEach(item => {
+                    item.classList.remove('bg-slate-50');
+                });
+                const catLower = supp.category.toLowerCase();
+                const items = catList.querySelectorAll('[data-category-name]');
+                items.forEach(item => {
+                    if (item.getAttribute('data-category-name') === catLower) {
+                        item.classList.add('bg-slate-50');
+                    }
+                });
+            }
+            console.log(`[handleSupplierChange] RFQ Category set to: ${supp.category}`);
         }
 
         if (supp.commonProducts && supp.commonProducts.length > 0) {
@@ -3358,18 +3439,30 @@ window.openPOForm = async (fromPrId = null, fromRfqId = null) => {
                                         class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
                                     <input type="hidden" id="po_supplier_id" value="">
                                     <div id="po_supplier_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden min-w-full animate-in fade-in zoom-in-95 duration-200">
-                                        <div class="max-h-56 overflow-y-auto p-1">
+                                        <div class="p-3 border-b border-slate-50">
+                                            <input type="text" id="po_supplier_search" placeholder="Cari nama supplier..." 
+                                                oninput="filterPOSupplierList(this.value)"
+                                                class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                        </div>
+                                        <div class="max-h-56 overflow-y-auto p-1" id="po_supplier_list">
                                             ${suppliers.map(s => `
-                                                <div onclick="selectPurchaseSupplier('PO', '${s.id}', '${s.name.replace(/'/g, "\\'")}')"
+                                                <div onclick="selectPurchaseSupplier('PO', '${s.id}', '${s.name.replace(/'/g, "\\'")}')" data-supplier-name="${s.name.toLowerCase()}"
                                                     class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
                                                     ${s.name}
                                                 </div>
                                             `).join('')}
                                         </div>
                                         <div class="p-2 border-t border-slate-50 bg-white space-y-1">
-                                            <button type="button" onclick="navigateToSupplierPage(); closePOForm();"
+                                            <button type="button" onclick="openAdvancedSupplierSearch('PO')"
                                                 class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
                                                 <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shrink-0">
+                                                    <i class="fas fa-search text-xs"></i>
+                                                </div>
+                                                Advanced Search
+                                            </button>
+                                            <button type="button" onclick="navigateToSupplierPage(); closePOForm();"
+                                                class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
+                                                <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-green-100 group-hover:text-green-600 transition-colors shrink-0">
                                                     <i class="fas fa-plus text-xs"></i>
                                                 </div>
                                                 Tambah Supplier Baru
@@ -3387,31 +3480,113 @@ window.openPOForm = async (fromPrId = null, fromRfqId = null) => {
 
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Kategori <span class="text-red-400">*</span></label>
-                                <select id="po_category" class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
-                                    <option value="" disabled selected>-- Pilih Kategori --</option>
-                                    <option value="Bahan Baku">Bahan Baku</option>
-                                    <option value="Packaging">Packaging</option>
-                                    <option value="Perlengkapan">Perlengkapan</option>
-                                    <option value="Service">Service</option>
-                                    <option value="Sparepart">Sparepart</option>
-                                    <option value="Aktiva ( tetap )">Aktiva ( tetap )</option>
-                                    <option value="Gas">Gas</option>
-                                </select>
+                                <div class="relative" id="po_category_container">
+                                    <input type="text" id="po_category_display" value="-- Pilih Kategori --" readonly
+                                        onclick="togglePOCategoryDropdown()"
+                                        class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
+                                    <input type="hidden" id="po_category" value="">
+                                    
+                                    <div id="po_category_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden min-w-full animate-in fade-in zoom-in-95 duration-200">
+                                        <div class="p-3 border-b border-slate-50">
+                                            <input type="text" id="po_category_search" placeholder="Cari kategori..." 
+                                                oninput="filterPOCategoryList(this.value)"
+                                                class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                        </div>
+                                        <div class="max-h-56 overflow-y-auto p-1" id="po_category_list">
+                                            <div onclick="selectPOCategory('Bahan Baku')" data-category-name="bahan baku"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                Bahan Baku
+                                            </div>
+                                            <div onclick="selectPOCategory('Packaging')" data-category-name="packaging"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                Packaging
+                                            </div>
+                                            <div onclick="selectPOCategory('Perlengkapan')" data-category-name="perlengkapan"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                Perlengkapan
+                                            </div>
+                                            <div onclick="selectPOCategory('Service')" data-category-name="service"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                Service
+                                            </div>
+                                            <div onclick="selectPOCategory('Sparepart')" data-category-name="sparepart"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                Sparepart
+                                            </div>
+                                            <div onclick="selectPOCategory('Aktiva ( tetap )')" data-category-name="aktiva tetap"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                Aktiva ( tetap )
+                                            </div>
+                                            <div onclick="selectPOCategory('Gas')" data-category-name="gas"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                Gas
+                                            </div>
+                                        </div>
+                                        <div class="p-2 border-t border-slate-50 bg-white">
+                                            <button type="button" onclick="openAdvancedPOCategorySearch()" 
+                                                class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
+                                                <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shrink-0">
+                                                    <i class="fas fa-search text-xs"></i>
+                                                </div>
+                                                Advanced Search
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
 
 
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Term Pembayaran <span class="text-red-400">*</span></label>
-                                <select id="po_payment_terms" onchange="updatePODueDate()"
-                                    class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
-                                    <option value="">-- Pilih Term --</option>
-                                    <option value="Cash">Cash</option>
-                                    <option value="COD">COD</option>
-                                    <option value="7 S/d 10 Hari">7 S/d 10 Hari</option>
-                                    <option value="30 Hari">30 Hari</option>
-                                    <option value="45 Hari">45 Hari</option>
-                                    <option value="60 Hari">60 Hari</option>
-                                </select>
+                                <div class="relative" id="po_payment_terms_container">
+                                    <input type="text" id="po_payment_terms_display" value="-- Pilih Term --" readonly
+                                        onclick="togglePOPaymentTermsDropdown()"
+                                        class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
+                                    <input type="hidden" id="po_payment_terms" value="">
+                                    
+                                    <div id="po_payment_terms_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden min-w-full animate-in fade-in zoom-in-95 duration-200">
+                                        <div class="p-3 border-b border-slate-50">
+                                            <input type="text" id="po_payment_terms_search" placeholder="Cari term..." 
+                                                oninput="filterPOPaymentTermsList(this.value)"
+                                                class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                        </div>
+                                        <div class="max-h-56 overflow-y-auto p-1" id="po_payment_terms_list">
+                                            <div onclick="selectPOPaymentTerms('Cash')" data-term-name="cash"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                Cash
+                                            </div>
+                                            <div onclick="selectPOPaymentTerms('COD')" data-term-name="cod"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                COD
+                                            </div>
+                                            <div onclick="selectPOPaymentTerms('7 S/d 14 Hari')" data-term-name="7 s/d 14 hari"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                7 S/d 14 Hari
+                                            </div>
+                                            <div onclick="selectPOPaymentTerms('30 Hari')" data-term-name="30 hari"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                30 Hari
+                                            </div>
+                                            <div onclick="selectPOPaymentTerms('45 Hari')" data-term-name="45 hari"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                45 Hari
+                                            </div>
+                                            <div onclick="selectPOPaymentTerms('60 Hari')" data-term-name="60 hari"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                60 Hari
+                                            </div>
+                                        </div>
+                                        <div class="p-2 border-t border-slate-50 bg-white">
+                                            <button type="button" onclick="openAdvancedPOPaymentTermsSearch()" 
+                                                class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
+                                                <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shrink-0">
+                                                    <i class="fas fa-search text-xs"></i>
+                                                </div>
+                                                Advanced Search
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Tanggal Jatuh Tempo <span class="text-red-400">*</span></label>
@@ -3425,17 +3600,39 @@ window.openPOForm = async (fromPrId = null, fromRfqId = null) => {
                             </div>
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Pajak (PPN %)</label>
-                                <select id="po_tax_rate" onchange="
-                                    const isTax = this.value !== '0';
-                                    const taxTypeEl = document.getElementById('po_tax_type');
-                                    if (taxTypeEl) taxTypeEl.value = isTax ? 'A' : 'B';
-                                    const dateVal = document.getElementById('po_date')?.value;
-                                    document.getElementById('po_number').value = generatePurchaseOrderNumber(isTax, dateVal);
-                                    renderPOItemsList();"
-                                    class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
-                                    <option value="0" ${CONFIG.taxRate == 0 ? 'selected' : ''}>0% (Tanpa Pajak)</option>
-                                    <option value="11" ${(CONFIG.taxRate == 11 || !CONFIG.taxRate) ? 'selected' : ''}>11% (PPN)</option>
-                                </select>
+                                <div class="relative" id="po_tax_rate_container">
+                                    <input type="text" id="po_tax_rate_display" value="${(CONFIG.taxRate == 11 || !CONFIG.taxRate) ? '11% (PPN)' : '0% (Tanpa Pajak)'}" readonly
+                                        onclick="togglePOTaxRateDropdown()"
+                                        class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
+                                    <input type="hidden" id="po_tax_rate" value="${(CONFIG.taxRate == 11 || !CONFIG.taxRate) ? '11' : '0'}">
+                                    
+                                    <div id="po_tax_rate_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden min-w-full animate-in fade-in zoom-in-95 duration-200">
+                                        <div class="p-3 border-b border-slate-50">
+                                            <input type="text" id="po_tax_rate_search" placeholder="Cari pajak..." 
+                                                oninput="filterPOTaxRateList(this.value)"
+                                                class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                        </div>
+                                        <div class="max-h-56 overflow-y-auto p-1" id="po_tax_rate_list">
+                                            <div onclick="selectPOTaxRate('0', '0% (Tanpa Pajak)')" data-tax-name="0% tanpa pajak"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                0% (Tanpa Pajak)
+                                            </div>
+                                            <div onclick="selectPOTaxRate('11', '11% (PPN)')" data-tax-name="11% ppn"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5 ${(CONFIG.taxRate == 11 || !CONFIG.taxRate) ? 'bg-slate-50' : ''}">
+                                                11% (PPN)
+                                            </div>
+                                        </div>
+                                        <div class="p-2 border-t border-slate-50 bg-white">
+                                            <button type="button" onclick="openAdvancedPOTaxRateSearch()" 
+                                                class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
+                                                <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shrink-0">
+                                                    <i class="fas fa-search text-xs"></i>
+                                                </div>
+                                                Advanced Search
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -3448,32 +3645,69 @@ window.openPOForm = async (fromPrId = null, fromRfqId = null) => {
                         <!-- Add row -->
                         <div class="grid grid-cols-12 gap-3 items-end">
                             <div class="col-span-5 relative">
-                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Pilih Produk</label>
-                                <input type="text" id="po_item_search" placeholder="-- Cari Kode atau Nama Produk --" autocomplete="off"
-                                    onclick="toggleItemProductDropdown('po')" readonly
-                                    class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 shadow-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all cursor-pointer">
-                                <input type="hidden" id="po_inv_item">
-                                <div id="po_item_dropdown" class="absolute left-0 mt-2 w-full bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] hidden overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                                    <div class="p-3 border-b border-slate-50">
-                                        <input type="text" id="po_item_dropdown_search" placeholder="Ketik kode atau nama..." onkeyup="filterItemProductList('po', this.value)" class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                                    <span>Pilih Produk</span>
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" id="po_use_freetext" onchange="togglePOItemInputMode()" class="sr-only peer">
+                                        <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-500"></div>
+                                        <span class="ml-2 text-[9px] font-bold text-slate-500 peer-checked:text-green-600">Teks Bebas</span>
+                                    </label>
+                                </label>
+                                
+                                <!-- Dropdown Mode (default) -->
+                                <div id="po_item_dropdown_mode">
+                                    <input type="text" id="po_item_search" placeholder="-- Cari Kode atau Nama Produk --" autocomplete="off"
+                                        onclick="toggleItemProductDropdown('po')" readonly
+                                        class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 shadow-sm focus:ring-2 focus:ring-blue-500/20 outline-none transition-all cursor-pointer">
+                                    <input type="hidden" id="po_inv_item">
+                                    <div id="po_item_dropdown" class="absolute left-0 mt-2 w-full bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] hidden overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                        <div class="p-3 border-b border-slate-50">
+                                            <input type="text" id="po_item_dropdown_search" placeholder="Ketik kode atau nama..." onkeyup="filterItemProductList('po', this.value)" class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                        </div>
+                                        <div class="max-h-60 overflow-y-auto p-1" id="po_item_list"></div>
+                                        <div class="p-2 border-t border-slate-50 bg-slate-50/10 space-y-1">
+                                            <button type="button" onclick="renderMasterProducts()" class="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-black text-slate-500 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-all uppercase tracking-widest">
+                                                <div class="w-7 h-7 flex items-center justify-center bg-slate-100 rounded-lg"><i class="fas fa-plus text-[10px]"></i></div>
+                                                Create a new Product
+                                            </button>
+                                            <button type="button" onclick="openAdvancedProductSearch('po')" class="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-black text-slate-500 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-all uppercase tracking-widest">
+                                                <div class="w-7 h-7 flex items-center justify-center bg-slate-100 rounded-lg"><i class="fas fa-search text-[10px]"></i></div>
+                                                Advanced Search
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div class="max-h-60 overflow-y-auto p-1" id="po_item_list"></div>
-                                    <div class="p-2 border-t border-slate-50 bg-slate-50/10 space-y-1">
-                                        <button type="button" onclick="renderMasterProducts()" class="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-black text-slate-500 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-all uppercase tracking-widest">
-                                            <div class="w-7 h-7 flex items-center justify-center bg-slate-100 rounded-lg"><i class="fas fa-plus text-[10px]"></i></div>
-                                            Create a new Product
-                                        </button>
-                                        <button type="button" onclick="openAdvancedProductSearch('po')" class="w-full flex items-center gap-3 px-4 py-2.5 text-[10px] font-black text-slate-500 hover:bg-slate-50 hover:text-slate-900 rounded-xl transition-all uppercase tracking-widest">
-                                            <div class="w-7 h-7 flex items-center justify-center bg-slate-100 rounded-lg"><i class="fas fa-search text-[10px]"></i></div>
-                                            Advanced Search
-                                        </button>
-                                    </div>
+                                </div>
+                                
+                                <!-- Free Text Mode (hidden by default) -->
+                                <div id="po_item_freetext_mode" class="hidden">
+                                    <input type="text" id="po_item_freetext" placeholder="Ketik nama item/service..." autocomplete="off"
+                                        class="w-full border-2 border-green-200 rounded-xl px-4 py-3 bg-green-50/50 font-bold text-slate-700 shadow-sm focus:ring-2 focus:ring-green-500/20 focus:border-green-400 outline-none transition-all">
                                 </div>
                             </div>
                             <div class="col-span-2">
                                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Satuan</label>
+                                
+                                <!-- Readonly mode for inventory items -->
                                 <input id="po_unit" readonly placeholder="Unit"
                                     class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/50 text-sm font-bold text-slate-500 outline-none">
+                                
+                                <!-- Dropdown mode for free text items (hidden by default) -->
+                                <select id="po_unit_select" class="hidden w-full border-none rounded-xl px-4 py-3 bg-green-50/50 text-sm font-bold text-slate-700 outline-none cursor-pointer border-2 border-green-200 focus:ring-2 focus:ring-green-500/20 focus:border-green-400">
+                                    <option value="">-- Pilih --</option>
+                                    <option value="PCS">PCS</option>
+                                    <option value="KG">KG</option>
+                                    <option value="LITER">LITER</option>
+                                    <option value="BOX">BOX</option>
+                                    <option value="KARTON">KARTON</option>
+                                    <option value="PACK">PACK</option>
+                                    <option value="UNIT">UNIT</option>
+                                    <option value="METER">METER</option>
+                                    <option value="SET">SET</option>
+                                    <option value="BUNDLE">BUNDLE</option>
+                                    <option value="LEMBAR">LEMBAR</option>
+                                    <option value="JAM">JAM</option>
+                                    <option value="HARI">HARI</option>
+                                </select>
                             </div>
                             <div class="col-span-2">
                                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Qty</label>
@@ -3528,32 +3762,100 @@ window.onPOItemSelect = () => {
     if (unitEl) unitEl.value = opt?.dataset.unit || '';
 };
 
+// Toggle between dropdown and free text input mode
+window.togglePOItemInputMode = () => {
+    const checkbox = document.getElementById('po_use_freetext');
+    const dropdownMode = document.getElementById('po_item_dropdown_mode');
+    const freetextMode = document.getElementById('po_item_freetext_mode');
+    const unitInput = document.getElementById('po_unit');
+    const unitSelect = document.getElementById('po_unit_select');
+    
+    if (checkbox.checked) {
+        // Switch to free text mode
+        dropdownMode.classList.add('hidden');
+        freetextMode.classList.remove('hidden');
+        // Switch unit to dropdown
+        unitInput.classList.add('hidden');
+        unitSelect.classList.remove('hidden');
+        // Clear dropdown values
+        document.getElementById('po_item_search').value = '';
+        document.getElementById('po_inv_item').value = '';
+        unitInput.value = '';
+    } else {
+        // Switch to dropdown mode
+        dropdownMode.classList.remove('hidden');
+        freetextMode.classList.add('hidden');
+        // Switch unit to readonly input
+        unitInput.classList.remove('hidden');
+        unitSelect.classList.add('hidden');
+        // Clear freetext value
+        document.getElementById('po_item_freetext').value = '';
+        unitSelect.value = '';
+    }
+};
+
 window.addPOItem = () => {
-    const inventoryItemId = document.getElementById('po_inv_item').value;
-    const searchVal = document.getElementById('po_item_search').value;
+    const isFreeText = document.getElementById('po_use_freetext')?.checked;
     
+    let inventoryItemId = null;
+    let prodText = '';
     let itemCode = '';
+    let unit = 'PCS';
     
-    if (inventoryItemId) {
-        const p = db.findById('inventoryItems', inventoryItemId);
-        if (p) {
-            prodText = p.itemName;
-            itemCode = p.itemCode || '';
-            unit = document.getElementById('po_unit').value || p.unit || '-';
+    if (isFreeText) {
+        // Free text mode - no inventory link
+        prodText = document.getElementById('po_item_freetext')?.value?.trim() || '';
+        if (!prodText) { 
+            showToast('Isi nama item/service', 'error'); 
+            return; 
+        }
+        itemCode = 'NON-INV'; // Mark as non-inventory
+        unit = document.getElementById('po_unit_select')?.value || 'PCS';
+        if (!unit || unit === '') {
+            showToast('Pilih satuan unit', 'error');
+            return;
+        }
+    } else {
+        // Dropdown mode - link to inventory
+        inventoryItemId = document.getElementById('po_inv_item').value;
+        const searchVal = document.getElementById('po_item_search').value;
+        
+        if (inventoryItemId) {
+            const p = db.findById('inventoryItems', inventoryItemId);
+            if (p) {
+                prodText = p.itemName;
+                itemCode = p.itemCode || '';
+                unit = document.getElementById('po_unit').value || p.unit || '-';
+            }
+        }
+        
+        if (!inventoryItemId && !searchVal.trim()) { 
+            showToast('Pilih produk dari daftar', 'error'); 
+            return; 
         }
     }
-    
-    if (!inventoryItemId && !searchVal.trim()) { showToast('Pilih produk dari daftar', 'error'); return; }
 
     const qty = parseFloat(document.getElementById('po_qty').value);
     const price = parseFloat(document.getElementById('po_price').value) || 0;
     if (!qty || qty <= 0) { showToast('Qty harus diisi', 'error'); return; }
-    window.tempPOItems.push({ inventoryItemId, itemCode, prodText, unit, qty, price, subtotal: qty * price });
+    
+    window.tempPOItems.push({ 
+        inventoryItemId, 
+        itemCode, 
+        prodText, 
+        unit, 
+        qty, 
+        price, 
+        subtotal: qty * price,
+        isFreeText: isFreeText // Flag to identify non-inventory items
+    });
     
     // Reset
     document.getElementById('po_item_search').value = '';
     document.getElementById('po_inv_item').value = '';
+    document.getElementById('po_item_freetext').value = '';
     document.getElementById('po_unit').value = '';
+    document.getElementById('po_unit_select').value = '';
     document.getElementById('po_qty').value = '';
     document.getElementById('po_price').value = '';
     renderPOItemsList();
@@ -3648,6 +3950,224 @@ window.updatePOItemInline = (idx, field, value) => {
 
 window.removePOItem = (idx) => { window.tempPOItems.splice(idx, 1); renderPOItemsList(); };
 
+// Edit existing PO
+window.editPO = async (poId) => {
+    const po = db.findById('purchaseOrders', poId);
+    if (!po) {
+        showToast('PO tidak ditemukan', 'error');
+        return;
+    }
+
+    // Set edit mode BEFORE opening form
+    window._editingPOId = poId;
+    window.tempPOItems = (po.items || []).map(item => ({...item})); // Deep copy items
+    
+    // Open form
+    await openPOForm();
+    
+    // Wait for form to render, then fill data
+    let retryCount = 0;
+    const maxRetries = 15;
+    
+    const fillFormData = () => {
+        retryCount++;
+        
+        // Check if ALL critical form elements exist
+        const poItemsListEl = document.getElementById('po_items_list');
+        const poTaxRateEl = document.getElementById('po_tax_rate');
+        const poDateEl = document.getElementById('po_date');
+        const poDueDateEl = document.getElementById('po_due_date');
+        
+        if (!poItemsListEl || !poTaxRateEl || !poDateEl || !poDueDateEl) {
+            if (retryCount < maxRetries) {
+                setTimeout(fillFormData, 200);
+            } else {
+                console.error('[EditPO] Form elements not found after max retries');
+                showToast('Gagal load form, coba lagi', 'error');
+            }
+            return;
+        }
+        
+        // Supplier
+        const supplierId = po.supplierId;
+        const supplier = db.findById('suppliers', supplierId);
+        if (supplier) {
+            document.getElementById('po_supplier_id').value = supplierId;
+            document.getElementById('po_supplier_display').value = supplier.name;
+        }
+        
+        // PO Number & Tax Type
+        document.getElementById('po_number').value = po.poNumber;
+        document.getElementById('po_tax_type').value = po.taxType || 'B';
+        
+        // Category & Payment Terms - SET EARLY (now with display inputs)
+        const poCategoryEl = document.getElementById('po_category');
+        const poCategoryDispEl = document.getElementById('po_category_display');
+        const poPaymentTermsEl = document.getElementById('po_payment_terms');
+        const poPaymentTermsDispEl = document.getElementById('po_payment_terms_display');
+        
+        if (po.category) {
+            if (poCategoryEl) poCategoryEl.value = po.category;
+            if (poCategoryDispEl) poCategoryDispEl.value = po.category;
+            
+            // Update highlight in category dropdown
+            setTimeout(() => {
+                const catList = document.getElementById('po_category_list');
+                if (catList) {
+                    catList.querySelectorAll('[data-category-name]').forEach(item => {
+                        item.classList.remove('bg-slate-50');
+                    });
+                    const catLower = po.category.toLowerCase();
+                    catList.querySelectorAll('[data-category-name]').forEach(item => {
+                        if (item.getAttribute('data-category-name') === catLower) {
+                            item.classList.add('bg-slate-50');
+                        }
+                    });
+                }
+            }, 100);
+            console.log('[EditPO] Category set to:', po.category);
+        }
+        
+        if (po.paymentTerms) {
+            if (poPaymentTermsEl) poPaymentTermsEl.value = po.paymentTerms;
+            if (poPaymentTermsDispEl) poPaymentTermsDispEl.value = po.paymentTerms;
+            
+            // Update highlight in payment terms dropdown
+            setTimeout(() => {
+                const termList = document.getElementById('po_payment_terms_list');
+                if (termList) {
+                    termList.querySelectorAll('[data-term-name]').forEach(item => {
+                        item.classList.remove('bg-slate-50');
+                    });
+                    const termLower = po.paymentTerms.toLowerCase();
+                    termList.querySelectorAll('[data-term-name]').forEach(item => {
+                        if (item.getAttribute('data-term-name') === termLower) {
+                            item.classList.add('bg-slate-50');
+                        }
+                    });
+                }
+            }, 100);
+            console.log('[EditPO] Payment Terms set to:', po.paymentTerms);
+        }
+        
+        // Tax Rate - CRITICAL: SET BEFORE rendering items (now with display input)
+        const poTaxRateDispEl = document.getElementById('po_tax_rate_display');
+        // Convert to string and handle all possible formats
+        let taxRateValue = '0';
+        if (po.taxRate !== undefined && po.taxRate !== null) {
+            // Handle both string and number formats
+            taxRateValue = String(parseInt(po.taxRate));
+        }
+        
+        console.log('[EditPO] Setting tax rate:', taxRateValue, 'from PO:', po.taxRate);
+        
+        // Set tax rate - try multiple methods with slight delay
+        const setTaxRate = () => {
+            if (poTaxRateEl) {
+                // Set hidden input
+                poTaxRateEl.value = taxRateValue;
+                
+                // Set display input
+                if (poTaxRateDispEl) {
+                    const displayLabel = taxRateValue === '0' ? '0% (Tanpa Pajak)' : '11% (PPN)';
+                    poTaxRateDispEl.value = displayLabel;
+                }
+                
+                // Update highlight in tax rate dropdown
+                setTimeout(() => {
+                    const taxList = document.getElementById('po_tax_rate_list');
+                    if (taxList) {
+                        taxList.querySelectorAll('[data-tax-name]').forEach(item => {
+                            item.classList.remove('bg-slate-50');
+                        });
+                        const selectedItem = taxList.querySelector(`[onclick*="'${taxRateValue}'"]`);
+                        if (selectedItem) {
+                            selectedItem.classList.add('bg-slate-50');
+                        }
+                    }
+                }, 100);
+                
+                console.log('[EditPO] Tax rate set to:', taxRateValue);
+            }
+        };
+        
+        // Set immediately
+        setTaxRate();
+        
+        // Also set after small delay to ensure it sticks
+        setTimeout(setTaxRate, 100);
+        
+        // Also sync the TAX/NT badge with the tax rate
+        const isTax = parseInt(taxRateValue) > 0;
+        const poTaxTypeEl = document.getElementById('po_tax_type');
+        if (poTaxTypeEl) {
+            poTaxTypeEl.value = isTax ? 'A' : 'B';
+        }
+        
+        // Tanggal PO - dari data asli PO (PENTING: gunakan tanggal asli dari pembuatan)
+        if (po.date) {
+            const poDate = new Date(po.date);
+            const year = poDate.getFullYear();
+            const month = String(poDate.getMonth() + 1).padStart(2, '0');
+            const day = String(poDate.getDate()).padStart(2, '0');
+            const dateStr = `${year}-${month}-${day}`;
+            poDateEl.value = dateStr;
+        }
+        
+        // ETD
+        document.getElementById('po_etd').value = po.etd || '';
+        
+        // Notes
+        if (document.getElementById('po_notes')) {
+            document.getElementById('po_notes').value = po.notes || '';
+        }
+        
+        // CALCULATE Due Date based on PO Date + Payment Terms
+        if (typeof updatePODueDate === 'function') {
+            updatePODueDate();
+        } else {
+            // Fallback: set from saved data
+            if (po.dueDate) {
+                const dueDate = new Date(po.dueDate);
+                const year = dueDate.getFullYear();
+                const month = String(dueDate.getMonth() + 1).padStart(2, '0');
+                const day = String(dueDate.getDate()).padStart(2, '0');
+                const dateStr = `${year}-${month}-${day}`;
+                poDueDateEl.value = dateStr;
+            }
+        }
+        
+        // FORCE set tempPOItems - CRITICAL for items display
+        window.tempPOItems = (po.items || []).map(item => ({...item}));
+        
+        // Render items - MUST CALL THIS
+        if (typeof renderPOItemsList === 'function') {
+            renderPOItemsList();
+        } else {
+            console.error('[EditPO] renderPOItemsList function not found!');
+        }
+        
+        // Double-check items rendered
+        setTimeout(() => {
+            const itemRows = document.querySelectorAll('#po_items_list tbody tr');
+            if (itemRows.length === 0 && window.tempPOItems.length > 0) {
+                console.warn('[EditPO] Items not rendered, trying again...');
+                if (typeof renderPOItemsList === 'function') {
+                    renderPOItemsList();
+                }
+            }
+        }, 300);
+        
+        // Update breadcrumb
+        renderBreadcrumb(['Purchasing', 'Purchase Orders', 'Edit PO']);
+        
+        showToast('Data PO berhasil dimuat', 'success');
+    };
+    
+    // Start filling form after a delay
+    setTimeout(fillFormData, 600);
+};
+
 window.savePO = async () => {
     const supId = document.getElementById('po_supplier_id').value;
     const poNum = document.getElementById('po_number').value;
@@ -3676,11 +4196,23 @@ window.savePO = async () => {
     const taxAmount = Math.round(dpp * taxPct / 100);
     const total = dpp + taxAmount;
 
-    const result = await db.insert('purchaseOrders', {
+    // Convert date to local timezone properly to avoid timezone issues
+    let poDateISO;
+    if (poDateEl && poDateEl.value) {
+        const [year, month, day] = poDateEl.value.split('-');
+        const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 12, 0, 0);
+        poDateISO = localDate.toISOString();
+    } else {
+        const now = new Date();
+        const localDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+        poDateISO = localDate.toISOString();
+    }
+
+    const poData = {
         poNumber: poNum,
         supplierId: supId,
         requestId: window.tempPOFromPR || window.tempPOFromRFQ || null,
-        date: (poDateEl && poDateEl.value) ? new Date(poDateEl.value).toISOString() : new Date().toISOString(),
+        date: poDateISO,
         paymentTerms,
         dueDate,
         etd: (poEtdEl && poEtdEl.value) ? poEtdEl.value : null,
@@ -3694,7 +4226,18 @@ window.savePO = async () => {
         taxType: taxType,
         notes: notes,
         items: window.tempPOItems
-    });
+    };
+
+    let result;
+    // Check if editing existing PO
+    if (window._editingPOId) {
+        result = await db.update('purchaseOrders', window._editingPOId, poData);
+        showToast('PO berhasil diupdate!', 'success');
+        window._editingPOId = null; // Reset edit mode
+    } else {
+        result = await db.insert('purchaseOrders', poData);
+        showToast('PO Draft berhasil dibuat!', 'success');
+    }
 
     if (window.tempPOFromRFQ) {
         await db.update('purchaseRFQs', window.tempPOFromRFQ, { status: 'PO_CREATED' });
@@ -3702,7 +4245,6 @@ window.savePO = async () => {
 
     if (!result) { showToast('Gagal menyimpan PO, coba lagi', 'error'); return; }
     window.tempPOItems = []; window.tempPOFromPR = null; window.tempPOFromRFQ = null;
-    showToast('PO Draft berhasil dibuat!', 'success');
     closePOForm();
     await db.sync('purchaseOrders');
     renderPurchaseOrders();
@@ -3745,16 +4287,24 @@ window.generateNPBNumber = () => {
     const year = String(d.getFullYear());
     const monthYearStr = `${month}${year}`;
 
+    // Find the max sequence number for this specific month/year (changed from daily to monthly reset)
     let maxSeq = 0;
     allReceipts.forEach(r => {
         if (!r.npbNumber || !r.npbNumber.startsWith('NPB-')) return;
-        const parts = r.npbNumber.split('-');
-        if (parts.length < 3) return;
         
-        // parts[1] is DDMMYYYY. slice(2) is MMYYYY
-        if (parts[1].slice(2) === monthYearStr) {
-            const seq = parseInt(parts[2]);
-            if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+        // Parse date from receipt to check if same month/year
+        const rDate = new Date(r.receivedAt || r.date);
+        const rMonth = String(rDate.getMonth() + 1).padStart(2, '0');
+        const rYear = String(rDate.getFullYear());
+        const rMonthYearStr = `${rMonth}${rYear}`;
+        
+        // Only count sequence from same month/year
+        if (rMonthYearStr === monthYearStr) {
+            const parts = r.npbNumber.split('-');
+            if (parts.length >= 3) {
+                const seq = parseInt(parts[2]);
+                if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+            }
         }
     });
 
@@ -4457,10 +5007,6 @@ window.openPurchaseInvoiceForm = (poId = null, receiptId = null) => {
 
     const supplierOptionsHtml = `
         <div class="max-h-56 overflow-y-auto p-1">
-            <div onclick="selectPurchaseInvoiceSupplier('', '-- Semua Supplier --')"
-                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
-                -- Semua Supplier --
-            </div>
             ${uniqueSuppliers.map(s => `
                 <div onclick="selectPurchaseInvoiceSupplier('${s.id}', '${s.name.replace(/'/g, "\\'")}')"
                     class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
@@ -4525,14 +5071,51 @@ window.openPurchaseInvoiceForm = (poId = null, receiptId = null) => {
                 </div>
                 <div>
                     <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Payment Terms</label>
-                    <select id="pinv_terms" onchange="calculatePurchaseInvoiceDueDate()" class="w-full border-2 border-slate-100 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all">
-                        <option value="0">Cash / COD</option>
-                        <option value="7">Net 7 Days</option>
-                        <option value="15">Net 15 Days</option>
-                        <option value="30">Net 30 Days</option>
-                        <option value="45">Net 45 Days</option>
-                        <option value="60">Net 60 Days</option>
-                    </select>
+                    <div class="relative" id="pinv_terms_container">
+                        <input type="text" id="pinv_terms_display" value="Cash" readonly
+                            onclick="togglePINVTermsDropdown()"
+                            class="w-full border-2 border-slate-100 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all cursor-pointer">
+                        <input type="hidden" id="pinv_terms" value="0">
+                        
+                        <div id="pinv_terms_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden min-w-full animate-in fade-in zoom-in-95 duration-200">
+                            <div class="p-3 border-b border-slate-50">
+                                <input type="text" id="pinv_terms_search" placeholder="Cari term..." 
+                                    oninput="filterPINVTermsList(this.value)"
+                                    class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                            </div>
+                            <div class="max-h-56 overflow-y-auto p-1" id="pinv_terms_list">
+                                <div onclick="selectPINVTerms('0', 'Cash')" data-term-name="cash"
+                                    class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5 bg-slate-50">
+                                    Cash
+                                </div>
+                                <div onclick="selectPINVTerms('0', 'COD')" data-term-name="cod"
+                                    class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                    COD
+                                </div>
+                                <div onclick="selectPINVTerms('14', 'Tempo 7 S/d 14 Hari')" data-term-name="tempo 7 sd 14 hari"
+                                    class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                    Tempo 7 S/d 14 Hari
+                                </div>
+                                <div onclick="selectPINVTerms('30', '30 Hari')" data-term-name="30 hari"
+                                    class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                    30 Hari
+                                </div>
+                                <div onclick="selectPINVTerms('45', '45 Hari')" data-term-name="45 hari"
+                                    class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                    45 Hari
+                                </div>
+                            </div>
+                            <div class="p-2 border-t border-slate-50 bg-white">
+                                <button type="button" onclick="openAdvancedPINVTermsSearch()" 
+                                    class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
+                                    <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shrink-0">
+                                        <i class="fas fa-search text-xs"></i>
+                                    </div>
+                                    Advanced Search
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div>
                     <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Due Date</label>
@@ -5538,11 +6121,11 @@ function renderMasterProducts() {
     document.getElementById('pageTitle').innerText = 'Master Produk';
     const mainContent = document.getElementById('main-content');
 
-    // Fetch from inventoryItems, filtered for Finished Goods (Consistent with user request)
+    // Hanya tampilkan Bahan Baku (RAW_MATERIAL) + Gudang Jadi (FINISHED_GOODS)
     const allItems = db.read('inventoryItems') || [];
     const products = allItems.filter(i => {
         const cat = (i.category || '').toUpperCase();
-        return (cat.includes('FINISH') || cat.includes('JADI') || cat.includes('FG')) && i.status !== 'INACTIVE';
+        return (cat.includes('FINISH') || cat.includes('JADI') || cat.includes('FG') || cat === 'RAW_MATERIAL') && i.status !== 'INACTIVE';
     });
 
     let rows = products.map(p => {
@@ -5571,7 +6154,7 @@ function renderMasterProducts() {
     }).join('');
 
     if (products.length === 0) {
-        rows = `<tr><td colspan="6" class="py-12 text-center text-slate-400 italic font-medium uppercase tracking-widest text-xs">Belum ada data produk jadi / gudang jadi</td></tr>`;
+        rows = `<tr><td colspan="6" class="py-12 text-center text-slate-400 italic font-medium uppercase tracking-widest text-xs">Belum ada data bahan baku atau produk jadi</td></tr>`;
     }
 
     mainContent.innerHTML = `
@@ -5690,6 +6273,110 @@ function renderMasterProducts() {
         }
     };
 }
+// --- Purchase Master Items Module ---
+function renderPurchaseMasterItems() {
+    const canEdit = getModulePermission('pembelian').edit;
+    renderBreadcrumb(['Pembelian', 'Master Items']);
+    document.getElementById('pageTitle').innerText = 'Master Item Pembelian';
+    const mainContent = document.getElementById('main-content');
+
+    // Kategori yang belong ke Purchasing (bukan Bahan Baku/Gudang Jadi)
+    const PURCHASE_CATEGORIES = ['PACKAGING', 'SPAREPART', 'SUPPLIES', 'SERVICE', 'GAS', 'ASSET'];
+    const CATEGORY_LABELS = {
+        'PACKAGING':  { label: 'Packaging',         color: 'bg-purple-50 text-purple-700 border-purple-100' },
+        'SPAREPART':  { label: 'Sparepart',          color: 'bg-orange-50 text-orange-700 border-orange-100' },
+        'SUPPLIES':   { label: 'Perlengkapan',       color: 'bg-yellow-50 text-yellow-700 border-yellow-100' },
+        'SERVICE':    { label: 'Service',            color: 'bg-blue-50 text-blue-700 border-blue-100' },
+        'GAS':        { label: 'Gas',                color: 'bg-cyan-50 text-cyan-700 border-cyan-100' },
+        'ASSET':      { label: 'Aktiva (Tetap)',     color: 'bg-slate-50 text-slate-700 border-slate-100' },
+    };
+
+    const allItems = db.read('inventoryItems') || [];
+    const items = allItems.filter(i => PURCHASE_CATEGORIES.includes(i.category) && i.status !== 'INACTIVE');
+
+    let rows = items.map(p => {
+        const stock = db.getInventoryStock(p.id);
+        const catInfo = CATEGORY_LABELS[p.category] || { label: p.category, color: 'bg-gray-50 text-gray-700 border-gray-100' };
+        return `
+        <tr class="border-b border-gray-100 hover:bg-slate-50 transition-colors">
+            <td class="py-4 px-6 text-xs text-slate-400 font-mono font-bold">${p.itemCode || '-'}</td>
+            <td class="py-4 px-6 text-sm text-slate-800 font-bold">${p.itemName}</td>
+            <td class="py-4 px-6">
+                <span class="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${catInfo.color}">
+                    ${catInfo.label}
+                </span>
+            </td>
+            <td class="py-4 px-6 text-xs font-black text-slate-400 uppercase tracking-widest">${p.unit || '-'}</td>
+            <td class="py-4 px-6 text-sm text-slate-700 font-bold text-right">${formatCurrency(p.purchasePrice || 0)}</td>
+            <td class="py-4 px-6 text-sm font-black text-right ${stock <= 0 ? 'text-red-400' : 'text-slate-700'}">${formatNumber(stock)}</td>
+            <td class="py-4 px-6 text-right">
+                ${canEdit ? `
+                <div class="flex justify-end gap-1">
+                    <button onclick="renderInventoryItemForm('${p.id}', 'purchase')" class="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-all" title="Edit"><i class="fas fa-edit"></i></button>
+                    <button onclick="deletePurchaseMasterItem('${p.id}')" class="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Hapus"><i class="fas fa-trash-alt"></i></button>
+                </div>
+                ` : '<span class="text-slate-300 text-[10px] font-bold uppercase italic">No Access</span>'}
+            </td>
+        </tr>`;
+    }).join('');
+
+    if (items.length === 0) {
+        rows = `<tr><td colspan="7" class="py-12 text-center text-slate-400 italic font-medium uppercase tracking-widest text-xs">Belum ada master item pembelian</td></tr>`;
+    }
+
+    mainContent.innerHTML = `
+        <div class="animate-in fade-in duration-300 space-y-4">
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm">
+                <div class="flex flex-wrap justify-between items-center px-6 py-4 border-b border-slate-100 gap-3">
+                    <div>
+                        <h2 class="text-base font-black text-slate-800 uppercase tracking-wide">Master Item Pembelian</h2>
+                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Packaging · Sparepart · Perlengkapan · Service · Gas · Aktiva</p>
+                    </div>
+                    <div class="flex gap-2">
+                        ${canEdit ? `
+                        <button onclick="openAddPurchaseMasterItem()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 flex items-center gap-2">
+                            <i class="fas fa-plus"></i> Tambah Item
+                        </button>
+                        ` : ''}
+                    </div>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50 border-b border-slate-100">
+                                <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Kode</th>
+                                <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Nama Item</th>
+                                <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Kategori</th>
+                                <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Satuan</th>
+                                <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Harga Beli</th>
+                                <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Stok</th>
+                                <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+                <div class="px-6 py-3 border-t border-slate-50 text-[10px] font-black text-slate-400 tracking-widest uppercase">
+                    TOTAL: ${items.length} ITEM
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+window.openAddPurchaseMasterItem = () => {
+    // Reuse renderInventoryItemForm but with purchase categories pre-selected
+    renderInventoryItemForm(null, 'purchase');
+};
+
+window.deletePurchaseMasterItem = (id) => {
+    if (confirm('Yakin ingin menghapus item ini?')) {
+        db.delete('inventoryItems', id);
+        showToast('Item berhasil dihapus');
+        renderPurchaseMasterItems();
+    }
+};
+
 // --- Inventory Module (Stock Card & Recap) ---
 function renderStockCard(activeTab = 'recap') {
     document.getElementById('pageTitle').innerText = 'Inventaris & Stok';
@@ -5880,11 +6567,26 @@ function renderPurchaseOrders() {
     let filters = window.currentFilters.purchaseOrders || {};
     const suppliers = db.read('suppliers') || [];
 
-    // Filter Logic
-    if (filters.start) { const d = new Date(filters.start); d.setHours(0, 0, 0, 0); pos = pos.filter(po => new Date(po.date) >= d); }
-    if (filters.end) { const d = new Date(filters.end); d.setHours(23, 59, 59, 999); pos = pos.filter(po => new Date(po.date) <= d); }
-    if (filters.supplier) { pos = pos.filter(po => po.supplierId === filters.supplier); }
-    if (filters.category) { pos = pos.filter(po => po.category === filters.category); }
+    // Check if any date filter is applied
+    const hasDateFilter = filters.start || filters.end;
+    
+    // If no date filter, show today's data only
+    if (!hasDateFilter) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
+        pos = pos.filter(po => {
+            const docDate = new Date(po.date);
+            return docDate >= today && docDate <= todayEnd;
+        });
+    } else {
+        // Filter Logic
+        if (filters.start) { const d = new Date(filters.start); d.setHours(0, 0, 0, 0); pos = pos.filter(po => new Date(po.date) >= d); }
+        if (filters.end) { const d = new Date(filters.end); d.setHours(23, 59, 59, 999); pos = pos.filter(po => new Date(po.date) <= d); }
+        if (filters.supplier) { pos = pos.filter(po => po.supplierId === filters.supplier); }
+        if (filters.category) { pos = pos.filter(po => po.category === filters.category); }
+    }
 
     let rows = pos.map(po => {
         const supplier = suppliers.find(s => s.id === po.supplierId) || { name: 'Unknown' };
@@ -5900,10 +6602,12 @@ function renderPurchaseOrders() {
         let poOptions = `<option value="view">Lihat Detail</option>`;
 
         if (canEdit && po.status === 'DRAFT') {
+            poOptions += `<option value="edit">Edit</option>`;
             poOptions += `<option value="send">Kirim ke Supplier</option>`;
             poOptions += `<option value="approve">Approve</option>`;
             poOptions += `<option value="delete">Hapus</option>`;
         } else if (canEdit && (po.status === 'APPROVED' || po.status === 'PARTIALLY RECEIVED')) {
+            poOptions += `<option value="edit">Edit</option>`;
             poOptions += `<option value="send">Kirim Ulang</option>`;
             poOptions += `<option value="delete">Hapus</option>`;
         } else if (po.status === 'RECEIVED') {
@@ -5979,7 +6683,15 @@ function renderPurchaseOrders() {
         `;
     }).join('');
 
-    if (pos.length === 0) rows = `<tr > <td colspan="7" class="py-4 text-center text-gray-500">Belum ada Purchase Order</td></tr> `;
+    if (pos.length === 0) {
+        rows = `<tr><td colspan="7" class="py-24 text-center">
+            <div class="flex flex-col items-center justify-center">
+                <i class="fas fa-file-invoice text-6xl text-slate-200 mb-4"></i>
+                <p class="text-slate-400 font-bold uppercase tracking-widest text-sm">Tidak ada Purchase Order ditemukan</p>
+                <p class="text-slate-300 text-xs mt-2">Untuk ${!hasDateFilter ? 'hari ini' : 'periode yang dipilih'}</p>
+            </div>
+        </td></tr>`;
+    }
 
     mainContent.innerHTML = `
         <div id="po-list-view" class="animate-in fade-in duration-300 h-[calc(100vh-64px)] flex flex-col bg-slate-50 -m-4 sm:-m-6">
@@ -6534,13 +7246,14 @@ window.handlePOAction = (selectEl, poId) => {
     if (!action) return;
 
     if (action === 'view')    return viewPO(poId);
+    if (action === 'edit')    return editPO(poId);
     if (action === 'send')    return openSendPOModal(poId);
     if (action === 'approve') return updatePOStatus(poId, 'APPROVED');
     if (action === 'delete')  return deletePO(poId);
 };
 
-window.updatePOStatus = (id, newStatus) => {
-    db.update('purchaseOrders', id, { status: newStatus });
+window.updatePOStatus = async (id, newStatus) => {
+    await db.update('purchaseOrders', id, { status: newStatus });
     showToast(`Status PO diubah ke ${newStatus}`);
     renderPurchaseOrders();
 };
@@ -6576,11 +7289,26 @@ function _renderPurchaseInvoicesList() {
         return new Date(b.date) - new Date(a.date);
     });
 
-    // Apply Filters
-    if (filters.start) { const d = new Date(filters.start); d.setHours(0, 0, 0, 0); invs = invs.filter(i => new Date(i.date) >= d); }
-    if (filters.end) { const d = new Date(filters.end); d.setHours(23, 59, 59, 999); invs = invs.filter(i => new Date(i.date) <= d); }
-    if (filters.supplier) { invs = invs.filter(i => i.supplierId === filters.supplier); }
-    if (filters.status) { invs = invs.filter(i => i.status === filters.status); }
+    // Check if any date filter is applied
+    const hasDateFilter = filters.start || filters.end;
+    
+    // If no date filter, show today's data only
+    if (!hasDateFilter) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
+        invs = invs.filter(i => {
+            const docDate = new Date(i.date);
+            return docDate >= today && docDate <= todayEnd;
+        });
+    } else {
+        // Apply Filters
+        if (filters.start) { const d = new Date(filters.start); d.setHours(0, 0, 0, 0); invs = invs.filter(i => new Date(i.date) >= d); }
+        if (filters.end) { const d = new Date(filters.end); d.setHours(23, 59, 59, 999); invs = invs.filter(i => new Date(i.date) <= d); }
+        if (filters.supplier) { invs = invs.filter(i => i.supplierId === filters.supplier); }
+        if (filters.status) { invs = invs.filter(i => i.status === filters.status); }
+    }
 
     let rows = invs.map(inv => {
         const sup = suppliers.find(s => s.id === inv.supplierId) || { name: 'Unknown' };
@@ -6618,7 +7346,11 @@ function _renderPurchaseInvoicesList() {
         `;
     }).join('');
 
-    if (invs.length === 0) rows = `<tr><td colspan="6" class="py-32 text-center text-slate-300 font-black uppercase tracking-widest opacity-40 italic"><i class="fas fa-file-invoice-dollar text-5xl mb-4"></i><br>Tidak ada tagihan supplier ditemukan</td></tr>`;
+    if (invs.length === 0) rows = `<tr><td colspan="6" class="py-32 text-center text-slate-300 font-black uppercase tracking-widest opacity-40 italic">
+        <div class="flex flex-col items-center justify-center">
+            <i class="fas fa-file-invoice-dollar text-5xl mb-4"></i><br>Tidak ada tagihan supplier ditemukan untuk ${!hasDateFilter ? 'hari ini' : 'periode yang dipilih'}
+        </div>
+    </td></tr>`;
 
     mainContent.innerHTML = `
         <div id="pinv-list-view" class="animate-in fade-in duration-300 h-[calc(100vh-64px)] flex flex-col bg-slate-50 -m-4 sm:-m-6">
@@ -6771,17 +7503,32 @@ function renderSalesQuotations() {
     const customers = db.read('customers');
     const custOptions = customers.map(c => `<option value="${c.id}" ${filters.customer === c.id ? 'selected' : ''}>${c.name}</option>`).join('');
 
-    // Apply Filters
-    if (filters.start) {
-        const d = new Date(filters.start); d.setHours(0, 0, 0, 0);
-        qts = qts.filter(q => new Date(q.date) >= d);
-    }
-    if (filters.end) {
-        const d = new Date(filters.end); d.setHours(23, 59, 59, 999);
-        qts = qts.filter(q => new Date(q.date) <= d);
-    }
-    if (filters.customer) {
-        qts = qts.filter(q => q.customerId === filters.customer);
+    // Check if any date filter is applied
+    const hasDateFilter = filters.start || filters.end;
+    
+    // If no date filter, show today's data only
+    if (!hasDateFilter) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
+        qts = qts.filter(q => {
+            const docDate = new Date(q.date);
+            return docDate >= today && docDate <= todayEnd;
+        });
+    } else {
+        // Apply Filters
+        if (filters.start) {
+            const d = new Date(filters.start); d.setHours(0, 0, 0, 0);
+            qts = qts.filter(q => new Date(q.date) >= d);
+        }
+        if (filters.end) {
+            const d = new Date(filters.end); d.setHours(23, 59, 59, 999);
+            qts = qts.filter(q => new Date(q.date) <= d);
+        }
+        if (filters.customer) {
+            qts = qts.filter(q => q.customerId === filters.customer);
+        }
     }
 
     let rows = qts.map(qt => {
@@ -6832,108 +7579,114 @@ function renderSalesQuotations() {
 
         return `
             <tr class="border-b border-gray-100 hover:bg-slate-50 transition-colors">
-                <td class="py-4 px-4">
-                    <input type="checkbox" class="qt-row-checkbox w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer">
-                </td>
-                <td class="py-4 px-4 text-sm text-slate-900 font-bold tracking-tight">${customerNameDisplay}</td>
-                <td class="py-4 px-4">
-                    <span class="px-3 py-1 rounded-full text-[10px] font-bold tracking-tight shadow-sm border ${qt.status === 'DRAFT' ? 'bg-orange-50 text-orange-600 border-orange-100' : statusColor}">
-                        ${qt.status === 'DRAFT' ? 'Open' : (qt.status === 'SO_CREATED' ? 'CREATED' : qt.status)}
-                    </span>
-                </td>
-                <td class="py-4 px-4 text-sm text-slate-500 font-medium">${qt.date.split('T')[0].split('-').reverse().join('-')}</td>
-                <td class="py-4 px-4 text-sm text-slate-800 font-bold text-right">${formatCurrency(qt.totalAmount)}</td>
-                <td class="py-4 px-4">
-                    <button onclick="viewQT('${qt.id}')" class="text-slate-700 hover:text-blue-600 font-mono text-[11px] font-bold transition-colors cursor-pointer outline-none">
-                        ${qt.qtNumber}
+                <td class="py-4 px-6 whitespace-nowrap">
+                    <button onclick="viewQT('${qt.id}')" class="text-blue-700 hover:text-blue-800 font-mono text-sm font-bold transition-colors cursor-pointer outline-none bg-blue-50/80 px-3.5 py-1.5 rounded-lg border border-blue-200 shadow-sm">
+                        ${qt.qtNumber.toUpperCase()}
                     </button>
                 </td>
-                <td class="py-4 px-4 text-right">
-                    ${actionHtml}
+                <td class="py-4 px-6 text-sm text-slate-500 font-medium">${qt.date.split('T')[0].split('-').reverse().join('-')}</td>
+                <td class="py-4 px-6 text-sm text-slate-900 font-bold tracking-tight">${customerNameDisplay}</td>
+                <td class="py-4 px-6 text-sm text-slate-800 font-bold text-right">${formatCurrency(qt.totalAmount)}</td>
+                <td class="py-4 px-6 text-center">
+                    <span class="px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest shadow-sm border border-black/5 ${qt.status === 'DRAFT' ? 'bg-orange-50 text-orange-600 border-orange-100' : statusColor}">
+                        ${qt.status === 'DRAFT' ? 'DRAFT' : (qt.status === 'SO_CREATED' ? 'SO CREATED' : qt.status)}
+                    </span>
+                </td>
+                <td class="py-4 px-6 text-right whitespace-nowrap">
+                    <div class="flex items-center justify-end gap-2 px-1">
+                        ${actionHtml}
+                    </div>
                 </td>
             </tr>
         `;
     }).join('');
 
-    if (qts.length === 0) rows = `<tr><td colspan="6" class="py-24 text-center text-gray-400 font-bold uppercase tracking-widest"><i class="fas fa-search-minus text-4xl mb-3 opacity-20"></i><br>Tidak ada Quotation ditemukan</td></tr>`;
+    if (qts.length === 0) {
+        rows = `<tr><td colspan="6" class="py-24 text-center">
+            <div class="flex flex-col items-center justify-center">
+                <i class="fas fa-file-alt text-6xl text-slate-200 mb-4"></i>
+                <p class="text-slate-400 font-bold uppercase tracking-widest text-sm">Tidak ada Quotation ditemukan</p>
+                <p class="text-slate-300 text-xs mt-2">Untuk ${!hasDateFilter ? 'hari ini' : 'periode yang dipilih'}</p>
+            </div>
+        </td></tr>`;
+    }
 
     mainContent.innerHTML = `
         <div id="qt-list-view" class="animate-in fade-in duration-300 h-[calc(100vh-64px)] flex flex-col bg-slate-50 -m-4 sm:-m-6">
             <!-- Full Width Fixed Filter Bar -->
-            <div class="bg-white border-b border-gray-200 shrink-0 z-40 shadow-sm">
+            <div class="bg-white border-b border-gray-200 shrink-0 z-40 shadow-sm relative">
                 <div class="flex flex-wrap md:flex-nowrap justify-between items-center px-6 py-4 gap-4">
                     <div class="flex items-center gap-3 flex-1">
                         <div class="flex-1 max-w-md relative">
-                            <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 text-sm"></i>
-                            <input type="text" id="qt_global_search" onkeyup="filterQTTable()" placeholder="Search or type a command" 
-                                class="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-600 placeholder:text-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all shadow-sm">
+                            <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm cursor-text pointer-events-none"></i>
+                            <input type="text" id="qt_global_search" onkeyup="filterQTTable()" placeholder="Search Quotations..." 
+                                class="w-full pl-11 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:bg-white outline-none transition-all">
                         </div>
                         
                         <!-- Date Filter Dropdown Trigger -->
                         <div class="relative" id="qt_date_filter_container">
-                            <button onclick="toggleQTDateDropdown()" class="flex items-center bg-slate-50 border border-slate-200 rounded-lg overflow-hidden hover:bg-slate-100 transition-all shadow-sm h-[42px] group">
-                                <span class="bg-slate-200/60 border-r border-slate-200 px-3 h-full flex items-center text-slate-700 transition-colors">
-                                    <i class="fas fa-sort-amount-up text-sm"></i>
+                            <button onclick="toggleQTDateDropdown()" class="flex items-center bg-slate-50 border border-slate-200 rounded-xl overflow-hidden hover:bg-slate-100 transition-all shadow-sm h-[38px] group p-0">
+                                <span class="bg-slate-100 border-r border-slate-200 px-3 h-full flex items-center text-slate-600 transition-colors">
+                                    <i class="fas fa-sort-amount-up text-[13px]"></i>
                                 </span>
-                                <span class="px-4 text-sm font-medium text-blue-700">Date</span>
-                                <span class="pr-3 text-slate-600">
-                                    <i class="fas fa-chevron-down text-[12px]"></i>
+                                <span class="px-4 text-[14px] font-medium text-blue-600">Date</span>
+                                <span class="pr-3 pl-1 text-slate-500 justify-center flex items-center">
+                                    <i class="fas fa-chevron-down text-[11px]"></i>
                                 </span>
                             </button>
                             
                             <!-- Dropdown Content -->
-                            <div id="qt_date_dropdown" class="absolute left-0 mt-2 w-72 bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] hidden p-5 animate-in fade-in zoom-in-95 duration-200">
+                            <div id="qt_date_dropdown" class="absolute left-0 mt-2 w-72 bg-white border border-slate-100 rounded-2xl shadow-xl z-[200] hidden p-5 animate-in fade-in zoom-in-95 duration-200">
                                 <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Filter Berdasarkan Tanggal</h4>
                                 <div class="space-y-4">
                                     <div>
                                         <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Dari Tanggal</label>
-                                        <input type="date" id="qt_header_start" value="${filters.start}" class="w-full border-2 border-slate-50 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50">
+                                        <input type="date" id="qt_header_start" value="${filters.start}" class="w-full border border-slate-100 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 focus:bg-white focus:border-blue-500 outline-none transition-all">
                                     </div>
                                     <div>
                                         <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Sampai Tanggal</label>
-                                        <input type="date" id="qt_header_end" value="${filters.end}" class="w-full border-2 border-slate-50 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50">
+                                        <input type="date" id="qt_header_end" value="${filters.end}" class="w-full border border-slate-100 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 focus:bg-white focus:border-blue-500 outline-none transition-all">
                                     </div>
                                     <div class="flex gap-2 pt-2">
-                                        <button onclick="applyQTHeaderDateFilter()" class="flex-1 bg-blue-600 text-white py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95">Apply</button>
-                                        <button onclick="resetQTHeaderDateFilter()" class="flex-1 bg-slate-50 text-slate-400 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-100 transition-all">Reset</button>
+                                        <button onclick="applyQTHeaderDateFilter()" class="flex-1 bg-blue-600 text-white py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-md active:scale-95">Apply</button>
+                                        <button onclick="resetQTHeaderDateFilter()" class="flex-1 bg-slate-50 text-slate-500 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all">Reset</button>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    ${canEdit ? `
-                    <button onclick="openQTModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95">
-                        <i class="fas fa-plus mr-2"></i>Buat Quotation
-                    </button>
-                    ` : `
-                    <span class="text-[10px] font-black text-blue-500 bg-blue-50 border border-blue-100 px-4 py-2 rounded-xl uppercase tracking-widest">Mode Lihat Saja</span>
-                    `}
+                    <div class="flex items-center gap-2">
+                        ${canEdit ? `
+                        <button onclick="openQTModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg transition-all text-sm font-medium shadow-sm flex items-center gap-2 active:scale-95">
+                            <i class="fas fa-plus"></i> Buat Quotation
+                        </button>
+                        ` : `
+                        <span class="text-[10px] font-black text-blue-500 bg-blue-50 border border-blue-100 px-4 py-2 rounded-xl uppercase tracking-widest">Mode Lihat Saja</span>
+                        `}
+                    </div>
                 </div>
             </div>
 
-            <!-- Content Area -->
-            <div class="p-4 sm:p-6 flex-1 overflow-y-auto">
-                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                    <div class="overflow-x-auto min-h-[400px]">
-                        <table class="w-full text-left border-collapse">
-                            <thead class="sticky top-0 z-20">
-                                <tr class="bg-slate-50 border-b border-slate-100 text-slate-500 font-semibold uppercase text-[10px] tracking-wider shadow-sm">
-                                    <th class="px-6 py-4 w-10">
-                                        <input type="checkbox" id="selectAllQT" onclick="toggleSelectAllQT(this)" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer">
-                                    </th>
-                                    <th class="px-4 py-4">Customer Name</th>
-                                    <th class="px-4 py-4">Status</th>
-                                    <th class="px-4 py-4">Date</th>
-                                    <th class="px-4 py-4 text-right">Grand Total</th>
-                                    <th class="px-4 py-4">ID</th>
-                                    <th class="px-4 py-4 text-right w-[150px]">Aksi</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-100 font-sans">${rows}</tbody>
-                        </table>
-                    </div>
-                </div>
+            <!-- Table Container wrapper -->
+            <div class="flex-1 overflow-auto">
+                <table class="w-full text-left border-collapse" id="qt_table">
+                    <thead class="bg-slate-50 sticky top-0 z-30 shadow-[0_1px_0_#e2e8f0]">
+                        <tr class="bg-slate-50/80 border-b border-gray-200">
+                            <th class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap">No. QT</th>
+                            <th class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap">Tanggal</th>
+                            <th class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap">Customer</th>
+                            <th class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap text-right">Grand Total</th>
+                            <th class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap text-center">Status</th>
+                            <th class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap text-right">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100 bg-white font-sans">${rows}</tbody>
+                </table>
+            </div>
+
+            <div class="bg-slate-50 border-t border-slate-200 p-2 text-center text-[10px] font-black text-slate-400 tracking-widest uppercase shrink-0">
+                TOTAL: ${qts.length} BARIS
             </div>
         </div>
         <div id="qt-form-view" class="hidden"></div>
@@ -7003,17 +7756,24 @@ function generateQTNumber(customDate = null) {
     const dateStr = `${day}${month}${year}`;
     const monthYearStr = `${month}${year}`;
 
-    // Find the max sequence number for this specific month/year across all days
+    // Find the max sequence number for this specific month/year (changed from daily to monthly reset)
     let maxSeq = 0;
     qts.forEach(q => {
         if (!q.qtNumber || !q.qtNumber.startsWith('QT-')) return;
-        const parts = q.qtNumber.split('-');
-        if (parts.length < 3) return;
         
-        // parts[1] is DDMMYYYY. slice(2) is MMYYYY
-        if (parts[1].slice(2) === monthYearStr) {
-            const seq = parseInt(parts[2]);
-            if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+        // Parse date from quotation to check if same month/year
+        const qDate = new Date(q.date || q.createdAt);
+        const qMonth = String(qDate.getMonth() + 1).padStart(2, '0');
+        const qYear = qDate.getFullYear();
+        const qMonthYearStr = `${qMonth}${qYear}`;
+        
+        // Only count sequence from same month/year
+        if (qMonthYearStr === monthYearStr) {
+            const parts = q.qtNumber.split('-');
+            if (parts.length >= 3) {
+                const seq = parseInt(parts[2]);
+                if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+            }
         }
     });
 
@@ -7132,20 +7892,63 @@ window.openQTModal = async (qtId = null) => {
                             </div>
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Pajak (PPN %)</label>
-                                <select id="qt_tax_rate" onchange="refreshQTItemsTable()" class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/10 outline-none transition-all cursor-pointer">
-                                    <option value="0" ${qt && qt.taxRate == 0 ? 'selected' : ''}>0% (Tanpa Pajak)</option>
-                                    <option value="11" ${!qt || (qt && qt.taxRate == 11) ? 'selected' : ''}>11% (PPN)</option>
-                                </select>
+                                <div class="relative" id="qt_tax_rate_container">
+                                    <input type="text" id="qt_tax_rate_display" value="${qt ? (qt.taxRate == 0 ? '0% (Tanpa Pajak)' : '11% (PPN)') : '11% (PPN)'}" readonly
+                                        onclick="toggleQTTaxRateDropdown()"
+                                        class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 outline-none cursor-pointer">
+                                    <input type="hidden" id="qt_tax_rate" value="${qt ? qt.taxRate : 11}">
+                                    <div id="qt_tax_rate_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden min-w-full animate-in fade-in zoom-in-95 duration-200">
+                                        <div class="p-3 border-b border-slate-50">
+                                            <input type="text" id="qt_tax_rate_search" placeholder="Cari pajak..." 
+                                                oninput="filterQTTaxRateList(this.value)"
+                                                class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                        </div>
+                                        <div class="max-h-56 overflow-y-auto p-1" id="qt_tax_rate_list">
+                                            <div onclick="selectQTTaxRate('0', '0% (Tanpa Pajak)')" data-tax-name="0% tanpa pajak"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                0% (Tanpa Pajak)
+                                            </div>
+                                            <div onclick="selectQTTaxRate('11', '11% (PPN)')" data-tax-name="11% ppn"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                11% (PPN)
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Term Pembayaran <span class="text-red-400">*</span></label>
-                                <select id="qt_payment_term" class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 focus:ring-2 focus:ring-blue-500/10 outline-none transition-all cursor-pointer">
-                                    <option value="" ${!qt || !qt.paymentTerms ? 'selected' : ''}>-- Pilih Term --</option>
-                                    <option value="Cash" ${qt && qt.paymentTerms === 'Cash' ? 'selected' : ''}>Cash</option>
-                                    <option value="Tempo 7 S/d 10 Hari" ${qt && qt.paymentTerms === 'Tempo 7 S/d 10 Hari' ? 'selected' : ''}>Tempo 7 S/d 10 Hari</option>
-                                    <option value="30 Hari" ${qt && qt.paymentTerms === '30 Hari' ? 'selected' : ''}>30 Hari</option>
-                                    <option value="45 Hari" ${qt && qt.paymentTerms === '45 Hari' ? 'selected' : ''}>45 Hari</option>
-                                </select>
+                                <div class="relative" id="qt_payment_term_container">
+                                    <input type="text" id="qt_payment_term_display" value="${qt?.paymentTerms || '-- Pilih Term --'}" readonly
+                                        onclick="toggleQTPaymentTermDropdown()"
+                                        class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
+                                    <input type="hidden" id="qt_payment_term" value="${qt?.paymentTerms || ''}">
+                                    <div id="qt_payment_term_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden min-w-full animate-in fade-in zoom-in-95 duration-200">
+                                        <div class="p-3 border-b border-slate-50">
+                                            <input type="text" id="qt_payment_term_search" placeholder="Cari payment term..." 
+                                                oninput="filterQTPaymentTermList(this.value)"
+                                                class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                        </div>
+                                        <div class="max-h-56 overflow-y-auto p-1" id="qt_payment_term_list">
+                                            <div onclick="selectQTPaymentTerm('Cash')" data-term-name="cash"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                Cash
+                                            </div>
+                                            <div onclick="selectQTPaymentTerm('Tempo 7 S/d 14 Hari')" data-term-name="tempo 7 s/d 14 hari"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                Tempo 7 S/d 14 Hari
+                                            </div>
+                                            <div onclick="selectQTPaymentTerm('30 Hari')" data-term-name="30 hari"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                30 Hari
+                                            </div>
+                                            <div onclick="selectQTPaymentTerm('45 Hari')" data-term-name="45 hari"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                45 Hari
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -7242,6 +8045,42 @@ window.openQTModal = async (qtId = null) => {
     `;
 
     if (qt) refreshQTItemsTable();
+    
+    // Update dropdown highlights for edit mode
+    if (qt) {
+        setTimeout(() => {
+            // Update payment term highlight
+            if (qt.paymentTerms) {
+                const termList = document.getElementById('qt_payment_term_list');
+                if (termList) {
+                    termList.querySelectorAll('[data-term-name]').forEach(item => {
+                        item.classList.remove('bg-slate-50');
+                    });
+                    const termLower = qt.paymentTerms.toLowerCase();
+                    termList.querySelectorAll('[data-term-name]').forEach(item => {
+                        if (item.getAttribute('data-term-name') === termLower) {
+                            item.classList.add('bg-slate-50');
+                        }
+                    });
+                }
+            }
+            
+            // Update tax rate highlight
+            if (qt.taxRate !== undefined && qt.taxRate !== null) {
+                const taxList = document.getElementById('qt_tax_rate_list');
+                if (taxList) {
+                    taxList.querySelectorAll('[data-tax-name]').forEach(item => {
+                        item.classList.remove('bg-slate-50');
+                    });
+                    const taxValue = String(qt.taxRate);
+                    const selectedItem = taxList.querySelector(`[onclick*="'${taxValue}'"]`);
+                    if (selectedItem) {
+                        selectedItem.classList.add('bg-slate-50');
+                    }
+                }
+            }
+        }, 200);
+    }
 };
 
 window.addQTItemRow = () => {
@@ -7456,14 +8295,12 @@ window.saveNewQT = async () => {
 };
 
 window.updateQTStatus = async (id, newStatus) => {
-    showToast('Updating status...', 'info');
     const success = await db.update('salesQuotations', id, { status: newStatus });
     if (success) {
-        showToast(`QT status updated to ${newStatus}`);
+        showToast(`Status QT diperbarui ke ${newStatus}`);
         renderSalesQuotations();
-        setTimeout(() => db.sync('salesQuotations'), 2000);
     } else {
-        showToast('Failed to update status', 'error');
+        showToast('Gagal update status', 'error');
     }
 };
 
@@ -7485,20 +8322,35 @@ function renderPurchaseRFQs() {
         return new Date(b.date) - new Date(a.date);
     });
 
-    // Apply Filters
-    if (filters.start) {
-        const d = new Date(filters.start); d.setHours(0, 0, 0, 0);
-        rfqs = rfqs.filter(r => new Date(r.date) >= d);
-    }
-    if (filters.end) {
-        const d = new Date(filters.end); d.setHours(23, 59, 59, 999);
-        rfqs = rfqs.filter(r => new Date(r.date) <= d);
-    }
-    if (filters.supplier) {
-        rfqs = rfqs.filter(r => r.supplierId === filters.supplier);
-    }
-    if (filters.status) {
-        rfqs = rfqs.filter(r => r.status === filters.status);
+    // Check if any date filter is applied
+    const hasDateFilter = filters.start || filters.end;
+    
+    // If no date filter, show today's data only
+    if (!hasDateFilter) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
+        rfqs = rfqs.filter(r => {
+            const docDate = new Date(r.date);
+            return docDate >= today && docDate <= todayEnd;
+        });
+    } else {
+        // Apply Filters
+        if (filters.start) {
+            const d = new Date(filters.start); d.setHours(0, 0, 0, 0);
+            rfqs = rfqs.filter(r => new Date(r.date) >= d);
+        }
+        if (filters.end) {
+            const d = new Date(filters.end); d.setHours(23, 59, 59, 999);
+            rfqs = rfqs.filter(r => new Date(r.date) <= d);
+        }
+        if (filters.supplier) {
+            rfqs = rfqs.filter(r => r.supplierId === filters.supplier);
+        }
+        if (filters.status) {
+            rfqs = rfqs.filter(r => r.status === filters.status);
+        }
     }
 
     let rows = rfqs.map(rfq => {
@@ -7553,10 +8405,6 @@ function renderPurchaseRFQs() {
                 <td class="py-4 px-6 text-sm text-slate-500 font-medium">${rfqDateDisplay}</td>
                 <td class="py-4 px-6 text-sm text-slate-900 font-bold tracking-tight">${supplier.name}</td>
                 <td class="py-4 px-6 text-[11px] text-slate-500 font-bold uppercase tracking-widest">${rfq.category || '-'}</td>
-                <td class="py-4 px-6 text-right">
-                    <span class="text-sm font-bold text-slate-800">${itemCount}</span>
-                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Items</span>
-                </td>
                 <td class="py-4 px-6 text-center">
                     <span class="px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest shadow-sm border border-black/5 ${statusColor}">
                         ${rfq.status === 'PO_CREATED' ? 'PO Created' : rfq.status}
@@ -7571,7 +8419,11 @@ function renderPurchaseRFQs() {
         `;
     }).join('');
 
-    if (rfqs.length === 0) rows = `<tr><td colspan="7" class="py-24 text-center text-gray-400 font-bold uppercase tracking-widest"><i class="fas fa-search-minus text-4xl mb-3 opacity-20"></i><br>Tidak ada RFQ ditemukan</td></tr>`;
+    if (rfqs.length === 0) rows = `<tr><td colspan="6" class="py-24 text-center text-gray-400 font-bold uppercase tracking-widest">
+        <div class="flex flex-col items-center justify-center opacity-30 select-none">
+            <i class="fas fa-search-minus text-4xl mb-3 opacity-20"></i><br>Tidak ada RFQ ditemukan untuk ${!hasDateFilter ? 'hari ini' : 'periode yang dipilih'}
+        </div>
+    </td></tr>`;
 
     mainContent.innerHTML = `
         <div id="rfq-list-view" class="animate-in fade-in duration-300 h-[calc(100vh-64px)] flex flex-col bg-slate-50 -m-4 sm:-m-6">
@@ -7639,7 +8491,6 @@ function renderPurchaseRFQs() {
                             <th class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap">Tanggal</th>
                             <th class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap">Supplier</th>
                             <th class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap">Kategori</th>
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap text-right">Qty Item</th>
                             <th class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap text-center">Status</th>
                             <th class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap text-right">Aksi</th>
                         </tr>
@@ -7719,17 +8570,24 @@ function generatePurchaseRFQNumber(customDate = null) {
     const dateStr = `${day}${month}${year}`;
     const monthYearStr = `${month}${year}`;
 
-    // Find the max sequence number for this specific month/year across all days
+    // Find the max sequence number for this specific month/year (changed from daily to monthly reset)
     let maxSeq = 0;
     rfqs.forEach(r => {
         if (!r.rfqNumber || !r.rfqNumber.startsWith('RFQ-')) return;
-        const parts = r.rfqNumber.split('-');
-        if (parts.length < 3) return;
         
-        // parts[1] is DDMMYYYY. slice(2) is MMYYYY
-        if (parts[1].slice(2) === monthYearStr) {
-            const seq = parseInt(parts[2]);
-            if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+        // Parse date from RFQ to check if same month/year
+        const rDate = new Date(r.date || r.createdAt);
+        const rMonth = String(rDate.getMonth() + 1).padStart(2, '0');
+        const rYear = rDate.getFullYear();
+        const rMonthYearStr = `${rMonth}${rYear}`;
+        
+        // Only count sequence from same month/year
+        if (rMonthYearStr === monthYearStr) {
+            const parts = r.rfqNumber.split('-');
+            if (parts.length >= 3) {
+                const seq = parseInt(parts[2]);
+                if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+            }
         }
     });
 
@@ -7811,18 +8669,30 @@ window.openRFQForm = async (rfqId = null) => {
                                         class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
                                     <input type="hidden" id="rfq_supplier_id" value="${rfq ? rfq.supplierId : ''}">
                                     <div id="rfq_supplier_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden min-w-full animate-in fade-in zoom-in-95 duration-200">
-                                        <div class="max-h-56 overflow-y-auto p-1">
+                                        <div class="p-3 border-b border-slate-50">
+                                            <input type="text" id="rfq_supplier_search" placeholder="Cari nama supplier..." 
+                                                oninput="filterRFQSupplierList(this.value)"
+                                                class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                        </div>
+                                        <div class="max-h-56 overflow-y-auto p-1" id="rfq_supplier_list">
                                             ${suppliers.map(s => `
-                                                <div onclick="selectPurchaseSupplier('RFQ', '${s.id}', '${s.name.replace(/'/g, "\\'")}')"
+                                                <div onclick="selectPurchaseSupplier('RFQ', '${s.id}', '${s.name.replace(/'/g, "\\'")}')" data-supplier-name="${s.name.toLowerCase()}"
                                                     class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
                                                     ${s.name}
                                                 </div>
                                             `).join('')}
                                         </div>
                                         <div class="p-2 border-t border-slate-50 bg-white space-y-1">
-                                            <button type="button" onclick="navigateToSupplierPage(); closeRFQForm();"
+                                            <button type="button" onclick="openAdvancedSupplierSearch('RFQ')"
                                                 class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
                                                 <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shrink-0">
+                                                    <i class="fas fa-search text-xs"></i>
+                                                </div>
+                                                Advanced Search
+                                            </button>
+                                            <button type="button" onclick="navigateToSupplierPage(); closeRFQForm();"
+                                                class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
+                                                <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-green-100 group-hover:text-green-600 transition-colors shrink-0">
                                                     <i class="fas fa-plus text-xs"></i>
                                                 </div>
                                                 Tambah Supplier Baru
@@ -7839,16 +8709,59 @@ window.openRFQForm = async (rfqId = null) => {
                             </div>
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Kategori <span class="text-red-400">*</span></label>
-                                <select id="rfq_category" class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
-                                    <option value="" disabled ${!rfq ? 'selected' : ''}>-- Pilih Kategori --</option>
-                                    <option value="Bahan Baku" ${rfq?.category === 'Bahan Baku' ? 'selected' : ''}>Bahan Baku</option>
-                                    <option value="Packaging" ${rfq?.category === 'Packaging' ? 'selected' : ''}>Packaging</option>
-                                    <option value="Perlengkapan" ${rfq?.category === 'Perlengkapan' ? 'selected' : ''}>Perlengkapan</option>
-                                    <option value="Service" ${rfq?.category === 'Service' ? 'selected' : ''}>Service</option>
-                                    <option value="Sparepart" ${rfq?.category === 'Sparepart' ? 'selected' : ''}>Sparepart</option>
-                                    <option value="Aktiva ( tetap )" ${rfq?.category === 'Aktiva ( tetap )' ? 'selected' : ''}>Aktiva ( tetap )</option>
-                                    <option value="Gas" ${rfq?.category === 'Gas' ? 'selected' : ''}>Gas</option>
-                                </select>
+                                <div class="relative" id="rfq_category_container">
+                                    <input type="text" id="rfq_category_display" value="${rfq?.category || '-- Pilih Kategori --'}" readonly
+                                        onclick="toggleRFQCategoryDropdown()"
+                                        class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
+                                    <input type="hidden" id="rfq_category" value="${rfq?.category || ''}">
+                                    
+                                    <div id="rfq_category_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden min-w-full animate-in fade-in zoom-in-95 duration-200">
+                                        <div class="p-3 border-b border-slate-50">
+                                            <input type="text" id="rfq_category_search" placeholder="Cari kategori..." 
+                                                oninput="filterRFQCategoryList(this.value)"
+                                                class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                        </div>
+                                        <div class="max-h-56 overflow-y-auto p-1" id="rfq_category_list">
+                                            <div onclick="selectRFQCategory('Bahan Baku')" data-category-name="bahan baku"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5 ${rfq?.category === 'Bahan Baku' ? 'bg-slate-50' : ''}">
+                                                Bahan Baku
+                                            </div>
+                                            <div onclick="selectRFQCategory('Packaging')" data-category-name="packaging"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5 ${rfq?.category === 'Packaging' ? 'bg-slate-50' : ''}">
+                                                Packaging
+                                            </div>
+                                            <div onclick="selectRFQCategory('Perlengkapan')" data-category-name="perlengkapan"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5 ${rfq?.category === 'Perlengkapan' ? 'bg-slate-50' : ''}">
+                                                Perlengkapan
+                                            </div>
+                                            <div onclick="selectRFQCategory('Service')" data-category-name="service"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5 ${rfq?.category === 'Service' ? 'bg-slate-50' : ''}">
+                                                Service
+                                            </div>
+                                            <div onclick="selectRFQCategory('Sparepart')" data-category-name="sparepart"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5 ${rfq?.category === 'Sparepart' ? 'bg-slate-50' : ''}">
+                                                Sparepart
+                                            </div>
+                                            <div onclick="selectRFQCategory('Aktiva ( tetap )')" data-category-name="aktiva tetap"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5 ${rfq?.category === 'Aktiva ( tetap )' ? 'bg-slate-50' : ''}">
+                                                Aktiva ( tetap )
+                                            </div>
+                                            <div onclick="selectRFQCategory('Gas')" data-category-name="gas"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5 ${rfq?.category === 'Gas' ? 'bg-slate-50' : ''}">
+                                                Gas
+                                            </div>
+                                        </div>
+                                        <div class="p-2 border-t border-slate-50 bg-white">
+                                            <button type="button" onclick="openAdvancedRFQCategorySearch()" 
+                                                class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
+                                                <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shrink-0">
+                                                    <i class="fas fa-search text-xs"></i>
+                                                </div>
+                                                Advanced Search
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -8717,40 +9630,202 @@ window.handleSOAction = (selectEl, id) => {
     selectEl.value = ""; // Reset for next use
     
     if (act === 'view') viewSO(id);
-    else if (act === 'edit') openSOModal(db.findById('salesOrders', id)); 
+    else if (act === 'edit') editSO(id); // Use separate edit function
     else if (act === 'confirm') updateSOStatus(id, 'CONFIRMED');
     else if (act === 'send') openSendSOModal(id);
     else if (act === 'delete') deleteSO(id);
 };
 
-window.filterSOTable = () => {
-    const q = (document.getElementById('so_global_search')?.value || '').toLowerCase();
-    const rows = document.querySelectorAll('#so_main_table tbody tr');
-    rows.forEach(row => {
-        const text = row.innerText.toLowerCase();
-        row.style.display = text.includes(q) ? '' : 'none';
-    });
-};
-
-window.toggleSODateDropdown = () => {
-    const d = document.getElementById('so_date_dropdown');
-    d?.classList.toggle('hidden');
-};
-
-window.applySOHeaderDateFilter = () => {
-    const s = document.getElementById('so_header_start')?.value;
-    const e = document.getElementById('so_header_end')?.value;
-    window.currentFilters.salesOrders.start = s || '';
-    window.currentFilters.salesOrders.end = e || '';
-    document.getElementById('so_date_dropdown')?.classList.add('hidden');
-    renderSalesOrders();
-};
-
-window.resetSOHeaderDateFilter = () => {
-    window.currentFilters.salesOrders.start = '';
-    window.currentFilters.salesOrders.end = '';
-    document.getElementById('so_date_dropdown')?.classList.add('hidden');
-    renderSalesOrders();
+// New function specifically for editing SO
+window.editSO = (soId) => {
+    const so = db.findById('salesOrders', soId);
+    if (!so) {
+        showToast('SO tidak ditemukan', 'error');
+        return;
+    }
+    
+    // Set edit mode and load data BEFORE opening modal
+    window._editingSOId = soId;
+    window.tempSOItems = so.items ? so.items.map(item => ({...item})) : [];
+    
+    // Call the original openSOModal (which works for new SO)
+    openSOModal(null);
+    
+    // Fill form with SO data after form loads
+    let retryCount = 0;
+    const maxRetries = 15;
+    
+    const fillFormData = () => {
+        retryCount++;
+        
+        // Check if ALL critical form elements exist
+        const soItemsListEl = document.getElementById('so_items_list');
+        const soDateEl = document.getElementById('so_date');
+        const soDueDateEl = document.getElementById('so_due_date');
+        const soTaxRateEl = document.getElementById('so_tax_rate');
+        
+        if (!soItemsListEl || !soDateEl || !soDueDateEl || !soTaxRateEl) {
+            if (retryCount < maxRetries) {
+                setTimeout(fillFormData, 200);
+            } else {
+                console.error('[EditSO] Form elements not found after max retries');
+                showToast('Gagal load form, coba lagi', 'error');
+            }
+            return;
+        }
+        
+        // Customer
+        const customer = db.findById('customers', so.customerId);
+        if (customer) {
+            document.getElementById('so_customer_id').value = so.customerId;
+            document.getElementById('so_customer_search').value = customer.name;
+        }
+        
+        // SO Number & Tax
+        document.getElementById('so_number').value = so.soNumber;
+        document.getElementById('so_is_tax').value = so.isTax ? 'true' : 'false';
+        
+        // Tanggal SO - SET FIRST (diperlukan untuk kalkulasi due date)
+        if (so.date) {
+            const soDate = new Date(so.date);
+            const year = soDate.getFullYear();
+            const month = String(soDate.getMonth() + 1).padStart(2, '0');
+            const day = String(soDate.getDate()).padStart(2, '0');
+            const dateStr = `${year}-${month}-${day}`;
+            soDateEl.value = dateStr;
+        }
+        
+        // Sales Name & Payment Terms - SET BEFORE due date calculation (now with display input)
+        const soSalesNameEl = document.getElementById('so_sales_name');
+        const soPaymentTermsEl = document.getElementById('so_payment_terms');
+        const soPaymentTermsDispEl = document.getElementById('so_payment_terms_display');
+        
+        if (soSalesNameEl) soSalesNameEl.value = so.salesName || '';
+        
+        if (so.paymentTerms) {
+            if (soPaymentTermsEl) soPaymentTermsEl.value = so.paymentTerms;
+            if (soPaymentTermsDispEl) soPaymentTermsDispEl.value = so.paymentTerms;
+            
+            // Update highlight in payment terms dropdown
+            setTimeout(() => {
+                const termList = document.getElementById('so_payment_terms_list');
+                if (termList) {
+                    termList.querySelectorAll('[data-term-name]').forEach(item => {
+                        item.classList.remove('bg-slate-50');
+                    });
+                    const termLower = so.paymentTerms.toLowerCase();
+                    termList.querySelectorAll('[data-term-name]').forEach(item => {
+                        if (item.getAttribute('data-term-name') === termLower) {
+                            item.classList.add('bg-slate-50');
+                        }
+                    });
+                }
+            }, 100);
+            console.log('[EditSO] Payment Terms set to:', so.paymentTerms);
+        }
+        
+        // Tax Rate - CRITICAL: SET BEFORE rendering items (now with display input)
+        const soTaxRateDispEl = document.getElementById('so_tax_rate_display');
+        let taxRateValue = '0';
+        if (so.taxRate !== undefined && so.taxRate !== null) {
+            taxRateValue = String(parseInt(so.taxRate));
+        }
+        
+        console.log('[EditSO] Setting tax rate:', taxRateValue, 'from SO:', so.taxRate);
+        
+        // Set tax rate - try multiple methods with slight delay
+        const setTaxRate = () => {
+            if (soTaxRateEl) {
+                // Set hidden input
+                soTaxRateEl.value = taxRateValue;
+                
+                // Set display input
+                if (soTaxRateDispEl) {
+                    const displayLabel = taxRateValue === '0' ? '0% (Non-PPN)' : '11% (PPN)';
+                    soTaxRateDispEl.value = displayLabel;
+                }
+                
+                // Update highlight in tax rate dropdown
+                setTimeout(() => {
+                    const taxList = document.getElementById('so_tax_rate_list');
+                    if (taxList) {
+                        taxList.querySelectorAll('[data-tax-name]').forEach(item => {
+                            item.classList.remove('bg-slate-50');
+                        });
+                        const selectedItem = taxList.querySelector(`[onclick*="'${taxRateValue}'"]`);
+                        if (selectedItem) {
+                            selectedItem.classList.add('bg-slate-50');
+                        }
+                    }
+                }, 100);
+                
+                console.log('[EditSO] Tax rate set to:', taxRateValue);
+            }
+        };
+        
+        // Set immediately
+        setTaxRate();
+        
+        // Also set after small delay to ensure it sticks
+        setTimeout(setTaxRate, 100);
+        
+        // Due Date - AUTO-CALCULATE using updateSODueDate function
+        if (typeof window.updateSODueDate === 'function') {
+            // Call the function to auto-calculate
+            window.updateSODueDate();
+        } else {
+            // Fallback: use saved due date
+            if (so.dueDate) {
+                const dueDate = new Date(so.dueDate);
+                const year = dueDate.getFullYear();
+                const month = String(dueDate.getMonth() + 1).padStart(2, '0');
+                const day = String(dueDate.getDate()).padStart(2, '0');
+                const dateStr = `${year}-${month}-${day}`;
+                soDueDateEl.value = dateStr;
+            }
+        }
+        
+        // Notes
+        if (document.getElementById('so_notes')) {
+            document.getElementById('so_notes').value = so.notes || '';
+        }
+        
+        // FORCE set tempSOItems - CRITICAL for items display
+        window.tempSOItems = so.items ? so.items.map(item => ({...item})) : [];
+        
+        // Render items - MUST CALL THIS
+        if (typeof refreshSOItemsTable === 'function') {
+            refreshSOItemsTable();
+        } else {
+            console.error('[EditSO] refreshSOItemsTable function not found!');
+        }
+        
+        // Recalc totals
+        if (typeof recalcSOTotal === 'function') {
+            recalcSOTotal();
+        }
+        
+        // Double-check items rendered
+        setTimeout(() => {
+            const itemRows = document.querySelectorAll('#so_items_list tbody tr');
+            if (itemRows.length === 0 && window.tempSOItems.length > 0) {
+                console.warn('[EditSO] Items not rendered, trying again...');
+                if (typeof refreshSOItemsTable === 'function') {
+                    refreshSOItemsTable();
+                }
+                if (typeof recalcSOTotal === 'function') {
+                    recalcSOTotal();
+                }
+            }
+        }, 300);
+        
+        // Update breadcrumb
+        renderBreadcrumb(['Sales', 'Sales Orders', 'Edit SO']);
+        
+        showToast('Data SO berhasil dimuat', 'success');
+    };
+    
+    setTimeout(fillFormData, 600);
 };
 
 window.toggleSelectAllSO = (master) => {
@@ -8775,14 +9850,29 @@ function renderSalesOrders() {
     const customers = db.read('customers');
     const filters = window.currentFilters.salesOrders || { start: '', end: '', customer: '' };
 
-    // Apply Filters
-    if (filters.start) {
-        const d = new Date(filters.start); d.setHours(0, 0, 0, 0);
-        sos = sos.filter(q => new Date(q.date) >= d);
-    }
-    if (filters.end) {
-        const d = new Date(filters.end); d.setHours(23, 59, 59, 999);
-        sos = sos.filter(q => new Date(q.date) <= d);
+    // Check if any date filter is applied
+    const hasDateFilter = filters.start || filters.end;
+    
+    // If no date filter, show today's data only
+    if (!hasDateFilter) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
+        sos = sos.filter(q => {
+            const docDate = new Date(q.date);
+            return docDate >= today && docDate <= todayEnd;
+        });
+    } else {
+        // Apply Filters
+        if (filters.start) {
+            const d = new Date(filters.start); d.setHours(0, 0, 0, 0);
+            sos = sos.filter(q => new Date(q.date) >= d);
+        }
+        if (filters.end) {
+            const d = new Date(filters.end); d.setHours(23, 59, 59, 999);
+            sos = sos.filter(q => new Date(q.date) <= d);
+        }
     }
 
     let rows = sos.map(so => {
@@ -8819,26 +9909,37 @@ function renderSalesOrders() {
 
         return `
             <tr class="border-b border-gray-100 hover:bg-slate-50 transition-colors">
-                <td class="py-4 px-4 w-10">
-                    <input type="checkbox" class="so-row-checkbox w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer">
-                </td>
-                <td class="py-4 px-4 text-sm text-slate-900 font-bold tracking-tight">${customer.name}</td>
-                <td class="py-4 px-4">${statusBadge}</td>
-                <td class="py-4 px-4 text-sm text-slate-500 font-medium">${so.date.split('T')[0].split('-').reverse().join('-')}</td>
-                <td class="py-4 px-4 text-sm text-slate-800 font-bold text-right">${formatCurrency(so.totalAmount)}</td>
-                <td class="py-4 px-4">
-                    <button onclick="viewSO('${so.id}')" class="text-slate-700 hover:text-blue-600 font-mono text-[11px] font-bold transition-colors cursor-pointer outline-none">
-                        ${so.soNumber}
+                <td class="py-4 px-6 whitespace-nowrap">
+                    <button onclick="viewSO('${so.id}')" class="text-blue-700 hover:text-blue-800 font-mono text-sm font-bold transition-colors cursor-pointer outline-none bg-blue-50/80 px-3.5 py-1.5 rounded-lg border border-blue-200 shadow-sm">
+                        ${so.soNumber.toUpperCase()}
                     </button>
                 </td>
-                <td class="py-4 px-4 text-right">
-                    ${actionHtml}
+                <td class="py-4 px-6 text-sm text-slate-500 font-medium">${so.date.split('T')[0].split('-').reverse().join('-')}</td>
+                <td class="py-4 px-6 text-sm text-slate-900 font-bold tracking-tight">${customer.name}</td>
+                <td class="py-4 px-6 text-sm text-slate-800 font-bold text-right">${formatCurrency(so.totalAmount)}</td>
+                <td class="py-4 px-6 text-center">
+                    <span class="px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest shadow-sm border border-black/5 ${so.status === 'DRAFT' ? 'bg-orange-50 text-orange-600 border-orange-100' : (so.status === 'CONFIRMED' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-green-50 text-green-600 border-green-100')}">
+                        ${so.status}
+                    </span>
+                </td>
+                <td class="py-4 px-6 text-right whitespace-nowrap">
+                    <div class="flex items-center justify-end gap-2 px-1">
+                        ${actionHtml}
+                    </div>
                 </td>
             </tr>
         `;
     }).join('');
 
-    if (sos.length === 0) rows = `<tr><td colspan="7" class="py-24 text-center text-gray-400 font-bold uppercase tracking-widest"><i class="fas fa-receipt text-4xl mb-3 opacity-20"></i><br>Tidak ada Sales Order ditemukan</td></tr>`;
+    if (sos.length === 0) {
+        rows = `<tr><td colspan="7" class="py-24 text-center">
+            <div class="flex flex-col items-center justify-center">
+                <i class="fas fa-receipt text-6xl text-slate-200 mb-4"></i>
+                <p class="text-slate-400 font-bold uppercase tracking-widest text-sm">Tidak ada Sales Order ditemukan</p>
+                <p class="text-slate-300 text-xs mt-2">Untuk ${!hasDateFilter ? 'hari ini' : 'periode yang dipilih'}</p>
+            </div>
+        </td></tr>`;
+    }
 
     mainContent.innerHTML = `
         <div id="so-list-view" class="animate-in fade-in duration-300 h-[calc(100vh-64px)] flex flex-col bg-slate-50 -m-4 sm:-m-6">
@@ -8905,15 +10006,12 @@ function renderSalesOrders() {
                         <table class="w-full text-left border-collapse" id="so_main_table">
                             <thead class="sticky top-0 z-20">
                             <tr class="bg-slate-50 border-b border-slate-100 text-slate-500 font-semibold uppercase text-[10px] tracking-wider shadow-sm">
-                                <th class="px-4 py-3.5 w-10">
-                                    <input type="checkbox" id="selectAllSO" onclick="toggleSelectAllSO(this)" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer">
-                                </th>
-                                <th class="px-4 py-3.5">Customer Name</th>
-                                <th class="px-4 py-3.5">Status</th>
-                                <th class="px-4 py-3.5">Date</th>
-                                <th class="px-4 py-3.5 text-right font-bold">Grand Total</th>
-                                <th class="px-4 py-3.5">ID SO</th>
-                                <th class="px-4 py-3.5 text-right w-[150px]">Aksi</th>
+                                <th class="px-6 py-3.5">No. SO</th>
+                                <th class="px-6 py-3.5">Tanggal</th>
+                                <th class="px-6 py-3.5">Customer</th>
+                                <th class="px-6 py-3.5 text-right font-bold">Grand Total</th>
+                                <th class="px-6 py-3.5 text-center">Status</th>
+                                <th class="px-6 py-3.5 text-right w-[150px]">Aksi</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100 font-sans">${rows}</tbody>
@@ -9014,7 +10112,7 @@ window.openSOModal = (qtToConvert = null) => {
                     <button onclick="renderSalesOrders()" class="px-6 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95">
                         Batal
                     </button>
-                    <button onclick="saveNewSO()" class="px-8 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95 flex items-center gap-2">
+                    <button type="button" onclick="window.saveNewSO()" class="px-8 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg active:scale-95 flex items-center gap-2">
                         <i class="fas fa-check-circle text-[10px]"></i> Simpan Sales Order
                     </button>
                 </div>
@@ -9093,13 +10191,37 @@ window.openSOModal = (qtToConvert = null) => {
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Term Pembayaran <span class="text-red-400">*</span></label>
-                                <select id="so_payment_terms" onchange="updateSODueDate()" class="w-full border-none rounded-xl px-4 py-3 bg-slate-100 font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/10 outline-none transition-all cursor-pointer">
-                                    <option value="">-- Pilih Term --</option>
-                                    <option value="Cash" ${qtToConvert?.paymentTerms === 'Cash' ? 'selected' : ''}>Cash</option>
-                                    <option value="Tempo 7 S/d 10 Hari" ${qtToConvert?.paymentTerms === 'Tempo 7 S/d 10 Hari' ? 'selected' : ''}>Tempo 7 S/d 10 Hari</option>
-                                    <option value="30 Hari" ${qtToConvert?.paymentTerms === '30 Hari' ? 'selected' : ''}>30 Hari</option>
-                                    <option value="45 Hari" ${qtToConvert?.paymentTerms === '45 Hari' ? 'selected' : ''}>45 Hari</option>
-                                </select>
+                                <div class="relative" id="so_payment_terms_container">
+                                    <input type="text" id="so_payment_terms_display" value="${qtToConvert?.paymentTerms || '-- Pilih Term --'}" readonly
+                                        onclick="toggleSOPaymentTermsDropdown()"
+                                        class="w-full border-none rounded-xl px-4 py-3 bg-slate-100 font-bold text-slate-800 outline-none cursor-pointer">
+                                    <input type="hidden" id="so_payment_terms" value="${qtToConvert?.paymentTerms || ''}">
+                                    <div id="so_payment_terms_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden min-w-full animate-in fade-in zoom-in-95 duration-200">
+                                        <div class="p-3 border-b border-slate-50">
+                                            <input type="text" id="so_payment_terms_search" placeholder="Cari payment term..." 
+                                                oninput="filterSOPaymentTermsList(this.value)"
+                                                class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                        </div>
+                                        <div class="max-h-56 overflow-y-auto p-1" id="so_payment_terms_list">
+                                            <div onclick="selectSOPaymentTerm('Cash')" data-term-name="cash"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                Cash
+                                            </div>
+                                            <div onclick="selectSOPaymentTerm('Tempo 7 S/d 14 Hari')" data-term-name="tempo 7 s/d 14 hari"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                Tempo 7 S/d 14 Hari
+                                            </div>
+                                            <div onclick="selectSOPaymentTerm('30 Hari')" data-term-name="30 hari"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                30 Hari
+                                            </div>
+                                            <div onclick="selectSOPaymentTerm('45 Hari')" data-term-name="45 hari"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                45 Hari
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Tgl. Jatuh Tempo <span class="text-red-400">*</span></label>
@@ -9108,10 +10230,29 @@ window.openSOModal = (qtToConvert = null) => {
                             </div>
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Pajak (PPN %)</label>
-                                <select id="so_tax_rate" onchange="recalcSOTotal()" class="w-full border-none rounded-xl px-4 py-3 bg-slate-100 font-bold text-slate-800 focus:ring-2 focus:ring-blue-500/10 outline-none transition-all cursor-pointer">
-                                    <option value="0" ${qtToConvert ? (qtToConvert.taxRate == 0 ? 'selected' : '') : (CONFIG.taxRate == 0 ? 'selected' : '')}>0% (Tanpa Pajak)</option>
-                                    <option value="11" ${qtToConvert ? (qtToConvert.taxRate == 11 ? 'selected' : '') : ((CONFIG.taxRate == 11 || !CONFIG.taxRate) ? 'selected' : '')}>11% (PPN)</option>
-                                </select>
+                                <div class="relative" id="so_tax_rate_container">
+                                    <input type="text" id="so_tax_rate_display" value="${qtToConvert ? (qtToConvert.taxRate == 0 ? '0% (Tanpa Pajak)' : '11% (PPN)') : (CONFIG.taxRate == 0 ? '0% (Tanpa Pajak)' : '11% (PPN)')}" readonly
+                                        onclick="toggleSOTaxRateDropdown()"
+                                        class="w-full border-none rounded-xl px-4 py-3 bg-slate-100 font-bold text-slate-800 outline-none cursor-pointer">
+                                    <input type="hidden" id="so_tax_rate" value="${qtToConvert ? qtToConvert.taxRate : (CONFIG.taxRate || 11)}">
+                                    <div id="so_tax_rate_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden min-w-full animate-in fade-in zoom-in-95 duration-200">
+                                        <div class="p-3 border-b border-slate-50">
+                                            <input type="text" id="so_tax_rate_search" placeholder="Cari pajak..." 
+                                                oninput="filterSOTaxRateList(this.value)"
+                                                class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                        </div>
+                                        <div class="max-h-56 overflow-y-auto p-1" id="so_tax_rate_list">
+                                            <div onclick="selectSOTaxRate('0', '0% (Tanpa Pajak)')" data-tax-name="0% tanpa pajak"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                0% (Tanpa Pajak)
+                                            </div>
+                                            <div onclick="selectSOTaxRate('11', '11% (PPN)')" data-tax-name="11% ppn"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                11% (PPN)
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -9247,13 +10388,507 @@ window.updateSODueDate = () => {
 
     let days = 0;
     if (term === 'Cash') days = 0;
-    else if (term === 'Tempo 7 S/d 10 Hari') days = 10;
+    else if (term === 'Tempo 7 S/d 14 Hari') days = 14;
     else if (term === '30 Hari') days = 30;
     else if (term === '45 Hari') days = 45;
 
     const date = new Date(soDateVal);
     date.setDate(date.getDate() + days);
     dueDateInput.value = date.toISOString().split('T')[0];
+};
+
+// SO Payment Terms Dropdown Handlers
+window.toggleSOPaymentTermsDropdown = () => {
+    const el = document.getElementById('so_payment_terms_dropdown');
+    if (!el) return;
+    const isHidden = el.classList.contains('hidden');
+    // Close all dropdowns
+    document.querySelectorAll('[id$="_dropdown"]').forEach(d => d.classList.add('hidden'));
+    if (isHidden) el.classList.remove('hidden');
+    
+    const container = document.getElementById('so_payment_terms_container');
+    const closeHandler = (e) => {
+        if (container && !container.contains(e.target)) {
+            el.classList.add('hidden');
+            document.removeEventListener('click', closeHandler);
+        }
+    };
+    if (isHidden) setTimeout(() => document.addEventListener('click', closeHandler), 10);
+};
+
+window.filterSOPaymentTermsList = (query) => {
+    const q = query.toLowerCase();
+    const list = document.getElementById('so_payment_terms_list');
+    if (!list) return;
+    
+    const items = list.querySelectorAll('[data-term-name]');
+    items.forEach(item => {
+        const termName = item.getAttribute('data-term-name');
+        if (termName.includes(q)) {
+            item.style.display = '';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+};
+
+window.selectSOPaymentTerm = (term) => {
+    const hiddenInput = document.getElementById('so_payment_terms');
+    const displayInput = document.getElementById('so_payment_terms_display');
+    const dropdown = document.getElementById('so_payment_terms_dropdown');
+    
+    if (hiddenInput) hiddenInput.value = term;
+    if (displayInput) displayInput.value = term;
+    if (dropdown) dropdown.classList.add('hidden');
+    
+    // Trigger due date calculation
+    if (typeof window.updateSODueDate === 'function') {
+        window.updateSODueDate();
+    }
+};
+
+// SO Tax Rate Dropdown Handlers
+window.toggleSOTaxRateDropdown = () => {
+    const el = document.getElementById('so_tax_rate_dropdown');
+    if (!el) return;
+    const isHidden = el.classList.contains('hidden');
+    // Close all dropdowns
+    document.querySelectorAll('[id$="_dropdown"]').forEach(d => d.classList.add('hidden'));
+    if (isHidden) el.classList.remove('hidden');
+    
+    const container = document.getElementById('so_tax_rate_container');
+    const closeHandler = (e) => {
+        if (container && !container.contains(e.target)) {
+            el.classList.add('hidden');
+            document.removeEventListener('click', closeHandler);
+        }
+    };
+    if (isHidden) setTimeout(() => document.addEventListener('click', closeHandler), 10);
+};
+
+window.filterSOTaxRateList = (query) => {
+    const q = query.toLowerCase();
+    const list = document.getElementById('so_tax_rate_list');
+    if (!list) return;
+    
+    const items = list.querySelectorAll('[data-tax-name]');
+    items.forEach(item => {
+        const taxName = item.getAttribute('data-tax-name');
+        if (taxName.includes(q)) {
+            item.style.display = '';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+};
+
+window.selectSOTaxRate = (value, label) => {
+    const hiddenInput = document.getElementById('so_tax_rate');
+    const displayInput = document.getElementById('so_tax_rate_display');
+    const dropdown = document.getElementById('so_tax_rate_dropdown');
+    
+    if (hiddenInput) hiddenInput.value = value;
+    if (displayInput) displayInput.value = label;
+    if (dropdown) dropdown.classList.add('hidden');
+    
+    // Trigger recalculation
+    if (typeof window.recalcSOTotal === 'function') {
+        window.recalcSOTotal();
+    }
+};
+
+// QT Tax Rate Dropdown Handlers
+window.toggleQTTaxRateDropdown = () => {
+    const el = document.getElementById('qt_tax_rate_dropdown');
+    if (!el) return;
+    const isHidden = el.classList.contains('hidden');
+    document.querySelectorAll('[id$="_dropdown"]').forEach(d => d.classList.add('hidden'));
+    if (isHidden) el.classList.remove('hidden');
+    
+    const container = document.getElementById('qt_tax_rate_container');
+    const closeHandler = (e) => {
+        if (container && !container.contains(e.target)) {
+            el.classList.add('hidden');
+            document.removeEventListener('click', closeHandler);
+        }
+    };
+    if (isHidden) setTimeout(() => document.addEventListener('click', closeHandler), 10);
+};
+
+window.filterQTTaxRateList = (query) => {
+    const q = query.toLowerCase();
+    const list = document.getElementById('qt_tax_rate_list');
+    if (!list) return;
+    
+    const items = list.querySelectorAll('[data-tax-name]');
+    items.forEach(item => {
+        const taxName = item.getAttribute('data-tax-name');
+        item.style.display = taxName.includes(q) ? '' : 'none';
+    });
+};
+
+window.selectQTTaxRate = (value, label) => {
+    const hiddenInput = document.getElementById('qt_tax_rate');
+    const displayInput = document.getElementById('qt_tax_rate_display');
+    const dropdown = document.getElementById('qt_tax_rate_dropdown');
+    
+    if (hiddenInput) hiddenInput.value = value;
+    if (displayInput) displayInput.value = label;
+    if (dropdown) dropdown.classList.add('hidden');
+    
+    // Trigger recalculation
+    if (typeof window.refreshQTItemsTable === 'function') {
+        window.refreshQTItemsTable();
+    }
+};
+
+// QT Payment Term Dropdown Handlers
+window.toggleQTPaymentTermDropdown = () => {
+    const el = document.getElementById('qt_payment_term_dropdown');
+    if (!el) return;
+    const isHidden = el.classList.contains('hidden');
+    document.querySelectorAll('[id$="_dropdown"]').forEach(d => d.classList.add('hidden'));
+    if (isHidden) el.classList.remove('hidden');
+    
+    const container = document.getElementById('qt_payment_term_container');
+    const closeHandler = (e) => {
+        if (container && !container.contains(e.target)) {
+            el.classList.add('hidden');
+            document.removeEventListener('click', closeHandler);
+        }
+    };
+    if (isHidden) setTimeout(() => document.addEventListener('click', closeHandler), 10);
+};
+
+window.filterQTPaymentTermList = (query) => {
+    const q = query.toLowerCase();
+    const list = document.getElementById('qt_payment_term_list');
+    if (!list) return;
+    
+    const items = list.querySelectorAll('[data-term-name]');
+    items.forEach(item => {
+        const termName = item.getAttribute('data-term-name');
+        item.style.display = termName.includes(q) ? '' : 'none';
+    });
+};
+
+window.selectQTPaymentTerm = (term) => {
+    const hiddenInput = document.getElementById('qt_payment_term');
+    const displayInput = document.getElementById('qt_payment_term_display');
+    const dropdown = document.getElementById('qt_payment_term_dropdown');
+    
+    if (hiddenInput) hiddenInput.value = term;
+    if (displayInput) displayInput.value = term;
+    if (dropdown) dropdown.classList.add('hidden');
+};
+
+// Invoice Tax Rate Dropdown Handlers
+window.toggleInvTaxRateDropdown = () => {
+    const el = document.getElementById('inv_tax_rate_dropdown');
+    if (!el) return;
+    const isHidden = el.classList.contains('hidden');
+    document.querySelectorAll('[id$="_dropdown"]').forEach(d => d.classList.add('hidden'));
+    if (isHidden) el.classList.remove('hidden');
+    
+    const container = document.getElementById('inv_tax_rate_container');
+    const closeHandler = (e) => {
+        if (container && !container.contains(e.target)) {
+            el.classList.add('hidden');
+            document.removeEventListener('click', closeHandler);
+        }
+    };
+    if (isHidden) setTimeout(() => document.addEventListener('click', closeHandler), 10);
+};
+
+window.filterInvTaxRateList = (query) => {
+    const q = query.toLowerCase();
+    const list = document.getElementById('inv_tax_rate_list');
+    if (!list) return;
+    
+    const items = list.querySelectorAll('[data-tax-name]');
+    items.forEach(item => {
+        const taxName = item.getAttribute('data-tax-name');
+        item.style.display = taxName.includes(q) ? '' : 'none';
+    });
+};
+
+window.selectInvTaxRate = (value, label) => {
+    const hiddenInput = document.getElementById('inv_tax_rate');
+    const displayInput = document.getElementById('inv_tax_rate_display');
+    const dropdown = document.getElementById('inv_tax_rate_dropdown');
+    
+    if (hiddenInput) hiddenInput.value = value;
+    if (displayInput) displayInput.value = label;
+    if (dropdown) dropdown.classList.add('hidden');
+    
+    // Trigger recalculation and invoice number update
+    if (typeof window.refreshInvoiceCalculation === 'function') {
+        window.refreshInvoiceCalculation();
+    }
+    
+    // Update invoice number if not editing
+    if (!window._editingInvId) {
+        const invDateEl = document.getElementById('inv_date');
+        const invNumberEl = document.getElementById('inv_number');
+        if (invDateEl && invNumberEl && typeof generateInvoiceNumber === 'function') {
+            invNumberEl.value = generateInvoiceNumber(value === '11', invDateEl.value);
+        }
+    }
+};
+
+// Invoice SO Dropdown Handlers
+window.toggleInvSODropdown = () => {
+    const el = document.getElementById('inv_so_dropdown');
+    if (!el) return;
+    const isHidden = el.classList.contains('hidden');
+    document.querySelectorAll('[id$="_dropdown"]').forEach(d => d.classList.add('hidden'));
+    if (isHidden) el.classList.remove('hidden');
+    
+    const container = document.getElementById('inv_so_container');
+    const closeHandler = (e) => {
+        if (container && !container.contains(e.target)) {
+            el.classList.add('hidden');
+            document.removeEventListener('click', closeHandler);
+        }
+    };
+    if (isHidden) setTimeout(() => document.addEventListener('click', closeHandler), 10);
+};
+
+window.filterInvSOList = (query) => {
+    const q = query.toLowerCase();
+    const list = document.getElementById('inv_so_list');
+    if (!list) return;
+    
+    const items = list.querySelectorAll('[data-so-text]');
+    items.forEach(item => {
+        const soText = item.getAttribute('data-so-text');
+        item.style.display = soText.includes(q) ? '' : 'none';
+    });
+};
+
+window.selectInvSO = (soId, label) => {
+    // Change SO selection and reload invoice modal
+    openInvoiceModal(soId);
+};
+
+window.openAdvancedInvSOSearch = () => {
+    const dropdown = document.getElementById('inv_so_dropdown');
+    if (dropdown) dropdown.classList.add('hidden');
+    
+    // Get customer ID - try multiple sources
+    let customerId = document.getElementById('inv_customer_id')?.value;
+    
+    // If not found, try to get from hidden input that might be set by modal
+    if (!customerId) {
+        const custSearchInput = document.getElementById('inv_customer_search');
+        if (custSearchInput && custSearchInput.dataset.customerId) {
+            customerId = custSearchInput.dataset.customerId;
+        }
+    }
+    
+    // Also check if there's a customer already selected in the current invoice context
+    if (!customerId && window._currentInvoiceCustomerId) {
+        customerId = window._currentInvoiceCustomerId;
+    }
+    
+    console.log('Advanced SO Search - Customer ID:', customerId);
+    
+    if (!customerId) {
+        showToast('Pilih customer dahulu', 'warning');
+        return;
+    }
+    
+    const allSOs = db.read('salesOrders');
+    const invoices = db.read('invoices');
+    const customer = db.findById('customers', customerId);
+    
+    // Filter SOs for this customer with DELIVERED status and no invoice yet
+    const custSOs = allSOs.filter(s => {
+        if (s.customerId !== customerId) return false;
+        if (s.status !== 'DELIVERED') return false;
+        const hasInvoice = invoices.some(inv => inv.salesOrderId === s.id && inv.status !== 'CANCELLED');
+        return !hasInvoice;
+    });
+    
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-[300] backdrop-blur-sm';
+    modal.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[80vh] flex flex-col m-4">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-center">
+                <h3 class="text-lg font-black text-slate-800">Pilih Sales Order - ${customer.name}</h3>
+                <button onclick="this.closest('.fixed').remove()" class="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
+            </div>
+            <div class="p-6 border-b border-slate-100">
+                <input type="text" id="advanced_so_search" placeholder="Cari SO Number atau Total..." 
+                    class="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="flex-1 overflow-y-auto p-6">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left border-b border-slate-200">
+                            <th class="pb-3 font-black text-slate-600">SO Number</th>
+                            <th class="pb-3 font-black text-slate-600">Tanggal</th>
+                            <th class="pb-3 font-black text-slate-600 text-right">Total Amount</th>
+                            <th class="pb-3 font-black text-slate-600 text-center">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="advanced_so_table_body">
+                        ${custSOs.map(s => `
+                            <tr class="border-b border-slate-50 hover:bg-slate-50 advanced-so-row" data-search="${s.soNumber} ${formatCurrency(s.totalAmount)}">
+                                <td class="py-3 font-bold text-slate-700">SO-${s.soNumber}</td>
+                                <td class="py-3 text-slate-600">${formatDate(s.date)}</td>
+                                <td class="py-3 font-bold text-slate-800 text-right">${formatCurrency(s.totalAmount)}</td>
+                                <td class="py-3 text-center">
+                                    <button onclick="openInvoiceModal('${s.id}'); this.closest('.fixed').remove();" 
+                                        class="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-black hover:bg-blue-700">
+                                        Pilih
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+                ${custSOs.length === 0 ? '<div class="text-center py-8 text-slate-400">Tidak ada SO dengan status DELIVERED yang tersedia untuk di-invoice</div>' : ''}
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Search handler
+    const searchInput = document.getElementById('advanced_so_search');
+    searchInput?.addEventListener('input', (e) => {
+        const q = e.target.value.toLowerCase();
+        document.querySelectorAll('.advanced-so-row').forEach(row => {
+            const searchText = row.getAttribute('data-search').toLowerCase();
+            row.style.display = searchText.includes(q) ? '' : 'none';
+        });
+    });
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+    });
+};
+
+// Invoice Term Dropdown Handlers
+window.toggleInvTermDropdown = () => {
+    const el = document.getElementById('inv_term_dropdown');
+    if (!el) return;
+    const isHidden = el.classList.contains('hidden');
+    document.querySelectorAll('[id$="_dropdown"]').forEach(d => d.classList.add('hidden'));
+    if (isHidden) el.classList.remove('hidden');
+    
+    const container = document.getElementById('inv_term_container');
+    const closeHandler = (e) => {
+        if (container && !container.contains(e.target)) {
+            el.classList.add('hidden');
+            document.removeEventListener('click', closeHandler);
+        }
+    };
+    if (isHidden) setTimeout(() => document.addEventListener('click', closeHandler), 10);
+};
+
+window.filterInvTermList = (query) => {
+    const q = query.toLowerCase();
+    const list = document.getElementById('inv_term_list');
+    if (!list) return;
+    
+    const items = list.querySelectorAll('[data-term-name]');
+    items.forEach(item => {
+        const termName = item.getAttribute('data-term-name');
+        item.style.display = termName.includes(q) ? '' : 'none';
+    });
+};
+
+window.selectInvTerm = (value, label) => {
+    const hiddenInput = document.getElementById('inv_due_date_term');
+    const displayInput = document.getElementById('inv_term_display');
+    const dropdown = document.getElementById('inv_term_dropdown');
+    
+    if (hiddenInput) hiddenInput.value = value;
+    if (displayInput) displayInput.value = label;
+    if (dropdown) dropdown.classList.add('hidden');
+    
+    // Update due date
+    updateInvDueDate();
+    
+    // Update highlight
+    const list = document.getElementById('inv_term_list');
+    if (list) {
+        list.querySelectorAll('[data-term-name]').forEach(item => {
+            item.classList.remove('bg-slate-50');
+        });
+        const selectedItem = list.querySelector(`[onclick*="'${value}'"]`);
+        if (selectedItem) selectedItem.classList.add('bg-slate-50');
+    }
+};
+
+window.openAdvancedInvTermSearch = () => {
+    const dropdown = document.getElementById('inv_term_dropdown');
+    if (dropdown) dropdown.classList.add('hidden');
+    
+    const terms = [
+        { value: '0', label: 'Cash (COD)' },
+        { value: '14', label: 'Tempo 7 S/d 14 Hari' },
+        { value: '30', label: '30 Hari' },
+        { value: '45', label: '45 Hari' }
+    ];
+    
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-[300] backdrop-blur-sm';
+    modal.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col m-4">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-center">
+                <h3 class="text-lg font-black text-slate-800">Pilih Payment Term</h3>
+                <button onclick="this.closest('.fixed').remove()" class="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
+            </div>
+            <div class="p-6 border-b border-slate-100">
+                <input type="text" id="advanced_term_search" placeholder="Cari term..." 
+                    class="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="flex-1 overflow-y-auto p-6">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left border-b border-slate-200">
+                            <th class="pb-3 font-black text-slate-600">Payment Term</th>
+                            <th class="pb-3 font-black text-slate-600 text-center">Days</th>
+                            <th class="pb-3 font-black text-slate-600 text-center">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="advanced_term_table_body">
+                        ${terms.map(t => `
+                            <tr class="border-b border-slate-50 hover:bg-slate-50 advanced-term-row" data-search="${t.label} ${t.value}">
+                                <td class="py-3 font-bold text-slate-700">${t.label}</td>
+                                <td class="py-3 text-slate-600 text-center">${t.value} hari</td>
+                                <td class="py-3 text-center">
+                                    <button onclick="selectInvTerm('${t.value}', '${t.label}'); this.closest('.fixed').remove();" 
+                                        class="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-black hover:bg-blue-700">
+                                        Pilih
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Search handler
+    const searchInput = document.getElementById('advanced_term_search');
+    searchInput?.addEventListener('input', (e) => {
+        const q = e.target.value.toLowerCase();
+        document.querySelectorAll('.advanced-term-row').forEach(row => {
+            const searchText = row.getAttribute('data-search').toLowerCase();
+            row.style.display = searchText.includes(q) ? '' : 'none';
+        });
+    });
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+    });
 };
 
 window.updateSONumberPreview = () => {
@@ -9305,6 +10940,7 @@ window.onSalesCustomerSelect = async (selectId, mode) => {
 
     // Set PPN
     const taxRateEl = document.getElementById(mode === 'QT' ? 'qt_tax_rate' : 'so_tax_rate');
+    const taxRateDisplayEl = document.getElementById(mode === 'QT' ? 'qt_tax_rate_display' : 'so_tax_rate_display');
     if (taxRateEl) {
         // Robust check for PPN: check cust.ppn, then cust.tax_rate, fallback to 11 if both are invalid (null/undefined)
         let ppnVal = 11;
@@ -9320,6 +10956,24 @@ window.onSalesCustomerSelect = async (selectId, mode) => {
         }
 
         taxRateEl.value = ppnVal.toString();
+        
+        // Update display input
+        if (taxRateDisplayEl) {
+            const displayLabel = ppnVal === 0 ? '0% (Non-PPN)' : '11% (PPN)';
+            taxRateDisplayEl.value = displayLabel;
+        }
+        
+        // Update highlight in dropdown
+        const listId = mode === 'QT' ? 'qt_tax_rate_list' : 'so_tax_rate_list';
+        const list = document.getElementById(listId);
+        if (list) {
+            list.querySelectorAll('[data-tax-name]').forEach(item => {
+                item.classList.remove('bg-slate-50');
+            });
+            const selectedItem = list.querySelector(`[onclick*="'${ppnVal}'"]`);
+            if (selectedItem) selectedItem.classList.add('bg-slate-50');
+        }
+        
         console.log(`[Debug] Set PPN to: ${ppnVal}`);
         if (mode === 'SO' && window.recalcSOTotal) recalcSOTotal();
         if (mode === 'QT' && window.refreshQTItemsTable) refreshQTItemsTable();
@@ -9327,19 +10981,75 @@ window.onSalesCustomerSelect = async (selectId, mode) => {
 
     // Set Payment Terms (for SO and QT)
     const pTerm = cust.paymentTerm || cust.payment_term;
-    console.log(`[Debug] Payment term found: ${pTerm}`);
+    console.log(`[Debug] Payment term found: "${pTerm}" (type: ${typeof pTerm})`);
+    
     if (mode === 'SO') {
-        const termEl = document.getElementById('so_payment_terms');
-        if (termEl && pTerm) {
-            termEl.value = pTerm;
-            console.log(`[Debug] Set SO Payment Term to: ${pTerm}`);
+        const termHiddenEl = document.getElementById('so_payment_terms');
+        const termDisplayEl = document.getElementById('so_payment_terms_display');
+        console.log(`[Debug] SO term elements found - hidden: ${!!termHiddenEl}, display: ${!!termDisplayEl}`);
+        
+        if (termHiddenEl && pTerm) {
+            // Normalize payment term format
+            const normalizedTerm = pTerm.trim();
+            termHiddenEl.value = normalizedTerm;
+            if (termDisplayEl) termDisplayEl.value = normalizedTerm;
+            console.log(`[Debug] Set SO Payment Term to: "${normalizedTerm}"`);
+            
+            // Update highlight in dropdown
+            const list = document.getElementById('so_payment_terms_list');
+            if (list) {
+                list.querySelectorAll('[data-term-name]').forEach(item => {
+                    item.classList.remove('bg-slate-50');
+                });
+                // Use data-term-name for matching (lowercase)
+                const normalizedLower = normalizedTerm.toLowerCase();
+                const items = list.querySelectorAll('[data-term-name]');
+                let found = false;
+                items.forEach(item => {
+                    const termName = item.getAttribute('data-term-name');
+                    if (termName === normalizedLower) {
+                        item.classList.add('bg-slate-50');
+                        found = true;
+                    }
+                });
+                console.log(`[Debug] Highlight updated in SO dropdown: ${found}`);
+            }
+            
             if(window.updateSODueDate) updateSODueDate();
         }
     } else if (mode === 'QT') {
-        const termEl = document.getElementById('qt_payment_term');
-        if (termEl && pTerm) {
-            termEl.value = pTerm;
-            console.log(`[Debug] Set QT Payment Term to: ${pTerm}`);
+        const termHiddenEl = document.getElementById('qt_payment_term');
+        const termDisplayEl = document.getElementById('qt_payment_term_display');
+        console.log(`[Debug] QT term elements found - hidden: ${!!termHiddenEl}, display: ${!!termDisplayEl}`);
+        
+        if (termHiddenEl && pTerm) {
+            // Normalize payment term format
+            const normalizedTerm = pTerm.trim();
+            termHiddenEl.value = normalizedTerm;
+            if (termDisplayEl) termDisplayEl.value = normalizedTerm;
+            console.log(`[Debug] Set QT Payment Term to: "${normalizedTerm}"`);
+            
+            // Update highlight in dropdown
+            const list = document.getElementById('qt_payment_term_list');
+            if (list) {
+                list.querySelectorAll('[data-term-name]').forEach(item => {
+                    item.classList.remove('bg-slate-50');
+                });
+                // Use data-term-name for matching (lowercase)
+                const normalizedLower = normalizedTerm.toLowerCase();
+                const items = list.querySelectorAll('[data-term-name]');
+                let found = false;
+                items.forEach(item => {
+                    const termName = item.getAttribute('data-term-name');
+                    if (termName === normalizedLower) {
+                        item.classList.add('bg-slate-50');
+                        found = true;
+                    }
+                });
+                console.log(`[Debug] Highlight updated in QT dropdown: ${found}`);
+            }
+        } else {
+            console.log(`[Debug] Cannot set QT payment term - hidden: ${!!termHiddenEl}, pTerm: ${pTerm}`);
         }
     }
 
@@ -9827,7 +11537,11 @@ window.recalcSOTotal = () => {
 
 
 window.saveNewSO = async () => {
-    if (window.tempSOItems.length === 0) { showToast('SO harus memiliki minimal 1 item', 'error'); return; }
+    // Check if items exist
+    if (!window.tempSOItems || window.tempSOItems.length === 0) { 
+        showToast('⚠️ PRODUK BELUM DITAMBAHKAN!\n\nCara menambah produk:\n1. Klik dropdown "Pilih Produk"\n2. Pilih produk dari list\n3. Isi Quantity dan Rate\n4. Klik tombol "TAMBAH" (biru)\n5. Produk akan muncul di table\n6. Baru klik "SIMPAN SALES ORDER"', 'error'); 
+        return; 
+    }
 
     const soNumberInitial = document.getElementById('so_number')?.value;
     const isTax = document.getElementById('so_is_tax')?.value === 'true';
@@ -9845,74 +11559,114 @@ window.saveNewSO = async () => {
     if (!dueDate) { showToast('Pilih Tanggal Jatuh Tempo', 'error'); return; }
     if (taxRateRaw === undefined || taxRateRaw === '') { showToast('Pilih Pajak', 'error'); return; }
 
-    // Recalculate number at save to ensure shared sequence is up to date
-    let soNumber = soNumberInitial;
-    const existing = db.read('salesOrders') || [];
-    if (existing.some(s => s.soNumber === soNumberInitial)) {
-        soNumber = generateSONumber(isTax);
+    try {
+        // Recalculate number at save to ensure shared sequence is up to date (only for new SO)
+        let soNumber = soNumberInitial;
+        if (!window._editingSOId) {
+            const existing = db.read('salesOrders') || [];
+            if (existing.some(s => s.soNumber === soNumberInitial)) {
+                soNumber = generateSONumber(isTax);
+            }
+        }
+
+        const taxRate = window._soTaxRate || parseFloat(taxRateRaw) || 0;
+        const taxLabel = document.getElementById('so_tax_rate_display')?.value || `${taxRate}%`;
+        const dpp = window.tempSOItems.reduce((sum, item) => sum + item.subtotal, 0);
+        const notes = document.getElementById('so_notes')?.value || '';
+        const taxAmount = window._soTaxAmount || Math.round(dpp * taxRate / 100);
+        const totalAmount = dpp + taxAmount;
+
+        // Convert dates to local timezone properly to avoid timezone issues
+        let soDateISO, dueDateISO = null;
+        
+        if (soDate) {
+            const [year, month, day] = soDate.split('-');
+            const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 12, 0, 0);
+            soDateISO = localDate.toISOString();
+        } else {
+            const now = new Date();
+            const localDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+            soDateISO = localDate.toISOString();
+        }
+        
+        if (dueDate) {
+            const [year, month, day] = dueDate.split('-');
+            const localDate = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 12, 0, 0);
+            dueDateISO = localDate.toISOString();
+        }
+
+        const soData = {
+            soNumber,
+            quotationId: window._qtBeingConverted || null,
+            date: soDateISO,
+            salesName: salesName || '-',
+            isTax,
+            customerId,
+            paymentTerms,
+            dueDate: dueDateISO,
+            taxRate: taxRate,
+            taxLabel,
+            taxAmount,
+            dpp,
+            discountType: '',
+            discountValue: '',
+            discountAmount: 0,
+            discountDescription: '',
+            status: 'DRAFT',
+            totalAmount,
+            items: window.tempSOItems,
+            notes
+        };
+
+        // Check if editing existing SO
+        if (window._editingSOId) {
+            await db.update('salesOrders', window._editingSOId, soData);
+            showToast('SO berhasil diupdate!', 'success');
+            window._editingSOId = null; // Reset edit mode
+        } else {
+            await db.insert('salesOrders', soData);
+            showToast('SO Draft berhasil disimpan', 'success');
+        }
+
+        if (window._qtBeingConverted) {
+            await db.update('salesQuotations', window._qtBeingConverted, { status: 'SO_CREATED' });
+            window._qtBeingConverted = null;
+        }
+
+        // Reset discount state
+        window._soDiscountAmt = 0;
+        window._soDiscountDesc = '';
+        window._soDiscountType = '';
+        window._soDiscountValue = '';
+        
+        // FORCE SYNC and BACK TO LIST
+        await db.sync('salesOrders');
+        renderSalesOrders();
+    } catch (error) {
+        console.error('Error saving SO:', error);
+        showToast('Error menyimpan SO: ' + error.message, 'error');
     }
-
-    const taxRate = window._soTaxRate || parseFloat(taxRateRaw) || 0;
-    const taxLabel = document.getElementById('so_tax_rate')?.selectedOptions[0]?.text || `${taxRate}%`;
-    const dpp = window.tempSOItems.reduce((sum, item) => sum + item.subtotal, 0);
-    const notes = document.getElementById('so_notes')?.value || '';
-    const taxAmount = window._soTaxAmount || Math.round(dpp * taxRate / 100);
-    const totalAmount = dpp + taxAmount;
-
-    await db.insert('salesOrders', {
-        soNumber,
-        quotationId: window._qtBeingConverted || null,
-        date: new Date(soDate).toISOString(),
-        salesName: salesName || '-',
-        isTax,
-        customerId,
-        paymentTerms,
-        dueDate: dueDate ? new Date(dueDate).toISOString() : null,
-        taxRate: taxRate,
-        taxLabel,
-        taxAmount,
-        dpp,
-        discountType: '',
-        discountValue: '',
-        discountAmount: 0,
-        discountDescription: '',
-        status: 'DRAFT',
-        totalAmount,
-        items: window.tempSOItems,
-        notes
-    });
-
-    if (window._qtBeingConverted) {
-        await db.update('salesQuotations', window._qtBeingConverted, { status: 'SO_CREATED' });
-        window._qtBeingConverted = null;
-    }
-
-    // Reset discount state
-    window._soDiscountAmt = 0;
-    window._soDiscountDesc = '';
-    window._soDiscountType = '';
-    window._soDiscountValue = '';
-
-    showToast('SO Draft berhasil disimpan');
-    
-    // FORCE SYNC and BACK TO LIST
-    await db.sync('salesOrders');
-    renderSalesOrders();
 };
 
 
 window.updateSOStatus = async (id, newStatus) => {
     try {
-        showToast('Updating SO status...', 'info');
         if (newStatus === 'CONFIRMED') {
             await api.approveSalesOrder(id);
+            // Update _dbCache langsung karena api call tidak update cache otomatis
+            const soList = db.read('salesOrders') || [];
+            const idx = soList.findIndex(s => s.id === id);
+            if (idx !== -1) {
+                soList[idx].status = 'CONFIRMED';
+                db.save('salesOrders', soList);
+            }
         } else {
             await db.update('salesOrders', id, { status: newStatus });
         }
         
-        showToast(`SO status updated to ${newStatus} `);
+        showToast(`SO berhasil dikonfirmasi`, 'success');
         renderSalesOrders();
-        setTimeout(() => db.sync('salesOrders'), 2000);
+        setTimeout(() => db.sync('salesOrders'), 1000);
 
         if (newStatus === 'CONFIRMED' && typeof addNotification === 'function') {
             const so = db.findById('salesOrders', id);
@@ -10163,6 +11917,15 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
     let so = soId ? db.findById('salesOrders', soId) : null;
     const initialCustomer = (so ? (customers.find(c => c.id === so.customerId)) : (customerId ? db.findById('customers', customerId) : null)) || null;
     
+    // Store customer ID globally for Advanced Search access
+    if (initialCustomer) {
+        window._currentInvoiceCustomerId = initialCustomer.id;
+        console.log('[Invoice Modal] Customer ID stored:', initialCustomer.id);
+    } else {
+        window._currentInvoiceCustomerId = null;
+        console.log('[Invoice Modal] No customer selected');
+    }
+    
     // Filter valid SOs for the initial SO if provided
     const relatedDO = so ? db.read('deliveryOrders').find(d => d.salesOrderId === so.id && d.status === 'SHIPPED') : null;
     const isSOTaxed = so ? (parseFloat(so.taxAmount) || 0) > 0 : false;
@@ -10223,7 +11986,7 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
                 <div class="w-full space-y-6">
                     
                     <input type="hidden" id="inv_so_id" value="${so ? so.id : ''}">
-                    <input type="hidden" id="inv_customer_id" value="${so ? so.customerId : ''}">
+                    <input type="hidden" id="inv_customer_id" value="${initialCustomer ? initialCustomer.id : ''}">
                     <input type="hidden" id="inv_base_subtotal" value="${baseSubtotal}">
 
                     <!-- Section: Header Info -->
@@ -10269,19 +12032,48 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
                             <!-- SO Selection -->
                             <div class="space-y-3">
                                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Referensi Sales Order (Selesai Kirim)</label>
-                                <select id="inv_source_so" onchange="openInvoiceModal(this.value)" class="w-full border-none rounded-xl px-5 py-3.5 bg-slate-100/80 font-bold text-slate-800 shadow-sm focus:ring-4 focus:ring-blue-500/10 outline-none transition-all cursor-pointer text-base ${!initialCustomer ? 'opacity-50 pointer-events-none' : ''}">
-                                    <option value="" disabled ${!so ? 'selected' : ''}>${initialCustomer ? '-- Pilih Sales Order (Status: Delivered) --' : '-- Pilih Customer Dahulu --'}</option>
-                                    ${(() => {
-                                        if (!initialCustomer) return '';
-                                        const custSOs = allSOs.filter(s => {
-                                            if (s.customerId !== initialCustomer.id) return false;
-                                            if (s.status !== 'DELIVERED') return false;
-                                            const hasInvoice = invoices.some(inv => inv.salesOrderId === s.id && inv.status !== 'CANCELLED');
-                                            return !hasInvoice || s.id === (so?.id);
-                                        });
-                                        return custSOs.map(s => `<option value="${s.id}" ${soId === s.id ? 'selected' : ''}>SO-${s.soNumber} (${formatCurrency(s.totalAmount)})</option>`).join('');
-                                    })()}
-                                </select>
+                                <div class="relative" id="inv_so_container">
+                                    <input type="text" id="inv_so_display" value="${so ? `SO-${so.soNumber} (${formatCurrency(so.totalAmount)})` : (initialCustomer ? '-- Pilih Sales Order (Status: Delivered) --' : '-- Pilih Customer Dahulu --')}" readonly
+                                        onclick="toggleInvSODropdown()"
+                                        class="w-full border-none rounded-xl px-5 py-3.5 bg-slate-100/80 font-bold text-slate-800 shadow-sm focus:ring-4 focus:ring-blue-500/10 outline-none transition-all cursor-pointer text-base ${!initialCustomer ? 'opacity-50 pointer-events-none' : ''}">
+                                    <input type="hidden" id="inv_source_so" value="${soId || ''}">
+                                    
+                                    <div id="inv_so_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden min-w-full animate-in fade-in zoom-in-95 duration-200">
+                                        <div class="p-3 border-b border-slate-50">
+                                            <input type="text" id="inv_so_search" placeholder="Cari SO..." 
+                                                oninput="filterInvSOList(this.value)"
+                                                class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                        </div>
+                                        <div class="max-h-56 overflow-y-auto p-1" id="inv_so_list">
+                                            ${(() => {
+                                                if (!initialCustomer) return '<div class="px-4 py-3 text-sm text-slate-400 italic">Pilih customer dahulu</div>';
+                                                const custSOs = allSOs.filter(s => {
+                                                    if (s.customerId !== initialCustomer.id) return false;
+                                                    if (s.status !== 'DELIVERED') return false;
+                                                    const hasInvoice = invoices.some(inv => inv.salesOrderId === s.id && inv.status !== 'CANCELLED');
+                                                    return !hasInvoice || s.id === (so?.id);
+                                                });
+                                                if (custSOs.length === 0) return '<div class="px-4 py-3 text-sm text-slate-400 italic">Tidak ada SO yang tersedia</div>';
+                                                return custSOs.map(s => `
+                                                    <div onclick="selectInvSO('${s.id}', 'SO-${s.soNumber} (${formatCurrency(s.totalAmount)})')" 
+                                                        data-so-text="so ${s.soNumber} ${formatCurrency(s.totalAmount)}"
+                                                        class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5 ${soId === s.id ? 'bg-slate-50' : ''}">
+                                                        SO-${s.soNumber} (${formatCurrency(s.totalAmount)})
+                                                    </div>
+                                                `).join('');
+                                            })()}
+                                        </div>
+                                        <div class="p-2 border-t border-slate-50 bg-white">
+                                            <button type="button" onclick="openAdvancedInvSOSearch()" 
+                                                class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
+                                                <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shrink-0">
+                                                    <i class="fas fa-search text-xs"></i>
+                                                </div>
+                                                Advanced Search
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -10298,12 +12090,47 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
                             </div>
                             <div class="space-y-3">
                                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Term</label>
-                                <select id="inv_due_date_term" onchange="updateInvDueDate()" class="w-full px-4 py-3.5 bg-slate-100/80 border-2 border-transparent rounded-xl font-bold text-slate-800 focus:bg-white focus:border-blue-500 outline-none transition-all cursor-pointer text-xs">
-                                    <option value="0">Cash (COD)</option>
-                                    <option value="10" selected>Tempo 7-10 Hari</option>
-                                    <option value="30">30 Hari</option>
-                                    <option value="45">45 Hari</option>
-                                </select>
+                                <div class="relative" id="inv_term_container">
+                                    <input type="text" id="inv_term_display" value="Tempo 7 S/d 14 Hari" readonly
+                                        onclick="toggleInvTermDropdown()"
+                                        class="w-full px-4 py-3.5 bg-slate-100/80 border-2 border-transparent rounded-xl font-bold text-slate-800 outline-none cursor-pointer text-xs">
+                                    <input type="hidden" id="inv_due_date_term" value="14">
+                                    
+                                    <div id="inv_term_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden min-w-full animate-in fade-in zoom-in-95 duration-200">
+                                        <div class="p-3 border-b border-slate-50">
+                                            <input type="text" id="inv_term_search" placeholder="Cari term..." 
+                                                oninput="filterInvTermList(this.value)"
+                                                class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                        </div>
+                                        <div class="max-h-56 overflow-y-auto p-1" id="inv_term_list">
+                                            <div onclick="selectInvTerm('0', 'Cash (COD)')" data-term-name="cash cod"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                Cash (COD)
+                                            </div>
+                                            <div onclick="selectInvTerm('14', 'Tempo 7 S/d 14 Hari')" data-term-name="tempo 7 s/d 14 hari"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5 bg-slate-50">
+                                                Tempo 7 S/d 14 Hari
+                                            </div>
+                                            <div onclick="selectInvTerm('30', '30 Hari')" data-term-name="30 hari"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                30 Hari
+                                            </div>
+                                            <div onclick="selectInvTerm('45', '45 Hari')" data-term-name="45 hari"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                45 Hari
+                                            </div>
+                                        </div>
+                                        <div class="p-2 border-t border-slate-50 bg-white">
+                                            <button type="button" onclick="openAdvancedInvTermSearch()" 
+                                                class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
+                                                <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shrink-0">
+                                                    <i class="fas fa-search text-xs"></i>
+                                                </div>
+                                                Advanced Search
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                             <div class="space-y-3 text-red-600">
                                 <label class="block text-[10px] font-black text-red-400 uppercase tracking-[0.2em] ml-1">Jatuh Tempo</label>
@@ -10311,10 +12138,38 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
                             </div>
                             <div class="space-y-3">
                                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Pajak (PPN%)</label>
-                                <select id="inv_tax_rate" onchange="refreshInvoiceCalculation(); if(!window._editingInvId) document.getElementById('inv_number').value = generateInvoiceNumber(this.value==='11', document.getElementById('inv_date').value)" class="w-full px-4 py-3.5 bg-slate-100/80 border-2 border-transparent rounded-xl font-bold text-slate-800 focus:bg-white focus:border-blue-500 outline-none transition-all cursor-pointer text-xs">
-                                    <option value="0" ${defaultTaxRate === 0 ? 'selected' : ''}>0% (Non-PPN)</option>
-                                    <option value="11" ${defaultTaxRate > 0 ? 'selected' : ''}>11% (PPN)</option>
-                                </select>
+                                <div class="relative" id="inv_tax_rate_container">
+                                    <input type="text" id="inv_tax_rate_display" value="${defaultTaxRate === 0 ? '0% (Non-PPN)' : '11% (PPN)'}" readonly
+                                        onclick="toggleInvTaxRateDropdown()"
+                                        class="w-full px-4 py-3.5 bg-slate-100/80 border-2 border-transparent rounded-xl font-bold text-slate-800 outline-none cursor-pointer text-xs">
+                                    <input type="hidden" id="inv_tax_rate" value="${defaultTaxRate}">
+                                    <div id="inv_tax_rate_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden min-w-full animate-in fade-in zoom-in-95 duration-200">
+                                        <div class="p-3 border-b border-slate-50">
+                                            <input type="text" id="inv_tax_rate_search" placeholder="Cari pajak..." 
+                                                oninput="filterInvTaxRateList(this.value)"
+                                                class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                        </div>
+                                        <div class="max-h-56 overflow-y-auto p-1" id="inv_tax_rate_list">
+                                            <div onclick="selectInvTaxRate('0', '0% (Non-PPN)')" data-tax-name="0% non ppn"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                0% (Non-PPN)
+                                            </div>
+                                            <div onclick="selectInvTaxRate('11', '11% (PPN)')" data-tax-name="11% ppn"
+                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                11% (PPN)
+                                            </div>
+                                        </div>
+                                        <div class="p-2 border-t border-slate-50 bg-white">
+                                            <button type="button" onclick="openAdvancedInvTaxRateSearch()" 
+                                                class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
+                                                <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shrink-0">
+                                                    <i class="fas fa-search text-xs"></i>
+                                                </div>
+                                                Advanced Search
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -10841,14 +12696,29 @@ function renderSalesInvoices() {
     const customers = db.read('customers');
     const payments = db.read('payments');
 
-    // Filter Logic
-    if (filters_data.start) {
-        const d = new Date(filters_data.start); d.setHours(0,0,0,0);
-        invoices = invoices.filter(x => new Date(x.date) >= d);
-    }
-    if (filters_data.end) {
-        const d = new Date(filters_data.end); d.setHours(23,59,59,999);
-        invoices = invoices.filter(x => new Date(x.date) <= d);
+    // Check if any date filter is applied
+    const hasDateFilter = filters_data.start || filters_data.end;
+    
+    // If no date filter, show today's data only
+    if (!hasDateFilter) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
+        invoices = invoices.filter(x => {
+            const docDate = new Date(x.date);
+            return docDate >= today && docDate <= todayEnd;
+        });
+    } else {
+        // Filter Logic
+        if (filters_data.start) {
+            const d = new Date(filters_data.start); d.setHours(0,0,0,0);
+            invoices = invoices.filter(x => new Date(x.date) >= d);
+        }
+        if (filters_data.end) {
+            const d = new Date(filters_data.end); d.setHours(23,59,59,999);
+            invoices = invoices.filter(x => new Date(x.date) <= d);
+        }
     }
 
     if (invoices.length === 0) {
@@ -10860,7 +12730,7 @@ function renderSalesInvoices() {
                             <i class="fas fa-file-invoice text-4xl text-slate-400"></i>
                         </div>
                         <h3 class="text-lg font-black text-slate-600 uppercase tracking-[0.2em] mb-1">Data Tidak Ditemukan</h3>
-                        <p class="text-xs font-bold text-slate-400 uppercase tracking-widest">Belum ada faktur yang tercatat atau cocok dengan filter</p>
+                        <p class="text-xs font-bold text-slate-400 uppercase tracking-widest">Belum ada faktur yang tercatat untuk ${!hasDateFilter ? 'hari ini' : 'periode yang dipilih'}</p>
                     </div>
                 </td>
             </tr>
@@ -10977,6 +12847,48 @@ window.cancelInvoice = (id) => {
         showToast('Invoice dibatalkan');
         renderSalesInvoices();
     }
+};
+
+// Helper: angka ke terbilang (Rupiah)
+window.angkaTerbilang = function(angka) {
+    const bilangan = ['', 'satu', 'dua', 'tiga', 'empat', 'lima', 'enam', 'tujuh', 'delapan', 'sembilan',
+        'sepuluh', 'sebelas', 'dua belas', 'tiga belas', 'empat belas', 'lima belas', 'enam belas',
+        'tujuh belas', 'delapan belas', 'sembilan belas'];
+    function ratusan(n) {
+        if (n < 20) return bilangan[n];
+        const d = Math.floor(n / 10);
+        const s = n % 10;
+        return (d === 1 ? 'sepuluh' : bilangan[d] + ' puluh') + (s ? ' ' + bilangan[s] : '');
+    }
+    function ribuan(n) {
+        if (n < 100) return ratusan(n);
+        const r = Math.floor(n / 100);
+        const s = n % 100;
+        return (r === 1 ? 'seratus' : bilangan[r] + ' ratus') + (s ? ' ' + ratusan(s) : '');
+    }
+    function jutaan(n) {
+        if (n < 1000) return ribuan(n);
+        const r = Math.floor(n / 1000);
+        const s = n % 1000;
+        return (r === 1 ? 'seribu' : ribuan(r) + ' ribu') + (s ? ' ' + ribuan(s) : '');
+    }
+    function miliaran(n) {
+        if (n < 1000000) return jutaan(n);
+        const r = Math.floor(n / 1000000);
+        const s = n % 1000000;
+        return jutaan(r) + ' juta' + (s ? ' ' + jutaan(s) : '');
+    }
+    function triliunan(n) {
+        if (n < 1000000000) return miliaran(n);
+        const r = Math.floor(n / 1000000000);
+        const s = n % 1000000000;
+        return miliaran(r) + ' miliar' + (s ? ' ' + miliaran(s) : '');
+    }
+    const n = Math.round(Math.abs(angka));
+    if (n === 0) return 'nol';
+    const result = triliunan(n);
+    // Capitalize first letter
+    return result.charAt(0).toUpperCase() + result.slice(1) + ' Rupiah';
 };
 
 window.printSalesInvoiceLandscape = function(id) {
@@ -11102,16 +13014,15 @@ window.printSalesInvoiceLandscape = function(id) {
                 </div>
             </div>
 
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:40px; margin-bottom:10px;">
+            <div style="display:grid; grid-template-columns:2fr 1fr; gap:40px; margin-bottom:10px;">
                 <table class="meta-table">
                     <tr><td class="label">Ditagihkan Ke</td><td class="value" style="font-size:14px;color:#2563eb">${customer?.name || '-'}</td></tr>
                     <tr><td class="label">Alamat</td><td class="value" style="font-weight:500;color:#475569">${customer?.address || '-'}</td></tr>
                     <tr><td class="label">Ref SO</td><td class="value">${so?.soNumber || '-'}</td></tr>
                 </table>
-                <table class="meta-table">
-                    <tr><td class="label">Tanggal Faktur</td><td class="value">${formatDate(inv.date).slice(0, 11)}</td></tr>
-                    <tr><td class="label">Jatuh Tempo</td><td class="value" style="color:#dc2626">${inv.dueDate ? formatDate(inv.dueDate).slice(0, 11) : '-'}</td></tr>
-                    <tr><td class="label">Status</td><td class="value">${inv.status}</td></tr>
+                <table class="meta-table" style="text-align:right;">
+                    <tr><td class="label" style="text-align:right;">Tanggal Faktur</td><td class="value" style="text-align:right;">${formatDate(inv.date).slice(0, 11)}</td></tr>
+                    <tr><td class="label" style="text-align:right;">Jatuh Tempo</td><td class="value" style="color:#dc2626;text-align:right;">${inv.dueDate ? formatDate(inv.dueDate).slice(0, 11) : '-'}</td></tr>
                 </table>
             </div>
 
@@ -11132,8 +13043,34 @@ window.printSalesInvoiceLandscape = function(id) {
                     <div class="sig-line"></div>
                     <div class="sig-name">Nama Terang & Ttd</div>
                 </div>
-                <div class="sig-box" style="border:none;">
-                    <!-- Spacer -->
+                <div style="flex:2; padding:10px 0;">
+                    ${inv.isTax ? `
+                    <!-- PPN: Keterangan Rekening + Terbilang -->
+                    <div style="font-size:9px; line-height:1.8; color:#1e293b;">
+                        <div style="margin-bottom:6px;">
+                            <span style="font-weight:900; font-size:10px; text-transform:uppercase; letter-spacing:1px;">Keterangan No. Rekening</span><br>
+                            ${inv.bankAccount ? `No. Rekening <strong>${inv.bankAccount}</strong> ${inv.bankName ? 'BANK ' + inv.bankName.toUpperCase() : ''}<br>` : ''}
+                            ${inv.bankHolder ? `Atas Nama <strong style="font-size:11px; text-transform:uppercase;">${inv.bankHolder}</strong>` : ''}
+                        </div>
+                        <div style="margin-top:8px;">
+                            <span style="font-weight:900;">Terbilang :</span>
+                            <span style="font-weight:700; font-style:italic;"> ${window.angkaTerbilang(inv.totalAmount || 0)}</span>
+                        </div>
+                    </div>
+                    ` : `
+                    <!-- Non-PPN: Keterangan Rekening + Terbilang -->
+                    <div style="font-size:9px; line-height:1.8; color:#1e293b;">
+                        <div style="margin-bottom:6px;">
+                            <span style="font-weight:900; font-size:10px; text-transform:uppercase; letter-spacing:1px;">Keterangan No. Rekening</span><br>
+                            ${inv.bankAccount ? `No. Rekening <strong>${inv.bankAccount}</strong> ${inv.bankName ? 'BANK ' + inv.bankName.toUpperCase() : ''}<br>` : ''}
+                            ${inv.bankHolder ? `Atas Nama <strong style="font-size:11px; text-transform:uppercase;">${inv.bankHolder}</strong>` : ''}
+                        </div>
+                        <div style="margin-top:8px;">
+                            <span style="font-weight:900;">Terbilang :</span>
+                            <span style="font-weight:700; font-style:italic;"> ${window.angkaTerbilang(inv.totalAmount || 0)}</span>
+                        </div>
+                    </div>
+                    `}
                 </div>
                 <div class="sig-box">
                     <div class="sig-title">Hormat Kami</div>
@@ -14509,6 +16446,655 @@ window.toggleSupplierDropdown = (id) => {
         }
     };
     if (isHidden) setTimeout(() => document.addEventListener('click', closeHandler), 10);
+};
+
+// Filter supplier list in PO dropdown
+window.filterPOSupplierList = (query) => {
+    const q = query.toLowerCase();
+    const list = document.getElementById('po_supplier_list');
+    if (!list) return;
+    
+    const items = list.querySelectorAll('[data-supplier-name]');
+    items.forEach(item => {
+        const supplierName = item.getAttribute('data-supplier-name');
+        if (supplierName.includes(q)) {
+            item.style.display = '';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+};
+
+// Filter supplier list in RFQ dropdown
+window.filterRFQSupplierList = (query) => {
+    const q = query.toLowerCase();
+    const list = document.getElementById('rfq_supplier_list');
+    if (!list) return;
+    
+    const items = list.querySelectorAll('[data-supplier-name]');
+    items.forEach(item => {
+        const supplierName = item.getAttribute('data-supplier-name');
+        if (supplierName.includes(q)) {
+            item.style.display = '';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+};
+
+// PO Category Dropdown Handlers
+window.togglePOCategoryDropdown = () => {
+    const el = document.getElementById('po_category_dropdown');
+    if (!el) return;
+    const isHidden = el.classList.contains('hidden');
+    document.querySelectorAll('[id$="_dropdown"]').forEach(d => d.classList.add('hidden'));
+    if (isHidden) el.classList.remove('hidden');
+    
+    const container = document.getElementById('po_category_container');
+    const closeHandler = (e) => {
+        if (container && !container.contains(e.target)) {
+            el.classList.add('hidden');
+            document.removeEventListener('click', closeHandler);
+        }
+    };
+    if (isHidden) setTimeout(() => document.addEventListener('click', closeHandler), 10);
+};
+
+window.filterPOCategoryList = (query) => {
+    const q = query.toLowerCase();
+    const list = document.getElementById('po_category_list');
+    if (!list) return;
+    
+    const items = list.querySelectorAll('[data-category-name]');
+    items.forEach(item => {
+        const categoryName = item.getAttribute('data-category-name');
+        item.style.display = categoryName.includes(q) ? '' : 'none';
+    });
+};
+
+window.selectPOCategory = (value) => {
+    const hiddenInput = document.getElementById('po_category');
+    const displayInput = document.getElementById('po_category_display');
+    const dropdown = document.getElementById('po_category_dropdown');
+    
+    if (hiddenInput) hiddenInput.value = value;
+    if (displayInput) displayInput.value = value;
+    if (dropdown) dropdown.classList.add('hidden');
+    
+    // Update highlight
+    const list = document.getElementById('po_category_list');
+    if (list) {
+        list.querySelectorAll('[data-category-name]').forEach(item => {
+            item.classList.remove('bg-slate-50');
+        });
+        const selectedItem = list.querySelector(`[onclick*="'${value}'"]`);
+        if (selectedItem) selectedItem.classList.add('bg-slate-50');
+    }
+};
+
+window.openAdvancedPOCategorySearch = () => {
+    const dropdown = document.getElementById('po_category_dropdown');
+    if (dropdown) dropdown.classList.add('hidden');
+    
+    const categories = [
+        'Bahan Baku',
+        'Packaging',
+        'Perlengkapan',
+        'Service',
+        'Sparepart',
+        'Aktiva ( tetap )',
+        'Gas'
+    ];
+    
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-[300] backdrop-blur-sm';
+    modal.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col m-4">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-center">
+                <h3 class="text-lg font-black text-slate-800">Pilih Kategori</h3>
+                <button onclick="this.closest('.fixed').remove()" class="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
+            </div>
+            <div class="p-6 border-b border-slate-100">
+                <input type="text" id="advanced_category_search" placeholder="Cari kategori..." 
+                    class="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="flex-1 overflow-y-auto p-6">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left border-b border-slate-200">
+                            <th class="pb-3 font-black text-slate-600">Kategori</th>
+                            <th class="pb-3 font-black text-slate-600 text-center">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="advanced_category_table_body">
+                        ${categories.map(c => `
+                            <tr class="border-b border-slate-50 hover:bg-slate-50 advanced-category-row" data-search="${c.toLowerCase()}">
+                                <td class="py-3 font-bold text-slate-700">${c}</td>
+                                <td class="py-3 text-center">
+                                    <button onclick="selectPOCategory('${c}'); this.closest('.fixed').remove();" 
+                                        class="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-black hover:bg-blue-700">
+                                        Pilih
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Search handler
+    const searchInput = document.getElementById('advanced_category_search');
+    searchInput?.addEventListener('input', (e) => {
+        const q = e.target.value.toLowerCase();
+        document.querySelectorAll('.advanced-category-row').forEach(row => {
+            const searchText = row.getAttribute('data-search');
+            row.style.display = searchText.includes(q) ? '' : 'none';
+        });
+    });
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+    });
+};
+
+// PO Payment Terms Dropdown Handlers
+window.togglePOPaymentTermsDropdown = () => {
+    const el = document.getElementById('po_payment_terms_dropdown');
+    if (!el) return;
+    const isHidden = el.classList.contains('hidden');
+    document.querySelectorAll('[id$="_dropdown"]').forEach(d => d.classList.add('hidden'));
+    if (isHidden) el.classList.remove('hidden');
+    
+    const container = document.getElementById('po_payment_terms_container');
+    const closeHandler = (e) => {
+        if (container && !container.contains(e.target)) {
+            el.classList.add('hidden');
+            document.removeEventListener('click', closeHandler);
+        }
+    };
+    if (isHidden) setTimeout(() => document.addEventListener('click', closeHandler), 10);
+};
+
+window.filterPOPaymentTermsList = (query) => {
+    const q = query.toLowerCase();
+    const list = document.getElementById('po_payment_terms_list');
+    if (!list) return;
+    
+    const items = list.querySelectorAll('[data-term-name]');
+    items.forEach(item => {
+        const termName = item.getAttribute('data-term-name');
+        item.style.display = termName.includes(q) ? '' : 'none';
+    });
+};
+
+window.selectPOPaymentTerms = (value) => {
+    const hiddenInput = document.getElementById('po_payment_terms');
+    const displayInput = document.getElementById('po_payment_terms_display');
+    const dropdown = document.getElementById('po_payment_terms_dropdown');
+    
+    if (hiddenInput) hiddenInput.value = value;
+    if (displayInput) displayInput.value = value;
+    if (dropdown) dropdown.classList.add('hidden');
+    
+    // Update due date
+    updatePODueDate();
+    
+    // Update highlight
+    const list = document.getElementById('po_payment_terms_list');
+    if (list) {
+        list.querySelectorAll('[data-term-name]').forEach(item => {
+            item.classList.remove('bg-slate-50');
+        });
+        const selectedItem = list.querySelector(`[onclick*="'${value}'"]`);
+        if (selectedItem) selectedItem.classList.add('bg-slate-50');
+    }
+};
+
+window.openAdvancedPOPaymentTermsSearch = () => {
+    const dropdown = document.getElementById('po_payment_terms_dropdown');
+    if (dropdown) dropdown.classList.add('hidden');
+    
+    const terms = [
+        { value: 'Cash', days: 0 },
+        { value: 'COD', days: 0 },
+        { value: '7 S/d 14 Hari', days: '7-14' },
+        { value: '30 Hari', days: 30 },
+        { value: '45 Hari', days: 45 },
+        { value: '60 Hari', days: 60 }
+    ];
+    
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-[300] backdrop-blur-sm';
+    modal.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col m-4">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-center">
+                <h3 class="text-lg font-black text-slate-800">Pilih Payment Term</h3>
+                <button onclick="this.closest('.fixed').remove()" class="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
+            </div>
+            <div class="p-6 border-b border-slate-100">
+                <input type="text" id="advanced_po_term_search" placeholder="Cari term..." 
+                    class="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="flex-1 overflow-y-auto p-6">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left border-b border-slate-200">
+                            <th class="pb-3 font-black text-slate-600">Payment Term</th>
+                            <th class="pb-3 font-black text-slate-600 text-center">Days</th>
+                            <th class="pb-3 font-black text-slate-600 text-center">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="advanced_po_term_table_body">
+                        ${terms.map(t => `
+                            <tr class="border-b border-slate-50 hover:bg-slate-50 advanced-po-term-row" data-search="${t.value.toLowerCase()}">
+                                <td class="py-3 font-bold text-slate-700">${t.value}</td>
+                                <td class="py-3 text-slate-600 text-center">${t.days} hari</td>
+                                <td class="py-3 text-center">
+                                    <button onclick="selectPOPaymentTerms('${t.value}'); this.closest('.fixed').remove();" 
+                                        class="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-black hover:bg-blue-700">
+                                        Pilih
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Search handler
+    const searchInput = document.getElementById('advanced_po_term_search');
+    searchInput?.addEventListener('input', (e) => {
+        const q = e.target.value.toLowerCase();
+        document.querySelectorAll('.advanced-po-term-row').forEach(row => {
+            const searchText = row.getAttribute('data-search');
+            row.style.display = searchText.includes(q) ? '' : 'none';
+        });
+    });
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+    });
+};
+
+// PO Tax Rate Dropdown Handlers
+window.togglePOTaxRateDropdown = () => {
+    const el = document.getElementById('po_tax_rate_dropdown');
+    if (!el) return;
+    const isHidden = el.classList.contains('hidden');
+    document.querySelectorAll('[id$="_dropdown"]').forEach(d => d.classList.add('hidden'));
+    if (isHidden) el.classList.remove('hidden');
+    
+    const container = document.getElementById('po_tax_rate_container');
+    const closeHandler = (e) => {
+        if (container && !container.contains(e.target)) {
+            el.classList.add('hidden');
+            document.removeEventListener('click', closeHandler);
+        }
+    };
+    if (isHidden) setTimeout(() => document.addEventListener('click', closeHandler), 10);
+};
+
+window.filterPOTaxRateList = (query) => {
+    const q = query.toLowerCase();
+    const list = document.getElementById('po_tax_rate_list');
+    if (!list) return;
+    
+    const items = list.querySelectorAll('[data-tax-name]');
+    items.forEach(item => {
+        const taxName = item.getAttribute('data-tax-name');
+        item.style.display = taxName.includes(q) ? '' : 'none';
+    });
+};
+
+window.selectPOTaxRate = (value, label) => {
+    const hiddenInput = document.getElementById('po_tax_rate');
+    const displayInput = document.getElementById('po_tax_rate_display');
+    const dropdown = document.getElementById('po_tax_rate_dropdown');
+    
+    if (hiddenInput) hiddenInput.value = value;
+    if (displayInput) displayInput.value = label;
+    if (dropdown) dropdown.classList.add('hidden');
+    
+    // Update PO prefix and number
+    const isTax = value !== '0';
+    const taxTypeEl = document.getElementById('po_tax_type');
+    if (taxTypeEl) taxTypeEl.value = isTax ? 'A' : 'B';
+    const dateVal = document.getElementById('po_date')?.value;
+    const poNumberEl = document.getElementById('po_number');
+    if (poNumberEl && typeof generatePurchaseOrderNumber === 'function') {
+        poNumberEl.value = generatePurchaseOrderNumber(isTax, dateVal);
+    }
+    
+    // Re-render items list if function exists
+    if (typeof renderPOItemsList === 'function') {
+        renderPOItemsList();
+    }
+    
+    // Update highlight
+    const list = document.getElementById('po_tax_rate_list');
+    if (list) {
+        list.querySelectorAll('[data-tax-name]').forEach(item => {
+            item.classList.remove('bg-slate-50');
+        });
+        const selectedItem = list.querySelector(`[onclick*="'${value}'"]`);
+        if (selectedItem) selectedItem.classList.add('bg-slate-50');
+    }
+};
+
+window.openAdvancedPOTaxRateSearch = () => {
+    const dropdown = document.getElementById('po_tax_rate_dropdown');
+    if (dropdown) dropdown.classList.add('hidden');
+    
+    const taxRates = [
+        { value: '0', label: '0% (Tanpa Pajak)' },
+        { value: '11', label: '11% (PPN)' }
+    ];
+    
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-[300] backdrop-blur-sm';
+    modal.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col m-4">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-center">
+                <h3 class="text-lg font-black text-slate-800">Pilih Tax Rate</h3>
+                <button onclick="this.closest('.fixed').remove()" class="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
+            </div>
+            <div class="p-6 border-b border-slate-100">
+                <input type="text" id="advanced_po_tax_search" placeholder="Cari tax rate..." 
+                    class="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="flex-1 overflow-y-auto p-6">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left border-b border-slate-200">
+                            <th class="pb-3 font-black text-slate-600">Tax Rate</th>
+                            <th class="pb-3 font-black text-slate-600 text-center">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="advanced_po_tax_table_body">
+                        ${taxRates.map(t => `
+                            <tr class="border-b border-slate-50 hover:bg-slate-50 advanced-po-tax-row" data-search="${t.label.toLowerCase()}">
+                                <td class="py-3 font-bold text-slate-700">${t.label}</td>
+                                <td class="py-3 text-center">
+                                    <button onclick="selectPOTaxRate('${t.value}', '${t.label}'); this.closest('.fixed').remove();" 
+                                        class="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-black hover:bg-blue-700">
+                                        Pilih
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Search handler
+    const searchInput = document.getElementById('advanced_po_tax_search');
+    searchInput?.addEventListener('input', (e) => {
+        const q = e.target.value.toLowerCase();
+        document.querySelectorAll('.advanced-po-tax-row').forEach(row => {
+            const searchText = row.getAttribute('data-search');
+            row.style.display = searchText.includes(q) ? '' : 'none';
+        });
+    });
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+    });
+};
+
+// RFQ Category Dropdown Handlers
+window.toggleRFQCategoryDropdown = () => {
+    const el = document.getElementById('rfq_category_dropdown');
+    if (!el) return;
+    const isHidden = el.classList.contains('hidden');
+    document.querySelectorAll('[id$="_dropdown"]').forEach(d => d.classList.add('hidden'));
+    if (isHidden) el.classList.remove('hidden');
+    
+    const container = document.getElementById('rfq_category_container');
+    const closeHandler = (e) => {
+        if (container && !container.contains(e.target)) {
+            el.classList.add('hidden');
+            document.removeEventListener('click', closeHandler);
+        }
+    };
+    if (isHidden) setTimeout(() => document.addEventListener('click', closeHandler), 10);
+};
+
+window.filterRFQCategoryList = (query) => {
+    const q = query.toLowerCase();
+    const list = document.getElementById('rfq_category_list');
+    if (!list) return;
+    
+    const items = list.querySelectorAll('[data-category-name]');
+    items.forEach(item => {
+        const categoryName = item.getAttribute('data-category-name');
+        item.style.display = categoryName.includes(q) ? '' : 'none';
+    });
+};
+
+window.selectRFQCategory = (value) => {
+    const hiddenInput = document.getElementById('rfq_category');
+    const displayInput = document.getElementById('rfq_category_display');
+    const dropdown = document.getElementById('rfq_category_dropdown');
+    
+    if (hiddenInput) hiddenInput.value = value;
+    if (displayInput) displayInput.value = value;
+    if (dropdown) dropdown.classList.add('hidden');
+    
+    // Update highlight
+    const list = document.getElementById('rfq_category_list');
+    if (list) {
+        list.querySelectorAll('[data-category-name]').forEach(item => {
+            item.classList.remove('bg-slate-50');
+        });
+        const selectedItem = list.querySelector(`[onclick*="'${value}'"]`);
+        if (selectedItem) selectedItem.classList.add('bg-slate-50');
+    }
+};
+
+window.openAdvancedRFQCategorySearch = () => {
+    const dropdown = document.getElementById('rfq_category_dropdown');
+    if (dropdown) dropdown.classList.add('hidden');
+    
+    const categories = [
+        'Bahan Baku',
+        'Packaging',
+        'Perlengkapan',
+        'Service',
+        'Sparepart',
+        'Aktiva ( tetap )',
+        'Gas'
+    ];
+    
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-[300] backdrop-blur-sm';
+    modal.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col m-4">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-center">
+                <h3 class="text-lg font-black text-slate-800">Pilih Kategori RFQ</h3>
+                <button onclick="this.closest('.fixed').remove()" class="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
+            </div>
+            <div class="p-6 border-b border-slate-100">
+                <input type="text" id="advanced_rfq_category_search" placeholder="Cari kategori..." 
+                    class="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="flex-1 overflow-y-auto p-6">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left border-b border-slate-200">
+                            <th class="pb-3 font-black text-slate-600">Kategori</th>
+                            <th class="pb-3 font-black text-slate-600 text-center">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="advanced_rfq_category_table_body">
+                        ${categories.map(c => `
+                            <tr class="border-b border-slate-50 hover:bg-slate-50 advanced-rfq-category-row" data-search="${c.toLowerCase()}">
+                                <td class="py-3 font-bold text-slate-700">${c}</td>
+                                <td class="py-3 text-center">
+                                    <button onclick="selectRFQCategory('${c}'); this.closest('.fixed').remove();" 
+                                        class="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-black hover:bg-blue-700">
+                                        Pilih
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Search handler
+    const searchInput = document.getElementById('advanced_rfq_category_search');
+    searchInput?.addEventListener('input', (e) => {
+        const q = e.target.value.toLowerCase();
+        document.querySelectorAll('.advanced-rfq-category-row').forEach(row => {
+            const searchText = row.getAttribute('data-search');
+            row.style.display = searchText.includes(q) ? '' : 'none';
+        });
+    });
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+    });
+};
+
+// Purchase Invoice Terms Dropdown Handlers
+window.togglePINVTermsDropdown = () => {
+    const el = document.getElementById('pinv_terms_dropdown');
+    if (!el) return;
+    const isHidden = el.classList.contains('hidden');
+    document.querySelectorAll('[id$="_dropdown"]').forEach(d => d.classList.add('hidden'));
+    if (isHidden) el.classList.remove('hidden');
+    
+    const container = document.getElementById('pinv_terms_container');
+    const closeHandler = (e) => {
+        if (container && !container.contains(e.target)) {
+            el.classList.add('hidden');
+            document.removeEventListener('click', closeHandler);
+        }
+    };
+    if (isHidden) setTimeout(() => document.addEventListener('click', closeHandler), 10);
+};
+
+window.filterPINVTermsList = (query) => {
+    const q = query.toLowerCase();
+    const list = document.getElementById('pinv_terms_list');
+    if (!list) return;
+    
+    const items = list.querySelectorAll('[data-term-name]');
+    items.forEach(item => {
+        const termName = item.getAttribute('data-term-name');
+        item.style.display = termName.includes(q) ? '' : 'none';
+    });
+};
+
+window.selectPINVTerms = (value, label) => {
+    const hiddenInput = document.getElementById('pinv_terms');
+    const displayInput = document.getElementById('pinv_terms_display');
+    const dropdown = document.getElementById('pinv_terms_dropdown');
+    
+    if (hiddenInput) hiddenInput.value = value;
+    if (displayInput) displayInput.value = label;
+    if (dropdown) dropdown.classList.add('hidden');
+    
+    // Calculate due date
+    if (typeof calculatePurchaseInvoiceDueDate === 'function') {
+        calculatePurchaseInvoiceDueDate();
+    }
+    
+    // Update highlight
+    const list = document.getElementById('pinv_terms_list');
+    if (list) {
+        list.querySelectorAll('[data-term-name]').forEach(item => {
+            item.classList.remove('bg-slate-50');
+        });
+        const selectedItem = list.querySelector(`[onclick*="'${value}'"]`);
+        if (selectedItem) selectedItem.classList.add('bg-slate-50');
+    }
+};
+
+window.openAdvancedPINVTermsSearch = () => {
+    const dropdown = document.getElementById('pinv_terms_dropdown');
+    if (dropdown) dropdown.classList.add('hidden');
+    
+    const terms = [
+        { value: '0', label: 'Cash / COD', days: 0 },
+        { value: '7', label: 'Net 7 Days', days: 7 },
+        { value: '15', label: 'Net 15 Days', days: 15 },
+        { value: '30', label: 'Net 30 Days', days: 30 },
+        { value: '45', label: 'Net 45 Days', days: 45 },
+        { value: '60', label: 'Net 60 Days', days: 60 }
+    ];
+    
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-[300] backdrop-blur-sm';
+    modal.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col m-4">
+            <div class="p-6 border-b border-slate-100 flex justify-between items-center">
+                <h3 class="text-lg font-black text-slate-800">Pilih Payment Term</h3>
+                <button onclick="this.closest('.fixed').remove()" class="text-slate-400 hover:text-slate-600 text-2xl">&times;</button>
+            </div>
+            <div class="p-6 border-b border-slate-100">
+                <input type="text" id="advanced_pinv_term_search" placeholder="Cari term..." 
+                    class="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div class="flex-1 overflow-y-auto p-6">
+                <table class="w-full text-sm">
+                    <thead>
+                        <tr class="text-left border-b border-slate-200">
+                            <th class="pb-3 font-black text-slate-600">Payment Term</th>
+                            <th class="pb-3 font-black text-slate-600 text-center">Days</th>
+                            <th class="pb-3 font-black text-slate-600 text-center">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody id="advanced_pinv_term_table_body">
+                        ${terms.map(t => `
+                            <tr class="border-b border-slate-50 hover:bg-slate-50 advanced-pinv-term-row" data-search="${t.label.toLowerCase()}">
+                                <td class="py-3 font-bold text-slate-700">${t.label}</td>
+                                <td class="py-3 text-slate-600 text-center">${t.days} hari</td>
+                                <td class="py-3 text-center">
+                                    <button onclick="selectPINVTerms('${t.value}', '${t.label}'); this.closest('.fixed').remove();" 
+                                        class="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-black hover:bg-blue-700">
+                                        Pilih
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    // Search handler
+    const searchInput = document.getElementById('advanced_pinv_term_search');
+    searchInput?.addEventListener('input', (e) => {
+        const q = e.target.value.toLowerCase();
+        document.querySelectorAll('.advanced-pinv-term-row').forEach(row => {
+            const searchText = row.getAttribute('data-search');
+            row.style.display = searchText.includes(q) ? '' : 'none';
+        });
+    });
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) modal.remove();
+    });
 };
 
 window.selectPurchaseSupplier = (context, id, name) => {

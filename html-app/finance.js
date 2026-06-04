@@ -1880,7 +1880,8 @@ window.renderFinancePartnerLedger = function () {
         </div>
     `;
 };
-window.renderFinanceAR = function () {
+
+window.renderFinanceAR = function () {
     document.getElementById('pageTitle').innerText = 'Receivables (AR)';
     const mc = document.getElementById('main-content');
     
@@ -3877,21 +3878,32 @@ window.generateCreditNoteNumber = function(isTax) {
     const month = now.getMonth() + 1;
     const year = now.getFullYear();
     const romanMonth = romanizeFinanceList(month);
+    const type = isTax ? 'A' : 'B';
     
-    // Filter CN by same month and year to get shared sequence
-    const sameMonthRecords = records.filter(s => {
-        if (!s.noteNumber) return false;
+    // Find max sequence for same type, month and year
+    let maxSeq = 0;
+    records.forEach(s => {
+        if (!s.noteNumber) return;
         // CN-A-001/III/2026
         const mainParts = s.noteNumber.split('/');
-        if (mainParts.length < 3) return false;
+        if (mainParts.length < 3) return;
+        
+        const prefixParts = mainParts[0].split('-');
         const romanPart = mainParts[1];
         const yearPartStr = mainParts[2];
-        return romanPart === romanMonth && yearPartStr === String(year);
+        
+        // Check same type, month (roman), and year
+        if (prefixParts.length >= 3 && 
+            prefixParts[1] === type && 
+            romanPart === romanMonth && 
+            yearPartStr === String(year)) {
+            const seq = parseInt(prefixParts[2]);
+            if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+        }
     });
 
-    const nextSeq = sameMonthRecords.length + 1;
+    const nextSeq = maxSeq + 1;
     const seqStr = String(nextSeq).padStart(3, '0');
-    const type = isTax ? 'A' : 'B';
     return `CN-${type}-${seqStr}/${romanMonth}/${year}`;
 };
 
@@ -3901,21 +3913,32 @@ window.generateDebitNoteNumber = function(isTax) {
     const month = now.getMonth() + 1;
     const year = now.getFullYear();
     const romanMonth = romanizeFinanceList(month);
+    const type = isTax ? 'A' : 'B';
     
-    // Filter DN by same month and year to get shared sequence
-    const sameMonthRecords = records.filter(s => {
-        if (!s.noteNumber) return false;
+    // Find max sequence for same type, month and year
+    let maxSeq = 0;
+    records.forEach(s => {
+        if (!s.noteNumber) return;
         // DN-A-001/III/2026
         const mainParts = s.noteNumber.split('/');
-        if (mainParts.length < 3) return false;
+        if (mainParts.length < 3) return;
+        
+        const prefixParts = mainParts[0].split('-');
         const romanPart = mainParts[1];
         const yearPartStr = mainParts[2];
-        return romanPart === romanMonth && yearPartStr === String(year);
+        
+        // Check same type, month (roman), and year
+        if (prefixParts.length >= 3 && 
+            prefixParts[1] === type && 
+            romanPart === romanMonth && 
+            yearPartStr === String(year)) {
+            const seq = parseInt(prefixParts[2]);
+            if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+        }
     });
 
-    const nextSeq = sameMonthRecords.length + 1;
+    const nextSeq = maxSeq + 1;
     const seqStr = String(nextSeq).padStart(3, '0');
-    const type = isTax ? 'A' : 'B';
     return `DN-${type}-${seqStr}/${romanMonth}/${year}`;
 };
 

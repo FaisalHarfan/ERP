@@ -2,7 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const PORT = 8080;
+const PORT = 3000;
 const ROOT = path.join(__dirname, 'html-app');
 
 const MIME_TYPES = {

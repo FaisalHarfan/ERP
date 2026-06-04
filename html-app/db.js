@@ -335,13 +335,26 @@ const db = {
 
     generateMONumber: (dateStr) => {
         if (!dateStr) dateStr = new Date().toISOString().split('T')[0];
-        const pureDate = dateStr.replace(/-/g, ''); // YYYYMMDD
-        const orders = db.read('productionOrders') || [];
-        const searchPrefix = `MO-${pureDate}-`;
+        const inputDate = new Date(dateStr);
+        const month = String(inputDate.getMonth() + 1).padStart(2, '0');
+        const year = inputDate.getFullYear();
+        const monthYearStr = `${month}${year}`;
         
+        const orders = db.read('productionOrders') || [];
+        
+        // Find the max sequence number for this specific month/year (changed from daily to monthly reset)
         let maxSeq = 0;
         orders.forEach(o => {
-            if (o.moNumber && o.moNumber.startsWith(searchPrefix)) {
+            if (!o.moNumber || !o.moNumber.startsWith('MO-')) return;
+            
+            // Parse date from MO to check if same month/year
+            const moDate = new Date(o.date || o.createdAt);
+            const moMonth = String(moDate.getMonth() + 1).padStart(2, '0');
+            const moYear = moDate.getFullYear();
+            const moMonthYearStr = `${moMonth}${moYear}`;
+            
+            // Only count sequence from same month/year
+            if (moMonthYearStr === monthYearStr) {
                 const parts = o.moNumber.split('-');
                 if (parts.length >= 3) {
                     const seq = parseInt(parts[2]);
@@ -351,6 +364,7 @@ const db = {
         });
 
         const nextSeq = maxSeq + 1;
+        const pureDate = dateStr.replace(/-/g, ''); // YYYYMMDD for display format
         let finalNo = `MO-${pureDate}-${nextSeq.toString().padStart(3, '0')}`;
         
         while (orders.some(o => o.moNumber === finalNo)) {

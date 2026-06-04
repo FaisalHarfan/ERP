@@ -373,15 +373,18 @@ window.renderInventoryMaster = async () => {
 
         // Exclude WIP categories — these belong to Manufacturing, not Inventory
         const WIP_CATEGORIES = ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK', 'BULK_STOCK'];
-        items = items.filter(it => !WIP_CATEGORIES.includes(it.category));
-        window._tempInventoryItems = items; // Update cache after WIP filter
+        // Exclude Purchase categories — these belong to Purchasing department
+        const PURCHASE_CATEGORIES = ['PACKAGING', 'SPAREPART', 'SUPPLIES', 'SERVICE', 'GAS', 'ASSET'];
+        
+        items = items.filter(it => !WIP_CATEGORIES.includes(it.category) && !PURCHASE_CATEGORIES.includes(it.category));
+        window._tempInventoryItems = items; // Update cache after filters
 
         // Persist filters
         window._inventoryFilters = window._inventoryFilters || { category: '', name: '' };
         const f = window._inventoryFilters;
 
-        // Reset category filter if it was set to a WIP category
-        if (WIP_CATEGORIES.includes(f.category)) f.category = '';
+        // Reset category filter if it was set to a WIP or Purchase category
+        if (WIP_CATEGORIES.includes(f.category) || PURCHASE_CATEGORIES.includes(f.category)) f.category = '';
 
         // Apply Filters
         if (f.category) {
@@ -411,7 +414,7 @@ window.renderInventoryMaster = async () => {
         });
 
         const isProdView = document.getElementById('pageTitle')?.innerText === 'Stok Produksi';
-        const HIDDEN_CATS = ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK', 'BULK_STOCK'];
+        const HIDDEN_CATS = ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK', 'BULK_STOCK', 'PACKAGING', 'SPAREPART', 'SUPPLIES', 'SERVICE', 'GAS', 'ASSET'];
         const filteredCategories = Object.entries(CATEGORY_LABELS)
             .filter(([v]) => isProdView ? ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'].includes(v) : !HIDDEN_CATS.includes(v));
 
@@ -614,10 +617,10 @@ window.resetInventoryFilters = () => {
     renderInventoryMaster();
 };
 
-window.renderInventoryItemForm = (id = null) => {
+window.renderInventoryItemForm = (id = null, context = null) => {
     if (window.pushCurrentToHistory) window.pushCurrentToHistory();
     const item = id ? db.findById('inventoryItems', id) : null;
-    const units = ['KG', 'GR', 'L', 'PCS', 'BOX', 'SAK', 'KARTON', 'LITER'];
+    const units = ['KG', 'GR', 'Lembar', 'PCS', 'BOX', 'SAK', 'KARTON', 'LITER'];
     const unitOpts = units.map(u => `<option ${item?.unit === u ? 'selected' : ''}>${u}</option>`).join('');
     
     // Dynamic Categories based on context
@@ -636,20 +639,40 @@ window.renderInventoryItemForm = (id = null) => {
     
     const pageTitleText = document.getElementById('pageTitle')?.innerText;
     const isProductionContext = pageTitleText === 'Stok Produksi' || (window._currentView && window._currentView.includes('production'));
+    const isPurchaseContext = context === 'purchase' || pageTitleText === 'Master Item Pembelian';
     
-    let filteredCats = allCats.filter(([v]) => !['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'].includes(v));
+    // Purchase categories (non-inventory)
+    const PURCHASE_CATS = ['PACKAGING', 'SUPPLIES', 'SERVICE', 'SPAREPART', 'ASSET', 'GAS'];
+    const WIP_CATS = ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK', 'BULK_STOCK'];
+    
+    let filteredCats;
     if (isProductionContext) {
+        // Production context: only show WIP categories
         filteredCats = allCats.filter(([v]) => ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'].includes(v));
+    } else if (isPurchaseContext) {
+        // Purchase context: only show purchase categories
+        filteredCats = allCats.filter(([v]) => PURCHASE_CATS.includes(v));
+    } else {
+        // Inventory context: only show RAW_MATERIAL and FINISHED_GOODS
+        filteredCats = allCats.filter(([v]) => ['RAW_MATERIAL', 'FINISHED_GOODS'].includes(v));
     }
+
+    // Determine context for "Batal" button
+    let cancelFn;
+    if (isProductionContext) cancelFn = 'renderProductionStockMaster()';
+    else if (isPurchaseContext) cancelFn = 'renderPurchaseMasterItems()';
+    else cancelFn = 'renderInventoryMaster()';
+
+    // Store context
+    if (isProductionContext) window._lastItemContext = 'production';
+    else if (isPurchaseContext) window._lastItemContext = 'purchase';
+    else window._lastItemContext = 'inventory';
 
     const currentCat = filteredCats.find(([v]) => v === item?.category);
     const catLabel = currentCat ? currentCat[1] : '-- Pilih Kategori --';
     const previewCode = item ? item.itemCode : '(auto-generate)';
 
-    const isProduction = pageTitleText === 'Stok Produksi' || (window._currentView && window._currentView.includes('production'));
-    window._lastItemContext = isProduction ? 'production' : 'inventory';
-
-    renderBreadcrumb([isProduction ? 'Produksi' : 'Stock', 'Master Items', id ? 'Edit Item' : 'New Item']);
+    renderBreadcrumb([isPurchaseContext ? 'Purchasing' : (isProductionContext ? 'Produksi' : 'Stock'), 'Master Items', id ? 'Edit Item' : 'New Item']);
     document.getElementById('pageTitle').innerText = id ? 'Edit Item Master' : 'Tambah Item Baru';
     const mc = document.getElementById('main-content');
 
@@ -659,7 +682,7 @@ window.renderInventoryItemForm = (id = null) => {
         <div class="sticky top-0 z-40 bg-white border-b border-slate-100 px-8 py-4 flex items-center justify-between shrink-0 shadow-sm">
             <div></div>
             <div class="flex items-center gap-3">
-                <button onclick="window._lastItemContext === 'production' ? renderProductionStockMaster() : renderInventoryMaster()" class="px-6 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95">Batal</button>
+                <button onclick="window._lastItemContext === 'purchase' ? renderPurchaseMasterItems() : (window._lastItemContext === 'production' ? renderProductionStockMaster() : renderInventoryMaster())" class="px-6 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95">Batal</button>
                 <button onclick="saveInventoryItem('${id || ''}')" class="px-8 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg active:scale-95 flex items-center gap-2">
                     <i class="fas fa-check-circle text-[10px]"></i> Simpan Data Item
                 </button>
