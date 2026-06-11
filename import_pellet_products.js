@@ -46,8 +46,8 @@ function convertToKG(packFormat) {
 }
 
 function getCategory(name) {
-    // Semua produk pellet masuk kategori GUDANG JADI
-    return 'GUDANG JADI';
+    // Semua produk pellet masuk kategori FINISHED_GOODS (akan tampil sebagai "Gudang Jadi" di frontend)
+    return 'FINISHED_GOODS';
 }
 
 // 82 Products from Excel sheet "PROGRAM"
@@ -192,7 +192,7 @@ async function importProducts() {
         console.log(`❌ Error              : ${errors} produk`);
         console.log('===========================================\n');
         
-        console.log('📊 KATEGORI: GUDANG JADI (82 produk)\n');
+        console.log('📊 KATEGORI: FINISHED_GOODS (Gudang Jadi)\n');
         
     } catch (err) {
         console.error('\n❌ ERROR:', err.message);
