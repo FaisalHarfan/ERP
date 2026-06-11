@@ -49,7 +49,7 @@ async function main() {
 
         // Cari semua item yang:
         // 1. Nama depannya POTATO (case insensitive)
-        // 2. DAN kategorinya GUDANG JADI
+        // 2. DAN kategorinya mengandung "Gudang" atau "Jadi" (case insensitive)
         const potatoItems = await InventoryItem.findAll({
             where: {
                 [Op.and]: [
@@ -59,9 +59,18 @@ async function main() {
                         }
                     },
                     {
-                        category: {
-                            [Op.iLike]: '%GUDANG%JADI%'  // Mengandung "GUDANG JADI"
-                        }
+                        [Op.or]: [
+                            {
+                                category: {
+                                    [Op.iLike]: '%Gudang%'  // Mengandung "Gudang"
+                                }
+                            },
+                            {
+                                category: {
+                                    [Op.iLike]: 'FINISHED%'  // Atau "FINISHED_GOODS"
+                                }
+                            }
+                        ]
                     }
                 ]
             },
