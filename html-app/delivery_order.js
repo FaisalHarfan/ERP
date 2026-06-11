@@ -79,8 +79,8 @@ window.renderSalesDeliveryOrders = function () {
     }
 
     let filteredDOs = window._salesDoActiveTab === 'pending' 
-        ? filteredList.filter(d => d.status !== 'SHIPPED') 
-        : filteredList.filter(d => d.status === 'SHIPPED');
+        ? filteredList.filter(d => d.status !== 'SHIPPED' && d.status !== 'CANCELLED') 
+        : filteredList.filter(d => d.status === 'SHIPPED' || d.status === 'CANCELLED');
 
     const statusBadge = (s) => {
         if (s === 'DRAFT' || s === 'PENDING' || s === 'WAITING WH') return '<span class="px-3 py-1 bg-slate-100 text-slate-500 rounded-full text-[10px] font-bold uppercase tracking-tight shadow-sm">Waiting WH</span>';
@@ -245,9 +245,12 @@ window.changeSalesDOTab = function(tab) {
 
 window.handleDOAction = function(select, id) {
     const action = select.value;
+    if (!action) return;
     select.value = ""; // Reset dropdown
     if (action === 'print') printDeliveryOrder(id);
-    if (action === 'cancel') cancelDeliveryOrder(id);
+    else if (action === 'cancel') cancelDeliveryOrder(id);
+    else if (action === 'approve') openConfirmShipmentModal(id);
+    else if (action === 'view') viewShipmentDetails(id);
 };
 
 window.cancelDeliveryOrder = async function(id) {
@@ -1232,8 +1235,8 @@ window.renderWarehouseDeliveryOrders = function () {
     }
 
     let filteredDOs = window._whDoActiveTab === 'pending' 
-        ? doList.filter(d => d.status !== 'SHIPPED') 
-        : doList.filter(d => d.status === 'SHIPPED');
+        ? doList.filter(d => d.status !== 'SHIPPED' && d.status !== 'CANCELLED') 
+        : doList.filter(d => d.status === 'SHIPPED' || d.status === 'CANCELLED');
 
     const rows = filteredDOs.map(d => {
         let hasIssue = false;
@@ -1358,14 +1361,7 @@ window.renderWarehouseDeliveryOrders = function () {
     `;
 };
 
-window.handleDOAction = function(select, id) {
-    const action = select.value;
-    if (!action) return;
-    if (action === 'approve') openConfirmShipmentModal(id);
-    else if (action === 'view') viewShipmentDetails(id);
-    else if (action === 'print') printDeliveryOrder(id);
-    select.value = '';
-};
+
 
 window.filterDOTable = () => {
     window.currentFilters.inventoryDelivery.search = document.getElementById('do_header_search').value;

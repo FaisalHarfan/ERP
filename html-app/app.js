@@ -6309,11 +6309,34 @@ function renderPurchaseMasterItems() {
             <td class="py-4 px-6 text-xs font-black text-slate-400 uppercase tracking-widest">${p.unit || '-'}</td>
             <td class="py-4 px-6 text-sm text-slate-700 font-bold text-right">${formatCurrency(p.purchasePrice || 0)}</td>
             <td class="py-4 px-6 text-sm font-black text-right ${stock <= 0 ? 'text-red-400' : 'text-slate-700'}">${formatNumber(stock)}</td>
-            <td class="py-4 px-6 text-right">
+            <td class="py-4 px-6 text-right overflow-visible">
                 ${canEdit ? `
-                <div class="flex justify-end gap-1">
-                    <button onclick="renderInventoryItemForm('${p.id}', 'purchase')" class="p-2 text-blue-500 hover:bg-blue-50 rounded-lg transition-all" title="Edit"><i class="fas fa-edit"></i></button>
-                    <button onclick="deletePurchaseMasterItem('${p.id}')" class="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all" title="Hapus"><i class="fas fa-trash-alt"></i></button>
+                <div class="flex justify-end overflow-visible">
+                    <div class="relative inventory-dropdown-container">
+                        <button onclick="toggleRowDropdown(event, '${p.id}')" 
+                            class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition-colors text-[11px] font-bold shadow-sm whitespace-nowrap">
+                            Pilih Aksi...
+                            <i class="fas fa-chevron-down text-[9px] text-slate-400"></i>
+                        </button>
+                        
+                        <div id="dropdown-${p.id}" class="inventory-action-menu hidden absolute right-0 top-full mt-1 w-44 bg-white rounded-xl shadow-[0_10px_25px_-5px_rgba(0,0,0,0.1),0_8px_10px_-6px_rgba(0,0,0,0.1)] border border-slate-100 z-[2000] overflow-hidden text-left animate-in fade-in zoom-in-95 duration-100">
+                            <div class="py-1.5 flex flex-col">
+                                <button onclick="renderInventoryItemForm('${p.id}', 'purchase')" class="text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50/50 flex items-center gap-3 transition-colors">
+                                    <i class="fas fa-edit w-4 text-slate-400 group-hover:text-indigo-500"></i> Edit Item
+                                </button>
+                                
+                                ${isCurrentUserAdmin() ? `
+                                <button onclick="openStockAdjustmentModal('${p.id}')" class="text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-orange-50/50 flex items-center gap-3 transition-colors">
+                                    <i class="fas fa-sync-alt w-4 text-slate-400"></i> Adjustment
+                                </button>
+                                <div class="h-px bg-slate-50 my-1 mx-2"></div>
+                                <button onclick="deletePurchaseMasterItem('${p.id}')" class="text-left px-4 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50/50 flex items-center gap-3 transition-colors">
+                                    <i class="fas fa-trash w-4"></i> Hapus Item
+                                </button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 ` : '<span class="text-slate-300 text-[10px] font-bold uppercase italic">No Access</span>'}
             </td>
@@ -6340,7 +6363,7 @@ function renderPurchaseMasterItems() {
                         ` : ''}
                     </div>
                 </div>
-                <div class="overflow-x-auto">
+                <div class="overflow-visible">
                     <table class="w-full text-left border-collapse">
                         <thead>
                             <tr class="bg-slate-50 border-b border-slate-100">
@@ -10037,16 +10060,18 @@ function generateSONumber(isTax, customDate = null) {
     const romanMonth = romanize(month);
     const type = isTax ? 'A' : 'B';
 
+    // Shared counter: A dan B pakai urutan yang sama, reset per tahun (bukan per bulan)
     let maxSeq = 0;
     sos.forEach(s => {
         if (!s.soNumber) return;
         const mainParts = s.soNumber.split('/');
         if (mainParts.length < 3) return;
         
-        // Check if month and year match (romanMonth and year string)
-        if (mainParts[1] === romanMonth && mainParts[2] === String(year)) {
+        // Cek hanya tahun -- urutan berjalan terus sepanjang tahun
+        if (mainParts[2] === String(year)) {
             const prefixParts = mainParts[0].split('-');
-            if (prefixParts.length >= 3 && prefixParts[1] === type) {
+            // Hitung semua SO tahun ini, baik A maupun B
+            if (prefixParts.length >= 3 && (prefixParts[1] === 'A' || prefixParts[1] === 'B')) {
                 const seq = parseInt(prefixParts[2]);
                 if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
             }

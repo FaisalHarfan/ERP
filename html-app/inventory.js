@@ -974,6 +974,8 @@ window.deleteInventoryItem = async (id) => {
 window.returnToMasterView = () => {
     if (window._lastItemContext === 'production' && typeof renderProductionStockMaster === 'function') {
         renderProductionStockMaster();
+    } else if (window._lastItemContext === 'purchase' && typeof renderPurchaseMasterItems === 'function') {
+        renderPurchaseMasterItems();
     } else {
         renderInventoryMaster();
     }
