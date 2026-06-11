@@ -2,10 +2,9 @@ require('dotenv').config();
 const { Sequelize, DataTypes } = require('sequelize');
 
 console.log('\n===========================================');
-console.log('  IMPORT 82 PRODUK PELLET - TANA SUBUR');
+console.log('  UPDATE NAMA PRODUK PELLET DARI EXCEL');
 console.log('===========================================\n');
 
-// Database connection
 const sequelize = new Sequelize(
     process.env.DB_NAME,
     process.env.DB_USER,
@@ -18,23 +17,14 @@ const sequelize = new Sequelize(
     }
 );
 
-// Model definition
 const InventoryItem = sequelize.define('inventory_items', {
     id: { type: DataTypes.STRING(50), primaryKey: true },
-    itemCode: { type: DataTypes.STRING(50), unique: true, field: 'item_code' },
-    itemName: { type: DataTypes.STRING(200), allowNull: false, field: 'item_name' },
+    itemCode: { type: DataTypes.STRING(50), field: 'item_code' },
+    itemName: { type: DataTypes.STRING(200), field: 'item_name' },
     category: DataTypes.STRING(50),
     unit: DataTypes.STRING(20),
-    purchasePrice: { type: DataTypes.DECIMAL(15,2), defaultValue: 0, field: 'purchase_price' },
-    minStock: { type: DataTypes.DECIMAL(15,2), defaultValue: 0, field: 'min_stock' },
-    status: { type: DataTypes.STRING(20), defaultValue: 'ACTIVE' },
     description: DataTypes.TEXT
 }, { timestamps: true, underscored: true });
-
-// Helper functions
-function genId() {
-    return Date.now().toString() + Math.random().toString(36).substring(2, 7);
-}
 
 function convertToKG(packFormat) {
     const match = packFormat.match(/(\d+)\s*x\s*(\d+(?:\.\d+)?)\s*(kg|gr)/i);
@@ -45,13 +35,8 @@ function convertToKG(packFormat) {
     return unit === 'gr' ? (qty * size) / 1000 : qty * size;
 }
 
-function getCategory(name) {
-    // Semua produk pellet masuk kategori FINISHED_GOODS (akan tampil sebagai "Gudang Jadi" di frontend)
-    return 'FINISHED_GOODS';
-}
-
-// 82 Products from Excel sheet "PROGRAM"
-const PRODUCTS = [
+// Data dari Excel sheet "PROGRAM" - Nama yang lebih detail
+const PRODUCT_NAMES = [
     { no: 1, name: 'Pellet Potato Bocah Tani Kotak 6 cm', pack: '1 x 25 kg' },
     { no: 2, name: 'Pellet Potato Bocah Tani Kotak 6 cm', pack: '1 x 5 kg' },
     { no: 3, name: 'Pellet Potato Bocah Tani Kotak 2.8 cm', pack: '1 x 25 kg' },
@@ -65,7 +50,7 @@ const PRODUCTS = [
     { no: 11, name: 'Pellet Potato Panji Milenium Kotak Lurus Pelangi 6 cm', pack: '1 x 25 kg' },
     { no: 12, name: 'Pellet Potato Panji Milenium Kotak Lurus Pelangi 6 cm', pack: '1 x 5 kg' },
     { no: 13, name: 'Pellet Potato Kuku Maung Panen Raya Kuning 2.5 cm', pack: '1 x 25 kg' },
-    { no: 14, name: 'Pellet Potato Kuku maung Panen Raya Merah 2.5 cm', pack: '1 x 25 kg' },
+    { no: 14, name: 'Pellet Potato Kuku Maung Panen Raya Merah 2.5 cm', pack: '1 x 25 kg' },
     { no: 15, name: 'Pellet Potato Bapak Tani Bulat 6 cm', pack: '1 x 25 kg' },
     { no: 16, name: 'Pellet Potato Bapak Tani Bulat 6 cm', pack: '1 x 5 kg' },
     { no: 17, name: 'Pellet Potato Bapak Tani Kotak 6 cm', pack: '1 x 25 kg' },
@@ -124,7 +109,7 @@ const PRODUCTS = [
     { no: 70, name: 'Pellet Potato Mahkota Mas Kerang Kuning', pack: '1 x 5 kg' },
     { no: 71, name: 'Pellet Potato Bless Kotak 6 cm', pack: '6 x 5 kg' },
     { no: 72, name: 'Pellet Potato Kerang Merah Panen Raya', pack: '5 x 5 kg' },
-    { no: 73, name: 'Pellet Potato Panen Raya Poken pelangi', pack: '5 x 5 kg' },
+    { no: 73, name: 'Pellet Potato Panen Raya Poken Pelangi', pack: '5 x 5 kg' },
     { no: 74, name: 'Pellet Potato Panen Raya Kerang Kuning', pack: '5 x 5 kg' },
     { no: 75, name: 'Pellet Potato Panen Raya Kentang Iris 4 cm', pack: '5 x 5 kg' },
     { no: 76, name: 'Pellet Potato Panen Raya Kotak Putih 6 cm', pack: '5 x 5 kg' },
@@ -136,63 +121,50 @@ const PRODUCTS = [
     { no: 82, name: 'Pellet Potato Panen Raya Kotak 5.5 cm', pack: '1 x 25 kg' }
 ];
 
-// Main import function
-async function importProducts() {
-    let created = 0, skipped = 0, errors = 0;
-    
+async function updateNames() {
     try {
         console.log('📡 Menghubungkan ke database...');
         await sequelize.authenticate();
         console.log('✅ Database terhubung!\n');
         
-        console.log(`📦 Mengimport ${PRODUCTS.length} produk pellet...\n`);
+        console.log(`🔄 Mengupdate nama ${PRODUCT_NAMES.length} produk...\n`);
         
-        for (const p of PRODUCTS) {
+        let updated = 0;
+        let notFound = 0;
+        
+        for (const p of PRODUCT_NAMES) {
             const itemCode = `FG-${String(p.no).padStart(4, '0')}`;
             const totalKG = convertToKG(p.pack);
-            const category = getCategory(p.name);
-            const fullName = `${p.name} ${p.pack}`;
+            const newName = `${p.name} ${p.pack}`;
             
             try {
-                // Check if already exists
-                const existing = await InventoryItem.findOne({ where: { itemCode } });
-                if (existing) {
-                    console.log(`   ⏭️  ${itemCode} - sudah ada, dilewati`);
-                    skipped++;
+                const product = await InventoryItem.findOne({ where: { itemCode } });
+                
+                if (!product) {
+                    console.log(`   ⚠️  ${itemCode} tidak ditemukan di database`);
+                    notFound++;
                     continue;
                 }
                 
-                // Create new product
-                await InventoryItem.create({
-                    id: genId(),
-                    itemCode,
-                    itemName: fullName,
-                    category,
-                    unit: 'KG',
-                    purchasePrice: 0,
-                    minStock: 0,
-                    status: 'ACTIVE',
-                    description: `Kemasan: ${p.pack} | Total: ${totalKG} KG`
-                });
+                const oldName = product.itemName;
+                product.itemName = newName;
+                product.description = `Kemasan: ${p.pack} | Total: ${totalKG} KG`;
+                await product.save();
                 
-                console.log(`   ✅ ${itemCode} - ${fullName}`);
-                created++;
+                console.log(`   ✅ ${itemCode} - ${newName}`);
+                updated++;
                 
             } catch (err) {
                 console.error(`   ❌ ${itemCode} - Error: ${err.message}`);
-                errors++;
             }
         }
         
         console.log('\n===========================================');
-        console.log('🎉 IMPORT SELESAI!');
+        console.log('🎉 UPDATE SELESAI!');
         console.log('===========================================');
-        console.log(`✅ Berhasil dibuat    : ${created} produk`);
-        console.log(`⏭️  Dilewati (duplikat): ${skipped} produk`);
-        console.log(`❌ Error              : ${errors} produk`);
+        console.log(`✅ Berhasil diupdate   : ${updated} produk`);
+        console.log(`⚠️  Tidak ditemukan    : ${notFound} produk`);
         console.log('===========================================\n');
-        
-        console.log('📊 KATEGORI: FINISHED_GOODS (Gudang Jadi)\n');
         
     } catch (err) {
         console.error('\n❌ ERROR:', err.message);
@@ -204,5 +176,4 @@ async function importProducts() {
     }
 }
 
-// Run the import
-importProducts();
+updateNames();
