@@ -99,18 +99,16 @@ window.renderSalesReturns = async function () {
                 </td>
                 <td class="px-6 py-4 text-center">${srStatusBadge(r.status)}</td>
                 <td class="px-6 py-4 text-right">
-                    <div class="inline-block relative w-[130px]">
-                        <select class="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none transition-all shadow-sm" 
-                            onchange="window.handleSRAction(this, '${r.id}')">
-                            <option value="" disabled selected>Pilih Aksi...</option>
-                            <option value="print">Cetak Nota</option>
-                            ${['PENDING', 'APPROVED'].includes(r.status) ? `<option value="cancel">Batalkan Retur</option>` : ''}
-                            ${perm.edit ? `<option value="delete">Hapus</option>` : ''}
-                        </select>
-                        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
-                            <i class="fas fa-chevron-down text-[10px]"></i>
-                        </div>
-                    </div>
+                    ${(() => {
+                        const dropdownOptions = [['print', 'Cetak Nota', 'fas fa-print']];
+                        if (['PENDING', 'APPROVED'].includes(r.status)) {
+                            dropdownOptions.push(['cancel', 'Batalkan Retur', 'fas fa-ban']);
+                        }
+                        if (perm.edit) {
+                            dropdownOptions.push(['delete', 'Hapus', 'fas fa-trash-alt', 'text-red-600 hover:bg-red-50 hover:text-red-700 border-t border-slate-50']);
+                        }
+                        return window.renderActionsDropdownHtml(`sr-${r.id}`, 'window.handleSRAction', dropdownOptions);
+                    })()}
                 </td>
             </tr>
         `;
@@ -183,16 +181,26 @@ window.renderSalesReturns = async function () {
     `;
 };
 
-window.handleSRAction = async function (select, id) {
-    const action = select.value;
+window.handleSRAction = async function (actionOrSelect, id) {
+    let action;
+    if (typeof actionOrSelect === 'string') {
+        action = actionOrSelect;
+    } else {
+        action = actionOrSelect.value;
+    }
+    if (typeof actionOrSelect !== 'string') {
+        actionOrSelect.value = '';
+    }
     if (!action) return;
 
+    const cleanId = typeof id === 'string' ? id.replace(/^[a-z]+-/, '') : id;
+
     if (action === 'print') {
-        window.printSalesReturn(id);
+        window.printSalesReturn(cleanId);
     } else if (action === 'cancel') {
         if (confirm('Yakin ingin membatalkan retur ini? Status di Inventory akan otomatis di-cancel.')) {
             try {
-                await api.update('salesReturns', id, { status: 'CANCELED' });
+                await api.update('salesReturns', cleanId, { status: 'CANCELED' });
                 if (window.api && typeof window.api.pullAll === 'function') await window.api.pullAll();
                 showToast('Retur dibatalkan.');
                 renderSalesReturns();
@@ -203,7 +211,7 @@ window.handleSRAction = async function (select, id) {
     } else if (action === 'delete') {
         if (confirm('Yakin ingin menghapus retur ini?')) {
             try {
-                await db.delete('salesReturns', id);
+                await db.delete('salesReturns', cleanId);
                 if (window.api && typeof window.api.pullAll === 'function') await window.api.pullAll();
                 await db.sync('salesReturns');
                 showToast('Retur berhasil dihapus.');
@@ -213,7 +221,6 @@ window.handleSRAction = async function (select, id) {
             }
         }
     }
-    select.value = '';
 };
 
 window.filterSRTable = () => {
@@ -1011,18 +1018,16 @@ window.renderProductExchanges = async function () {
                 </td>
                 <td class="px-6 py-4 text-center">${srStatusBadge(ex.status)}</td>
                 <td class="px-6 py-4 text-right">
-                    <div class="inline-block relative w-[130px]">
-                        <select class="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none transition-all shadow-sm" 
-                            onchange="window.handleEXAction(this, '${ex.id}')">
-                            <option value="" disabled selected>Pilih Aksi...</option>
-                            <option value="print">Cetak Nota</option>
-                            ${!['COMPLETED', 'REJECTED', 'CANCELED'].includes(ex.status) ? `<option value="cancel">Batalkan Exchange</option>` : ''}
-                            ${perm.edit ? `<option value="delete">Hapus</option>` : ''}
-                        </select>
-                        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
-                            <i class="fas fa-chevron-down text-[10px]"></i>
-                        </div>
-                    </div>
+                    ${(() => {
+                        const dropdownOptions = [['print', 'Cetak Nota', 'fas fa-print']];
+                        if (!['COMPLETED', 'REJECTED', 'CANCELED'].includes(ex.status)) {
+                            dropdownOptions.push(['cancel', 'Batalkan Exchange', 'fas fa-ban']);
+                        }
+                        if (perm.edit) {
+                            dropdownOptions.push(['delete', 'Hapus', 'fas fa-trash-alt', 'text-red-600 hover:bg-red-50 hover:text-red-700 border-t border-slate-50']);
+                        }
+                        return window.renderActionsDropdownHtml(`ex-${ex.id}`, 'window.handleEXAction', dropdownOptions);
+                    })()}
                 </td>
             </tr>
         `;
@@ -1095,16 +1100,26 @@ window.renderProductExchanges = async function () {
     `;
 };
 
-window.handleEXAction = async function (select, id) {
-    const action = select.value;
+window.handleEXAction = async function (actionOrSelect, id) {
+    let action;
+    if (typeof actionOrSelect === 'string') {
+        action = actionOrSelect;
+    } else {
+        action = actionOrSelect.value;
+    }
+    if (typeof actionOrSelect !== 'string') {
+        actionOrSelect.value = '';
+    }
     if (!action) return;
 
+    const cleanId = typeof id === 'string' ? id.replace(/^[a-z]+-/, '') : id;
+
     if (action === 'print') {
-        window.printProductExchange(id);
+        window.printProductExchange(cleanId);
     } else if (action === 'cancel') {
         if (confirm('Yakin ingin membatalkan exchange ini? Status di Inventory akan otomatis di-cancel.')) {
             try {
-                await api.update('productExchanges', id, { status: 'CANCELED' });
+                await api.update('productExchanges', cleanId, { status: 'CANCELED' });
                 if (window.api && typeof window.api.pullAll === 'function') await window.api.pullAll();
                 showToast('Exchange dibatalkan.');
                 renderProductExchanges();
@@ -1115,7 +1130,7 @@ window.handleEXAction = async function (select, id) {
     } else if (action === 'delete') {
         if (confirm('Yakin ingin menghapus tukar guling ini?')) {
             try {
-                await db.delete('productExchanges', id);
+                await db.delete('productExchanges', cleanId);
                 if (window.api && typeof window.api.pullAll === 'function') await window.api.pullAll();
                 showToast('Tukar Guling berhasil dihapus.');
                 renderProductExchanges();
@@ -1124,7 +1139,6 @@ window.handleEXAction = async function (select, id) {
             }
         }
     }
-    select.value = '';
 };
 
 window.approveExchangeDoc = async function (id, approved) {

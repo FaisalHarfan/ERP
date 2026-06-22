@@ -160,7 +160,7 @@ window.initSalesCharts = function(orders, customers) {
                     plugins: { legend: { display: false } },
                     scales: {
                         x: { display: false, grid: {display: false} },
-                        y: { grid: {display: false}, border: {display: false}, ticks: { color: '#6b7280', font: {size: 11} } }
+                        y: { grid: {display: false}, border: {display: false}, ticks: { color: '#6b7280', font: {size: 11}, crossAlign: 'far' } }
                     }
                 }
             });

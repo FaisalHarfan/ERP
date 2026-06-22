@@ -149,12 +149,12 @@ window.renderInventoryDashboard = () => {
 
     const chartPanel = (title, subtitle, id, heightClass = 'h-64', hasFilters = false, extraBody = '') => `
         <div class="bg-white rounded-xl border border-gray-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] p-5 flex flex-col">
-            <div class="flex justify-between items-start mb-6">
-                <div>
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                <div class="min-w-fit flex-shrink-0">
                     <h3 class="text-[15px] font-semibold text-gray-800">${title}</h3>
                     ${subtitle ? `<p class="text-[12px] text-gray-500 mt-1">${subtitle}</p>` : ''}
                 </div>
-                <div class="flex gap-2 items-center">
+                <div class="flex flex-wrap gap-2 items-center justify-start sm:justify-end flex-1 min-w-0">
                     <button class="w-7 h-7 rounded bg-gray-50 text-gray-500 hover:bg-gray-100 flex items-center justify-center transition-colors"><i class="fas fa-filter text-[10px]"></i></button>
                     ${hasFilters ? `
                     <button class="px-2 h-7 rounded bg-gray-50 text-gray-600 hover:bg-gray-100 flex items-center justify-center transition-colors text-[11px] font-medium gap-1">
@@ -359,6 +359,7 @@ window.initInventoryCharts = function(warehouseValues, stockTxs) {
 
 // ——— 1. MASTER ITEM ————————————————————————————————————————
 window.renderInventoryMaster = async () => {
+    window._lastItemContext = 'inventory';
     const canEdit = getModulePermission('logistik').edit;
     renderBreadcrumb(['Stock', 'Master Items']);
     document.getElementById('pageTitle').innerText = 'Master Item';
@@ -1058,8 +1059,7 @@ window.saveStockAdjustment = async (itemId) => {
     const notes = document.getElementById('adj_notes').value.trim();
     if (isNaN(actualStock) || actualStock < 0) { showToast('Jumlah stok tidak valid', 'error'); return; }
 
-    const item = (window._tempInventoryItems || []).find(it => it.id === itemId);
-    const currentStock = item ? (item.currentStock || 0) : 0;
+    const currentStock = db.getInventoryStock(itemId);
     const diff = actualStock - currentStock;
 
     if (diff === 0) {
@@ -1790,12 +1790,12 @@ function renderProductionBoard() {
 
     const chartPanel = (title, subtitle, id, heightClass = 'h-64', hasFilters = false, extraBody = '', customFilterHtml = '') => `
         <div class="bg-white rounded-xl border border-gray-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] p-5 flex flex-col">
-            <div class="flex justify-between items-start mb-6">
-                <div>
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                <div class="min-w-fit flex-shrink-0">
                     <h3 class="text-[15px] font-semibold text-gray-800">${title}</h3>
                     ${subtitle ? `<p class="text-[12px] text-gray-500 mt-1">${subtitle}</p>` : ''}
                 </div>
-                <div class="flex gap-2 items-center">
+                <div class="flex flex-wrap gap-2 items-center justify-start sm:justify-end flex-1 min-w-0">
                     ${customFilterHtml}
                     <button class="w-7 h-7 rounded bg-gray-50 text-gray-500 hover:bg-gray-100 flex items-center justify-center transition-colors"><i class="fas fa-filter text-[10px]"></i></button>
                     ${hasFilters ? `
@@ -2020,7 +2020,8 @@ window.initProdCharts = function(mos) {
                         data: sorted.map(p => p[1]),
                         backgroundColor: '#818cf8',
                         borderRadius: 6,
-                        barThickness: 24,
+                        barPercentage: 0.5,
+                        categoryPercentage: 0.8,
                         hoverBackgroundColor: '#6366f1'
                     }]
                 },
@@ -2047,7 +2048,8 @@ window.initProdCharts = function(mos) {
                             ticks: { 
                                 color: '#64748b', 
                                 font: { size: 10, weight: 'bold' },
-                                padding: 10
+                                padding: 10,
+                                crossAlign: 'far'
                             }
                         }
                     }
@@ -2409,61 +2411,72 @@ function renderInventoryPOReceipt() {
     const filters = window.currentFilters.inventoryPOReceipt;
     const supOptions = suppliers.map(s => `<option value="${s.id}" ${filters.supplier === s.id ? 'selected' : ''}>${s.name}</option>`).join('');
 
-    let pos = db.read('purchaseOrders').sort((a, b) => new Date(b.date) - new Date(a.date));
+    let rawPos = db.read('purchaseOrders')
+        .map(po => {
+            const supplier = suppliers.find(s => s.id === po.supplierId) || { name: 'Unknown' };
+            const totalQty = (po.items || []).reduce((s, i) => s + (i.qty || 0), 0);
+            const receivedQty = (po.items || []).reduce((s, i) => s + (i.receivedQty || 0), 0);
+            const progressPct = totalQty > 0 ? Math.round((receivedQty / totalQty) * 100) : 0;
+            return {
+                ...po,
+                supplierName: supplier.name,
+                totalQty,
+                receivedQty,
+                progressPct
+            };
+        });
 
     // Base Tab Filter
     if (tab === 'pending') {
-        pos = pos.filter(po => ['APPROVED', 'PARTIALLY RECEIVED'].includes(po.status));
+        rawPos = rawPos.filter(po => ['APPROVED', 'PARTIALLY RECEIVED'].includes(po.status));
     } else {
-        pos = pos.filter(po => ['RECEIVED', 'PARTIALLY RECEIVED'].includes(po.status) && (po.items || []).some(i => (i.receivedQty || 0) > 0));
+        rawPos = rawPos.filter(po => ['RECEIVED', 'PARTIALLY RECEIVED'].includes(po.status) && (po.items || []).some(i => (i.receivedQty || 0) > 0));
     }
 
     // Filter Logic
-    if (filters.start) { const d = new Date(filters.start); d.setHours(0, 0, 0, 0); pos = pos.filter(po => new Date(po.date) >= d); }
-    if (filters.end) { const d = new Date(filters.end); d.setHours(23, 59, 59, 999); pos = pos.filter(po => new Date(po.date) <= d); }
-    if (filters.supplier) { pos = pos.filter(po => po.supplierId === filters.supplier); }
+    if (filters.start) { const d = new Date(filters.start); d.setHours(0, 0, 0, 0); rawPos = rawPos.filter(po => new Date(po.date) >= d); }
+    if (filters.end) { const d = new Date(filters.end); d.setHours(23, 59, 59, 999); rawPos = rawPos.filter(po => new Date(po.date) <= d); }
+    if (filters.supplier) { rawPos = rawPos.filter(po => po.supplierId === filters.supplier); }
+
+    const defaultPORSort = (arr) => [...arr].sort((a, b) => new Date(b.date) - new Date(a.date));
+    let pos = window.applyTableSort(rawPos, `inv_por_${tab}`, defaultPORSort);
 
     let rows = pos.map(po => {
-        const supplier = suppliers.find(s => s.id === po.supplierId) || { name: 'Unknown' };
-        const totalQty = (po.items || []).reduce((s, i) => s + (i.qty || 0), 0);
-        const receivedQty = (po.items || []).reduce((s, i) => s + (i.receivedQty || 0), 0);
-        const progressPct = totalQty > 0 ? Math.round((receivedQty / totalQty) * 100) : 0;
+        const dropdownOptions = [];
+        if (tab === 'pending') {
+            if (canEdit) {
+                dropdownOptions.push(['receive', 'Terima Barang', 'fas fa-box-open text-blue-500']);
+            }
+            dropdownOptions.push(['view', 'Lihat PO', 'fas fa-eye text-slate-500']);
+        } else {
+            dropdownOptions.push(['print_npb', 'Cetak NPB', 'fas fa-print text-slate-500']);
+            dropdownOptions.push(['detail', 'Detail Penerimaan', 'fas fa-eye text-slate-500']);
+        }
+
+        const actionHtml = window.renderActionsDropdownHtml(`por-${tab}-${po.id}`, 'handleInventoryPRAction', dropdownOptions);
 
         return `
             <tr class="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group">
                 <td class="py-4 px-6 whitespace-nowrap">
-                    <button onclick="${tab === 'pending' ? `viewPO('${po.id}')` : `viewPOReceiptDetails('${po.id}')`}" class="text-blue-700 hover:text-blue-800 font-mono text-sm font-bold transition-colors cursor-pointer outline-none bg-blue-50/80 px-3.5 py-1.5 rounded-lg border border-blue-200 shadow-sm">
+                    <button onclick="${tab === 'pending' ? `viewPO('${po.id}', 'received-inventory')` : `viewPOReceiptDetails('${po.id}')`}" class="text-blue-700 hover:text-blue-800 font-mono text-sm font-bold transition-colors cursor-pointer outline-none bg-blue-50/80 px-3.5 py-1.5 rounded-lg border border-blue-200 shadow-sm">
                         ${po.poNumber.toUpperCase()}
                     </button>
                 </td>
                 <td class="py-4 px-6 text-sm text-slate-500 font-medium">${invDate(po.date)}</td>
-                <td class="py-4 px-6 text-sm text-slate-900 font-bold tracking-tight">${supplier.name}</td>
+                <td class="py-4 px-6 text-sm text-slate-900 font-bold tracking-tight">${po.supplierName}</td>
                 <td class="py-4 px-6">
                     <div class="flex items-center gap-3">
                         <div class="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden" style="min-width:100px">
-                            <div class="h-full ${progressPct === 100 ? 'bg-green-500' : 'bg-blue-500'} rounded-full transition-all duration-1000" style="width: ${progressPct}%"></div>
+                            <div class="h-full ${po.progressPct === 100 ? 'bg-green-500' : 'bg-blue-500'} rounded-full transition-all duration-1000" style="width: ${po.progressPct}%"></div>
                         </div>
-                        <span class="text-[10px] font-black text-slate-500 tracking-tighter w-12 text-right">${invFmt(receivedQty)}/${invFmt(totalQty)}</span>
+                        <span class="text-[10px] font-black text-slate-500 tracking-tighter w-12 text-right">${invFmt(po.receivedQty)}/${invFmt(po.totalQty)}</span>
                     </div>
                 </td>
                 <td class="py-4 px-6 text-center">
                     <span class="px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border border-blue-100 bg-blue-50 text-blue-600">${po.status === 'PARTIALLY RECEIVED' ? 'PARTIALLY RECEIVED' : po.status}</span>
                 </td>
-                <td class="py-4 px-6 text-right whitespace-nowrap">
-                    ${tab === 'pending' ? (canEdit ? `
-                    <button onclick="receiveGoodsPO('${po.id}')" class="bg-blue-600 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-200 transition-all active:scale-95 flex items-center gap-2 ml-auto">
-                        <i class="fas fa-box-open"></i> TERIMA
-                    </button>
-                    ` : '<span class="text-slate-400 text-[10px] italic font-medium">VIEW ONLY</span>') : `
-                    <div class="flex justify-end gap-2">
-                        <button onclick="printNPB('${po.id}')" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2">
-                            <i class="fas fa-print"></i> CETAK
-                        </button>
-                        <button onclick="viewPOReceiptDetails('${po.id}')" class="bg-slate-100 hover:bg-slate-200 text-slate-600 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2">
-                            <i class="fas fa-eye"></i> DETAIL
-                        </button>
-                    </div>
-                    `}
+                <td class="py-4 px-6 text-right overflow-visible">
+                    ${actionHtml}
                 </td>
             </tr>`;
     }).join('');
@@ -2553,11 +2566,11 @@ function renderInventoryPOReceipt() {
                 <table class="w-full text-left border-collapse" id="por_table">
                     <thead class="bg-slate-50 sticky top-0 z-30 shadow-[0_1px_0_#e2e8f0]">
                         <tr class="bg-slate-50/50 border-b border-slate-100">
-                            <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">NO. PO</th>
-                            <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">TGL ORDER</th>
-                            <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">SUPPLIER</th>
-                            <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">PROGRES TERIMA</th>
-                            <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-center">STATUS</th>
+                            ${window.sortTh(`inv_por_${tab}`, 'poNumber', 'string', 'NO. PO', 'renderInventoryPOReceipt')}
+                            ${window.sortTh(`inv_por_${tab}`, 'date', 'date', 'TGL ORDER', 'renderInventoryPOReceipt')}
+                            ${window.sortTh(`inv_por_${tab}`, 'supplierName', 'string', 'SUPPLIER', 'renderInventoryPOReceipt')}
+                            ${window.sortTh(`inv_por_${tab}`, 'progressPct', 'number', 'PROGRES TERIMA', 'renderInventoryPOReceipt')}
+                            ${window.sortTh(`inv_por_${tab}`, 'status', 'string', 'STATUS', 'renderInventoryPOReceipt', 'text-center')}
                             <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">AKSI</th>
                         </tr>
                     </thead>
@@ -2608,6 +2621,22 @@ function renderInventoryPOReceipt() {
         });
     };
 }
+
+window.handleInventoryPRAction = function(action, value) {
+    const id = (value && typeof value === 'object' && value.value !== undefined) ? value.value : value;
+    if (!action || !id) return;
+    const cleanId = id.includes('-') ? id.split('-').pop() : id;
+
+    if (action === 'receive') {
+        window.receiveGoodsPO(cleanId);
+    } else if (action === 'view') {
+        window.viewPO(cleanId, 'received-inventory');
+    } else if (action === 'detail') {
+        window.viewPOReceiptDetails(cleanId);
+    } else if (action === 'print_npb') {
+        window.printNPB(cleanId);
+    }
+};
 
 // Close dropdowns on outside click
 document.addEventListener('click', (e) => {
@@ -5047,26 +5076,14 @@ window.renderIncomingReturns = async function () {
                 `;
             }
 
-            let actionsHtml = '';
+            let navigasiHtml = '<span class="text-slate-300 font-bold text-xs">-</span>';
             if (window._irActiveTab === 'pending') {
-                actionsHtml = `
-                    <option value="receive">Terima & Inspeksi</option>
-                    <option value="delete">Hapus</option>
-                `;
+                const dropdownOptions = [
+                    ['receive', 'Terima & Inspeksi', 'fas fa-check-double'],
+                    ['delete', 'Hapus', 'fas fa-trash-alt', 'text-red-600 hover:bg-red-50 hover:text-red-700 border-t border-slate-50']
+                ];
+                navigasiHtml = window.renderActionsDropdownHtml(`ir-${item.id}_${item.irType}`, 'handleIRAction', dropdownOptions);
             }
-
-            const navigasiHtml = actionsHtml ? `
-                <div class="inline-block relative w-[130px]">
-                    <select class="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none transition-all shadow-sm" 
-                        onchange="handleIRAction(this, '${item.id}', '${item.irType}')">
-                        <option value="" disabled selected>Pilih Aksi...</option>
-                        ${actionsHtml}
-                    </select>
-                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
-                        <i class="fas fa-chevron-down text-[10px]"></i>
-                    </div>
-                </div>
-            ` : '<span class="text-slate-300 font-bold text-xs">-</span>';
 
             return `
                 <tr class="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group">
@@ -5085,7 +5102,7 @@ window.renderIncomingReturns = async function () {
                         <div class="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-1">REF DOKUMEN</div>
                         ${refDocHtml}
                     </td>
-                    <td class="px-6 py-4 text-right">
+                    <td class="px-6 py-4 text-right overflow-visible">
                         ${navigasiHtml}
                     </td>
                 </tr>
@@ -5157,17 +5174,34 @@ window.applyIRFilters = function() {
     window.renderIncomingReturns();
 };
 
-window.handleIRAction = function(select, id, type) {
-    const action = select.value;
-    if (!action) return;
-    
-    if (action === 'receive') {
-        window.openReceiveReturnForm(id, type);
-    } else if (action === 'delete') {
-        window.deleteInventoryReturn(id, type);
+window.handleIRAction = function(actionOrSelect, id, type) {
+    let action;
+    if (typeof actionOrSelect === 'string') {
+        action = actionOrSelect;
+    } else {
+        action = actionOrSelect.value;
     }
-    
-    select.value = '';
+    if (typeof actionOrSelect !== 'string') {
+        actionOrSelect.value = '';
+    }
+    if (!action) return;
+
+    let cleanId = id;
+    let cleanType = type;
+
+    if (!cleanType && typeof id === 'string' && id.includes('_')) {
+        const parts = id.split('_');
+        cleanId = parts[0].replace(/^[a-z]+-/, '');
+        cleanType = parts[1];
+    } else if (typeof id === 'string') {
+        cleanId = id.replace(/^[a-z]+-/, '');
+    }
+
+    if (action === 'receive') {
+        window.openReceiveReturnForm(cleanId, cleanType);
+    } else if (action === 'delete') {
+        window.deleteInventoryReturn(cleanId, cleanType);
+    }
 };
 
 /**

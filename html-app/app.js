@@ -88,6 +88,51 @@ window.togglePPFilter = () => { window._uiState.ppFilterOpen = !window._uiState.
 window.togglePRFilter = () => { window._uiState.prFilterOpen = !window._uiState.prFilterOpen; if (window.renderPurchaseReports) window.renderPurchaseReports(); };
 window.toggleShrinkFilter = () => { window._uiState.shrinkFilterOpen = !window._uiState.shrinkFilterOpen; if (window.renderInventoryShrinkageReport) window.renderInventoryShrinkageReport(); };
 
+// Global sort state per table (Excel-like column sort)
+window._tableSort = window._tableSort || {};
+
+// Universal sort handler - call from column header onclick
+window.sortTableBy = (tableKey, col, type, rerenderFn) => {
+    const cur = window._tableSort[tableKey] || {};
+    const isSameCol = cur.col === col;
+    const newDir = isSameCol ? (cur.dir === 'asc' ? 'desc' : 'asc') : 'asc';
+    window._tableSort[tableKey] = { col, dir: newDir, type };
+    if (typeof rerenderFn === 'function') rerenderFn();
+};
+
+// Sort an array by sort state
+window.applyTableSort = (arr, tableKey, defaultSort) => {
+    const s = window._tableSort[tableKey];
+    if (!s || !s.col) {
+        if (typeof defaultSort === 'function') return defaultSort(arr);
+        return arr;
+    }
+    const { col, dir, type } = s;
+    return [...arr].sort((a, b) => {
+        let va = a[col]; let vb = b[col];
+        if (type === 'date') { va = new Date(va || 0).getTime(); vb = new Date(vb || 0).getTime(); }
+        else if (type === 'number') { va = parseFloat(va) || 0; vb = parseFloat(vb) || 0; }
+        else { va = (va || '').toString().toLowerCase(); vb = (vb || '').toString().toLowerCase(); }
+        if (va < vb) return dir === 'asc' ? -1 : 1;
+        if (va > vb) return dir === 'asc' ? 1 : -1;
+        return 0;
+    });
+};
+
+// Generate sortable <th> HTML for a column
+window.sortTh = (tableKey, col, type, label, rerenderFn, extraClass = '') => {
+    const s = window._tableSort[tableKey] || {};
+    const isActive = s.col === col;
+    const dir = isActive ? s.dir : null;
+    const arrow = isActive
+        ? (dir === 'asc'
+            ? '<i class="fas fa-sort-up text-blue-500 ml-1.5" style="font-size:9px;vertical-align:middle"></i>'
+            : '<i class="fas fa-sort-down text-blue-500 ml-1.5" style="font-size:9px;vertical-align:middle"></i>')
+        : '<i class="fas fa-sort ml-1.5 text-slate-300 group-hover:text-slate-400" style="font-size:9px;vertical-align:middle"></i>';
+    const activeClass = isActive ? 'text-blue-600 bg-blue-50/50' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100/50';
+    return `<th class="py-3 px-6 text-[10px] font-black uppercase tracking-widest whitespace-nowrap cursor-pointer select-none group transition-colors ${activeClass} ${extraClass}" onclick="sortTableBy('${tableKey}','${col}','${type}',${rerenderFn})">${label}${arrow}</th>`;
+};
+
 window.activeGRTab = 'pending'; // 'pending' or 'history'
 
 window.activeDepartment = null; // Track current active department for sidebar filtering
@@ -455,7 +500,7 @@ function updateSidebarVisibility() {
     } catch (e) { console.error('Sidebar visibility error:', e); }
 }
 // Helper untuk Print
-window.printHTML = (htmlContent, title, forceHideHeader = false) => {
+window.printHTML = (htmlContent, title, forceHideHeader = false, customSize = null) => {
     const printWindow = window.open('', '_blank', 'height=800,width=800');
     if (!printWindow) {
         alert('Mohon izinkan pop-ups untuk mencetak dokumen.');
@@ -465,6 +510,55 @@ window.printHTML = (htmlContent, title, forceHideHeader = false) => {
     // More robust check for internal header, but fallback to force flag
     const hasInternalHeader = forceHideHeader || htmlContent.includes('id="print-internal-header"') || htmlContent.includes("id='print-internal-header'");
     
+    const pageCSS = customSize 
+        ? `@page { size: ${customSize}; margin: 0; }` 
+        : `@page { margin: 5mm; size: auto; }`;
+
+    const bodyPadding = customSize 
+        ? `padding: 0;` 
+        : `padding: 0;`;
+        
+    const wrapCSS = customSize ? `
+        .print-custom-wrapper {
+            width: calc(100% - 30mm) !important;
+            max-width: none !important;
+            margin: 3mm auto !important;
+            padding: 0 !important;
+        }
+        .max-w-4xl, .max-w-5xl {
+            width: 100% !important;
+            max-width: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+        }
+        /* Compact vertical spaces for continuous form */
+        .space-y-16 > :not([hidden]) ~ :not([hidden]) {
+            margin-top: 1.25rem !important; /* compact signature space */
+        }
+        .mt-12 {
+            margin-top: 0.75rem !important; /* compact signature top margin */
+        }
+        .mb-6, .mb-8 {
+            margin-bottom: 0.5rem !important;
+        }
+        .mb-4 {
+            margin-bottom: 0.25rem !important;
+        }
+        .my-4 {
+            margin-top: 0.25rem !important;
+            margin-bottom: 0.25rem !important;
+        }
+        table {
+            margin-bottom: 0.5rem !important;
+        }
+        td, th {
+            padding-top: 0.25rem !important;
+            padding-bottom: 0.25rem !important;
+        }
+    ` : '';
+
     printWindow.document.write(`
         <html>
             <head>
@@ -473,26 +567,30 @@ window.printHTML = (htmlContent, title, forceHideHeader = false) => {
                 <style>
                     body { font-family: 'Inter', sans-serif; padding: 1rem; background: white; color: black; }
                     @media print {
-                        @page { margin: 5mm; size: auto; }
+                        ${pageCSS}
                         .no-print { display: none !important; }
-                        body { padding: 0; margin: 0; }
+                        body { margin: 0; ${bodyPadding} }
                         #print-internal-header { margin: 0 !important; padding: 0 !important; }
+                        ${wrapCSS}
                     }
                 </style>
             </head>
             <body>
-                ${!hasInternalHeader ? `
-                <div class="flex justify-between items-start mb-8 pb-4 border-b-2 border-gray-100">
-                    <div>
-                        <h1 class="text-2xl font-bold uppercase text-gray-800">${title}</h1>
-                        <p class="text-xs text-gray-500 mt-1">${CONFIG.companyName}</p>
-                    </div>
-                    ${CONFIG.logo ? `<img src="${CONFIG.logo}" class="h-16 w-auto object-contain">` : ''}
-                </div>` : ''}
-                ${htmlContent}
-                <div class="mt-4 print:mt-2 pt-2 border-t border-gray-100 text-[10px] text-gray-400 flex justify-between">
-                    <span>Dicetak pada: ${new Date().toLocaleString('id-ID')}</span>
-                    <span>${CONFIG.companyName} - ERP System</span>
+                <div class="${customSize ? 'print-custom-wrapper' : ''}">
+                    ${!hasInternalHeader ? `
+                    <div class="flex justify-between items-start mb-8 pb-4 border-b-2 border-gray-100">
+                        <div>
+                            <h1 class="text-2xl font-bold uppercase text-gray-800">${title}</h1>
+                            <p class="text-xs text-gray-500 mt-1">${CONFIG.companyName}</p>
+                        </div>
+                        ${CONFIG.logo ? `<img src="${CONFIG.logo}" class="h-16 w-auto object-contain">` : ''}
+                    </div>` : ''}
+                    ${htmlContent}
+                    ${!customSize ? `
+                    <div class="mt-4 print:mt-2 pt-2 border-t border-gray-100 text-[10px] text-gray-400 flex justify-between">
+                        <span>Dicetak pada: ${new Date().toLocaleString('id-ID')}</span>
+                        <span>${CONFIG.companyName} - ERP System</span>
+                    </div>` : ''}
                 </div>
                 <script>
                     window.onload = () => {
@@ -619,7 +717,7 @@ async function navigateTo(viewId, isBack = false) {
         'sales-dashboard':        ['salesOrders', 'salesInvoices', 'customers', 'deliveryOrders'],
         'sales-quotations':       ['salesQuotations', 'customers', 'inventoryItems'],
         'sales-orders':           ['salesOrders', 'customers', 'inventoryItems'],
-        'sales-invoices':         ['salesInvoices', 'customers', 'inventoryItems'],
+        'sales-invoices':         ['salesInvoices', 'customers', 'inventoryItems', 'bankAccounts'],
         'sales-payments':         ['salesInvoices', 'customers', 'accounts', 'bankAccounts'],
         'sales-customers':        ['customers', 'inventoryItems'],
         'sales-delivery-orders':  ['deliveryOrders', 'salesOrders', 'customers', 'inventoryItems', 'stockTransactions'],
@@ -640,8 +738,8 @@ async function navigateTo(viewId, isBack = false) {
         'purchase-rfqs':              ['purchaseRFQs', 'suppliers', 'inventoryItems'],
         'purchase-orders':            ['purchaseOrders', 'suppliers', 'inventoryItems'],
         'purchase-invoices':          ['purchaseInvoices', 'suppliers', 'inventoryItems', 'purchaseOrders'],
-        'purchase-receiving':         ['purchaseOrders', 'inventoryItems', 'stockTransactions'],
-        'purchase-receiving-history': ['purchaseOrders', 'inventoryItems', 'stockTransactions'],
+        'purchase-receiving':         ['purchaseOrders', 'inventoryItems', 'stockTransactions', 'suppliers'],
+        'purchase-receiving-history': ['purchaseOrders', 'inventoryItems', 'stockTransactions', 'suppliers'],
         'purchase-requests':          ['purchaseRequests', 'suppliers', 'inventoryItems'],
         'supplier-payments':          ['supplierPayments', 'suppliers', 'purchaseInvoices', 'accounts', 'bankAccounts'],
         'master-suppliers':           ['suppliers'],
@@ -661,7 +759,7 @@ async function navigateTo(viewId, isBack = false) {
         'inventory-transfer':         ['inventoryItems', 'stockTransactions'],
         'inventory-conversion':       ['inventoryConversions', 'inventoryItems', 'stockTransactions'],
         'inventory-monthly-report':   ['inventoryItems', 'stockTransactions'],
-        'inventory-po-receipt':       ['purchaseOrders', 'inventoryItems', 'stockTransactions'],
+        'inventory-po-receipt':       ['purchaseOrders', 'inventoryItems', 'stockTransactions', 'suppliers'],
         'inventory-delivery':         ['deliveryOrders', 'salesOrders', 'inventoryItems', 'stockTransactions'],
 
         // ── Production (Produksi) ─────────────────────────────────────────────
@@ -1585,7 +1683,8 @@ window.initSalesCharts = function(orders, customers) {
                         data: data,
                         backgroundColor: '#818cf8',
                         borderRadius: 4,
-                        barThickness: 20
+                        barPercentage: 0.5,
+                        categoryPercentage: 0.8
                     }]
                 },
                 options: {
@@ -1595,7 +1694,7 @@ window.initSalesCharts = function(orders, customers) {
                     plugins: { legend: { display: false } },
                     scales: {
                         x: { display: false, grid: {display: false} },
-                        y: { grid: {display: false}, border: {display: false}, ticks: { color: '#6b7280', font: {size: 11} } }
+                        y: { grid: {display: false}, border: {display: false}, ticks: { color: '#6b7280', font: {size: 11}, crossAlign: 'far' } }
                     }
                 }
             });
@@ -1795,7 +1894,8 @@ function renderPurchaseDashboard() {
                             data,
                             backgroundColor: '#818cf8',
                             borderRadius: 4,
-                            barThickness: 20
+                            barPercentage: 0.5,
+                            categoryPercentage: 0.8
                         }]
                     },
                     options: {
@@ -1808,7 +1908,7 @@ function renderPurchaseDashboard() {
                             y: {
                                 grid: { display: false },
                                 border: { display: false },
-                                ticks: { color: '#6b7280', font: { size: 11 } }
+                                ticks: { color: '#6b7280', font: { size: 11 }, crossAlign: 'far' }
                             }
                         }
                     }
@@ -4573,7 +4673,7 @@ window.confirmReceiveGoods = async (id) => {
     }
 };
 
-window.viewPO = (id) => {
+window.viewPO = (id, fromPage = 'po') => {
     const po = db.findById('purchaseOrders', id);
     const suppliers = db.read('suppliers');
     const sup = suppliers.find(s => s.id === po.supplierId) || { name: '-' };
@@ -4605,7 +4705,7 @@ window.viewPO = (id) => {
             delayBadge = `<span class="ml-2 px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-xs font-semibold">âš  Terlambat ${overdue} Hari</span>`;
         }
         deliveryHtml = `
-        <div class="my-4 p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm">
+        <div class="my-4 p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm no-print">
             <h3 class="text-xs font-semibold text-blue-600 uppercase tracking-wider mb-2">Info Pengiriman & Pembayaran</h3>
             <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
                 <div>
@@ -4658,10 +4758,12 @@ window.viewPO = (id) => {
             <div class="text-right"><h3 class="text-xs font-semibold text-gray-500 uppercase mb-1">Detail</h3>
                 <p class="text-sm">Tanggal PO: ${po.date ? po.date.split('T')[0] : '-'}</p>
                 <p class="text-sm">Term Pembayaran: <strong>${po.paymentTerms || '-'}</strong></p>
-                <p class="text-sm">Jatuh Tempo: <strong>${po.dueDate ? po.dueDate.split('T')[0] : '-'}</strong></p>
-                ${po.etd ? `<p class="text-sm">ETD: <strong>${po.etd.split('T')[0]}</strong></p>` : ''}
-                ${po.actualDeliveryDate ? `<p class="text-sm">Tiba: <strong>${po.actualDeliveryDate.split('T')[0]}</strong></p>` : ''}
-                <p class="text-sm">Status: ${statusBadgePurch(po.status)}</p></div>
+                <div class="no-print">
+                    <p class="text-sm">Jatuh Tempo: <strong>${po.dueDate ? po.dueDate.split('T')[0] : '-'}</strong></p>
+                    ${po.etd ? `<p class="text-sm">ETD: <strong>${po.etd.split('T')[0]}</strong></p>` : ''}
+                    ${po.actualDeliveryDate ? `<p class="text-sm">Tiba: <strong>${po.actualDeliveryDate.split('T')[0]}</strong></p>` : ''}
+                    <p class="text-sm">Status: ${statusBadgePurch(po.status)}</p>
+                </div></div>
         </div>
         ${deliveryHtml}
         <table class="w-full border-collapse mb-6"><thead>
@@ -4728,7 +4830,7 @@ window.viewPO = (id) => {
                 </div>
                 
                 <div class="flex items-center gap-3">
-                    <button onclick='printHTML(\`${printable.replace(/`/g, "\\`").replace(/\n/g, "")}\`, "PO ${po.poNumber}", true)' 
+                    <button onclick='printHTML(\`${printable.replace(/`/g, "\\`").replace(/\n/g, "")}\`, "PO ${po.poNumber}", true, "9.5in 5.5in")' 
                         class="px-6 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 hover:border-slate-300 transition-all flex items-center gap-2 active:scale-95 shadow-sm">
                         <i class="fas fa-print text-slate-400"></i> Print PDF
                     </button>
@@ -4737,7 +4839,7 @@ window.viewPO = (id) => {
                         <i class="fas fa-paper-plane mr-1 text-blue-200 text-[9px]"></i> Kirim
                     </button>
                     <div class="w-px h-6 bg-slate-200 mx-2"></div>
-                    <button onclick="renderPurchaseOrders()" class="px-6 py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-md active:scale-95 group">
+                    <button onclick="${fromPage === 'received-inventory' ? 'renderInventoryPOReceipt()' : (fromPage === 'received' ? 'renderPurchaseReceiving()' : 'renderPurchaseOrders()')}" class="px-6 py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-all shadow-md active:scale-95 group">
                         Kembali <i class="fas fa-times ml-2 text-slate-400 group-hover:text-white"></i>
                     </button>
                 </div>
@@ -6275,6 +6377,7 @@ function renderMasterProducts() {
 }
 // --- Purchase Master Items Module ---
 function renderPurchaseMasterItems() {
+    window._lastItemContext = 'purchase';
     const canEdit = getModulePermission('pembelian').edit;
     renderBreadcrumb(['Pembelian', 'Master Items']);
     document.getElementById('pageTitle').innerText = 'Master Item Pembelian';
@@ -6581,14 +6684,21 @@ function renderPurchaseOrders() {
         'RECEIVED': 4,
         'CANCELLED': 5
     };
-    let pos = (db.read('purchaseOrders') || []).sort((a, b) => {
+    const defaultPOSort = (arr) => [...arr].sort((a, b) => {
         const orderA = statusOrder[a.status] || 99;
         const orderB = statusOrder[b.status] || 99;
         if (orderA !== orderB) return orderA - orderB;
         return new Date(b.date || 0) - new Date(a.date || 0);
     });
+
     let filters = window.currentFilters.purchaseOrders || {};
     const suppliers = db.read('suppliers') || [];
+
+    // Load raw POs and enrich with supplierName for sorting
+    let rawPos = (db.read('purchaseOrders') || []).map(po => ({
+        ...po,
+        supplierName: (suppliers.find(s => s.id === po.supplierId) || { name: '' }).name
+    }));
 
     // Check if any date filter is applied
     const hasDateFilter = filters.start || filters.end;
@@ -6599,20 +6709,24 @@ function renderPurchaseOrders() {
         today.setHours(0, 0, 0, 0);
         const todayEnd = new Date();
         todayEnd.setHours(23, 59, 59, 999);
-        pos = pos.filter(po => {
+        rawPos = rawPos.filter(po => {
             const docDate = new Date(po.date);
             return docDate >= today && docDate <= todayEnd;
         });
     } else {
         // Filter Logic
-        if (filters.start) { const d = new Date(filters.start); d.setHours(0, 0, 0, 0); pos = pos.filter(po => new Date(po.date) >= d); }
-        if (filters.end) { const d = new Date(filters.end); d.setHours(23, 59, 59, 999); pos = pos.filter(po => new Date(po.date) <= d); }
-        if (filters.supplier) { pos = pos.filter(po => po.supplierId === filters.supplier); }
-        if (filters.category) { pos = pos.filter(po => po.category === filters.category); }
+        if (filters.start) { const d = new Date(filters.start); d.setHours(0, 0, 0, 0); rawPos = rawPos.filter(po => new Date(po.date) >= d); }
+        if (filters.end) { const d = new Date(filters.end); d.setHours(23, 59, 59, 999); rawPos = rawPos.filter(po => new Date(po.date) <= d); }
+        if (filters.supplier) { rawPos = rawPos.filter(po => po.supplierId === filters.supplier); }
+        if (filters.category) { rawPos = rawPos.filter(po => po.category === filters.category); }
     }
+
+    // Apply user sort or default sort
+    let pos = window.applyTableSort(rawPos, 'po', defaultPOSort);
 
     let rows = pos.map(po => {
         const supplier = suppliers.find(s => s.id === po.supplierId) || { name: 'Unknown' };
+
 
         let statusBadge = '';
         if (po.status === 'DRAFT') statusBadge = '<span class="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-semibold">DRAFT</span>';
@@ -6621,32 +6735,62 @@ function renderPurchaseOrders() {
         if (po.status === 'RECEIVED') statusBadge = '<span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs font-semibold">RECEIVED</span>';
         if (po.status === 'CANCELLED') statusBadge = '<span class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-semibold">CANCELLED</span>';
 
-        // Action buttons based on status — "Pilih Aksi..." dropdown
-        let poOptions = `<option value="view">Lihat Detail</option>`;
+        // Action buttons based on status — Custom modern dropdown
+        let poOptions = `
+            <button onclick="handlePOAction('view', '${po.id}')" class="group flex items-center w-full px-4 py-2 text-[11px] text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-all font-bold text-left" role="menuitem">
+                <i class="fas fa-eye w-4 mr-2 text-slate-400 group-hover:text-blue-500 transition-colors"></i> Lihat Detail
+            </button>
+        `;
 
         if (canEdit && po.status === 'DRAFT') {
-            poOptions += `<option value="edit">Edit</option>`;
-            poOptions += `<option value="send">Kirim ke Supplier</option>`;
-            poOptions += `<option value="approve">Approve</option>`;
-            poOptions += `<option value="delete">Hapus</option>`;
+            poOptions += `
+                <button onclick="handlePOAction('edit', '${po.id}')" class="group flex items-center w-full px-4 py-2 text-[11px] text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-all font-bold text-left" role="menuitem">
+                    <i class="fas fa-edit w-4 mr-2 text-slate-400 group-hover:text-blue-500 transition-colors"></i> Edit
+                </button>
+                <button onclick="handlePOAction('send', '${po.id}')" class="group flex items-center w-full px-4 py-2 text-[11px] text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-all font-bold text-left" role="menuitem">
+                    <i class="fas fa-paper-plane w-4 mr-2 text-slate-400 group-hover:text-blue-500 transition-colors"></i> Kirim ke Supplier
+                </button>
+                <button onclick="handlePOAction('approve', '${po.id}')" class="group flex items-center w-full px-4 py-2.5 text-[11px] text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 transition-all font-bold text-left border-t border-slate-50" role="menuitem">
+                    <i class="fas fa-check w-4 mr-2 text-emerald-400 group-hover:text-emerald-600 transition-colors"></i> Approve
+                </button>
+                <button onclick="handlePOAction('delete', '${po.id}')" class="group flex items-center w-full px-4 py-2 text-[11px] text-red-600 hover:bg-red-50 hover:text-red-700 transition-all font-bold text-left border-t border-slate-50" role="menuitem">
+                    <i class="fas fa-trash-alt w-4 mr-2 text-red-400 group-hover:text-red-600 transition-colors"></i> Hapus
+                </button>
+            `;
         } else if (canEdit && (po.status === 'APPROVED' || po.status === 'PARTIALLY RECEIVED')) {
-            poOptions += `<option value="edit">Edit</option>`;
-            poOptions += `<option value="send">Kirim Ulang</option>`;
-            poOptions += `<option value="delete">Hapus</option>`;
+            poOptions += `
+                <button onclick="handlePOAction('edit', '${po.id}')" class="group flex items-center w-full px-4 py-2 text-[11px] text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-all font-bold text-left" role="menuitem">
+                    <i class="fas fa-edit w-4 mr-2 text-slate-400 group-hover:text-blue-500 transition-colors"></i> Edit
+                </button>
+                <button onclick="handlePOAction('send', '${po.id}')" class="group flex items-center w-full px-4 py-2 text-[11px] text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-all font-bold text-left" role="menuitem">
+                    <i class="fas fa-paper-plane w-4 mr-2 text-slate-400 group-hover:text-blue-500 transition-colors"></i> Kirim Ulang
+                </button>
+                <button onclick="handlePOAction('delete', '${po.id}')" class="group flex items-center w-full px-4 py-2 text-[11px] text-red-600 hover:bg-red-50 hover:text-red-700 transition-all font-bold text-left border-t border-slate-50" role="menuitem">
+                    <i class="fas fa-trash-alt w-4 mr-2 text-red-400 group-hover:text-red-600 transition-colors"></i> Hapus
+                </button>
+            `;
         } else if (po.status === 'RECEIVED') {
-            poOptions += `<option value="send">Kirim Ulang</option>`;
+            poOptions += `
+                <button onclick="handlePOAction('send', '${po.id}')" class="group flex items-center w-full px-4 py-2 text-[11px] text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-all font-bold text-left" role="menuitem">
+                    <i class="fas fa-paper-plane w-4 mr-2 text-slate-400 group-hover:text-blue-500 transition-colors"></i> Kirim Ulang
+                </button>
+            `;
         } else if (po.status === 'CANCELLED') {
-            poOptions += `<option value="delete">Hapus</option>`;
+            poOptions += `
+                <button onclick="handlePOAction('delete', '${po.id}')" class="group flex items-center w-full px-4 py-2 text-[11px] text-red-600 hover:bg-red-50 hover:text-red-700 transition-all font-bold text-left" role="menuitem">
+                    <i class="fas fa-trash-alt w-4 mr-2 text-red-400 group-hover:text-red-600 transition-colors"></i> Hapus
+                </button>
+            `;
         }
 
         let actions = `
-            <div class="inline-block relative w-full md:w-[140px]">
-                <select class="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs rounded-lg pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none transition-all shadow-sm" onchange="handlePOAction(this, '${po.id}')">
-                    <option value="" disabled selected>Pilih Aksi...</option>
+            <div class="relative inline-block text-left font-sans">
+                <button type="button" onclick="event.stopPropagation(); window.togglePOActionsDropdown('${po.id}')" class="flex items-center justify-between gap-x-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 transition-all cursor-pointer shadow-sm active:scale-95 w-[115px]" id="menu-btn-${po.id}">
+                    <span>Pilih Aksi</span>
+                    <i class="fas fa-chevron-down text-[9px] text-slate-400 transition-transform duration-200" id="menu-arrow-${po.id}"></i>
+                </button>
+                <div class="hidden absolute right-0 z-[100] mt-1.5 w-44 origin-top-right rounded-xl bg-white shadow-xl border border-slate-150 overflow-hidden font-medium py-1 divide-y divide-slate-50 animate-in fade-in duration-150" id="menu-dropdown-${po.id}">
                     ${poOptions}
-                </select>
-                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
-                    <i class="fas fa-chevron-down text-[10px]"></i>
                 </div>
             </div>
         `;
@@ -6774,12 +6918,12 @@ function renderPurchaseOrders() {
                 <table class="w-full text-left border-collapse" id="po_table">
                     <thead class="bg-slate-50 sticky top-0 z-30 shadow-[0_1px_0_#e2e8f0]">
                         <tr class="bg-gray-50/50">
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">No. PO</th>
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Tanggal</th>
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Supplier</th>
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Kategori</th>
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">Total</th>
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Status</th>
+                            ${window.sortTh('po','poNumber','string','No. PO','renderPurchaseOrders')}
+                            ${window.sortTh('po','date','date','Tanggal','renderPurchaseOrders')}
+                            ${window.sortTh('po','supplierName','string','Supplier','renderPurchaseOrders')}
+                            ${window.sortTh('po','category','string','Kategori','renderPurchaseOrders')}
+                            ${window.sortTh('po','totalAmount','number','Total','renderPurchaseOrders','text-right')}
+                            ${window.sortTh('po','status','string','Status','renderPurchaseOrders')}
                             <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">Aksi</th>
                         </tr>
                     </thead>
@@ -6908,6 +7052,22 @@ window.sendPOEmail = (id) => {
     window.location.href = `mailto:${supplier.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(mailBody)}`;
 };
 
+window.handlePRAction = function(action, value) {
+    const id = (value && typeof value === 'object' && value.value !== undefined) ? value.value : value;
+    if (!action || !id) return;
+    const cleanId = id.includes('-') ? id.split('-').pop() : id;
+
+    if (action === 'receive') {
+        window.receiveGoodsPO(cleanId);
+    } else if (action === 'view') {
+        window.viewPO(cleanId, 'received');
+    } else if (action === 'invoice') {
+        window.openPurchaseInvoiceForm(cleanId);
+    } else if (action === 'print_npb') {
+        window.printNPB(cleanId);
+    }
+};
+
 function renderPurchaseReceiving() {
     const mainContent = document.getElementById('main-content');
     const tab = window.activeGRTab || 'pending';
@@ -6934,45 +7094,61 @@ function renderPurchaseReceiving() {
         const filters = window.currentFilters.purchaseReceivingPending;
         const supOptions = suppliers.map(s => `<option value="${s.id}" ${filters.supplier === s.id ? 'selected' : ''}>${s.name}</option>`).join('');
 
-        let pos = db.read('purchaseOrders').filter(po => ['APPROVED', 'PARTIALLY RECEIVED'].includes(po.status)).sort((a, b) => new Date(b.date) - new Date(a.date));
+        let rawPos = db.read('purchaseOrders')
+            .filter(po => ['APPROVED', 'PARTIALLY RECEIVED'].includes(po.status))
+            .map(po => {
+                const supplier = suppliers.find(s => s.id === po.supplierId) || { name: 'Unknown' };
+                const totalQty = (po.items || []).reduce((s, i) => s + (i.qty || 0), 0);
+                const receivedQty = (po.items || []).reduce((s, i) => s + (i.receivedQty || 0), 0);
+                const progressPct = totalQty > 0 ? Math.round((receivedQty / totalQty) * 100) : 0;
+                return {
+                    ...po,
+                    supplierName: supplier.name,
+                    totalQty,
+                    receivedQty,
+                    progressPct
+                };
+            });
 
         // Filter Logic
-        if (filters.start) { const d = new Date(filters.start); d.setHours(0, 0, 0, 0); pos = pos.filter(po => new Date(po.date) >= d); }
-        if (filters.end) { const d = new Date(filters.end); d.setHours(23, 59, 59, 999); pos = pos.filter(po => new Date(po.date) <= d); }
-        if (filters.supplier) { pos = pos.filter(po => po.supplierId === filters.supplier); }
+        if (filters.start) { const d = new Date(filters.start); d.setHours(0, 0, 0, 0); rawPos = rawPos.filter(po => new Date(po.date) >= d); }
+        if (filters.end) { const d = new Date(filters.end); d.setHours(23, 59, 59, 999); rawPos = rawPos.filter(po => new Date(po.date) <= d); }
+        if (filters.supplier) { rawPos = rawPos.filter(po => po.supplierId === filters.supplier); }
+
+        const defaultPendingSort = (arr) => [...arr].sort((a, b) => new Date(b.date) - new Date(a.date));
+        let pos = window.applyTableSort(rawPos, 'pr_pending', defaultPendingSort);
 
         let rows = pos.map(po => {
-            const supplier = suppliers.find(s => s.id === po.supplierId) || { name: 'Unknown' };
-            const totalQty = (po.items || []).reduce((s, i) => s + (i.qty || 0), 0);
-            const receivedQty = (po.items || []).reduce((s, i) => s + (i.receivedQty || 0), 0);
-            const progressPct = totalQty > 0 ? Math.round((receivedQty / totalQty) * 100) : 0;
+            const dropdownOptions = [];
+            if (canEdit) {
+                dropdownOptions.push(['receive', 'Terima Barang', 'fas fa-box-open text-blue-500']);
+            }
+            dropdownOptions.push(['view', 'Lihat PO', 'fas fa-eye text-slate-500']);
+
+            const actionHtml = window.renderActionsDropdownHtml(`pr-${po.id}`, 'handlePRAction', dropdownOptions);
 
             return `
                 <tr class="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group">
                     <td class="py-4 px-6 whitespace-nowrap">
-                        <button onclick="viewPO('${po.id}')" class="text-blue-700 hover:text-blue-800 font-mono text-sm font-bold transition-colors cursor-pointer outline-none bg-blue-50/80 px-3.5 py-1.5 rounded-lg border border-blue-200 shadow-sm">
+                        <button onclick="viewPO('${po.id}', 'received')" class="text-blue-700 hover:text-blue-800 font-mono text-sm font-bold transition-colors cursor-pointer outline-none bg-blue-50/80 px-3.5 py-1.5 rounded-lg border border-blue-200 shadow-sm">
                             ${po.poNumber.toUpperCase()}
                         </button>
                     </td>
                     <td class="py-4 px-6 text-sm text-slate-500 font-medium">${formatDate(po.date).split(' ')[0]}</td>
-                    <td class="py-4 px-6 text-sm text-slate-900 font-bold tracking-tight">${supplier.name}</td>
+                    <td class="py-4 px-6 text-sm text-slate-900 font-bold tracking-tight">${po.supplierName}</td>
                     <td class="py-4 px-6">
                         <div class="flex items-center gap-3">
                             <div class="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden" style="min-width:100px">
-                                <div class="h-full bg-blue-500 rounded-full transition-all duration-1000" style="width: ${progressPct}%"></div>
+                                <div class="h-full bg-blue-500 rounded-full transition-all duration-1000" style="width: ${po.progressPct}%"></div>
                             </div>
-                            <span class="text-[10px] font-black text-slate-500 tracking-tighter w-12 text-right">${receivedQty}/${totalQty}</span>
+                            <span class="text-[10px] font-black text-slate-500 tracking-tighter w-12 text-right">${po.receivedQty}/${po.totalQty}</span>
                         </div>
                     </td>
                     <td class="py-4 px-6 text-center">
                         <span class="px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border border-blue-100 bg-blue-50 text-blue-600">${po.status}</span>
                     </td>
-                    <td class="py-4 px-6 text-right whitespace-nowrap">
-                        ${canEdit ? `
-                        <button onclick="receiveGoodsPO('${po.id}')" class="bg-blue-600 hover:bg-slate-900 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-200 transition-all active:scale-95 flex items-center gap-2 ml-auto">
-                            <i class="fas fa-box-open"></i> TERIMA
-                        </button>
-                        ` : ''}
+                    <td class="py-4 px-6 text-right overflow-visible">
+                        ${actionHtml}
                     </td>
                 </tr>`;
         }).join('');
@@ -7033,11 +7209,11 @@ function renderPurchaseReceiving() {
                     <table class="w-full text-left border-collapse" id="pgr_table">
                         <thead class="bg-slate-50 sticky top-0 z-30 shadow-[0_1px_0_#e2e8f0]">
                             <tr class="bg-slate-50/50 border-b border-slate-100">
-                                <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">No. PO</th>
-                                <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Tgl Order</th>
-                                <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Supplier</th>
-                                <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Progres Terima</th>
-                                <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-center">Status</th>
+                                ${window.sortTh('pr_pending','poNumber','string','No. PO','renderPurchaseReceiving')}
+                                ${window.sortTh('pr_pending','date','date','Tgl Order','renderPurchaseReceiving')}
+                                ${window.sortTh('pr_pending','supplierName','string','Supplier','renderPurchaseReceiving')}
+                                ${window.sortTh('pr_pending','progressPct','number','Progres Terima','renderPurchaseReceiving')}
+                                ${window.sortTh('pr_pending','status','string','Status','renderPurchaseReceiving','text-center')}
                                 <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">Aksi</th>
                             </tr>
                         </thead>
@@ -7054,48 +7230,60 @@ function renderPurchaseReceiving() {
         const filters = window.currentFilters.purchaseReceivingHistory;
         const supOptions = suppliers.map(s => `<option value="${s.id}" ${filters.supplier === s.id ? 'selected' : ''}>${s.name}</option>`).join('');
 
-        let pos = db.read('purchaseOrders').filter(po => po.status === 'RECEIVED').sort((a, b) => new Date(b.actualDeliveryDate || b.date) - new Date(a.actualDeliveryDate || a.date));
+        let rawPos = db.read('purchaseOrders')
+            .filter(po => po.status === 'RECEIVED')
+            .map(po => {
+                const supplier = suppliers.find(s => s.id === po.supplierId) || { name: 'Unknown' };
+                const skuCount = (po.items || []).length;
+                const deliveryDate = po.actualDeliveryDate || po.date;
+                return {
+                    ...po,
+                    supplierName: supplier.name,
+                    skuCount,
+                    deliveryDate
+                };
+            });
 
         // Apply Date & Supplier Filters
-        if (filters.start) { const d = new Date(filters.start); d.setHours(0, 0, 0, 0); pos = pos.filter(po => new Date(po.actualDeliveryDate || po.date) >= d); }
-        if (filters.end) { const d = new Date(filters.end); d.setHours(23, 59, 59, 999); pos = pos.filter(po => new Date(po.actualDeliveryDate || po.date) <= d); }
-        if (filters.supplier) { pos = pos.filter(po => po.supplierId === filters.supplier); }
+        if (filters.start) { const d = new Date(filters.start); d.setHours(0, 0, 0, 0); rawPos = rawPos.filter(po => new Date(po.deliveryDate) >= d); }
+        if (filters.end) { const d = new Date(filters.end); d.setHours(23, 59, 59, 999); rawPos = rawPos.filter(po => new Date(po.deliveryDate) <= d); }
+        if (filters.supplier) { rawPos = rawPos.filter(po => po.supplierId === filters.supplier); }
+
+        const defaultHistorySort = (arr) => [...arr].sort((a, b) => new Date(b.deliveryDate) - new Date(a.deliveryDate));
+        let pos = window.applyTableSort(rawPos, 'pr_history', defaultHistorySort);
 
         let rows = pos.map(po => {
-            const supplier = suppliers.find(s => s.id === po.supplierId) || { name: 'Unknown' };
             const hasInvoice = db.read('purchaseInvoices').some(inv => inv.poId === po.id);
 
-            const invoiceBtn = !hasInvoice
-                ? `<button onclick="openPurchaseInvoiceForm('${po.id}')" class="bg-purple-600 hover:bg-slate-900 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-purple-200 transition-all active:scale-95 mr-2">
-                    <i class="fas fa-file-invoice mr-1"></i> Invoice
-                   </button>`
-                : `<span class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest border border-green-100 bg-green-50 text-green-600 mr-2">
-                    <i class="fas fa-check-circle"></i> Invoiced
-                   </span>`;
+            const dropdownOptions = [];
+            if (!hasInvoice) {
+                dropdownOptions.push(['invoice', 'Buat Invoice', 'fas fa-file-invoice text-purple-500']);
+            }
+            dropdownOptions.push(['print_npb', 'Cetak NPB', 'fas fa-print text-slate-500']);
+            dropdownOptions.push(['view', 'Lihat PO', 'fas fa-eye text-slate-500']);
+
+            const actionHtml = window.renderActionsDropdownHtml(`prhist-${po.id}`, 'handlePRAction', dropdownOptions);
 
             return `
                 <tr class="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group">
                     <td class="py-4 px-6 whitespace-nowrap">
-                        <button onclick="viewPO('${po.id}')" class="text-blue-700 hover:text-blue-800 font-mono text-sm font-bold transition-colors cursor-pointer outline-none bg-blue-50/80 px-3.5 py-1.5 rounded-lg border border-blue-200 shadow-sm">
+                        <button onclick="viewPO('${po.id}', 'received')" class="text-blue-700 hover:text-blue-800 font-mono text-sm font-bold transition-colors cursor-pointer outline-none bg-blue-50/80 px-3.5 py-1.5 rounded-lg border border-blue-200 shadow-sm">
                             ${po.poNumber.toUpperCase()}
                         </button>
                     </td>
                     <td class="py-4 px-6 text-sm text-green-600 font-medium text-center">
-                        <span class="bg-green-50/80 px-3 py-1.5 rounded-lg font-mono border border-green-100 shadow-sm">${formatDate(po.actualDeliveryDate || po.date).split(' ')[0]}</span>
+                        <span class="bg-green-50/80 px-3 py-1.5 rounded-lg font-mono border border-green-100 shadow-sm">${formatDate(po.deliveryDate).split(' ')[0]}</span>
                     </td>
-                    <td class="py-4 px-6 text-sm text-slate-900 font-bold tracking-tight">${supplier.name}</td>
-                    <td class="py-4 px-6 text-sm text-right font-black text-slate-500 uppercase">${(po.items || []).length} SKU Selesai</td>
+                    <td class="py-4 px-6 text-sm text-slate-900 font-bold tracking-tight">${po.supplierName}</td>
+                    <td class="py-4 px-6 text-sm text-right font-black text-slate-500 uppercase">${po.skuCount} SKU Selesai</td>
                     <td class="py-4 px-6 text-center">
-                        <span class="px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border border-green-100 bg-green-50 text-green-600 shadow-sm">RECEIVED</span>
+                        <div class="flex flex-col gap-1 items-center justify-center">
+                            <span class="px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border border-green-100 bg-green-50 text-green-600 shadow-sm">RECEIVED</span>
+                            ${hasInvoice ? `<span class="px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border border-purple-100 bg-purple-50 text-purple-600 shadow-sm">INVOICED</span>` : ''}
+                        </div>
                     </td>
-                    <td class="py-4 px-6 text-right flex items-center justify-end whitespace-nowrap">
-                        ${invoiceBtn}
-                        <button onclick="printNPB('${po.id}')" class="bg-white text-slate-400 hover:text-blue-600 hover:bg-blue-50 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-slate-100 hover:border-blue-200 flex items-center gap-2 mr-2 group/print">
-                            <i class="fas fa-print group-hover/print:scale-110 transition-transform"></i> Cetak NPB
-                        </button>
-                        <button onclick="viewPO('${po.id}')" class="text-slate-400 hover:text-slate-800 transition-colors p-2 rounded-lg hover:bg-slate-100">
-                            <i class="fas fa-eye text-lg"></i>
-                        </button>
+                    <td class="py-4 px-6 text-right overflow-visible">
+                        ${actionHtml}
                     </td>
                 </tr>`;
         }).join('');
@@ -7156,11 +7344,11 @@ function renderPurchaseReceiving() {
                     <table class="w-full text-left border-collapse" id="pgr_table">
                         <thead class="bg-slate-50 sticky top-0 z-30 shadow-[0_1px_0_#e2e8f0]">
                             <tr class="bg-slate-50/50 border-b border-slate-100">
-                                <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">No. PO</th>
-                                <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-center">Tgl Selesai</th>
-                                <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Supplier</th>
-                                <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">Hasil Terima</th>
-                                <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-center">Status</th>
+                                ${window.sortTh('pr_history','poNumber','string','No. PO','renderPurchaseReceiving')}
+                                ${window.sortTh('pr_history','deliveryDate','date','Tgl Selesai','renderPurchaseReceiving','text-center')}
+                                ${window.sortTh('pr_history','supplierName','string','Supplier','renderPurchaseReceiving')}
+                                ${window.sortTh('pr_history','skuCount','number','Hasil Terima','renderPurchaseReceiving','text-right')}
+                                ${window.sortTh('pr_history','status','string','Status','renderPurchaseReceiving','text-center')}
                                 <th class="py-4 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">Aksi</th>
                             </tr>
                         </thead>
@@ -7263,17 +7451,63 @@ window.deletePO = (id) => {
     }
 };
 
-window.handlePOAction = (selectEl, poId) => {
-    const action = selectEl.value;
-    selectEl.value = ''; // reset to placeholder
+window.handlePOAction = (actionOrSelectEl, poId) => {
+    let action;
+    if (typeof actionOrSelectEl === 'string') {
+        action = actionOrSelectEl;
+    } else {
+        action = actionOrSelectEl.value;
+        actionOrSelectEl.value = ''; // reset to placeholder
+    }
     if (!action) return;
 
-    if (action === 'view')    return viewPO(poId);
-    if (action === 'edit')    return editPO(poId);
-    if (action === 'send')    return openSendPOModal(poId);
-    if (action === 'approve') return updatePOStatus(poId, 'APPROVED');
-    if (action === 'delete')  return deletePO(poId);
+    const cleanId = typeof poId === 'string' ? poId.replace(/^[a-z]+-/, '') : poId;
+
+    if (action === 'view')    return viewPO(cleanId);
+    if (action === 'edit')    return editPO(cleanId);
+    if (action === 'send')    return openSendPOModal(cleanId);
+    if (action === 'approve') return updatePOStatus(cleanId, 'APPROVED');
+    if (action === 'delete')  return deletePO(cleanId);
 };
+
+window.togglePOActionsDropdown = (id) => {
+    // Close all other open dropdowns first
+    document.querySelectorAll('[id^="menu-dropdown-"]').forEach(el => {
+        if (el.id !== `menu-dropdown-${id}`) {
+            el.classList.add('hidden');
+            const arrow = document.getElementById(`menu-arrow-${el.id.replace('menu-dropdown-', '')}`);
+            if (arrow) arrow.classList.remove('rotate-180');
+        }
+    });
+
+    const dropdown = document.getElementById(`menu-dropdown-${id}`);
+    const arrow = document.getElementById(`menu-arrow-${id}`);
+    if (dropdown) {
+        const isHidden = dropdown.classList.toggle('hidden');
+        if (arrow) {
+            if (isHidden) {
+                arrow.classList.remove('rotate-180');
+            } else {
+                arrow.classList.add('rotate-180');
+            }
+        }
+    }
+};
+
+// Close dropdowns on click outside
+if (!window._poDropdownListenerAdded) {
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('[id^="menu-btn-"]')) {
+            document.querySelectorAll('[id^="menu-dropdown-"]').forEach(el => {
+                el.classList.add('hidden');
+                const id = el.id.replace('menu-dropdown-', '');
+                const arrow = document.getElementById(`menu-arrow-${id}`);
+                if (arrow) arrow.classList.remove('rotate-180');
+            });
+        }
+    });
+    window._poDropdownListenerAdded = true;
+}
 
 window.updatePOStatus = async (id, newStatus) => {
     await db.update('purchaseOrders', id, { status: newStatus });
@@ -7297,41 +7531,36 @@ function _renderPurchaseInvoicesList() {
 
     document.getElementById('pageTitle').innerText = 'Purchase Invoice';
 
-    const statusOrder = {
-        'UNPAID': 1,
-        'PENDING': 1,
-        'PARTIAL': 2,
-        'PARTIALLY PAID': 2,
-        'PAID': 3
-    };
 
-    let invs = db.read('purchaseInvoices').sort((a, b) => {
+    const statusOrder = { 'UNPAID': 1, 'PENDING': 1, 'PARTIAL': 2, 'PARTIALLY PAID': 2, 'PAID': 3 };
+
+    const defaultPISort = (arr) => [...arr].sort((a, b) => {
         const orderA = statusOrder[a.status] || 99;
         const orderB = statusOrder[b.status] || 99;
         if (orderA !== orderB) return orderA - orderB;
         return new Date(b.date) - new Date(a.date);
     });
 
+    // Enrich with supplierName and invNumber for sorting
+    let rawInvs = (db.read('purchaseInvoices') || []).map(inv => ({
+        ...inv,
+        supplierName: (suppliers.find(s => s.id === inv.supplierId) || { name: '' }).name,
+        invNumber: inv.invNumber || inv.invoiceNumber || ''
+    }));
+
     // Check if any date filter is applied
     const hasDateFilter = filters.start || filters.end;
-    
-    // If no date filter, show today's data only
     if (!hasDateFilter) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const todayEnd = new Date();
-        todayEnd.setHours(23, 59, 59, 999);
-        invs = invs.filter(i => {
-            const docDate = new Date(i.date);
-            return docDate >= today && docDate <= todayEnd;
-        });
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+        rawInvs = rawInvs.filter(i => { const d = new Date(i.date); return d >= today && d <= todayEnd; });
     } else {
-        // Apply Filters
-        if (filters.start) { const d = new Date(filters.start); d.setHours(0, 0, 0, 0); invs = invs.filter(i => new Date(i.date) >= d); }
-        if (filters.end) { const d = new Date(filters.end); d.setHours(23, 59, 59, 999); invs = invs.filter(i => new Date(i.date) <= d); }
-        if (filters.supplier) { invs = invs.filter(i => i.supplierId === filters.supplier); }
-        if (filters.status) { invs = invs.filter(i => i.status === filters.status); }
+        if (filters.start) { const d = new Date(filters.start); d.setHours(0, 0, 0, 0); rawInvs = rawInvs.filter(i => new Date(i.date) >= d); }
+        if (filters.end) { const d = new Date(filters.end); d.setHours(23, 59, 59, 999); rawInvs = rawInvs.filter(i => new Date(i.date) <= d); }
+        if (filters.supplier) { rawInvs = rawInvs.filter(i => i.supplierId === filters.supplier); }
+        if (filters.status) { rawInvs = rawInvs.filter(i => i.status === filters.status); }
     }
+    let invs = window.applyTableSort(rawInvs, 'pi', defaultPISort);
 
     let rows = invs.map(inv => {
         const sup = suppliers.find(s => s.id === inv.supplierId) || { name: 'Unknown' };
@@ -7433,11 +7662,11 @@ function _renderPurchaseInvoicesList() {
                 <table class="w-full text-left border-collapse" id="pinv_table">
                     <thead class="bg-slate-50 sticky top-0 z-30 shadow-[0_1px_0_#e2e8f0]">
                         <tr class="bg-gray-50/50 border-b border-slate-100">
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">No. Invoice</th>
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Tanggal</th>
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Supplier</th>
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">Total Tagihan</th>
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-center">Status</th>
+                            ${window.sortTh('pi','invNumber','string','No. Invoice','_renderPurchaseInvoicesList')}
+                            ${window.sortTh('pi','date','date','Tanggal','_renderPurchaseInvoicesList')}
+                            ${window.sortTh('pi','supplierName','string','Supplier','_renderPurchaseInvoicesList')}
+                            ${window.sortTh('pi','totalAmount','number','Total Tagihan','_renderPurchaseInvoicesList','text-right')}
+                            ${window.sortTh('pi','status','string','Status','_renderPurchaseInvoicesList','text-center')}
                             <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">Aksi</th>
                         </tr>
                     </thead>
@@ -7497,17 +7726,24 @@ window.navigateToReceivingHistory = () => {
 };
 
 // --- Sales Quotations Module ---
-window.handleSalesAction = (selectEl, id) => {
-    const act = selectEl.value;
+window.handleSalesAction = (actionOrSelectEl, id) => {
+    let act;
+    if (typeof actionOrSelectEl === 'string') {
+        act = actionOrSelectEl;
+    } else {
+        act = actionOrSelectEl.value;
+        actionOrSelectEl.value = ""; // Reset for next use
+    }
     if (!act) return;
-    selectEl.value = ""; // Reset for next use
     
-    if (act === 'view') viewQT(id);
-    else if (act === 'edit') openQTModal(id);
-    else if (act === 'confirm') updateQTStatus(id, 'CONFIRMED');
-    else if (act === 'send') openSendQTModal(id);
-    else if (act === 'delete') deleteQT(id);
-    else if (act === 'makeso') convertQTtoSO(id);
+    const cleanId = typeof id === 'string' ? id.replace(/^[a-z]+-/, '') : id;
+    
+    if (act === 'view') viewQT(cleanId);
+    else if (act === 'edit') openQTModal(cleanId);
+    else if (act === 'confirm') updateQTStatus(cleanId, 'CONFIRMED');
+    else if (act === 'send') openSendQTModal(cleanId);
+    else if (act === 'delete') deleteQT(cleanId);
+    else if (act === 'makeso') convertQTtoSO(cleanId);
 };
 
 function renderSalesQuotations() {
@@ -7517,43 +7753,32 @@ function renderSalesQuotations() {
 
     const filters = window.currentFilters.salesQuotations;
     const statusOrder = { 'DRAFT': 0, 'SENT': 1, 'CONFIRMED': 2, 'SO_CREATED': 3, 'CANCELLED': 4 };
-    let qts = db.read('salesQuotations').sort((a, b) => {
+    const customers = db.read('customers');
+    const custOptions = customers.map(c => `<option value="${c.id}" ${filters.customer === c.id ? 'selected' : ''}>${c.name}</option>`).join('');
+
+    const defaultQTSort = (arr) => [...arr].sort((a, b) => {
         const sa = statusOrder[a.status] ?? 99;
         const sb = statusOrder[b.status] ?? 99;
         if (sa !== sb) return sa - sb;
         return new Date(b.date) - new Date(a.date);
     });
-    const customers = db.read('customers');
-    const custOptions = customers.map(c => `<option value="${c.id}" ${filters.customer === c.id ? 'selected' : ''}>${c.name}</option>`).join('');
 
-    // Check if any date filter is applied
+    let rawQts = (db.read('salesQuotations') || []).map(qt => ({
+        ...qt,
+        customerName: qt.customerName || (customers.find(c => c.id === qt.customerId) || { name: '' }).name
+    }));
+
     const hasDateFilter = filters.start || filters.end;
-    
-    // If no date filter, show today's data only
     if (!hasDateFilter) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const todayEnd = new Date();
-        todayEnd.setHours(23, 59, 59, 999);
-        qts = qts.filter(q => {
-            const docDate = new Date(q.date);
-            return docDate >= today && docDate <= todayEnd;
-        });
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+        rawQts = rawQts.filter(q => { const d = new Date(q.date); return d >= today && d <= todayEnd; });
     } else {
-        // Apply Filters
-        if (filters.start) {
-            const d = new Date(filters.start); d.setHours(0, 0, 0, 0);
-            qts = qts.filter(q => new Date(q.date) >= d);
-        }
-        if (filters.end) {
-            const d = new Date(filters.end); d.setHours(23, 59, 59, 999);
-            qts = qts.filter(q => new Date(q.date) <= d);
-        }
-        if (filters.customer) {
-            qts = qts.filter(q => q.customerId === filters.customer);
-        }
+        if (filters.start) { const d = new Date(filters.start); d.setHours(0, 0, 0, 0); rawQts = rawQts.filter(q => new Date(q.date) >= d); }
+        if (filters.end) { const d = new Date(filters.end); d.setHours(23, 59, 59, 999); rawQts = rawQts.filter(q => new Date(q.date) <= d); }
+        if (filters.customer) { rawQts = rawQts.filter(q => q.customerId === filters.customer); }
     }
-
+    let qts = window.applyTableSort(rawQts, 'qt', defaultQTSort);
     let rows = qts.map(qt => {
         const customerNameDisplay = qt.customerName || (customers.find(c => c.id === qt.customerId) || { name: 'Unknown' }).name;
         let statusColor = 'bg-gray-100 text-gray-700';
@@ -7562,43 +7787,32 @@ function renderSalesQuotations() {
         if (qt.status === 'CANCELLED') statusColor = 'bg-red-100 text-red-700';
         if (qt.status === 'SO_CREATED') statusColor = 'bg-purple-100 text-purple-700';
 
-        let options = '';
+        const dropdownOptions = [['view', 'Lihat Detail', 'fas fa-eye']];
 
         if (canEdit && qt.status === 'DRAFT') {
-            options += `<option value="confirm">Konfirmasi</option>`;
-            options += `<option value="edit">Edit</option>`;
-            options += `<option value="send">Kirim Quotation</option>`;
-            options += `<option value="delete">Hapus</option>`;
+            dropdownOptions.push(['confirm', 'Konfirmasi', 'fas fa-check']);
+            dropdownOptions.push(['edit', 'Edit', 'fas fa-edit']);
+            dropdownOptions.push(['send', 'Kirim Quotation', 'fas fa-paper-plane']);
+            dropdownOptions.push(['delete', 'Hapus', 'fas fa-trash-alt', 'text-red-600 hover:bg-red-50 hover:text-red-700 border-t border-slate-50']);
         } else if (canEdit && qt.status === 'SENT') {
-            options += `<option value="confirm">Konfirmasi</option>`;
-            options += `<option value="edit">Edit</option>`;
-            options += `<option value="send">Kirim Ulang</option>`;
-            options += `<option value="delete">Hapus</option>`;
+            dropdownOptions.push(['confirm', 'Konfirmasi', 'fas fa-check']);
+            dropdownOptions.push(['edit', 'Edit', 'fas fa-edit']);
+            dropdownOptions.push(['send', 'Kirim Ulang', 'fas fa-paper-plane']);
+            dropdownOptions.push(['delete', 'Hapus', 'fas fa-trash-alt', 'text-red-600 hover:bg-red-50 hover:text-red-700 border-t border-slate-50']);
         } else if (canEdit && qt.status === 'CONFIRMED') {
-            options += `<option value="makeso">Buat Sales Order</option>`;
-            options += `<option value="edit">Edit</option>`;
-            options += `<option value="send">Kirim Ulang</option>`;
-            options += `<option value="delete">Hapus</option>`;
+            dropdownOptions.push(['makeso', 'Buat Sales Order', 'fas fa-shopping-bag text-indigo-500', 'text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700']);
+            dropdownOptions.push(['edit', 'Edit', 'fas fa-edit']);
+            dropdownOptions.push(['send', 'Kirim Ulang', 'fas fa-paper-plane']);
+            dropdownOptions.push(['delete', 'Hapus', 'fas fa-trash-alt', 'text-red-600 hover:bg-red-50 hover:text-red-700 border-t border-slate-50']);
         } else if (canEdit && qt.status === 'SO_CREATED') {
-            options += `<option value="edit">Edit</option>`;
-            options += `<option value="send">Kirim Ulang</option>`;
-            options += `<option value="delete">Hapus</option>`;
+            dropdownOptions.push(['edit', 'Edit', 'fas fa-edit']);
+            dropdownOptions.push(['send', 'Kirim Ulang', 'fas fa-paper-plane']);
+            dropdownOptions.push(['delete', 'Hapus', 'fas fa-trash-alt', 'text-red-600 hover:bg-red-50 hover:text-red-700 border-t border-slate-50']);
         } else if (qt.status === 'SO_CREATED') {
-            options += `<option value="send">Kirim Ulang</option>`;
+            dropdownOptions.push(['send', 'Kirim Ulang', 'fas fa-paper-plane']);
         }
 
-        let actionHtml = `
-            <div class="inline-block relative w-full md:w-[130px]">
-                <select class="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs rounded-lg pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none transition-all shadow-sm" onchange="handleSalesAction(this, '${qt.id}')">
-                    <option value="" disabled selected>Pilih Aksi...</option>
-                    <option value="view">Lihat Detail</option>
-                    ${options}
-                </select>
-                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
-                    <i class="fas fa-chevron-down text-[10px]"></i>
-                </div>
-            </div>
-        `;
+        let actionHtml = window.renderActionsDropdownHtml(`qt-${qt.id}`, 'handleSalesAction', dropdownOptions);
 
         return `
             <tr class="border-b border-gray-100 hover:bg-slate-50 transition-colors">
@@ -7694,13 +7908,12 @@ function renderSalesQuotations() {
             <!-- Table Container wrapper -->
             <div class="flex-1 overflow-auto">
                 <table class="w-full text-left border-collapse" id="qt_table">
-                    <thead class="bg-slate-50 sticky top-0 z-30 shadow-[0_1px_0_#e2e8f0]">
                         <tr class="bg-slate-50/80 border-b border-gray-200">
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap">No. QT</th>
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap">Tanggal</th>
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap">Customer</th>
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap text-right">Grand Total</th>
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap text-center">Status</th>
+                            ${window.sortTh('qt','qtNumber','string','No. QT','renderSalesQuotations')}
+                            ${window.sortTh('qt','date','date','Tanggal','renderSalesQuotations')}
+                            ${window.sortTh('qt','customerName','string','Customer','renderSalesQuotations')}
+                            ${window.sortTh('qt','totalAmount','number','Grand Total','renderSalesQuotations','text-right')}
+                            ${window.sortTh('qt','status','string','Status','renderSalesQuotations','text-center')}
                             <th class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap text-right">Aksi</th>
                         </tr>
                     </thead>
@@ -8338,44 +8551,32 @@ function renderPurchaseRFQs() {
     const supOptions = suppliers.map(s => `<option value="${s.id}" ${filters.supplier === s.id ? 'selected' : ''}>${s.name}</option>`).join('');
 
     const statusWeight = { 'DRAFT': 0, 'SENT': 1, 'CONFIRMED': 2, 'PO_CREATED': 3, 'CANCELLED': 4 };
-    let rfqs = db.read('purchaseRFQs').sort((a, b) => {
-        const weightA = statusWeight[a.status] !== undefined ? statusWeight[a.status] : 99;
-        const weightB = statusWeight[b.status] !== undefined ? statusWeight[b.status] : 99;
-        if (weightA !== weightB) return weightA - weightB;
+
+    const defaultRFQSort = (arr) => [...arr].sort((a, b) => {
+        const wa = statusWeight[a.status] !== undefined ? statusWeight[a.status] : 99;
+        const wb = statusWeight[b.status] !== undefined ? statusWeight[b.status] : 99;
+        if (wa !== wb) return wa - wb;
         return new Date(b.date) - new Date(a.date);
     });
 
-    // Check if any date filter is applied
-    const hasDateFilter = filters.start || filters.end;
-    
-    // If no date filter, show today's data only
-    if (!hasDateFilter) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const todayEnd = new Date();
-        todayEnd.setHours(23, 59, 59, 999);
-        rfqs = rfqs.filter(r => {
-            const docDate = new Date(r.date);
-            return docDate >= today && docDate <= todayEnd;
-        });
-    } else {
-        // Apply Filters
-        if (filters.start) {
-            const d = new Date(filters.start); d.setHours(0, 0, 0, 0);
-            rfqs = rfqs.filter(r => new Date(r.date) >= d);
-        }
-        if (filters.end) {
-            const d = new Date(filters.end); d.setHours(23, 59, 59, 999);
-            rfqs = rfqs.filter(r => new Date(r.date) <= d);
-        }
-        if (filters.supplier) {
-            rfqs = rfqs.filter(r => r.supplierId === filters.supplier);
-        }
-        if (filters.status) {
-            rfqs = rfqs.filter(r => r.status === filters.status);
-        }
-    }
+    let rawRfqs = (db.read('purchaseRFQs') || []).map(rfq => ({
+        ...rfq,
+        supplierName: (suppliers.find(s => s.id === rfq.supplierId) || { name: '' }).name,
+        rfqNumber: rfq.rfqNumber || ''
+    }));
 
+    const hasDateFilter = filters.start || filters.end;
+    if (!hasDateFilter) {
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+        rawRfqs = rawRfqs.filter(r => { const d = new Date(r.date); return d >= today && d <= todayEnd; });
+    } else {
+        if (filters.start) { const d = new Date(filters.start); d.setHours(0, 0, 0, 0); rawRfqs = rawRfqs.filter(r => new Date(r.date) >= d); }
+        if (filters.end) { const d = new Date(filters.end); d.setHours(23, 59, 59, 999); rawRfqs = rawRfqs.filter(r => new Date(r.date) <= d); }
+        if (filters.supplier) { rawRfqs = rawRfqs.filter(r => r.supplierId === filters.supplier); }
+        if (filters.status) { rawRfqs = rawRfqs.filter(r => r.status === filters.status); }
+    }
+    let rfqs = window.applyTableSort(rawRfqs, 'rfq', defaultRFQSort);
     let rows = rfqs.map(rfq => {
         const supplier = suppliers.find(s => s.id === rfq.supplierId) || { name: 'Unknown' };
         let statusColor = 'bg-gray-100 text-gray-700';
@@ -8384,35 +8585,25 @@ function renderPurchaseRFQs() {
         if (rfq.status === 'PO_CREATED') statusColor = 'bg-purple-100 text-purple-700';
         if (rfq.status === 'CANCELLED') statusColor = 'bg-red-100 text-red-700';
 
-        let options = `<option value="view">Lihat Detail</option>`;
+        const dropdownOptions = [['view', 'Lihat Detail', 'fas fa-eye']];
 
         if (canEdit && rfq.status === 'DRAFT') {
-            options += `<option value="edit">Edit</option>`;
-            options += `<option value="send">Kirim ke Supplier</option>`;
-            options += `<option value="confirm">Confirm</option>`;
-            options += `<option value="delete">Hapus</option>`;
+            dropdownOptions.push(['edit', 'Edit', 'fas fa-edit']);
+            dropdownOptions.push(['send', 'Kirim ke Supplier', 'fas fa-paper-plane']);
+            dropdownOptions.push(['confirm', 'Confirm', 'fas fa-check']);
+            dropdownOptions.push(['delete', 'Hapus', 'fas fa-trash-alt', 'text-red-600 hover:bg-red-50 hover:text-red-700 border-t border-slate-50']);
         } else if (canEdit && rfq.status === 'SENT') {
-            options += `<option value="send">Kirim Ulang</option>`;
-            options += `<option value="confirm">Confirm</option>`;
-            options += `<option value="delete">Hapus</option>`;
+            dropdownOptions.push(['send', 'Kirim Ulang', 'fas fa-paper-plane']);
+            dropdownOptions.push(['confirm', 'Confirm', 'fas fa-check']);
+            dropdownOptions.push(['delete', 'Hapus', 'fas fa-trash-alt', 'text-red-600 hover:bg-red-50 hover:text-red-700 border-t border-slate-50']);
         } else if (canEdit && rfq.status === 'CONFIRMED') {
-            options += `<option value="create_po">Buat Purchase Order</option>`;
-            options += `<option value="delete">Hapus</option>`;
+            dropdownOptions.push(['create_po', 'Buat Purchase Order', 'fas fa-shopping-cart text-indigo-500', 'text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700']);
+            dropdownOptions.push(['delete', 'Hapus', 'fas fa-trash-alt', 'text-red-600 hover:bg-red-50 hover:text-red-700 border-t border-slate-50']);
         } else if (rfq.status === 'PO_CREATED') {
-            options += `<option value="delete">Hapus</option>`;
+            dropdownOptions.push(['delete', 'Hapus', 'fas fa-trash-alt', 'text-red-600 hover:bg-red-50 hover:text-red-700']);
         }
 
-        let actionHtml = `
-            <div class="inline-block relative w-full md:w-[140px]">
-                <select class="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs rounded-lg pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none transition-all shadow-sm" onchange="handleRFQAction(this, '${rfq.id}')">
-                    <option value="" disabled selected>Pilih Aksi...</option>
-                    ${options}
-                </select>
-                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
-                    <i class="fas fa-chevron-down text-[10px]"></i>
-                </div>
-            </div>
-        `;
+        let actionHtml = window.renderActionsDropdownHtml(`rfq-${rfq.id}`, 'handleRFQAction', dropdownOptions);
 
         const rfqNumDisplay = (rfq.rfqNumber || 'RFQ-???').toUpperCase();
         const rfqDateDisplay = rfq.date ? formatDate(rfq.date).split(' ')[0] : '-';
@@ -8508,13 +8699,12 @@ function renderPurchaseRFQs() {
             <!-- Table Container wrapper -->
             <div class="flex-1 overflow-auto">
                 <table class="w-full text-left border-collapse" id="rfq_table">
-                    <thead class="bg-slate-50 sticky top-0 z-30 shadow-[0_1px_0_#e2e8f0]">
                         <tr class="bg-slate-50/80 border-b border-gray-200">
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap">No. RFQ</th>
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap">Tanggal</th>
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap">Supplier</th>
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap">Kategori</th>
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap text-center">Status</th>
+                            ${window.sortTh('rfq','rfqNumber','string','No. RFQ','renderPurchaseRFQs')}
+                            ${window.sortTh('rfq','date','date','Tanggal','renderPurchaseRFQs')}
+                            ${window.sortTh('rfq','supplierName','string','Supplier','renderPurchaseRFQs')}
+                            ${window.sortTh('rfq','category','string','Kategori','renderPurchaseRFQs')}
+                            ${window.sortTh('rfq','status','string','Status','renderPurchaseRFQs','text-center')}
                             <th class="py-3 px-6 text-[10px] font-black text-slate-500 uppercase tracking-widest whitespace-nowrap text-right">Aksi</th>
                         </tr>
                     </thead>
@@ -8532,17 +8722,24 @@ function renderPurchaseRFQs() {
     `;
 }
 
-window.handleRFQAction = (selectEl, rfqId) => {
-    const action = selectEl.value;
-    selectEl.value = ''; // reset back to placeholder
+window.handleRFQAction = (actionOrSelectEl, rfqId) => {
+    let action;
+    if (typeof actionOrSelectEl === 'string') {
+        action = actionOrSelectEl;
+    } else {
+        action = actionOrSelectEl.value;
+        actionOrSelectEl.value = ''; // reset back to placeholder
+    }
     if (!action) return;
 
-    if (action === 'view')      return viewPurchaseRFQ(rfqId);
-    if (action === 'edit')      return openRFQForm(rfqId);
-    if (action === 'send')      return openSendPurchaseRFQModal(rfqId);
-    if (action === 'confirm')   return updatePurchaseRFQStatus(rfqId, 'CONFIRMED');
-    if (action === 'create_po') return convertRFQtoPO(rfqId);
-    if (action === 'delete')    return deletePurchaseRFQ(rfqId);
+    const cleanId = typeof rfqId === 'string' ? rfqId.replace(/^[a-z]+-/, '') : rfqId;
+
+    if (action === 'view')      return viewPurchaseRFQ(cleanId);
+    if (action === 'edit')      return openRFQForm(cleanId);
+    if (action === 'send')      return openSendPurchaseRFQModal(cleanId);
+    if (action === 'confirm')   return updatePurchaseRFQStatus(cleanId, 'CONFIRMED');
+    if (action === 'create_po') return convertRFQtoPO(cleanId);
+    if (action === 'delete')    return deletePurchaseRFQ(cleanId);
 };
 
 window.filterRFQTable = () => {
@@ -9598,16 +9795,23 @@ window.convertQTtoSO = (qtId) => {
 };
 
 // --- Sales Orders Module ---
-window.handleSOAction = (selectEl, id) => {
-    const act = selectEl.value;
+window.handleSOAction = (actionOrSelectEl, id) => {
+    let act;
+    if (typeof actionOrSelectEl === 'string') {
+        act = actionOrSelectEl;
+    } else {
+        act = actionOrSelectEl.value;
+        actionOrSelectEl.value = ""; // Reset for next use
+    }
     if (!act) return;
-    selectEl.value = ""; // Reset for next use
     
-    if (act === 'view') viewSO(id);
-    else if (act === 'edit') openSOModal(db.findById('salesOrders', id)); // Logic handles edit if object passed
-    else if (act === 'confirm') updateSOStatus(id, 'CONFIRMED');
-    else if (act === 'send') openSendSOModal(id);
-    else if (act === 'delete') deleteSO(id);
+    const cleanId = typeof id === 'string' ? id.replace(/^[a-z]+-/, '') : id;
+    
+    if (act === 'view') viewSO(cleanId);
+    else if (act === 'edit') editSO(cleanId);
+    else if (act === 'confirm') updateSOStatus(cleanId, 'CONFIRMED');
+    else if (act === 'send') openSendSOModal(cleanId);
+    else if (act === 'delete') deleteSO(cleanId);
 };
 
 window.filterSOTable = () => {
@@ -9647,17 +9851,7 @@ window.toggleSelectAllSO = (master) => {
     });
 };
 
-window.handleSOAction = (selectEl, id) => {
-    const act = selectEl.value;
-    if (!act) return;
-    selectEl.value = ""; // Reset for next use
-    
-    if (act === 'view') viewSO(id);
-    else if (act === 'edit') editSO(id); // Use separate edit function
-    else if (act === 'confirm') updateSOStatus(id, 'CONFIRMED');
-    else if (act === 'send') openSendSOModal(id);
-    else if (act === 'delete') deleteSO(id);
-};
+
 
 // New function specifically for editing SO
 window.editSO = (soId) => {
@@ -9863,40 +10057,35 @@ function renderSalesOrders() {
     renderBreadcrumb(['Sales', 'Sales Orders']);
     const mainContent = document.getElementById('main-content');
 
+
     const soStatusOrder = { 'DRAFT': 0, 'CONFIRMED': 1, 'DELIVERED': 2 };
-    let sos = db.read('salesOrders').sort((a, b) => {
+    const customers = db.read('customers');
+    const filters = window.currentFilters.salesOrders || { start: '', end: '', customer: '' };
+
+    const defaultSOSort = (arr) => [...arr].sort((a, b) => {
         const sa = soStatusOrder[a.status] ?? 99;
         const sb = soStatusOrder[b.status] ?? 99;
         if (sa !== sb) return sa - sb;
         return new Date(b.date) - new Date(a.date);
     });
-    const customers = db.read('customers');
-    const filters = window.currentFilters.salesOrders || { start: '', end: '', customer: '' };
+
+    // Enrich with customerName for sorting
+    let rawSos = (db.read('salesOrders') || []).map(so => ({
+        ...so,
+        customerName: (customers.find(c => c.id === so.customerId) || { name: '' }).name
+    }));
 
     // Check if any date filter is applied
     const hasDateFilter = filters.start || filters.end;
-    
-    // If no date filter, show today's data only
     if (!hasDateFilter) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const todayEnd = new Date();
-        todayEnd.setHours(23, 59, 59, 999);
-        sos = sos.filter(q => {
-            const docDate = new Date(q.date);
-            return docDate >= today && docDate <= todayEnd;
-        });
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+        rawSos = rawSos.filter(q => { const d = new Date(q.date); return d >= today && d <= todayEnd; });
     } else {
-        // Apply Filters
-        if (filters.start) {
-            const d = new Date(filters.start); d.setHours(0, 0, 0, 0);
-            sos = sos.filter(q => new Date(q.date) >= d);
-        }
-        if (filters.end) {
-            const d = new Date(filters.end); d.setHours(23, 59, 59, 999);
-            sos = sos.filter(q => new Date(q.date) <= d);
-        }
+        if (filters.start) { const d = new Date(filters.start); d.setHours(0, 0, 0, 0); rawSos = rawSos.filter(q => new Date(q.date) >= d); }
+        if (filters.end) { const d = new Date(filters.end); d.setHours(23, 59, 59, 999); rawSos = rawSos.filter(q => new Date(q.date) <= d); }
     }
+    let sos = window.applyTableSort(rawSos, 'so', defaultSOSort);
 
     let rows = sos.map(so => {
         const customer = customers.find(c => c.id === so.customerId) || { name: 'Unknown' };
@@ -9906,29 +10095,21 @@ function renderSalesOrders() {
         if (so.status === 'CONFIRMED') statusBadge = '<span class="px-3 py-1 bg-blue-50 text-blue-600 border border-blue-100 rounded-full text-[10px] font-bold tracking-tight shadow-sm">CONFIRMED</span>';
         if (so.status === 'DELIVERED') statusBadge = '<span class="px-3 py-1 bg-green-50 text-green-600 border border-green-100 rounded-full text-[10px] font-bold tracking-tight shadow-sm">DELIVERED</span>';
 
-        let options = '';
+        const dropdownOptions = [
+            ['view', 'Lihat Detail', 'fas fa-eye'],
+            ['send', 'Kirim', 'fas fa-paper-plane']
+        ];
+
         if (canEdit && so.status === 'DRAFT') {
-            options += `<option value="confirm">Konfirmasi</option>`;
-            options += `<option value="edit">Edit</option>`;
-            options += `<option value="delete">Hapus</option>`;
+            dropdownOptions.push(['confirm', 'Konfirmasi', 'fas fa-check']);
+            dropdownOptions.push(['edit', 'Edit', 'fas fa-edit']);
+            dropdownOptions.push(['delete', 'Hapus', 'fas fa-trash-alt', 'text-red-600 hover:bg-red-50 hover:text-red-700 border-t border-slate-50']);
         } else if (canEdit && so.status === 'CONFIRMED') {
-            options += `<option value="edit">Edit</option>`;
-            options += `<option value="delete">Hapus</option>`;
+            dropdownOptions.push(['edit', 'Edit', 'fas fa-edit']);
+            dropdownOptions.push(['delete', 'Hapus', 'fas fa-trash-alt', 'text-red-600 hover:bg-red-50 hover:text-red-700 border-t border-slate-50']);
         }
-        
-        let actionHtml = `
-            <div class="inline-block relative w-full md:w-[130px]">
-                <select class="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs rounded-lg pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none transition-all shadow-sm" onchange="handleSOAction(this, '${so.id}')">
-                    <option value="" disabled selected>Pilih Aksi...</option>
-                    <option value="view">Lihat Detail</option>
-                    <option value="send">Kirim</option>
-                    ${options}
-                </select>
-                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
-                    <i class="fas fa-chevron-down text-[10px]"></i>
-                </div>
-            </div>
-        `;
+
+        let actionHtml = window.renderActionsDropdownHtml(`so-${so.id}`, 'handleSOAction', dropdownOptions);
 
         return `
             <tr class="border-b border-gray-100 hover:bg-slate-50 transition-colors">
@@ -10029,11 +10210,11 @@ function renderSalesOrders() {
                         <table class="w-full text-left border-collapse" id="so_main_table">
                             <thead class="sticky top-0 z-20">
                             <tr class="bg-slate-50 border-b border-slate-100 text-slate-500 font-semibold uppercase text-[10px] tracking-wider shadow-sm">
-                                <th class="px-6 py-3.5">No. SO</th>
-                                <th class="px-6 py-3.5">Tanggal</th>
-                                <th class="px-6 py-3.5">Customer</th>
-                                <th class="px-6 py-3.5 text-right font-bold">Grand Total</th>
-                                <th class="px-6 py-3.5 text-center">Status</th>
+                                ${window.sortTh('so','soNumber','string','No. SO','renderSalesOrders')}
+                                ${window.sortTh('so','date','date','Tanggal','renderSalesOrders')}
+                                ${window.sortTh('so','customerName','string','Customer','renderSalesOrders')}
+                                ${window.sortTh('so','totalAmount','number','Grand Total','renderSalesOrders','text-right')}
+                                ${window.sortTh('so','status','string','Status','renderSalesOrders','text-center')}
                                 <th class="px-6 py-3.5 text-right w-[150px]">Aksi</th>
                             </tr>
                         </thead>
@@ -10625,6 +10806,60 @@ window.toggleInvTaxRateDropdown = () => {
     if (isHidden) setTimeout(() => document.addEventListener('click', closeHandler), 10);
 };
 
+// Invoice Bank Account Dropdown Handlers
+window.toggleInvBankDropdown = () => {
+    const el = document.getElementById('inv_bank_account_dropdown');
+    if (!el) return;
+    const isHidden = el.classList.contains('hidden');
+    document.querySelectorAll('[id$="_dropdown"]').forEach(d => d.classList.add('hidden'));
+    if (isHidden) el.classList.remove('hidden');
+    
+    const container = document.getElementById('inv_bank_account_container');
+    const closeHandler = (e) => {
+        if (container && !container.contains(e.target)) {
+            el.classList.add('hidden');
+            document.removeEventListener('click', closeHandler);
+        }
+    };
+    if (isHidden) setTimeout(() => document.addEventListener('click', closeHandler), 10);
+};
+
+window.filterInvBankList = (query) => {
+    const q = query.toLowerCase();
+    const list = document.getElementById('inv_bank_account_list');
+    if (!list) return;
+    const items = list.querySelectorAll('[data-bank-name]');
+    items.forEach(item => {
+        const bankName = item.getAttribute('data-bank-name') || '';
+        item.style.display = bankName.includes(q) ? '' : 'none';
+    });
+};
+
+window.selectInvBank = (bankId, displayLabel) => {
+    const hiddenInput = document.getElementById('inv_bank_account_id');
+    const displayInput = document.getElementById('inv_bank_account_display');
+    const dropdown = document.getElementById('inv_bank_account_dropdown');
+    if (hiddenInput) hiddenInput.value = bankId;
+    if (displayInput) displayInput.value = displayLabel;
+    if (dropdown) dropdown.classList.add('hidden');
+    // Update highlight di list
+    const list = document.getElementById('inv_bank_account_list');
+    if (list) {
+        list.querySelectorAll('[data-bank-name]').forEach(item => {
+            item.classList.remove('bg-blue-50', 'text-blue-700');
+            item.classList.add('hover:bg-slate-50');
+        });
+        const selected = list.querySelector(`[data-bank-name]`);
+        // Re-highlight yang dipilih berdasarkan onclick value
+        list.querySelectorAll('[data-bank-name]').forEach(item => {
+            if (item.getAttribute('onclick') && item.getAttribute('onclick').includes(`'${bankId}'`)) {
+                item.classList.add('bg-blue-50');
+                item.classList.remove('hover:bg-slate-50');
+            }
+        });
+    }
+};
+
 window.filterInvTaxRateList = (query) => {
     const q = query.toLowerCase();
     const list = document.getElementById('inv_tax_rate_list');
@@ -10637,6 +10872,7 @@ window.filterInvTaxRateList = (query) => {
     });
 };
 
+
 window.selectInvTaxRate = (value, label) => {
     const hiddenInput = document.getElementById('inv_tax_rate');
     const displayInput = document.getElementById('inv_tax_rate_display');
@@ -10646,6 +10882,55 @@ window.selectInvTaxRate = (value, label) => {
     if (displayInput) displayInput.value = label;
     if (dropdown) dropdown.classList.add('hidden');
     
+    // Tampilkan/sembunyikan NSFP row
+    const nsfpRow = document.getElementById('inv_nsfp_row');
+    if (nsfpRow) {
+        nsfpRow.style.display = value === '11' ? 'block' : 'none';
+        if (value !== '11') {
+            const nsfpInput = document.getElementById('inv_nsfp');
+            if (nsfpInput) nsfpInput.value = '';
+        }
+    }
+
+    // Auto-select Bank Account
+    const bankHiddenInput = document.getElementById('inv_bank_account_id');
+    if (bankHiddenInput) {
+        const isTax = value === '11';
+        const EXCLUDED_BANK_IDS = ['bank_cash', 'bank_bca', 'bank_bri_non_pajak'];
+        const bankAccounts = (db.read('bankAccounts') || []).filter(ba => !EXCLUDED_BANK_IDS.includes(ba.id));
+        
+        let targetBankId = '';
+        let targetBank = null;
+        if (isTax) {
+            // Pajak PPN 11%: prioritas rekening a/n PT Tana Subur Nusantara
+            targetBank = bankAccounts.find(ba => {
+                const holder = (ba.accountHolder || '').toLowerCase();
+                const id = (ba.id || '').toLowerCase();
+                const name = (ba.name || '').toLowerCase();
+                return holder.includes('tana subur') || (id.includes('pajak') && !id.includes('non')) || (name.includes('pajak') && !name.includes('non-pajak'));
+            });
+        } else {
+            // Non-Pajak 0%: prioritas rekening a/n Petrico Wijayanto
+            targetBank = bankAccounts.find(ba => {
+                const holder = (ba.accountHolder || '').toLowerCase();
+                const id = (ba.id || '').toLowerCase();
+                const name = (ba.name || '').toLowerCase();
+                return holder.includes('petrico') || id.includes('non_pajak') || name.includes('non-pajak');
+            });
+        }
+        
+        if (!targetBank && bankAccounts.length > 0) targetBank = bankAccounts[0];
+        
+        if (targetBank) {
+            targetBankId = targetBank.id;
+            bankHiddenInput.value = targetBankId;
+            // Update custom dropdown display
+            const displayInput = document.getElementById('inv_bank_account_display');
+            if (displayInput) displayInput.value = `${targetBank.name} \u2013 ${targetBank.accountNumber}`;
+        }
+    }
+
+
     // Trigger recalculation and invoice number update
     if (typeof window.refreshInvoiceCalculation === 'function') {
         window.refreshInvoiceCalculation();
@@ -11983,16 +12268,39 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
     let defaultDiscValue = so ? so.discountValue || '' : '';
     let inheritedDiscountAmount = so ? so.discountAmount || 0 : 0;
 
+    // Hanya tampilkan rekening yang relevan - exclude BRI, Kas, dan BCA Utama lama
+    const EXCLUDED_BANK_IDS = ['bank_cash', 'bank_bca', 'bank_bri_non_pajak'];
+    const bankAccounts = (db.read('bankAccounts') || []).filter(ba => !EXCLUDED_BANK_IDS.includes(ba.id));
+    const defaultBankAccountId = (() => {
+        if (bankAccounts.length === 0) return '';
+        if (isSOTaxed) {
+            // PPN 11%: prioritas rekening a/n PT Tana Subur Nusantara
+            const taxBank = bankAccounts.find(ba => {
+                const holder = (ba.accountHolder || '').toLowerCase();
+                const id = (ba.id || '').toLowerCase();
+                const name = (ba.name || '').toLowerCase();
+                return holder.includes('tana subur') || (id.includes('pajak') && !id.includes('non')) || (name.includes('pajak') && !name.includes('non-pajak'));
+            });
+            if (taxBank) return taxBank.id;
+        } else {
+            // Non-PPN 0%: prioritas rekening a/n Petrico Wijayanto
+            const nonTaxBank = bankAccounts.find(ba => {
+                const holder = (ba.accountHolder || '').toLowerCase();
+                const id = (ba.id || '').toLowerCase();
+                const name = (ba.name || '').toLowerCase();
+                return holder.includes('petrico') || id.includes('non_pajak') || name.includes('non-pajak');
+            });
+            if (nonTaxBank) return nonTaxBank.id;
+        }
+        return bankAccounts[0]?.id || '';
+    })();
+
     newFormView.innerHTML = `
         <div class="animate-in fade-in duration-300 flex flex-col bg-white" style="height: calc(100vh - 64px); overflow: hidden;">
             <!-- Header / Action Bar -->
             <div class="border-b border-slate-200 px-8 py-5 flex items-center justify-between shrink-0" style="background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.06);">
                 <div class="flex items-center gap-6">
                     <div class="flex flex-col">
-                        <h2 class="text-lg font-black text-slate-800 tracking-tight flex items-center gap-3 uppercase">
-                            <span class="w-1.5 h-6 bg-blue-600 rounded-full"></span>
-                            BUAT <span class="text-blue-600">SALES INVOICE</span>
-                        </h2>
                     </div>
                 </div>
                 
@@ -12013,6 +12321,7 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
                     <input type="hidden" id="inv_so_id" value="${so ? so.id : ''}">
                     <input type="hidden" id="inv_customer_id" value="${initialCustomer ? initialCustomer.id : ''}">
                     <input type="hidden" id="inv_base_subtotal" value="${baseSubtotal}">
+                    <input type="hidden" id="inv_bank_account_id" value="${defaultBankAccountId}">
 
                     <!-- Section: Header Info -->
                     <div class="bg-white rounded-3xl px-8 py-6 border border-slate-100 shadow-sm space-y-6">
@@ -12022,8 +12331,11 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
                                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Customer / Mitra Dagang <span class="text-red-400">*</span></label>
                                 <div class="relative" id="inv_customer_container">
                                     <input type="text" id="inv_customer_search" value="${initialCustomer ? initialCustomer.name : '-- Pilih Customer --'}" readonly
-                                        onclick="toggleCustomerDropdown('inv_customer_dropdown')"
-                                        class="w-full border-none rounded-xl px-5 py-3.5 bg-slate-100/80 font-bold text-slate-800 shadow-sm focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-base cursor-pointer">
+                                         onclick="toggleCustomerDropdown('inv_customer_dropdown')"
+                                         class="w-full border-none rounded-xl pl-5 pr-10 py-3.5 bg-slate-100/80 font-bold text-slate-800 shadow-sm focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-base cursor-pointer">
+                                    <div class="absolute inset-y-0 right-4 flex items-center pointer-events-none text-slate-400">
+                                        <i class="fas fa-chevron-down text-xs"></i>
+                                    </div>
                                     
                                     <div id="inv_customer_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] hidden overflow-hidden animate-in fade-in zoom-in-95 duration-200 min-w-[320px]">
                                         <div class="max-h-60 overflow-y-auto p-1" id="inv_customer_list">
@@ -12059,15 +12371,18 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
                                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Referensi Sales Order (Selesai Kirim)</label>
                                 <div class="relative" id="inv_so_container">
                                     <input type="text" id="inv_so_display" value="${so ? `SO-${so.soNumber} (${formatCurrency(so.totalAmount)})` : (initialCustomer ? '-- Pilih Sales Order (Status: Delivered) --' : '-- Pilih Customer Dahulu --')}" readonly
-                                        onclick="toggleInvSODropdown()"
-                                        class="w-full border-none rounded-xl px-5 py-3.5 bg-slate-100/80 font-bold text-slate-800 shadow-sm focus:ring-4 focus:ring-blue-500/10 outline-none transition-all cursor-pointer text-base ${!initialCustomer ? 'opacity-50 pointer-events-none' : ''}">
+                                         onclick="toggleInvSODropdown()"
+                                         class="w-full border-none rounded-xl pl-5 pr-10 py-3.5 bg-slate-100/80 font-bold text-slate-800 shadow-sm focus:ring-4 focus:ring-blue-500/10 outline-none transition-all cursor-pointer text-base ${!initialCustomer ? 'opacity-50 pointer-events-none' : ''}">
+                                    <div class="absolute inset-y-0 right-4 flex items-center pointer-events-none text-slate-400">
+                                        <i class="fas fa-chevron-down text-xs"></i>
+                                    </div>
                                     <input type="hidden" id="inv_source_so" value="${soId || ''}">
                                     
                                     <div id="inv_so_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden min-w-full animate-in fade-in zoom-in-95 duration-200">
                                         <div class="p-3 border-b border-slate-50">
                                             <input type="text" id="inv_so_search" placeholder="Cari SO..." 
-                                                oninput="filterInvSOList(this.value)"
-                                                class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                                 oninput="filterInvSOList(this.value)"
+                                                 class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
                                         </div>
                                         <div class="max-h-56 overflow-y-auto p-1" id="inv_so_list">
                                             ${(() => {
@@ -12081,8 +12396,8 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
                                                 if (custSOs.length === 0) return '<div class="px-4 py-3 text-sm text-slate-400 italic">Tidak ada SO yang tersedia</div>';
                                                 return custSOs.map(s => `
                                                     <div onclick="selectInvSO('${s.id}', 'SO-${s.soNumber} (${formatCurrency(s.totalAmount)})')" 
-                                                        data-so-text="so ${s.soNumber} ${formatCurrency(s.totalAmount)}"
-                                                        class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5 ${soId === s.id ? 'bg-slate-50' : ''}">
+                                                         data-so-text="so ${s.soNumber} ${formatCurrency(s.totalAmount)}"
+                                                         class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5 ${soId === s.id ? 'bg-slate-50' : ''}">
                                                         SO-${s.soNumber} (${formatCurrency(s.totalAmount)})
                                                     </div>
                                                 `).join('');
@@ -12090,7 +12405,7 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
                                         </div>
                                         <div class="p-2 border-t border-slate-50 bg-white">
                                             <button type="button" onclick="openAdvancedInvSOSearch()" 
-                                                class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
+                                                 class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
                                                 <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shrink-0">
                                                     <i class="fas fa-search text-xs"></i>
                                                 </div>
@@ -12110,44 +12425,47 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
                             <div class="space-y-3">
                                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Tanggal <span class="text-red-400">*</span></label>
                                 <input type="date" id="inv_date" value="${new Date().toISOString().split('T')[0]}" 
-                                    onchange="updateInvDueDate(); if(!window._editingInvId) document.getElementById('inv_number').value = generateInvoiceNumber(document.getElementById('inv_tax_rate').value==='11', this.value)" 
-                                    class="w-full px-4 py-3.5 bg-slate-100/80 border-2 border-transparent rounded-xl font-bold text-slate-800 focus:bg-white focus:border-blue-500 focus:ring-0 outline-none transition-all text-xs cursor-pointer">
+                                     onchange="updateInvDueDate(); if(!window._editingInvId) document.getElementById('inv_number').value = generateInvoiceNumber(document.getElementById('inv_tax_rate').value==='11', this.value)" 
+                                     class="w-full px-4 py-3.5 bg-slate-100/80 border-2 border-transparent rounded-xl font-bold text-slate-800 focus:bg-white focus:border-blue-500 focus:ring-0 outline-none transition-all text-xs cursor-pointer">
                             </div>
                             <div class="space-y-3">
                                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Term</label>
                                 <div class="relative" id="inv_term_container">
                                     <input type="text" id="inv_term_display" value="Tempo 7 S/d 14 Hari" readonly
-                                        onclick="toggleInvTermDropdown()"
-                                        class="w-full px-4 py-3.5 bg-slate-100/80 border-2 border-transparent rounded-xl font-bold text-slate-800 outline-none cursor-pointer text-xs">
+                                         onclick="toggleInvTermDropdown()"
+                                         class="w-full pl-4 pr-10 py-3.5 bg-slate-100/80 border-2 border-transparent rounded-xl font-bold text-slate-800 outline-none cursor-pointer text-xs">
+                                    <div class="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-400">
+                                        <i class="fas fa-chevron-down text-[10px]"></i>
+                                    </div>
                                     <input type="hidden" id="inv_due_date_term" value="14">
                                     
                                     <div id="inv_term_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden min-w-full animate-in fade-in zoom-in-95 duration-200">
                                         <div class="p-3 border-b border-slate-50">
                                             <input type="text" id="inv_term_search" placeholder="Cari term..." 
-                                                oninput="filterInvTermList(this.value)"
-                                                class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                                 oninput="filterInvTermList(this.value)"
+                                                 class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
                                         </div>
                                         <div class="max-h-56 overflow-y-auto p-1" id="inv_term_list">
                                             <div onclick="selectInvTerm('0', 'Cash (COD)')" data-term-name="cash cod"
-                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                 class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
                                                 Cash (COD)
                                             </div>
                                             <div onclick="selectInvTerm('14', 'Tempo 7 S/d 14 Hari')" data-term-name="tempo 7 s/d 14 hari"
-                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5 bg-slate-50">
+                                                 class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5 bg-slate-50">
                                                 Tempo 7 S/d 14 Hari
                                             </div>
                                             <div onclick="selectInvTerm('30', '30 Hari')" data-term-name="30 hari"
-                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                 class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
                                                 30 Hari
                                             </div>
                                             <div onclick="selectInvTerm('45', '45 Hari')" data-term-name="45 hari"
-                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                 class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
                                                 45 Hari
                                             </div>
                                         </div>
                                         <div class="p-2 border-t border-slate-50 bg-white">
                                             <button type="button" onclick="openAdvancedInvTermSearch()" 
-                                                class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
+                                                 class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
                                                 <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shrink-0">
                                                     <i class="fas fa-search text-xs"></i>
                                                 </div>
@@ -12165,28 +12483,31 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
                                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Pajak (PPN%)</label>
                                 <div class="relative" id="inv_tax_rate_container">
                                     <input type="text" id="inv_tax_rate_display" value="${defaultTaxRate === 0 ? '0% (Non-PPN)' : '11% (PPN)'}" readonly
-                                        onclick="toggleInvTaxRateDropdown()"
-                                        class="w-full px-4 py-3.5 bg-slate-100/80 border-2 border-transparent rounded-xl font-bold text-slate-800 outline-none cursor-pointer text-xs">
+                                         onclick="toggleInvTaxRateDropdown()"
+                                         class="w-full pl-4 pr-10 py-3.5 bg-slate-100/80 border-2 border-transparent rounded-xl font-bold text-slate-800 outline-none cursor-pointer text-xs">
+                                    <div class="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-400">
+                                        <i class="fas fa-chevron-down text-[10px]"></i>
+                                    </div>
                                     <input type="hidden" id="inv_tax_rate" value="${defaultTaxRate}">
                                     <div id="inv_tax_rate_dropdown" class="absolute left-0 mt-2 bg-white border border-slate-100 rounded-xl shadow-2xl z-[200] hidden overflow-hidden min-w-full animate-in fade-in zoom-in-95 duration-200">
                                         <div class="p-3 border-b border-slate-50">
                                             <input type="text" id="inv_tax_rate_search" placeholder="Cari pajak..." 
-                                                oninput="filterInvTaxRateList(this.value)"
-                                                class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                                 oninput="filterInvTaxRateList(this.value)"
+                                                 class="w-full px-4 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
                                         </div>
                                         <div class="max-h-56 overflow-y-auto p-1" id="inv_tax_rate_list">
                                             <div onclick="selectInvTaxRate('0', '0% (Non-PPN)')" data-tax-name="0% non ppn"
-                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                 class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
                                                 0% (Non-PPN)
                                             </div>
                                             <div onclick="selectInvTaxRate('11', '11% (PPN)')" data-tax-name="11% ppn"
-                                                class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
+                                                 class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors m-0.5">
                                                 11% (PPN)
                                             </div>
                                         </div>
                                         <div class="p-2 border-t border-slate-50 bg-white">
                                             <button type="button" onclick="openAdvancedInvTaxRateSearch()" 
-                                                class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
+                                                 class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
                                                 <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shrink-0">
                                                     <i class="fas fa-search text-xs"></i>
                                                 </div>
@@ -12195,6 +12516,14 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
                                         </div>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+
+                        <!-- Baris Kedua: NSFP (Kondisional) -->
+                        <div class="pt-4 border-t border-slate-100" id="inv_nsfp_row" style="display: ${isSOTaxed ? 'block' : 'none'};">
+                            <div class="space-y-3 max-w-md">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-1">Nomor Seri Faktur Pajak (NSFP) <span class="text-red-400">*</span></label>
+                                <input type="text" id="inv_nsfp" value="${so?.nsfp || ''}" placeholder="000.000-00.00000000" class="w-full border-none rounded-xl px-5 py-3.5 bg-slate-100/80 font-bold text-slate-800 shadow-sm focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-xs font-mono">
                             </div>
                         </div>
                     </div>
@@ -12458,6 +12787,9 @@ window.saveNewInvoice = async () => {
     const invDateStr = document.getElementById('inv_date').value;
     const dueDateStr = document.getElementById('inv_due_date')?.value;
     const notes = document.getElementById('inv_notes').value;
+    const bankAccountId = document.getElementById('inv_bank_account_id')?.value || '';
+    const selectedBank = bankAccountId ? db.findById('bankAccounts', bankAccountId) : null;
+    const nsfpVal = document.getElementById('inv_nsfp') ? document.getElementById('inv_nsfp').value.trim() : '';
 
     if (!invDateStr || !dueDateStr) {
         showToast('Tanggal Transaksi dan Jatuh Tempo harus diisi', 'error');
@@ -12494,8 +12826,12 @@ window.saveNewInvoice = async () => {
         discountDescription: calcState.discountDescription,
         subsidyAmount: calcState.subsidyAmount,
         subsidyDescription: calcState.subsidyDescription,
-        nsfp: calcState.nsfp,
+        nsfp: calcState.isTax ? nsfpVal : '',
         notes: notes,
+        bankAccountId: bankAccountId || '',
+        bankName: selectedBank ? selectedBank.bankName : '',
+        bankAccount: selectedBank ? selectedBank.accountNumber : '',
+        bankHolder: selectedBank ? (selectedBank.accountHolder || '') : '',
         status: 'UNPAID',
         items: so.items.map(i => {
             const doItem = relatedDO ? relatedDO.items.find(di => di.inventoryItemId === i.inventoryItemId) : null;
@@ -12528,14 +12864,21 @@ window.saveNewInvoice = async () => {
 };
 
 // --- Sales Invoices Module ---
-window.handleSIAction = (selectEl, id) => {
-    const act = selectEl.value;
+window.handleSIAction = (actionOrSelectEl, id) => {
+    let act;
+    if (typeof actionOrSelectEl === 'string') {
+        act = actionOrSelectEl;
+    } else {
+        act = actionOrSelectEl.value;
+        actionOrSelectEl.value = ""; // Reset for next use
+    }
     if (!act) return;
-    selectEl.value = ""; // Reset for next use
     
-    if (act === 'view') viewInvoice(id);
-    else if (act === 'print') window.printSalesInvoiceLandscape(id);
-    else if (act === 'cancel') cancelInvoice(id);
+    const cleanId = typeof id === 'string' ? id.replace(/^[a-z]+-/, '') : id;
+    
+    if (act === 'view') viewInvoice(cleanId);
+    else if (act === 'print') window.printSalesInvoiceLandscape(cleanId);
+    else if (act === 'cancel') cancelInvoice(cleanId);
 };
 
 window.onInvCustomerSelect = (customerId) => {
@@ -12591,12 +12934,7 @@ window.resetSIHeaderDateFilter = () => {
     renderSalesInvoices();
 };
 
-window.toggleSelectAllSI = (master) => {
-    const checkboxes = document.querySelectorAll(".si-row-checkbox");
-    checkboxes.forEach(cb => {
-        cb.checked = master.checked;
-    });
-};
+
 
 function renderSalesInvoices() {
     document.getElementById('pageTitle').innerText = 'Sales Invoices';
@@ -12664,15 +13002,13 @@ function renderSalesInvoices() {
                     <table class="w-full text-sm text-left border-collapse" id="si_main_table">
                         <thead class="sticky top-0 z-20 bg-white/95 backdrop-blur-md shadow-sm">
                             <tr class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b border-slate-100">
-                                <th class="py-6 px-10 w-12 text-center">
-                                    <input type="checkbox" onchange="toggleSelectAllSI(this)" class="w-5 h-5 rounded-lg border-slate-200 text-blue-600 focus:ring-blue-500/20 cursor-pointer shadow-sm">
-                                </th>
-                                <th class="py-6 px-4">Informasi Faktur</th>
-                                <th class="py-6 px-4">Tanggal Pelunasan</th>
-                                <th class="py-6 px-4 text-right">Tagihan Bruto</th>
-                                <th class="py-6 px-4 text-right">Sudah Bayar</th>
-                                <th class="py-6 px-4 text-right">Sisa Hutang</th>
-                                <th class="py-6 px-6 text-center">Status</th>
+
+                                ${window.sortTh('si','invoiceNumber','string','Informasi Faktur','renderSalesInvoices','py-6 px-4')}
+                                ${window.sortTh('si','dueDate','date','Jatuh Tempo','renderSalesInvoices','py-6 px-4')}
+                                ${window.sortTh('si','totalAmount','number','Tagihan Bruto','renderSalesInvoices','py-6 px-4 text-right')}
+                                ${window.sortTh('si','paidAmount','number','Sudah Bayar','renderSalesInvoices','py-6 px-4 text-right')}
+                                ${window.sortTh('si','remainingAmount','number','Sisa Hutang','renderSalesInvoices','py-6 px-4 text-right')}
+                                ${window.sortTh('si','status','string','Status','renderSalesInvoices','py-6 px-6 text-center')}
                                 <th class="py-6 px-8 text-center">Aksi</th>
                             </tr>
                         </thead>
@@ -12712,44 +13048,39 @@ function renderSalesInvoices() {
     const filters_data = window.currentFilters.salesInvoices || { start: '', end: '' };
 
     const invStatusOrder = { 'UNPAID': 0, 'PARTIAL': 1, 'PAID': 2 };
-    let invoices = db.read('salesInvoices').sort((a, b) => {
+    const customers = db.read('customers');
+    const payments = db.read('payments');
+
+    const defaultSISort = (arr) => [...arr].sort((a, b) => {
         const sa = invStatusOrder[a.status] ?? 99;
         const sb = invStatusOrder[b.status] ?? 99;
         if (sa !== sb) return sa - sb;
         return new Date(b.date) - new Date(a.date);
     });
-    const customers = db.read('customers');
-    const payments = db.read('payments');
+
+    // Enrich with computed fields for sorting
+    let rawInvoices = (db.read('salesInvoices') || []).map(inv => {
+        const invPayments = payments.filter(p => p.invoiceId === inv.id);
+        const paidAmt = invPayments.reduce((s, p) => s + parseFloat(p.amount), 0);
+        return { ...inv, invoiceNumber: inv.invoiceNumber || inv.invNumber || '', paidAmount: paidAmt, remainingAmount: inv.totalAmount - paidAmt };
+    });
 
     // Check if any date filter is applied
     const hasDateFilter = filters_data.start || filters_data.end;
-    
-    // If no date filter, show today's data only
     if (!hasDateFilter) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const todayEnd = new Date();
-        todayEnd.setHours(23, 59, 59, 999);
-        invoices = invoices.filter(x => {
-            const docDate = new Date(x.date);
-            return docDate >= today && docDate <= todayEnd;
-        });
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+        rawInvoices = rawInvoices.filter(x => { const d = new Date(x.date); return d >= today && d <= todayEnd; });
     } else {
-        // Filter Logic
-        if (filters_data.start) {
-            const d = new Date(filters_data.start); d.setHours(0,0,0,0);
-            invoices = invoices.filter(x => new Date(x.date) >= d);
-        }
-        if (filters_data.end) {
-            const d = new Date(filters_data.end); d.setHours(23,59,59,999);
-            invoices = invoices.filter(x => new Date(x.date) <= d);
-        }
+        if (filters_data.start) { const d = new Date(filters_data.start); d.setHours(0,0,0,0); rawInvoices = rawInvoices.filter(x => new Date(x.date) >= d); }
+        if (filters_data.end) { const d = new Date(filters_data.end); d.setHours(23,59,59,999); rawInvoices = rawInvoices.filter(x => new Date(x.date) <= d); }
     }
+    let invoices = window.applyTableSort(rawInvoices, 'si', defaultSISort);
 
     if (invoices.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="8" class="py-40 text-center">
+                <td colspan="7" class="py-40 text-center">
                     <div class="flex flex-col items-center justify-center opacity-30 select-none">
                         <div class="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mb-6">
                             <i class="fas fa-file-invoice text-4xl text-slate-400"></i>
@@ -12783,9 +13114,7 @@ function renderSalesInvoices() {
 
         return `
             <tr class="hover:bg-blue-50/20 transition-all group duration-300" data-amount="${inv.totalAmount}" data-paid="${totalPaid}">
-                <td class="py-6 px-10 text-center">
-                    <input type="checkbox" class="si-row-checkbox w-5 h-5 rounded-lg border-slate-200 text-blue-600 focus:ring-blue-500/10 cursor-pointer shadow-sm">
-                </td>
+
                 <td class="py-6 px-4">
                     <div class="flex flex-col">
                         <span class="font-black text-slate-800 tracking-tight text-sm">${inv.invoiceNumber}</span>
@@ -12803,15 +13132,21 @@ function renderSalesInvoices() {
                 <td class="py-6 px-4 text-right font-black ${balance > 0 ? 'text-red-500' : 'text-slate-400'} font-mono text-sm tracking-tighter">${formatCurrency(balance)}</td>
                 <td class="py-6 px-6 text-center">${statusBadge}</td>
                 <td class="py-6 px-8 text-right relative font-sans">
-                    <div class="inline-block relative w-full md:w-[130px]">
-                        <select onchange="handleSIAction(this, '${inv.id}')" class="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs rounded-lg pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none transition-all shadow-sm">
-                            <option value="" disabled selected>Pilih Aksi...</option>
-                            <option value="view">Lihat Detail</option>
-                            <option value="print">Cetak Invoice</option>
-                            <option value="cancel">Batalkan SI</option>
-                        </select>
-                        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
-                            <i class="fas fa-chevron-down text-[10px]"></i>
+                    <div class="relative inline-block text-left font-sans">
+                        <button type="button" onclick="event.stopPropagation(); window.toggleActionsDropdown('si-${inv.id}')" class="flex items-center justify-between gap-x-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 transition-all cursor-pointer shadow-sm active:scale-95 w-[115px]" id="menu-btn-si-${inv.id}">
+                            <span>Pilih Aksi</span>
+                            <i class="fas fa-chevron-down text-[9px] text-slate-400 transition-transform duration-200" id="menu-arrow-si-${inv.id}"></i>
+                        </button>
+                        <div class="hidden absolute right-0 z-[100] mt-1.5 w-44 origin-top-right rounded-xl bg-white shadow-xl border border-slate-150 overflow-hidden font-medium py-1 divide-y divide-slate-50 animate-in fade-in duration-150" id="menu-dropdown-si-${inv.id}">
+                            <button onclick="handleSIAction('view', '${inv.id}')" class="group flex items-center w-full px-4 py-2 text-[11px] text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-all font-bold text-left" role="menuitem">
+                                <i class="fas fa-eye w-4 mr-2 text-slate-400 group-hover:text-blue-500 transition-colors"></i> Lihat Detail
+                            </button>
+                            <button onclick="handleSIAction('print', '${inv.id}')" class="group flex items-center w-full px-4 py-2 text-[11px] text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-all font-bold text-left" role="menuitem">
+                                <i class="fas fa-print w-4 mr-2 text-slate-400 group-hover:text-blue-500 transition-colors"></i> Cetak Invoice
+                            </button>
+                            <button onclick="handleSIAction('cancel', '${inv.id}')" class="group flex items-center w-full px-4 py-2.5 text-[11px] text-red-600 hover:bg-red-50 hover:text-red-700 transition-all font-bold text-left border-t border-slate-50" role="menuitem">
+                                <i class="fas fa-ban w-4 mr-2 text-red-400 group-hover:text-red-600 transition-colors"></i> Batalkan SI
+                            </button>
                         </div>
                     </div>
                 </td>
@@ -12919,85 +13254,68 @@ window.angkaTerbilang = function(angka) {
 window.printSalesInvoiceLandscape = function(id) {
     const inv = db.findById('salesInvoices', id);
     if (!inv) return;
+    const isTax = inv.isTax || (parseFloat(inv.taxAmount) || 0) > 0 || (parseFloat(inv.taxRate) || 0) > 0 || inv.taxType === 'Pajak';
     const so = db.findById('salesOrders', inv.salesOrderId);
     const customer = db.findById('customers', inv.customerId);
 
     const cfg = JSON.parse(localStorage.getItem('unityerp_company_config') || '{}');
     const company = {
-        name: cfg.companyName || (typeof CONFIG !== 'undefined' ? CONFIG.companyName : 'PT. NAMA PERUSAHAAN'),
-        address: cfg.companyAddress || (typeof CONFIG !== 'undefined' ? CONFIG.companyAddress : 'Jl. Alamat Perusahaan'),
+        name: cfg.companyName || (typeof CONFIG !== 'undefined' ? CONFIG.companyName : 'PT. TANA SUBUR NUSANTARA'),
+        address: cfg.companyAddress || (typeof CONFIG !== 'undefined' ? CONFIG.companyAddress : ''),
         phone: cfg.companyPhone || (typeof CONFIG !== 'undefined' ? CONFIG.companyPhone : '-'),
-        email: cfg.companyEmail || (typeof CONFIG !== 'undefined' ? CONFIG.companyEmail : '-'),
-        logo: cfg.logo || (typeof CONFIG !== 'undefined' ? CONFIG.logo : '')
+        email: cfg.companyEmail || (typeof CONFIG !== 'undefined' ? CONFIG.companyEmail : '-')
     };
 
-    const itemsTable = `
-        <table style="width:100%;border-collapse:collapse;margin-top:10px; margin-bottom:10px;">
-            <thead>
-                <tr style="background:#f1f5f9;border-bottom:2px solid #334155;">
-                    <th style="padding:6px 8px;text-align:center;font-size:10px;text-transform:uppercase;width:40px">No</th>
-                    <th style="padding:6px 8px;text-align:left;font-size:10px;text-transform:uppercase">Deskripsi Barang</th>
-                    <th style="padding:6px 8px;text-align:center;font-size:10px;text-transform:uppercase;width:70px">Qty</th>
-                    <th style="padding:6px 8px;text-align:right;font-size:10px;text-transform:uppercase;width:100px">Harga (Rp)</th>
-                    <th style="padding:6px 8px;text-align:right;font-size:10px;text-transform:uppercase;width:120px">Total (Rp)</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${(inv.items || []).map((item, i) => `
-                    <tr style="border-bottom:1px solid #e2e8f0;">
-                        <td style="padding:4px 8px;text-align:center;font-size:10px;">${i+1}</td>
-                        <td style="padding:4px 8px;text-align:left;font-size:10px;">
-                            <div style="font-weight:bold;text-transform:uppercase">${item.prodText ? item.prodText.split(' (')[0] : (item.name || '-')}</div>
-                            ${item.kemasan && item.kemasan !== '-' ? `<div style="font-size:8px;color:#64748b;font-style:italic;margin-top:2px;">Kemasan: ${item.kemasan === '800 Gram' ? '4 KG (800 Gram)' : item.kemasan}</div>` : ''}
-                        </td>
-                        <td style="padding:4px 8px;text-align:center;font-size:11px;font-weight:900">${(item.qty || 0).toLocaleString('id-ID')}</td>
-                        <td style="padding:4px 8px;text-align:right;font-size:11px;font-weight:500;">${formatCurrency(item.price)}</td>
-                        <td style="padding:4px 8px;text-align:right;font-size:11px;font-weight:bold;">${formatCurrency(item.subtotal)}</td>
-                    </tr>
-                `).join('')}
-                 ${[...Array(Math.max(0, 5 - (inv.items?.length || 0)))].map(() => `
-                    <tr style="border-bottom:1px solid #e2e8f0;height:20px">
-                        <td style="padding:4px 8px;">&nbsp;</td><td style="padding:4px 8px;"></td><td style="padding:4px 8px;"></td><td style="padding:4px 8px;"></td><td style="padding:4px 8px;"></td>
-                    </tr>
-                `).join('')}
-            </tbody>
-        </table>
-    `;
+    // Bank Account Text formatting logic
+    let bankInfo = '';
+    const holder = (inv.bankHolder || '').toLowerCase();
+    const isNonTax = !isTax || holder.includes('petrico') || (inv.bankAccount === '5222142130' || inv.bankAccount === '522 2142 130');
+    
+    if (isTax || holder.includes('tana subur')) {
+        bankInfo = `No. Rekening <strong>522 487 1188 BANK BCA</strong> Atas Nama <strong>PT TANA SUBUR NUSANTARA</strong>`;
+    } else if (isNonTax) {
+        bankInfo = `No. Rekening <strong>522 2142 130 BANK BCA</strong> atau No. Rekening <strong>0319 0108 0976 505 BANK BRI</strong> Atas Nama <strong>PETRICO WIJAYANTO</strong>`;
+    } else if (inv.bankAccount) {
+        bankInfo = `No. Rekening <strong>${inv.bankAccount}</strong> BANK <strong>${inv.bankName || 'BCA'}</strong> Atas Nama <strong>${inv.bankHolder || '-'}</strong>`;
+    } else {
+        bankInfo = `-`;
+    }
+
+    const paymentTerms = inv.paymentTerms || so?.payment_terms || so?.paymentTerms || 'TEMPO 30 HARI';
+    const deliveryOrders = db.read('deliveryOrders') || [];
+    const doRecord = deliveryOrders.find(d => d.invoiceId === inv.id || d.salesOrderId === inv.salesOrderId);
+    const vehicleNo = doRecord ? (doRecord.vehicleNo || doRecord.vehicle_no || '-') : '-';
 
     const baseSubtotal = (inv.items || []).reduce((sum, item) => sum + (parseFloat(item.subtotal) || 0), 0);
-    const subtotalAfterSubsidy = Math.max(0, baseSubtotal - (inv.subsidyAmount || 0));
 
-    const totalsBlock = `
-        <table style="width: 250px; border-collapse:collapse; font-size:10px; margin-left: auto;">
-            <tr>
-                <td style="padding:3px; text-align:right; color:#64748b; font-weight:bold;">Jumlah:</td>
-                <td style="padding:3px; text-align:right; font-weight:bold;">${formatCurrency(baseSubtotal)}</td>
-            </tr>
-            ${inv.subsidyAmount > 0 ? `
-            <tr>
-                <td style="padding:3px; text-align:right; color:#64748b; font-weight:bold;">${inv.subsidyDescription || 'Subsidi'}:</td>
-                <td style="padding:3px; text-align:right; font-weight:bold;">${formatCurrency(inv.subsidyAmount)}</td>
-            </tr>
-            <tr style="border-top: 1px solid #e2e8f0;">
-                <td style="padding:3px; text-align:right; color:#64748b; font-weight:bold;">Jumlah:</td>
-                <td style="padding:3px; text-align:right; font-weight:bold;">${formatCurrency(subtotalAfterSubsidy)}</td>
-            </tr>` : ''}
-            ${inv.discountAmount > 0 ? `
-            <tr>
-                <td style="padding:3px; text-align:right; color:#64748b; font-weight:bold;">${inv.discountDescription || 'Discount'}:</td>
-                <td style="padding:3px; text-align:right; font-weight:bold;">${formatCurrency(inv.discountAmount)}</td>
-            </tr>` : ''}
-            ${inv.taxAmount > 0 ? `
-            <tr>
-                <td style="padding:3px; text-align:right; color:#ea580c; font-weight:bold;">PPN (${inv.taxRate || 11}%):</td>
-                <td style="padding:3px; text-align:right; color:#ea580c; font-weight:bold;">${formatCurrency(inv.taxAmount)}</td>
-            </tr>` : ''}
-            <tr style="border-top: 2px solid #0f172a;">
-                <td style="padding:5px 3px; text-align:right; font-weight:900; font-size:12px;">TOTAL:</td>
-                <td style="padding:5px 3px; text-align:right; font-weight:900; font-size:14px; color:#0f172a;">${formatCurrency(inv.totalAmount)}</td>
-            </tr>
-        </table>
-    `;
+    const itemsRows = (inv.items || []).map((item, idx) => {
+        const code = item.prodCode || item.code || '-';
+        const desc = item.prodText ? item.prodText.split(' (')[0] : (item.name || '-');
+        const kemasanText = item.kemasan && item.kemasan !== '-' ? ` (${item.kemasan === '800 Gram' ? '4 KG (800 Gram)' : item.kemasan})` : '';
+        const unit = item.unit || item.prodUnit || 'KG';
+        const qtyVal = item.qty || 0;
+        const priceVal = item.price || 0;
+        const subtotalVal = item.subtotal || 0;
+        return `
+        <tr style="border-bottom: 1px solid #000;">
+            <td style="padding: 3px 2px; text-align: center;">${idx + 1}</td>
+            <td style="padding: 3px 2px; text-align: center; font-family: monospace;">${code}</td>
+            <td style="padding: 3px 4px; text-align: left; font-weight: bold; text-transform: uppercase;">${desc}${kemasanText}</td>
+            <td style="padding: 3px 2px; text-align: center; font-weight: bold;">${item.colly || '-'}</td>
+            <td style="padding: 3px 2px; text-align: right; font-weight: bold;">${formatNumber(qtyVal)}</td>
+            <td style="padding: 3px 2px; text-align: center; text-transform: uppercase;">${unit}</td>
+            <td style="padding: 3px 2px; text-align: right;">${formatCurrency(priceVal)}</td>
+            <td style="padding: 3px 2px; text-align: right; font-weight: bold;">${formatCurrency(subtotalVal)}</td>
+        </tr>
+        `;
+    }).join('');
+
+    const emptyRowsCount = Math.max(0, 4 - (inv.items?.length || 0));
+    const emptyRows = [...Array(emptyRowsCount)].map(() => `
+        <tr style="height: 18px; border-bottom: 1px solid #000;">
+            <td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+        </tr>
+    `).join('');
 
     const printHtml = `
         <!DOCTYPE html>
@@ -13005,113 +13323,194 @@ window.printSalesInvoiceLandscape = function(id) {
         <head>
             <title>Invoice ${inv.invoiceNumber}</title>
             <style>
-                @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-                * { margin:0; padding:0; box-sizing:border-box; font-family:'Inter', sans-serif; }
-                body { padding:20px; color:#1e293b; background:#fff; margin:0; }
-                .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:15px; border-bottom:3px solid #0f172a; padding-bottom:10px; }
-                .company-name { font-size:20px; font-weight:900; color:#0f172a; text-transform:uppercase; letter-spacing:-0.5px; }
-                .company-info { font-size:9px; color:#64748b; margin-top:3px; line-height:1.4; font-weight:500; }
-                .doc-type { text-align:right; }
-                .doc-type h1 { font-size:24px; font-weight:900; color:#2563eb; margin:0; line-height:1; }
-                .doc-no { font-size:12px; font-weight:700; color:#0f172a; margin-top:3px; font-family:monospace; }
-                .meta-table { width:100%; border-collapse:collapse; margin-bottom:10px; }
-                .meta-table td { padding:3px 0; font-size:10px; vertical-align:top; }
-                .label { font-weight:bold; color:#64748b; text-transform:uppercase; font-size:8px; width:100px; }
-                .value { font-weight:700; color:#0f172a; text-transform:uppercase; }
-                .signatures { margin-top:15px; display:flex; justify-content:space-between; gap:20px; text-align:center; }
-                .sig-box { border:1px solid #e2e8f0; border-radius:8px; padding:10px; flex:1; }
-                .sig-title { font-size:9px; font-weight:900; color:#94a3b8; text-transform:uppercase; margin-bottom:40px; letter-spacing:1px; }
-                .sig-line { border-top:2px solid #0f172a; width:80%; margin:0 auto 3px; }
-                .sig-name { font-size:10px; font-weight:700; color:#0f172a; }
-                @page { size: landscape; margin: 10mm; }
-                @media print { body { padding:0; } .sig-box { border:1px solid #000; } .header { border-bottom:2px solid #000; } }
+                * { margin:0; padding:0; box-sizing:border-box; }
+                body {
+                    background:#fff;
+                    color:#000;
+                    font-family: Arial, sans-serif;
+                    font-size: 11px;
+                    line-height: 1.2;
+                    padding: 0;
+                    margin: 0;
+                }
+                @media print {
+                    @page {
+                        size: 9.5in 5.5in;
+                        margin: 0;
+                    }
+                    body {
+                        margin: 0;
+                        padding: 0;
+                        -webkit-print-color-adjust: exact;
+                    }
+                }
+                .container {
+                    width: calc(100% - 30mm);
+                    margin: 5mm auto;
+                    max-height: 125mm;
+                    overflow: hidden;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: space-between;
+                }
+                table.items-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-top: 5px;
+                    margin-bottom: 5px;
+                }
+                table.items-table th {
+                    border-top: 1px solid #000;
+                    border-bottom: 1px solid #000;
+                    font-weight: bold;
+                    padding: 4px 2px;
+                }
+                table.items-table td {
+                    padding: 3px 2px;
+                }
             </style>
         </head>
         <body>
-            <div class="header">
-                <div>
-                    <div class="company-name">${company.name}</div>
-                    <div class="company-info">${company.address}<br>Tel: ${company.phone} | ${company.email}</div>
-                </div>
-                <div class="doc-type">
-                    <h1>SALES INVOICE</h1>
-                    <div class="doc-no"># ${inv.invoiceNumber}</div>
-                </div>
-            </div>
-
-            <div style="display:grid; grid-template-columns:2fr 1fr; gap:40px; margin-bottom:10px;">
-                <table class="meta-table">
-                    <tr><td class="label">Ditagihkan Ke</td><td class="value" style="font-size:14px;color:#2563eb">${customer?.name || '-'}</td></tr>
-                    <tr><td class="label">Alamat</td><td class="value" style="font-weight:500;color:#475569">${customer?.address || '-'}</td></tr>
-                    <tr><td class="label">Ref SO</td><td class="value">${so?.soNumber || '-'}</td></tr>
-                </table>
-                <table class="meta-table" style="text-align:right;">
-                    <tr><td class="label" style="text-align:right;">Tanggal Faktur</td><td class="value" style="text-align:right;">${formatDate(inv.date).slice(0, 11)}</td></tr>
-                    <tr><td class="label" style="text-align:right;">Jatuh Tempo</td><td class="value" style="color:#dc2626;text-align:right;">${inv.dueDate ? formatDate(inv.dueDate).slice(0, 11) : '-'}</td></tr>
-                </table>
-            </div>
-
-            ${itemsTable}
-
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:40px;">
-                <div>
-                    ${inv.notes ? `<div style="font-size:9px; color:#475569; padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-left:3px solid #64748b; border-radius:6px;"><strong>Catatan Tambahan:</strong><br>${inv.notes}</div>` : ''}
-                </div>
-                <div>
-                    ${totalsBlock}
-                </div>
-            </div>
-
-            <div class="signatures">
-                <div class="sig-box">
-                    <div class="sig-title">Diterima Oleh</div>
-                    <div class="sig-line"></div>
-                    <div class="sig-name">Nama Terang & Ttd</div>
-                </div>
-                <div style="flex:2; padding:10px 0;">
-                    ${inv.isTax ? `
-                    <!-- PPN: Keterangan Rekening + Terbilang -->
-                    <div style="font-size:9px; line-height:1.8; color:#1e293b;">
-                        <div style="margin-bottom:6px;">
-                            <span style="font-weight:900; font-size:10px; text-transform:uppercase; letter-spacing:1px;">Keterangan No. Rekening</span><br>
-                            ${inv.bankAccount ? `No. Rekening <strong>${inv.bankAccount}</strong> ${inv.bankName ? 'BANK ' + inv.bankName.toUpperCase() : ''}<br>` : ''}
-                            ${inv.bankHolder ? `Atas Nama <strong style="font-size:11px; text-transform:uppercase;">${inv.bankHolder}</strong>` : ''}
-                        </div>
-                        <div style="margin-top:8px;">
-                            <span style="font-weight:900;">Terbilang :</span>
-                            <span style="font-weight:700; font-style:italic;"> ${window.angkaTerbilang(inv.totalAmount || 0)}</span>
+            <div class="container">
+                <!-- Header -->
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 3px;">
+                    <div style="width: 55%;">
+                        <div style="font-size: 13px; font-weight: bold; text-transform: uppercase;">${company.name}</div>
+                        <div style="margin-top: 3px; font-size: 10px;">
+                            <table style="width: 100%; border-collapse: collapse;">
+                                <tr>
+                                    <td style="width: 75px; font-weight: bold; vertical-align: top; padding: 1px 0;">Pelanggan :</td>
+                                    <td style="vertical-align: top; padding: 1px 0;">
+                                        <div style="font-weight: bold; font-size: 11px; text-transform: uppercase;">${customer?.name || '-'}</div>
+                                        <div style="font-size: 10px; line-height: 1.2; text-transform: uppercase; max-width: 320px; white-space: normal;">${customer?.address || '-'}</div>
+                                    </td>
+                                </tr>
+                            </table>
                         </div>
                     </div>
-                    ` : `
-                    <!-- Non-PPN: Keterangan Rekening + Terbilang -->
-                    <div style="font-size:9px; line-height:1.8; color:#1e293b;">
-                        <div style="margin-bottom:6px;">
-                            <span style="font-weight:900; font-size:10px; text-transform:uppercase; letter-spacing:1px;">Keterangan No. Rekening</span><br>
-                            ${inv.bankAccount ? `No. Rekening <strong>${inv.bankAccount}</strong> ${inv.bankName ? 'BANK ' + inv.bankName.toUpperCase() : ''}<br>` : ''}
-                            ${inv.bankHolder ? `Atas Nama <strong style="font-size:11px; text-transform:uppercase;">${inv.bankHolder}</strong>` : ''}
+                    
+                    <div style="width: 42%; text-align: right;">
+                        <div style="font-size: 15px; font-weight: bold; text-transform: uppercase; margin-bottom: 2px;">FAKTUR PENJUALAN</div>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 10px; margin-left: auto;">
+                            <tr>
+                                <td style="text-align: right; padding: 1px 0; width: 45%;">Tgl Faktur :</td>
+                                <td style="text-align: left; padding: 1px 0 1px 5px; font-weight: bold; width: 55%;">${formatDate(inv.date).slice(0, 11)}</td>
+                            </tr>
+                            <tr>
+                                <td style="text-align: right; padding: 1px 0;">No. Faktur :</td>
+                                <td style="text-align: left; padding: 1px 0 1px 5px; font-weight: bold; font-family: monospace;">${inv.invoiceNumber}</td>
+                            </tr>
+                            <tr>
+                                <td style="text-align: right; padding: 1px 0;">No. Kendaraan :</td>
+                                <td style="text-align: left; padding: 1px 0 1px 5px; font-weight: bold;">${vehicleNo}</td>
+                            </tr>
+                            <tr>
+                                <td style="text-align: right; padding: 1px 0;">Syarat Pembayaran :</td>
+                                <td style="text-align: left; padding: 1px 0 1px 5px; font-weight: bold;">${paymentTerms}</td>
+                            </tr>
+                            ${inv.nsfp ? `
+                            <tr>
+                                <td style="text-align: right; padding: 1px 0; font-weight: bold; color: red;">NSFP :</td>
+                                <td style="text-align: left; padding: 1px 0 1px 5px; font-weight: bold; font-family: monospace; color: red;">${inv.nsfp}</td>
+                            </tr>
+                            ` : ''}
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Items Table -->
+                <table class="items-table">
+                    <thead>
+                        <tr>
+                            <th style="text-align: center; width: 4%;">No.</th>
+                            <th style="text-align: center; width: 10%;">Kode</th>
+                            <th style="text-align: left; width: 38%;">Deskripsi Barang</th>
+                            <th style="text-align: center; width: 8%;">Colly</th>
+                            <th style="text-align: right; width: 10%;">Kuantitas</th>
+                            <th style="text-align: center; width: 8%;">Satuan</th>
+                            <th style="text-align: right; width: 10%;">Harga</th>
+                            <th style="text-align: right; width: 12%;">Jumlah</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${itemsRows}
+                        ${emptyRows}
+                    </tbody>
+                </table>
+
+                <!-- Footer Section -->
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-top: 2px;">
+                    <!-- Left Side: Terbilang, Rekening, Signature Hormat Kami -->
+                    <div style="width: 58%; display: flex; flex-direction: column; justify-content: space-between; height: 35mm;">
+                        <div style="font-size: 9px; line-height: 1.3;">
+                            <div style="margin-bottom: 2px; display: flex; align-items: flex-start;">
+                                <span style="font-weight: bold; width: 70px; flex-shrink: 0;">Terbilang :</span>
+                                <span style="font-style: italic; font-weight: bold;">${window.angkaTerbilang(inv.totalAmount || 0)}</span>
+                            </div>
+                            <div style="display: flex; align-items: flex-start;">
+                                <span style="font-weight: bold; width: 70px; flex-shrink: 0;">Keterangan :</span>
+                                <span>${bankInfo}</span>
+                            </div>
                         </div>
-                        <div style="margin-top:8px;">
-                            <span style="font-weight:900;">Terbilang :</span>
-                            <span style="font-weight:700; font-style:italic;"> ${window.angkaTerbilang(inv.totalAmount || 0)}</span>
+                        
+                        <!-- Signature box: Hormat Kami -->
+                        <div style="margin-left: auto; width: 140px; text-align: center; margin-top: 3px;">
+                            <div style="font-size: 9px; font-weight: bold; text-transform: uppercase;">Hormat Kami,</div>
+                            <div style="height: 12mm; display: flex; align-items: center; justify-content: center;">
+                                <div style="border-bottom: 1px solid #000; width: 85%; margin-top: 7mm;"></div>
+                            </div>
+                            <div style="font-size: 9px; font-weight: bold; margin-top: 1px;">Tgl ${formatDate(inv.date).slice(0, 11)}</div>
                         </div>
                     </div>
-                    `}
-                </div>
-                <div class="sig-box">
-                    <div class="sig-title">Hormat Kami</div>
-                    <div class="sig-line"></div>
-                    <div class="sig-name">${company.name}</div>
+                    
+                    <!-- Right Side: Totals Block and Signature Diterima Oleh -->
+                    <div style="width: 38%; display: flex; flex-direction: column; justify-content: space-between; height: 35mm; align-items: flex-end;">
+                        <!-- Totals Block -->
+                        <table style="width: 100%; border-collapse: collapse; font-size: 10px; margin-bottom: 3px;">
+                            ${isTax ? `
+                            <tr>
+                                <td style="text-align: right; padding: 1px 5px; width: 60%; font-weight: bold;">Jumlah</td>
+                                <td style="text-align: right; padding: 1px 0; font-weight: bold; width: 40%; border-bottom: 1px solid #ddd;">${formatCurrency(baseSubtotal)}</td>
+                            </tr>
+                            <tr>
+                                <td style="text-align: right; padding: 1px 5px; width: 60%; font-weight: bold;">PPN 11%</td>
+                                <td style="text-align: right; padding: 1px 0; font-weight: bold; width: 40%; border-bottom: 1px solid #ddd;">${formatCurrency(inv.taxAmount)}</td>
+                            </tr>
+                            ` : ''}
+                            <tr>
+                                <td style="text-align: right; padding: 2px 5px; font-weight: bold; font-size: 10px; width: 60%; text-transform: uppercase;">Total</td>
+                                <td style="text-align: right; padding: 2px 0; font-weight: bold; font-size: 11px; width: 40%; border-bottom: 2px solid #000;">${formatCurrency(inv.totalAmount)}</td>
+                            </tr>
+                        </table>
+                        
+                        <!-- Signature box: Diterima Oleh -->
+                        <div style="width: 140px; text-align: center;">
+                            <div style="font-size: 9px; font-weight: bold; text-transform: uppercase;">Diterima oleh,</div>
+                            <div style="height: 12mm; display: flex; align-items: center; justify-content: center;">
+                                <div style="border-bottom: 1px solid #000; width: 85%; margin-top: 7mm;"></div>
+                            </div>
+                            <div style="font-size: 9px; font-weight: bold; margin-top: 1px;">Tgl _______________</div>
+                        </div>
+                    </div>
                 </div>
             </div>
+            <script>
+                window.onload = () => {
+                    setTimeout(() => {
+                        window.focus();
+                        window.print();
+                        window.close();
+                    }, 300);
+                };
+            </script>
         </body>
         </html>
     `;
 
-    const pw = window.open('', '_blank', 'width=800,height=600');
+    const pw = window.open('', '_blank', 'width=950,height=550');
     if (pw) {
         pw.document.write(printHtml);
         pw.document.close();
-        pw.onload = () => { pw.focus(); pw.print(); };
     }
 };
 
@@ -13168,7 +13567,7 @@ window.viewInvoice = (id) => {
                                 
                                 <p class="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">Tanggal Jatuh Tempo</p>
                                 <p class="text-sm font-black text-red-600 mb-4">${inv.dueDate ? formatDate(inv.dueDate).slice(0, 11) : '-'}</p>
-
+ 
                                 <div class="flex justify-end gap-2">
                                     <div class="text-right">
                                         <p class="text-[10px] text-slate-400 font-bold uppercase mb-1">Status Pembayaran</p>
@@ -13225,7 +13624,7 @@ window.viewInvoice = (id) => {
                                 <td class="py-2 px-4 text-right font-bold">- ${formatCurrency(inv.discountAmount)}</td>
                             </tr>
                             ` : ''}
-
+ 
                             <!-- DPP -->
                             ${(inv.taxAmount > 0 || inv.discountAmount > 0) ? `
                             <tr class="bg-slate-100/50">
@@ -13233,7 +13632,7 @@ window.viewInvoice = (id) => {
                                 <td class="py-2 px-4 text-right font-black text-slate-800">${formatCurrency(inv.totalAmount - (inv.taxAmount || 0))}</td>
                             </tr>
                             ` : ''}
-
+ 
                             <!-- Tax -->
                             ${inv.taxAmount > 0 ? `
                             <tr class="text-orange-600">
@@ -13241,7 +13640,7 @@ window.viewInvoice = (id) => {
                                 <td class="py-2 px-4 text-right font-bold">${formatCurrency(inv.taxAmount)}</td>
                             </tr>
                             ` : ''}
-
+ 
                             <!-- Grand Total -->
                              <tr class="bg-slate-900 text-white shadow-xl">
                                 <td colspan="4" class="py-5 px-4 print:py-2 text-right text-sm font-black uppercase tracking-[0.2em] italic">Grand Total:</td>
@@ -13262,7 +13661,7 @@ window.viewInvoice = (id) => {
                         </tfoot>
                     </table>
                 </div>
-
+ 
                 ${invPayments.length > 0 ? `
                 <div class="mt-12 bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
                     <h3 class="text-xs font-black text-slate-800 uppercase tracking-widest mb-4 flex items-center justify-between">
@@ -13289,28 +13688,43 @@ window.viewInvoice = (id) => {
                     </table>
                 </div>
                 ` : ''}
+                <!-- Bank Transfer Instructions -->
+                <div class="mt-10 p-5 bg-slate-50 border border-slate-100 rounded-2xl flex flex-col md:flex-row justify-between gap-6">
+                    <div class="space-y-1">
+                        <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Informasi Pembayaran / Transfer Bank</h4>
+                        ${inv.bankAccount ? `
+                            <p class="text-sm font-black text-slate-800">BANK ${inv.bankName ? inv.bankName.toUpperCase() : '-'}</p>
+                            <p class="text-sm font-bold text-slate-600 font-mono">No. Rekening: ${inv.bankAccount}</p>
+                            ${inv.bankHolder ? `<p class="text-xs text-slate-500">Atas Nama: ${inv.bankHolder}</p>` : ''}
+                        ` : '<p class="text-xs text-slate-400 font-medium italic">Tidak ada rekening bank transfer spesifik untuk faktur ini.</p>'}
+                    </div>
+                    <div class="space-y-1 text-right md:max-w-xs">
+                        <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Terbilang</h4>
+                        <p class="text-xs text-slate-600 font-bold italic">${window.angkaTerbilang(inv.totalAmount || 0)}</p>
+                    </div>
+                </div>
                 
                 <div class="mt-12 print:mt-4 border-t-2 border-dashed border-slate-100 pt-6 print:pt-2 text-center">
                     <p class="text-[10px] text-slate-400 font-black uppercase tracking-[0.3em]">Thank you for your business!</p>
                 </div>
            </div>
         `;
-
+ 
     const message = `Halo ${customer?.name || 'Customer'},\n\nBerikut adalah tagihan untuk Invoice ${inv.invoiceNumber} senilai *${formatCurrency(inv.totalAmount)}*.\n\nMohon untuk segera melakukan pembayaran sesuai dengan kesepakatan.\n\nTerima kasih,\n${CONFIG.companyName}`;
     const waLink = `https://wa.me/?text=${encodeURIComponent(message)}`;
     const emailLink = `mailto:${customer?.email || ''}?subject=Sales%20Invoice%20${inv.invoiceNumber}&body=${encodeURIComponent(message)}`;
-
+ 
     const footer = `
         <div class="flex flex-wrap gap-3 w-full sm:w-auto justify-end items-center mt-2 px-4 py-2 bg-slate-50 rounded-xl border border-slate-100">
             ${inv.isTax ? `<button onclick="printFakturPajak('${inv.id}')" class="group relative flex items-center px-5 py-2.5 bg-orange-600 text-white rounded-lg text-xs font-black hover:bg-orange-700 transition-all shadow-md hover:shadow-orange-200 active:scale-95"><i class="fas fa-receipt mr-2 group-hover:rotate-12 transition-transform"></i> TAX INVOICE</button>` : ''}
             <a href="${emailLink}" target="_blank" class="flex items-center px-5 py-2.5 bg-slate-800 text-white rounded-lg text-xs font-black hover:bg-slate-900 transition-all shadow-md active:scale-95"><i class="fas fa-envelope mr-2"></i> EMAIL</a>
             <a href="${waLink}" target="_blank" class="flex items-center px-5 py-2.5 bg-green-600 text-white rounded-lg text-xs font-black hover:bg-green-700 transition-all shadow-md hover:shadow-green-200 active:scale-95"><i class="fab fa-whatsapp mr-2 text-base"></i> WHATSAPP</a>
-            <button onclick='printHTML(\`${printableHTML.replace(/`/g, "\\`").replace(/\n/g, "")}\`, "Invoice ${inv.invoiceNumber}")' class="group flex items-center px-5 py-2.5 bg-blue-600 text-white rounded-lg text-xs font-black hover:bg-blue-700 transition-all shadow-md hover:shadow-blue-200 active:scale-95"><i class="fas fa-file-pdf mr-2 group-hover:-translate-y-0.5 transition-transform"></i> SAVE AS PDF</button>
+            <button onclick="window.printSalesInvoiceLandscape('${inv.id}')" class="group flex items-center px-5 py-2.5 bg-blue-600 text-white rounded-lg text-xs font-black hover:bg-blue-700 transition-all shadow-md hover:shadow-blue-200 active:scale-95"><i class="fas fa-print mr-2 group-hover:-translate-y-0.5 transition-transform"></i> CETAK INVOICE</button>
             <div class="h-6 w-px bg-slate-300 mx-1 hidden sm:block"></div>
             <button onclick="closeModal()" class="px-6 py-2.5 border-2 border-slate-200 bg-white text-slate-400 rounded-lg text-xs font-black hover:bg-slate-50 hover:text-slate-600 hover:border-slate-300 transition-all active:scale-95">TUTUP</button>
         </div>
     `;
-
+ 
     showModal(`Detail Invoice ${inv.invoiceNumber}`, printableHTML, footer);
 };
 

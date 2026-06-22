@@ -194,7 +194,11 @@ const SalesInvoice = sequelize.define('sales_invoices', {
     subsidy_amount: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
     subsidy_description: DataTypes.STRING(255),
     nsfp: DataTypes.STRING(100),
-    notes: DataTypes.TEXT
+    notes: DataTypes.TEXT,
+    bankAccountId: { type: DataTypes.STRING(50), field: 'bank_account_id' },
+    bankName: { type: DataTypes.STRING(100), field: 'bank_name' },
+    bankAccount: { type: DataTypes.STRING(100), field: 'bank_account' },
+    bankHolder: { type: DataTypes.STRING(200), field: 'bank_holder' }
 });
 
 const Payment = sequelize.define('payments', {
@@ -462,7 +466,8 @@ const BankAccount = sequelize.define('bank_accounts', {
     name: DataTypes.STRING(200),
     account_number: DataTypes.STRING(50),
     bank_name: DataTypes.STRING(100),
-    account_id: DataTypes.STRING(50)
+    account_id: DataTypes.STRING(50),
+    accountHolder: { type: DataTypes.STRING(200), field: 'account_holder' }
 });
 
 const CreditNote = sequelize.define('credit_notes', {

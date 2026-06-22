@@ -2019,6 +2019,12 @@ window.renderFinanceAR = function () {
                                 else if (i.status === 'PARTIAL') statusClass = 'bg-amber-50 text-amber-600 border border-amber-200';
                                 else if (i.status === 'UNPAID') statusClass = 'bg-rose-50 text-rose-600 border border-rose-200';
 
+                                const dropdownOptions = [
+                                    ['view', 'Detail Faktur', 'fas fa-eye'],
+                                    ['pay', 'Input Bayar', 'fas fa-money-bill-wave']
+                                ];
+                                const actionHtml = window.renderActionsDropdownHtml(`ar-${i.id}`, 'handleARAction', dropdownOptions);
+
                                 return `
                                 <tr class="hover:bg-slate-50/50 transition-colors group">
                                     <td class="px-4 py-4">
@@ -2043,18 +2049,9 @@ window.renderFinanceAR = function () {
                                             ${i.invoiceNumber}
                                         </div>
                                     </td>
-                                    <td class="px-6 py-4 text-right">
-                                        <div class="flex justify-end">
-                                            <div class="relative group/action">
-                                                <select onchange="handleARAction(this.value, '${i.id}')" class="appearance-none bg-slate-50 border border-slate-200 rounded-lg pl-3 pr-8 py-1.5 text-[10px] font-bold text-slate-600 outline-none cursor-pointer hover:bg-white hover:border-blue-300 transition-all shadow-sm">
-                                                    <option value="">Pilih Aksi...</option>
-                                                    <option value="view">Detail Faktur</option>
-                                                    <option value="pay">Input Bayar</option>
-                                                </select>
-                                                <div class="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-slate-400">
-                                                    <i class="fas fa-chevron-down text-[8px]"></i>
-                                                </div>
-                                            </div>
+                                    <td class="px-6 py-4 text-right overflow-visible">
+                                        <div class="flex justify-end overflow-visible">
+                                            ${actionHtml}
                                         </div>
                                     </td>
                                 </tr>
@@ -2221,8 +2218,9 @@ window.resetARHistoryFilters = function() {
 
 window.handleARAction = function(action, id) {
     if (!action) return;
-    if (action === 'view') navigateTo('sales-invoices', { invoiceId: id });
-    else if (action === 'pay') openFinanceARPaymentModal(id);
+    const cleanId = typeof id === 'string' ? id.replace(/^[a-z]+-/, '') : id;
+    if (action === 'view') navigateTo('sales-invoices', { invoiceId: cleanId });
+    else if (action === 'pay') openFinanceARPaymentModal(cleanId);
 };
 
 window.applyARSearch = function() {
@@ -2851,6 +2849,12 @@ window.renderFinanceAP = function () {
                                 else if (i.status === 'PARTIAL') statusClass = 'bg-amber-50 text-amber-600 border border-amber-200';
                                 else if (i.status === 'UNPAID') statusClass = 'bg-rose-50 text-rose-600 border border-rose-200';
 
+                                const dropdownOptions = [
+                                    ['view', 'Detail', 'fas fa-eye'],
+                                    ['pay', 'Bayar', 'fas fa-money-bill-wave']
+                                ];
+                                const actionHtml = window.renderActionsDropdownHtml(`ap-${i.id}`, 'handleAPAction', dropdownOptions);
+
                                 return `
                                 <tr class="hover:bg-slate-50/50 transition-colors group">
                                     <td class="px-4 py-4">
@@ -2876,18 +2880,9 @@ window.renderFinanceAP = function () {
                                             ${i.invNumber || i.invoiceNumber || '-'}
                                         </div>
                                     </td>
-                                    <td class="px-6 py-4 text-right">
-                                        <div class="flex justify-end">
-                                            <div class="relative group/action">
-                                                <select onchange="handleAPAction(this.value, '${i.id}')" class="appearance-none bg-slate-50 border border-slate-200 rounded-lg pl-3 pr-8 py-1.5 text-[10px] font-bold text-slate-600 outline-none cursor-pointer hover:bg-white hover:border-blue-300 transition-all shadow-sm">
-                                                    <option value="">Pilih Aksi...</option>
-                                                    <option value="view">Detail</option>
-                                                    <option value="pay">Bayar</option>
-                                                </select>
-                                                <div class="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none text-slate-400">
-                                                    <i class="fas fa-chevron-down text-[8px]"></i>
-                                                </div>
-                                            </div>
+                                    <td class="px-6 py-4 text-right overflow-visible">
+                                        <div class="flex justify-end overflow-visible">
+                                            ${actionHtml}
                                         </div>
                                     </td>
                                 </tr>
@@ -3060,8 +3055,9 @@ window.resetAPHistDateRange = function() {
 
 window.handleAPAction = function(action, id) {
     if (!action) return;
-    if (action === 'view') navigateTo('purchase-invoices', { invoiceId: id });
-    else if (action === 'pay') openFinanceAPPaymentModal(id);
+    const cleanId = typeof id === 'string' ? id.replace(/^[a-z]+-/, '') : id;
+    if (action === 'view') navigateTo('purchase-invoices', { invoiceId: cleanId });
+    else if (action === 'pay') openFinanceAPPaymentModal(cleanId);
 };
 
 // --- Finance AP Payment Feature ---
@@ -3520,7 +3516,10 @@ window.renderFinanceSettings = function () {
                         <tbody class="text-sm divide-y divide-gray-100">
                             ${banks.map(ba => `
                                 <tr class="hover:bg-gray-50/50 transition-colors">
-                                    <td class="px-6 py-4 font-bold text-gray-800">${ba.name} <span class="text-[10px] font-normal text-gray-400 ml-1">(${ba.bankName})</span></td>
+                                    <td class="px-6 py-4">
+                                        <div class="font-bold text-gray-800">${ba.name} <span class="text-[10px] font-normal text-gray-400 ml-1">(${ba.bankName})</span></div>
+                                        ${ba.accountHolder ? `<div class="text-[10px] text-slate-400 mt-0.5">Atas Nama: <span class="font-semibold text-slate-500">${ba.accountHolder}</span></div>` : ''}
+                                    </td>
                                     <td class="px-6 py-4 text-gray-600 font-mono">${ba.accountNumber}</td>
                                     <td class="px-6 py-4">
                                         <span class="px-2 py-1 bg-blue-50 text-blue-700 rounded text-[10px] font-bold">
@@ -3623,6 +3622,10 @@ window.openBankAccountModal = function (id = null) {
                 </div>
             </div>
             <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Atas Nama (Account Holder)</label>
+                <input type="text" id="ba_holder" value="${ba?.accountHolder || ''}" placeholder="Cth: PT. Tana Subur Nusantara" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1">Hubungkan ke COA (Account)</label>
                 <select id="ba_account" class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500">
                     <option value="">-- Pilih Akun COA --</option>
@@ -3645,6 +3648,7 @@ window.saveBankAccount = function (id) {
         name: document.getElementById('ba_name').value.trim(),
         bankName: document.getElementById('ba_bank').value.trim(),
         accountNumber: document.getElementById('ba_number').value.trim(),
+        accountHolder: document.getElementById('ba_holder').value.trim(),
         accountId: document.getElementById('ba_account').value
     };
 

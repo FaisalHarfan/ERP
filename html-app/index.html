@@ -531,11 +531,10 @@
             </div>
             <div class="flex items-center gap-3">
                 <div id="topbar-actions" class="flex items-center gap-2"></div>
-                <span id="header-user-name" class="text-sm text-gray-500 hidden sm:block">Sistem Informasi Manufaktur</span>
                 <div class="relative">
-                    <button class="text-gray-400 hover:text-gray-600 focus:outline-none"
+                    <button class="text-gray-400 hover:text-slate-600 focus:outline-none flex items-center"
                         onclick="toggleNotificationDropdown(event)">
-                        <i class="fas fa-bell"></i>
+                        <i class="fas fa-bell text-lg"></i>
                         <span id="notif-badge"
                             class="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full hidden">0</span>
                     </button>
@@ -552,9 +551,9 @@
                         </div>
                     </div>
                 </div>
-                <div id="header-admin-info" class="text-sm font-medium text-slate-600">Administrator</div>
-                <div class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">AD</div>
-                <button class="text-slate-400 hover:text-slate-600"><i class="fas fa-bell"></i></button>
+                <div class="h-6 w-px bg-slate-200 mx-1 hidden sm:block"></div>
+                <span id="header-user-name" class="text-sm font-semibold text-slate-700 hidden sm:block">Sistem Informasi Manufaktur</span>
+                <div id="header-user-avatar" class="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">--</div>
             </div>
         </header>
 
@@ -611,14 +610,14 @@
     <script src="api.js?v=27"></script>
     <script src="data.js?v=27"></script>
     <script src="export.js?v=27"></script>
-    <script src="inventory.js?v=27"></script>
-    <script src="production.js?v=27"></script>
+    <script src="inventory.js?v=33"></script>
+    <script src="production.js?v=30"></script>
     <script src="finance.js?v=31"></script>
     <script src="sales_return.js?v=27"></script>
-    <script src="delivery_order.js?v=29"></script>
+    <script src="delivery_order.js?v=30"></script>
     <script src="settings.js"></script>
     <script src="purchase_reports.js"></script>
-    <script src="app.js?v=5"></script>
+    <script src="app.js?v=22"></script>
     <script>
         // ── Populate sidebar with session user ─────────────────────
         (function () {
@@ -633,6 +632,8 @@
             if (roleEl) roleEl.textContent = s.roleName || s.roleId || 'User';
             const headerUserEl = document.getElementById('header-user-name');
             if (headerUserEl && s.fullName) headerUserEl.textContent = s.fullName;
+            const headerAvatarEl = document.getElementById('header-user-avatar');
+            if (headerAvatarEl) headerAvatarEl.textContent = s.avatar || s.fullName?.slice(0, 2).toUpperCase() || '--';
         })();
 
         // ── Verify session & refresh permissions setelah semua script di-load ──
@@ -681,50 +682,9 @@
                     return DEPT_ORDER.find(d => permissions[d]?.view) || null;
                 }
 
-                if (isAdmin) {
-                    // Admin: restore last view atau ke launcher
-                    if (lastDept && lastView) {
-                        window.activeDepartment = lastDept;
-                        navigateTo(lastView);
-                    } else {
-                        navigateTo('launcher');
-                    }
-                } else {
-                    // Non-admin: cek apakah lastView masih valid untuk permissions saat ini
-                    const primaryDept = getPrimaryDept(perms);
-
-                    if (lastDept && lastView) {
-                        // Validasi: apakah user masih punya akses ke lastDept?
-                        const lastDeptModule = lastDept === 'penjualan' ? 'penjualan'
-                            : lastDept === 'pembelian' ? 'pembelian'
-                            : lastDept === 'logistik'  ? 'logistik'
-                            : lastDept === 'produksi'  ? 'produksi'
-                            : lastDept === 'finance'   ? 'finance'
-                            : lastDept === 'pengaturan'? 'pengaturan' : null;
-
-                        if (lastDeptModule && perms[lastDeptModule]?.view) {
-                            // lastView masih valid — restore
-                            window.activeDepartment = lastDept;
-                            navigateTo(lastView);
-                        } else if (primaryDept) {
-                            // lastView tidak valid lagi — arahkan ke dept utama
-                            window.activeDepartment = primaryDept;
-                            localStorage.setItem('unityerp_active_dept', primaryDept);
-                            localStorage.removeItem('unityerp_last_view');
-                            navigateTo(DEPT_DEFAULT_VIEW[primaryDept]);
-                        } else {
-                            navigateTo('launcher');
-                        }
-                    } else if (primaryDept) {
-                        // Login pertama kali atau tidak ada lastView — langsung ke dept utama
-                        window.activeDepartment = primaryDept;
-                        localStorage.setItem('unityerp_active_dept', primaryDept);
-                        navigateTo(DEPT_DEFAULT_VIEW[primaryDept]);
-                    } else {
-                        // Tidak punya akses ke modul apapun
-                        navigateTo('launcher');
-                    }
-                }
+                // Selalu mulai dari launcher (homepage pemilihan departemen)
+                // supaya user bisa pilih departemen terlebih dahulu
+                navigateTo('launcher');
 
             } catch (e) {
                 console.warn('Session verify error:', e);

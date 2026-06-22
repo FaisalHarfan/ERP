@@ -197,7 +197,14 @@ window.renderSalesDeliveryOrders = function () {
                         </thead>
                         <tbody id="mc_do_table_body" class="text-sm divide-y divide-slate-50">
                             ${filteredDOs.length === 0 ? '<tr><td colspan="5" class="px-6 py-20 text-center text-slate-200 font-bold uppercase tracking-widest italic">Data tidak ditemukan.</td></tr>' :
-            filteredDOs.map(d => `
+            filteredDOs.map(d => {
+                const dropdownOptions = [['print', 'Cetak SJ', 'fas fa-print']];
+                if (d.status !== 'SHIPPED' && d.status !== 'CANCELLED') {
+                    dropdownOptions.push(['cancel', 'Batalkan SJ', 'fas fa-ban', 'text-red-600 hover:bg-red-50 hover:text-red-700 border-t border-slate-50']);
+                }
+                const actionHtml = window.renderActionsDropdownHtml(`do-${d.id}`, 'handleDOAction', dropdownOptions);
+
+                return `
                 <tr class="hover:bg-slate-50/50 transition-colors group">
                     <td class="px-6 py-4">
                         <p class="font-black text-blue-600 text-sm tracking-tight mb-0.5">${d.doNumber || '-'}</p>
@@ -214,20 +221,13 @@ window.renderSalesDeliveryOrders = function () {
                         <p class="text-[10px] font-black text-slate-700 uppercase tracking-wider mb-0.5">${d.driverName || '-'}</p>
                         <p class="text-[10px] font-bold text-slate-400">${d.vehicleNo || '-'}</p>
                     </td>
-                    <td class="px-6 py-4 text-right">
-                        <div class="inline-block relative w-full max-w-[140px]">
-                            <select onchange="handleDOAction(this, '${d.id}')" class="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-[10px] rounded-xl pl-3 pr-8 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none transition-all shadow-sm uppercase tracking-widest">
-                                <option value="" disabled selected>Pilih Aksi...</option>
-                                <option value="print">Cetak SJ</option>
-                                ${d.status !== 'SHIPPED' && d.status !== 'CANCELLED' ? `<option value="cancel" class="text-red-600">Batalkan SJ</option>` : ''}
-                            </select>
-                            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
-                                <i class="fas fa-chevron-down text-[9px]"></i>
-                            </div>
+                    <td class="px-6 py-4 text-right overflow-visible">
+                        <div class="flex justify-end overflow-visible">
+                            ${actionHtml}
                         </div>
                     </td>
                 </tr>
-            `).join('')}
+            `}).join('')}
                         </tbody>
                     </table>
                 </div>
@@ -243,14 +243,24 @@ window.changeSalesDOTab = function(tab) {
     window.renderSalesDeliveryOrders();
 };
 
-window.handleDOAction = function(select, id) {
-    const action = select.value;
+window.handleDOAction = function(actionOrSelect, id) {
+    let action;
+    if (typeof actionOrSelect === 'string') {
+        action = actionOrSelect;
+    } else {
+        action = actionOrSelect.value;
+    }
+    if (typeof actionOrSelect !== 'string') {
+        actionOrSelect.value = '';
+    }
     if (!action) return;
-    select.value = ""; // Reset dropdown
-    if (action === 'print') printDeliveryOrder(id);
-    else if (action === 'cancel') cancelDeliveryOrder(id);
-    else if (action === 'approve') openConfirmShipmentModal(id);
-    else if (action === 'view') viewShipmentDetails(id);
+
+    const cleanId = typeof id === 'string' ? id.replace(/^[a-z]+-/, '') : id;
+
+    if (action === 'print') printDeliveryOrder(cleanId);
+    else if (action === 'cancel') cancelDeliveryOrder(cleanId);
+    else if (action === 'approve') openConfirmShipmentModal(cleanId);
+    else if (action === 'view') viewShipmentDetails(cleanId);
 };
 
 window.cancelDeliveryOrder = async function(id) {
@@ -1113,10 +1123,33 @@ window.printDeliveryOrder = function (id) {
                 .sig-line { border-top:2px solid #0f172a; width:80%; margin:0 auto 3px; }
                 .sig-name { font-size:10px; font-weight:700; color:#0f172a; }
                 .notes { margin-top:10px; padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #64748b; border-radius:6px; font-size:9px; color:#475569; line-height:1.4; }
-                @page { size: landscape; margin: 10mm; }
+                @page { size: 9.5in 5.5in; margin: 0; }
                 .page { page-break-after: always; background:#fff; padding:30px; margin-bottom:30px; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 4px 20px rgba(0,0,0,0.1); }
                 .page:last-child { page-break-after: auto; margin-bottom:0; }
-                @media print { body { padding:0; background:#fff; } .page { margin:0; padding:0; border:none; border-radius:0; box-shadow:none; } .sig-box { border:1px solid #000; } .header { border-bottom:2px solid #000; } .copy-label { display: none !important; } }
+                @media print {
+                    body { padding:0; background:#fff; }
+                    .page {
+                        width: calc(100% - 30mm) !important;
+                        margin: 5mm auto !important;
+                        padding: 0 !important;
+                        border: none !important;
+                        border-radius: 0 !important;
+                        box-shadow: none !important;
+                    }
+                    .header { margin-bottom: 8px !important; padding-bottom: 5px !important; border-bottom: 2px solid #000 !important; }
+                    .company-name { font-size: 16px !important; }
+                    .doc-type h1 { font-size: 18px !important; }
+                    .meta-table { margin-bottom: 5px !important; }
+                    .meta-table td { padding: 1.5px 0 !important; }
+                    table { margin-top: 8px !important; }
+                    table th { padding: 4px 6px !important; }
+                    table td { padding: 4px 6px !important; }
+                    .notes { margin-top: 5px !important; padding: 6px !important; }
+                    .signatures { margin-top: 8px !important; gap: 10px !important; }
+                    .sig-box { border: 1px solid #000 !important; padding: 4px !important; }
+                    .sig-title { margin-bottom: 24px !important; }
+                    .copy-label { display: none !important; }
+                }
             </style>
         </head>
         <body>
@@ -1252,18 +1285,15 @@ window.renderWarehouseDeliveryOrders = function () {
                 ? '<span class="px-3 py-1 bg-red-50 text-red-600 border border-red-100 rounded-full text-[10px] font-black tracking-tight shadow-sm animate-pulse">STOK KURANG</span>'
                 : `<span class="px-3 py-1 bg-blue-50 text-blue-600 border border-blue-100 rounded-full text-[10px] font-black tracking-tight shadow-sm uppercase">${d.status || 'WAITING'}</span>`);
 
-        const actionHtml = `
-            <div class="inline-block relative w-full md:w-[130px]">
-                <select class="w-full bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl pl-3 pr-8 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer appearance-none transition-all shadow-sm" onchange="handleDOAction(this, '${d.id}')">
-                    <option value="" disabled selected>Pilih Aksi...</option>
-                    ${window._whDoActiveTab === 'pending' ? `<option value="approve">Approve & Kirim</option>` : `<option value="view">Lihat Detail</option>`}
-                    <option value="print">Cetak Surat Jalan</option>
-                </select>
-                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
-                    <i class="fas fa-chevron-down text-[10px]"></i>
-                </div>
-            </div>
-        `;
+        const dropdownOptions = [];
+        if (window._whDoActiveTab === 'pending') {
+            dropdownOptions.push(['approve', 'Approve & Kirim', 'fas fa-shipping-fast text-emerald-500', 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700']);
+        } else {
+            dropdownOptions.push(['view', 'Lihat Detail', 'fas fa-eye']);
+        }
+        dropdownOptions.push(['print', 'Cetak Surat Jalan', 'fas fa-print']);
+        
+        const actionHtml = window.renderActionsDropdownHtml(`do-${d.id}`, 'handleDOAction', dropdownOptions);
 
         return `
             <tr class="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group">
@@ -1280,7 +1310,7 @@ window.renderWarehouseDeliveryOrders = function () {
                     <div class="text-[10px] font-mono text-slate-400 font-black tracking-[0.2em] mb-1">DOKUMEN #</div>
                     <div class="text-xs font-black text-slate-800 tracking-tight group-hover:text-blue-600 transition-colors">${d.doNumber}</div>
                 </td>
-                <td class="px-6 py-4 text-right">${actionHtml}</td>
+                <td class="px-6 py-4 text-right overflow-visible">${actionHtml}</td>
             </tr>
         `;
     }).join('');

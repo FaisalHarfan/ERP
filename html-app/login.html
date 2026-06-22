@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Tana Subur Nusantara - Login</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -15,134 +15,403 @@
     </script>
     <script src="api.js"></script>
     <style>
+        * { font-family: 'Inter', sans-serif; box-sizing: border-box; margin: 0; padding: 0; }
+
         body {
-            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            background: #f1f5f9;
+            background-image:
+                radial-gradient(circle at 15% 15%, rgba(99,102,241,0.10) 0%, transparent 45%),
+                radial-gradient(circle at 85% 85%, rgba(27,145,240,0.10) 0%, transparent 45%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            overflow: hidden;
         }
 
-        .glass {
-            background: rgba(255, 255, 255, 0.85);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
+        /* Dot pattern background */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: radial-gradient(circle, #c7d2e0 1.5px, transparent 1.5px);
+            background-size: 28px 28px;
+            opacity: 0.5;
+            pointer-events: none;
+            z-index: 0;
         }
 
-        .gradient-bg {
-            background: linear-gradient(135deg, #1b91f0 0%, #6366f1 50%, #1b91f0 100%);
-            background-size: 200% 200%;
-            animation: gradientShift 6s ease infinite;
+        /* Decorative blobs */
+        .blob { position: fixed; border-radius: 50%; pointer-events: none; z-index: 0; }
+        .blob-1 { top: -130px; left: -130px; width: 380px; height: 380px; background: radial-gradient(circle, rgba(99,102,241,0.20) 0%, transparent 70%); }
+        .blob-2 { bottom: -100px; right: -100px; width: 320px; height: 320px; background: radial-gradient(circle, rgba(27,145,240,0.18) 0%, transparent 70%); }
+
+        /* Main container card */
+        .login-card {
+            position: relative;
+            z-index: 10;
+            display: grid;
+            grid-template-columns: 1.15fr 1fr;
+            width: min(1080px, 96vw);
+            height: min(680px, 92vh);
+            background: #fff;
+            border-radius: 28px;
+            overflow: hidden;
+            box-shadow:
+                0 2px 0 1px rgba(255,255,255,0.9),
+                0 8px 32px rgba(15,23,42,0.10),
+                0 40px 80px rgba(15,23,42,0.14);
         }
 
-        @keyframes gradientShift {
-            0% {
-                background-position: 0% 50%;
-            }
-
-            50% {
-                background-position: 100% 50%;
-            }
-
-            100% {
-                background-position: 0% 50%;
-            }
+        @media (max-width: 768px) {
+            .login-card { grid-template-columns: 1fr; }
+            .photo-side { display: none !important; }
         }
 
-        .input-field:focus {
-            box-shadow: 0 0 0 3px rgba(27, 145, 240, 0.15);
+        /* ======== LEFT PHOTO SIDE ======== */
+        .photo-side {
+            position: relative;
+            overflow: hidden;
         }
 
-        .btn-primary {
-            background: linear-gradient(135deg, #1b91f0, #6366f1);
-            transition: all 0.2s ease;
+        /* Full-bleed photo */
+        .photo-side > img.bg-photo {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center;
+            transition: transform 10s ease;
+        }
+        .photo-side:hover > img.bg-photo {
+            transform: scale(1.04);
         }
 
-        .btn-primary:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 8px 25px rgba(27, 145, 240, 0.35);
+        /* Gradient overlays */
+        .photo-side .ov-dark {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg,
+                rgba(10,15,40,0.72) 0%,
+                rgba(15,25,60,0.40) 50%,
+                rgba(10,15,40,0.20) 100%);
+        }
+        .photo-side .ov-bottom {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(to top,
+                rgba(5,10,30,0.88) 0%,
+                rgba(5,10,30,0.20) 40%,
+                transparent 70%);
         }
 
-        .btn-primary:active {
-            transform: translateY(0);
-        }
-
-        .dot-pattern {
-            background-image: radial-gradient(circle, rgba(255, 255, 255, 0.15) 1px, transparent 1px);
+        /* Dot overlay on top of photo */
+        .photo-side .ov-dots {
+            position: absolute;
+            inset: 0;
+            background-image: radial-gradient(circle, rgba(255,255,255,0.07) 1.5px, transparent 1.5px);
             background-size: 24px 24px;
+            pointer-events: none;
+        }
+
+        /* Glowing border frame overlay around the whole photo */
+        .photo-side .photo-border-frame {
+            position: absolute;
+            inset: 12px;
+            border-radius: 18px;
+            border: 1.5px solid rgba(255,255,255,0.12);
+            pointer-events: none;
+            z-index: 5;
+            box-shadow:
+                inset 0 0 0 1px rgba(99,102,241,0.18),
+                inset 0 1px 0 rgba(255,255,255,0.15);
+        }
+
+        /* Corner accent marks */
+        .photo-side .corner {
+            position: absolute;
+            width: 22px;
+            height: 22px;
+            border-style: solid;
+            border-color: rgba(99,102,241,0.8);
+            z-index: 6;
+        }
+        .photo-side .c-tl { top: 20px; left: 20px; border-width: 2.5px 0 0 2.5px; border-radius: 6px 0 0 0; }
+        .photo-side .c-tr { top: 20px; right: 20px; border-width: 2.5px 2.5px 0 0; border-radius: 0 6px 0 0; }
+        .photo-side .c-bl { bottom: 20px; left: 20px; border-width: 0 0 2.5px 2.5px; border-radius: 0 0 0 6px; }
+        .photo-side .c-br { bottom: 20px; right: 20px; border-width: 0 2.5px 2.5px 0; border-radius: 0 0 6px 0; }
+
+        /* Floating badge pills */
+        .badge-row {
+            position: absolute;
+            top: 28px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+            z-index: 7;
+        }
+        .badge-pill {
+            padding: 5px 14px;
+            border-radius: 30px;
+            font-size: 9px;
+            font-weight: 900;
+            letter-spacing: 0.10em;
+            text-transform: uppercase;
+            color: white;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.20);
+        }
+        .badge-pill.purple { background: rgba(99,102,241,0.85); }
+        .badge-pill.blue   { background: rgba(27,145,240,0.85); }
+        .badge-pill.green  { background: rgba(16,185,129,0.85); }
+
+        /* Floating stat cards */
+        .stat-card {
+            position: absolute;
+            z-index: 7;
+            background: rgba(255,255,255,0.10);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
+            border: 1px solid rgba(255,255,255,0.18);
+            border-radius: 14px;
+            padding: 11px 15px;
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.30);
+        }
+        .stat-icon {
+            width: 34px;
+            height: 34px;
+            border-radius: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .stat-label { font-size: 9px; color: rgba(255,255,255,0.60); font-weight: 600; text-transform: uppercase; letter-spacing: 0.07em; }
+        .stat-value { font-size: 13px; color: white; font-weight: 800; line-height: 1.2; }
+
+        /* Caption at bottom */
+        .photo-caption {
+            position: absolute;
+            bottom: 0;
+            left: 0; right: 0;
+            padding: 44px 28px 28px;
+            z-index: 6;
+        }
+
+        /* Floating animations */
+        @keyframes floatY {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-7px); }
+        }
+        .fl1 { animation: floatY 4.0s ease-in-out infinite; }
+        .fl2 { animation: floatY 5.0s ease-in-out infinite 1.2s; }
+
+        /* ======== RIGHT FORM SIDE ======== */
+        .form-side {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 44px 44px 32px;
+            background: #fff;
+            overflow-y: auto;
+        }
+
+        /* Inputs */
+        .input-group { display: flex; flex-direction: column; gap: 6px; }
+        .input-label {
+            font-size: 10px;
+            font-weight: 800;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.10em;
+        }
+        .input-wrap { position: relative; }
+        .input-icon {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #94a3b8;
+            font-size: 13px;
+            pointer-events: none;
+        }
+        .form-input {
+            width: 100%;
+            border: 1.5px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 13px 14px 13px 40px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #1e293b;
+            background: #f8fafc;
+            outline: none;
+            transition: all 0.2s;
+        }
+        .form-input:focus {
+            border-color: #6366f1;
+            background: #fff;
+            box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
+        }
+        .form-input::placeholder { color: #cbd5e1; }
+
+        /* Button */
+        .btn-login {
+            width: 100%;
+            padding: 14px;
+            border-radius: 12px;
+            border: none;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 900;
+            letter-spacing: 0.09em;
+            text-transform: uppercase;
+            color: white;
+            background: linear-gradient(135deg, #6366f1 0%, #1b91f0 100%);
+            box-shadow: 0 4px 18px rgba(99,102,241,0.38);
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-login:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(99,102,241,0.48); }
+        .btn-login:active { transform: translateY(0); }
+        .btn-login::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(to bottom, rgba(255,255,255,0.14), transparent);
+        }
+
+        /* Error */
+        .err-box {
+            display: none;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            border-radius: 10px;
+            padding: 10px 14px;
+            color: #ef4444;
+            font-size: 12px;
+            font-weight: 600;
+            align-items: center;
+            gap: 8px;
         }
     </style>
 </head>
 
-<body class="h-screen overflow-hidden gradient-bg flex items-center justify-center p-4">
+<body>
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
 
-    <!-- Dot pattern overlay -->
-    <div class="absolute inset-0 dot-pattern pointer-events-none"></div>
+    <div class="login-card">
 
-    <!-- Floating blobs -->
-    <div class="absolute top-10 left-10 w-72 h-72 bg-white/10 rounded-full blur-3xl pointer-events-none"></div>
-    <div class="absolute bottom-10 right-10 w-96 h-96 bg-indigo-300/20 rounded-full blur-3xl pointer-events-none"></div>
+        <!-- ========= LEFT: FULL PHOTO ========= -->
+        <div class="photo-side">
+            <!-- Full-bleed background photo -->
+            <img class="bg-photo" src="assets/company.jpg" alt="PT Tana Subur Nusantara">
 
-    <!-- Card -->
-    <div class="glass rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden relative z-10">
+            <!-- Overlays -->
+            <div class="ov-dark"></div>
+            <div class="ov-bottom"></div>
+            <div class="ov-dots"></div>
 
-        <!-- Header branding -->
-        <div class="p-8 pb-6 text-center">
-            <div class="flex items-center justify-center gap-2 mb-2">
-                <img src="assets/logo.png" alt="UnityERP" class="w-10 h-10 rounded-xl shadow-md object-contain"
-                    onerror="this.style.display='none'">
-                <span class="text-2xl font-black text-gray-800 tracking-tight">Tana Subur <span
-                        class="text-blue-600">Nusantara</span></span>
+            <!-- Glowing frame border -->
+            <div class="photo-border-frame"></div>
+
+            <!-- Corner accents -->
+            <div class="corner c-tl"></div>
+            <div class="corner c-tr"></div>
+            <div class="corner c-bl"></div>
+            <div class="corner c-br"></div>
+
+
+
+            <!-- Caption at bottom -->
+            <div class="photo-caption">
+                <h1 style="font-size:22px;font-weight:900;color:white;letter-spacing:-0.02em;line-height:1.2;margin-bottom:6px;text-shadow:0 2px 12px rgba(0,0,0,0.4);">
+                    PT Tana Subur Nusantara
+                </h1>
+                <p style="font-size:12px;color:rgba(255,255,255,0.75);font-weight:500;line-height:1.5;max-width:320px;">
+                    Sistem Informasi Manajemen Manufaktur Terintegrasi
+                </p>
             </div>
-            <p class="text-gray-400 text-sm">Sistem Informasi Manufaktur</p>
         </div>
 
-        <!-- Login Form -->
-        <div class="px-8 pb-8">
-            <div class="space-y-4">
-                <div>
-                    <label
-                        class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Email</label>
-                    <div class="relative">
-                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><i
-                                class="fas fa-envelope text-sm"></i></span>
-                        <input id="login_email" type="email" placeholder="email@domain.com"
-                            class="input-field w-full border border-gray-200 rounded-xl pl-10 pr-4 py-3 text-sm bg-white focus:outline-none focus:border-blue-400 transition-all"
-                            onkeydown="if(event.key==='Enter') doLogin()">
-                    </div>
-                </div>
-                <div>
-                    <label
-                        class="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">Password</label>
-                    <div class="relative">
-                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><i
-                                class="fas fa-lock text-sm"></i></span>
-                        <input id="login_password" type="password" placeholder="••••••••"
-                            class="input-field w-full border border-gray-200 rounded-xl pl-10 pr-10 py-3 text-sm bg-white focus:outline-none focus:border-blue-400 transition-all"
-                            onkeydown="if(event.key==='Enter') doLogin()">
-                        <button onclick="togglePw('login_password')"
-                            class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                            <i class="fas fa-eye text-sm"></i>
-                        </button>
+        <!-- ========= RIGHT: LOGIN FORM ========= -->
+        <div class="form-side">
+
+            <!-- Branding header -->
+            <div>
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:30px;">
+                    <img src="assets/logo.png" alt="Logo"
+                        style="width:38px;height:38px;border-radius:10px;object-fit:contain;box-shadow:0 2px 8px rgba(0,0,0,0.10);"
+                        onerror="this.style.display='none'">
+                    <div>
+                        <div style="font-size:10px;font-weight:800;color:#6366f1;text-transform:uppercase;letter-spacing:0.10em;">PT Tana Subur Nusantara</div>
+                        <div style="font-size:10px;font-weight:400;color:#94a3b8;margin-top:1px;">Sistem ERP Manufaktur</div>
                     </div>
                 </div>
 
-                <div id="login_error"
-                    class="hidden text-red-500 text-xs bg-red-50 border border-red-100 rounded-lg px-3 py-2 flex items-center gap-2">
-                    <i class="fas fa-exclamation-circle"></i>
-                    <span id="login_error_msg">Email atau password salah.</span>
+                <h2 style="font-size:27px;font-weight:900;color:#0f172a;letter-spacing:-0.02em;line-height:1.15;">Selamat Datang</h2>
+                <p style="font-size:13px;color:#94a3b8;font-weight:400;margin:6px 0 32px;">Masuk menggunakan kredensial akun Anda</p>
+
+                <!-- Fields -->
+                <div style="display:flex;flex-direction:column;gap:18px;">
+
+                    <div class="input-group">
+                        <label class="input-label">Email</label>
+                        <div class="input-wrap">
+                            <i class="fas fa-envelope input-icon"></i>
+                            <input id="login_email" type="email" placeholder="nama@tanasubur.co.id" class="form-input"
+                                onkeydown="if(event.key==='Enter') doLogin()">
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label class="input-label">Password</label>
+                        <div class="input-wrap">
+                            <i class="fas fa-lock input-icon"></i>
+                            <input id="login_password" type="password" placeholder="••••••••" class="form-input"
+                                style="padding-right:42px;" onkeydown="if(event.key==='Enter') doLogin()">
+                            <button onclick="togglePw('login_password')"
+                                style="position:absolute;right:14px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#94a3b8;padding:0;line-height:1;">
+                                <i class="fas fa-eye" style="font-size:13px;"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="login_error" class="err-box">
+                        <i class="fas fa-exclamation-circle"></i>
+                        <span id="login_error_msg">Email atau password salah.</span>
+                    </div>
+
+                    <button onclick="doLogin()" class="btn-login" style="margin-top:4px;">
+                        <i class="fas fa-sign-in-alt" style="margin-right:8px;position:relative;z-index:1;"></i>
+                        <span style="position:relative;z-index:1;">Masuk ke ERP</span>
+                    </button>
+
                 </div>
 
-                <button onclick="doLogin()"
-                    class="btn-primary w-full text-white py-3 rounded-xl text-sm font-bold shadow-md mt-2">
-                    <i class="fas fa-sign-in-alt mr-2"></i>Masuk ke ERP
-                </button>
+                <p style="margin-top:22px;font-size:12px;color:#94a3b8;text-align:center;">
+                    Belum memiliki akses? Hubungi
+                    <span style="font-weight:700;color:#475569;cursor:pointer;"
+                        onmouseover="this.style.color='#334155'" onmouseout="this.style.color='#475569'">Administrator</span>
+                </p>
             </div>
 
-            <p class="text-center text-xs text-gray-400 mt-6">
-                Belum punya akun? Hubungi <span class="font-semibold text-gray-500">Administrator</span>.
-            </p>
-
-            <div class="mt-8 pt-6 border-t border-white/20 text-center">
-                <p class="text-[10px] font-bold text-white/70 uppercase tracking-[0.2em]">Powered By Unity<span
-                        class="text-blue-200">ERP</span></p>
+            <!-- Footer -->
+            <div style="border-top:1px solid #f1f5f9;padding-top:18px;display:flex;justify-content:space-between;align-items:center;">
+                <p style="font-size:10px;font-weight:800;color:#cbd5e1;text-transform:uppercase;letter-spacing:0.08em;">
+                    Powered by <span style="color:#6366f1;">Unity</span><span style="color:#1b91f0;">ERP</span>
+                </p>
+                <p style="font-size:10px;color:#e2e8f0;">&copy; 2026 PT Tana Subur Nusantara</p>
             </div>
+
         </div>
     </div>
 
@@ -155,14 +424,13 @@
         function showError(panelId, msg) {
             const el = document.getElementById(panelId);
             document.getElementById(panelId + '_msg').textContent = msg;
-            el.classList.remove('hidden');
+            el.style.display = 'flex';
         }
 
         async function doLogin() {
             const email = document.getElementById('login_email').value.trim().toLowerCase();
             const password = document.getElementById('login_password').value.trim();
-
-            document.getElementById('login_error').classList.add('hidden');
+            document.getElementById('login_error').style.display = 'none';
 
             if (!email || !password) {
                 showError('login_error', 'Isi email dan password terlebih dahulu.');
@@ -170,12 +438,8 @@
             }
 
             try {
-                // Call backend API for authentication
                 console.log('[Login] Attempting login for:', email);
                 const result = await api.login(email, password);
-                console.log('[Login] Login successful, result:', result);
-
-                // Save session with JWT token
                 const sessionData = {
                     token: result.token,
                     userId: result.user.userId,
@@ -187,11 +451,7 @@
                     permissions: result.user.permissions || {},
                     loginAt: result.user.loginAt
                 };
-                
-                console.log('[Login] Saving session:', sessionData);
                 localStorage.setItem('unityerp_session', JSON.stringify(sessionData));
-
-                console.log('[Login] Redirecting to index.html');
                 window.location.href = 'index.html';
             } catch (err) {
                 console.error('[Login] Login failed:', err);
@@ -199,22 +459,13 @@
             }
         }
 
-        // Check if already logged in - SIMPLIFIED to prevent loop
-        (function() {
-            // Cek apakah baru saja redirect dari index (untuk mencegah loop)
+        (function () {
             const redirectedFromIndex = sessionStorage.getItem('redirected_from_index');
             if (redirectedFromIndex) {
-                console.log('[Login] Redirected from index, clearing session');
                 sessionStorage.removeItem('redirected_from_index');
                 localStorage.removeItem('unityerp_session');
-                return;
             }
-
-            // DISABLE auto-verify untuk mencegah loop
-            // User harus login manual jika session expired
-            console.log('[Login] Ready for login');
         })();
     </script>
 </body>
-
 </html>

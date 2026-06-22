@@ -485,3 +485,70 @@ const api = {
 
 // Make available globally
 window.api = api;
+
+// ─── Reusable Custom Dropdown Component ───────────────────────────
+window.renderActionsDropdownHtml = (id, handlerName, options) => {
+    // options is an array of [ [value, label, icon, extraClass], ... ]
+    const buttons = options.map(([val, label, icon, extraClass]) => {
+        const itemClass = extraClass || 'text-slate-700 hover:bg-blue-50 hover:text-blue-600';
+        const iconClass = icon || 'fas fa-cog text-slate-400';
+        return `
+            <button onclick="event.stopPropagation(); ${handlerName}('${val}', '${id}')" class="group flex items-center w-full px-4 py-2.5 text-[11px] font-bold text-left transition-all ${itemClass}" role="menuitem">
+                <i class="${iconClass} w-4 mr-2 group-hover:text-current transition-colors"></i> ${label}
+            </button>
+        `;
+    }).join('');
+
+    return `
+        <div class="relative inline-block text-left font-sans">
+            <button type="button" onclick="event.stopPropagation(); window.toggleActionsDropdown('${id}')" class="flex items-center justify-between gap-x-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 transition-all cursor-pointer shadow-sm active:scale-95 w-[115px]" id="menu-btn-${id}">
+                <span>Pilih Aksi</span>
+                <i class="fas fa-chevron-down text-[9px] text-slate-400 transition-transform duration-200" id="menu-arrow-${id}"></i>
+            </button>
+            <div class="hidden absolute right-0 z-[100] mt-1.5 w-44 origin-top-right rounded-xl bg-white shadow-xl border border-slate-150 overflow-hidden font-medium py-1 divide-y divide-slate-50 animate-in fade-in duration-150" id="menu-dropdown-${id}">
+                ${buttons}
+            </div>
+        </div>
+    `;
+};
+
+window.toggleActionsDropdown = (id) => {
+    // Close all other open dropdowns first
+    document.querySelectorAll('[id^="menu-dropdown-"]').forEach(el => {
+        if (el.id !== `menu-dropdown-${id}`) {
+            el.classList.add('hidden');
+            const arrow = document.getElementById(`menu-arrow-${el.id.replace('menu-dropdown-', '')}`);
+            if (arrow) arrow.classList.remove('rotate-180');
+        }
+    });
+
+    const dropdown = document.getElementById(`menu-dropdown-${id}`);
+    const arrow = document.getElementById(`menu-arrow-${id}`);
+    if (dropdown) {
+        const isHidden = dropdown.classList.toggle('hidden');
+        if (arrow) {
+            if (isHidden) {
+                arrow.classList.remove('rotate-180');
+            } else {
+                arrow.classList.add('rotate-180');
+            }
+        }
+    }
+};
+
+window.togglePOActionsDropdown = window.toggleActionsDropdown;
+
+// Close all custom dropdowns when clicking outside
+if (!window._globalDropdownListenerAdded) {
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('[id^="menu-btn-"]')) {
+            document.querySelectorAll('[id^="menu-dropdown-"]').forEach(el => {
+                el.classList.add('hidden');
+                const id = el.id.replace('menu-dropdown-', '');
+                const arrow = document.getElementById(`menu-arrow-${id}`);
+                if (arrow) arrow.classList.remove('rotate-180');
+            });
+        }
+    });
+    window._globalDropdownListenerAdded = true;
+}

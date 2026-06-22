@@ -167,7 +167,8 @@ window.renderProductionDashboard = () => {
                         data: sortedProds.map(p => p[1]),
                         backgroundColor: '#818cf8',
                         borderRadius: 6,
-                        barThickness: 24,
+                        barPercentage: 0.5,
+                        categoryPercentage: 0.8,
                         hoverBackgroundColor: '#6366f1'
                     }]
                 },
@@ -194,7 +195,8 @@ window.renderProductionDashboard = () => {
                             ticks: { 
                                 color: '#64748b', 
                                 font: { size: 10, weight: 'bold' },
-                                padding: 10
+                                padding: 10,
+                                crossAlign: 'far'
                             }
                         }
                     }
@@ -218,6 +220,7 @@ window.renderProductionMO = async () => {
     window._prodFilters = window._prodFilters || { stage: '', search: '', start: '', end: '' };
     const f = window._prodFilters;
 
+    const hasDateFilter = f.start || f.end;
     const filtered = mos.filter(m => {
         if (f.stage && m.stage !== f.stage) return false;
         if (f.search) {
@@ -228,8 +231,13 @@ window.renderProductionMO = async () => {
             const inTP = (m.targetProducts || []).some(tp => (tp.itemName || '').toLowerCase().includes(q));
             if (!inMO && !inProd && !inTP && !inStage) return false;
         }
-        if (f.start || f.end) {
-            const moDate = new Date(m.date || m.createdAt);
+
+        const moDate = new Date(m.date || m.createdAt);
+        if (!hasDateFilter) {
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+            if (moDate < today || moDate > todayEnd) return false;
+        } else {
             moDate.setHours(0, 0, 0, 0);
             if (f.start) { const sd = new Date(f.start); sd.setHours(0, 0, 0, 0); if (moDate < sd) return false; }
             if (f.end) { const ed = new Date(f.end); ed.setHours(23, 59, 59, 999); if (moDate > ed) return false; }
@@ -242,7 +250,7 @@ window.renderProductionMO = async () => {
 
     let tableRows = '';
     if (filtered.length === 0) {
-        tableRows = `<tr><td colspan="6" class="py-20 text-center text-slate-300 italic text-sm">Tidak ada MO ditemukan.</td></tr>`;
+        tableRows = `<tr><td colspan="6" class="py-20 text-center text-slate-300 italic text-sm">Tidak ada MO ditemukan untuk ${!hasDateFilter ? 'hari ini' : 'periode yang dipilih'}.</td></tr>`;
     } else {
         filtered.forEach(mo => {
             const moDate = new Date(mo.date || mo.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -315,7 +323,7 @@ window.renderProductionMO = async () => {
             </div>
             <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
                 <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-                    <span class="text-xs font-black text-slate-700 uppercase tracking-widest">Daftar Perintah Produksi</span>
+                    <span class="text-xs font-black text-slate-700 uppercase tracking-widest">Daftar Perintah Produksi <span class="text-[9px] text-slate-400 lowercase font-bold tracking-normal">(${!hasDateFilter ? 'hari ini' : 'periode filter'})</span></span>
                     <span class="text-[10px] font-bold text-slate-400">${filtered.length} MO</span>
                 </div>
                 <div class="overflow-x-auto">
@@ -3062,54 +3070,9 @@ window.openBOMModal = (id = null) => {
     <div class="space-y-6 px-1 py-2">
         <!-- Target Product Section -->
         <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative">
-            <label class="block text-[11px] font-black text-slate-400 uppercase mb-3 ml-1">PILIH PRODUK TARGET (WIP OVEN BASAH) <span class="text-red-500">*</span></label>
-            
-            <div class="relative w-full">
-                <button type="button" onclick="toggleBOMTargetDropdown()" id="bom_target_dropdown_btn"
-                    class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold bg-white text-left flex justify-between items-center transition-all hover:border-indigo-400 shadow-sm ${id ? 'text-slate-800' : 'text-slate-400'}">
-                    <span id="bom_target_dropdown_text">${id ? (db.findById('inventoryItems', db.findById('bomHeaders', id)?.productId)?.itemName || '-- Pilih Produk Target --') : '-- Pilih Produk Target --'}</span>
-                    <i class="fas fa-chevron-down text-[10px]"></i>
-                </button>
-                
-                <input type="hidden" id="bom_product_id" value="${id ? db.findById('bomHeaders', id)?.productId : ''}">
-                
-                <div id="bom_target_dropdown_menu" class="hidden absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden animate-slide-up">
-                    <div class="p-3 border-b border-slate-100 bg-slate-50/30">
-                        <div class="relative">
-                            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
-                            <input type="text" id="bom_target_dropdown_search" onkeyup="filterBOMTargetDropdown()" placeholder="Ketik kode atau nama..." 
-                                class="w-full bg-white border border-slate-200 rounded-xl pl-9 pr-3 py-2.5 text-sm font-medium text-slate-700 outline-none focus:border-indigo-400 transition-all shadow-sm">
-                        </div>
-                    </div>
-                    
-                    <div class="max-h-64 overflow-y-auto custom-scrollbar p-2" id="bom_target_dropdown_list">
-                        ${mixingProducts.length > 0 ? mixingProducts.map(p => `
-                            <div class="bom-target-option flex justify-between items-center p-3 hover:bg-indigo-50/50 rounded-xl cursor-pointer transition-all group" 
-                                onclick="selectBOMTargetOption('${p.id}', '${p.itemName.replace(/'/g, "\\'")}')"
-                                data-name="${(p.itemName || '').toLowerCase()}" data-code="${(p.itemCode || '').toLowerCase()}">
-                                <div class="flex flex-col">
-                                    <div class="text-sm font-bold text-slate-700 group-hover:text-indigo-600">${p.itemName}</div>
-                                    <div class="text-[10px] font-black text-slate-300 uppercase tracking-widest group-hover:text-indigo-300">${p.itemCode}</div>
-                                </div>
-                            </div>
-                        `).join('') : `
-                            <div class="p-6 flex flex-col items-center justify-center text-center">
-                                <div class="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center mb-3">
-                                    <i class="fas fa-exclamation text-slate-300"></i>
-                                </div>
-                                <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">PILIH KATEGORI TERLEBIH DAHULU</div>
-                            </div>
-                        `}
-                    </div>
-                    
-                    <div class="p-2 border-t border-slate-100 bg-slate-50/50">
-                        <button type="button" onclick="window._isModalOpen=false; navigateTo('inventory-master')" class="w-full flex items-center gap-3 p-2.5 hover:bg-white hover:shadow-sm rounded-xl text-[11px] font-black text-slate-500 hover:text-indigo-600 transition-all uppercase tracking-wider">
-                            <div class="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center shadow-sm text-slate-400 group-hover:text-indigo-500"><i class="fas fa-plus"></i></div>
-                            TAMBAH PRODUK BARU
-                        </button>
-                    </div>
-                </div>
-            </div>
+            <label class="block text-[11px] font-black text-slate-400 uppercase mb-3 ml-1">NAMA RESEP / PRODUK TARGET <span class="text-red-500">*</span></label>
+            <input type="text" id="bom_product_name" value="${id ? (db.findById('bomHeaders', id)?.productName || '') : ''}" placeholder="Ketik nama resep / produk target..."
+                class="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold bg-white text-slate-800 outline-none focus:border-indigo-400 shadow-sm transition-all">
         </div>
 
         <!-- Item Bahan Baku (Expanded for 'full' width) -->
@@ -3278,14 +3241,17 @@ function appendMaterialToTable(location, itemId, itemName, qty, unit) {
 }
 
 window.saveBOM = async (id = '') => {
-    const productId = document.getElementById('bom_product_id').value;
-    let name = document.getElementById('bom_target_dropdown_text').textContent;
-    if (name === '-- Pilih Produk Target --') name = '';
+    const name = document.getElementById('bom_product_name').value.trim();
 
-    if (!name || !productId) {
-        showToast('Mohon pilih Produk Mixing target resep', 'error');
+    if (!name) {
+        showToast('Mohon isi nama resep / produk target', 'error');
         return;
     }
+
+    // Try to resolve matching inventory item for compatibility
+    const invItems = db.read('inventoryItems') || [];
+    const matched = invItems.find(x => x.itemName.toLowerCase() === name.toLowerCase());
+    const productId = matched ? matched.id : '';
 
     const rows = document.querySelectorAll('#bom_materials_table_body tr');
     const materials = [];
