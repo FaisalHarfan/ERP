@@ -166,10 +166,10 @@ router.put('/items/:id', authenticateToken, requirePermission('logistik', 'edit'
         const { itemName, category, unit, minStock, purchasePrice, status } = req.body;
 
         const updates = {};
-        if (itemName !== undefined) updates.item_name = itemName;
+        if (itemName !== undefined) updates.itemName = itemName;
         if (unit !== undefined) updates.unit = unit;
-        if (minStock !== undefined) updates.min_stock = minStock;
-        if (purchasePrice !== undefined) updates.purchase_price = purchasePrice;
+        if (minStock !== undefined) updates.minStock = minStock;
+        if (purchasePrice !== undefined) updates.purchasePrice = purchasePrice;
         if (status !== undefined) updates.status = status;
 
         // Jika kategori berubah, item code harus digenerate ulang (business rule lama)

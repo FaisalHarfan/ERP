@@ -379,6 +379,7 @@ window.renderInventoryMaster = async () => {
         
         items = items.filter(it => !WIP_CATEGORIES.includes(it.category) && !PURCHASE_CATEGORIES.includes(it.category));
         window._tempInventoryItems = items; // Update cache after filters
+        window._tempInventoryMasterItems = items; // Cache for fast client-side search
 
         // Persist filters
         window._inventoryFilters = window._inventoryFilters || { category: '', name: '' };
@@ -504,7 +505,7 @@ window.renderInventoryMaster = async () => {
             </div>
             
             <div class="p-4 bg-slate-50/50 border-t border-slate-100 flex justify-between items-center">
-                <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Showing ${items.length} Registered Items</span>
+                <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest" data-item-count>Showing ${items.length} Registered Items</span>
                 <div class="flex gap-1">
                     <!-- Pagination could go here if needed -->
                 </div>
@@ -604,13 +605,51 @@ window.updateInventoryFilters = () => {
     _filterDebounce = setTimeout(() => {
         const nameInput = document.getElementById('filter_item_name');
         const catInput = document.getElementById('filter_item_category');
-        
+
         window._inventoryFilters = {
             name: nameInput ? nameInput.value : (window._inventoryFilters?.name || ''),
             category: catInput ? catInput.value : (window._inventoryFilters?.category || '')
         };
-        renderInventoryMaster();
-    }, 300);
+
+        // Fast path: if cached items exist, filter & update table only (no API re-fetch)
+        const cached = window._tempInventoryMasterItems;
+        if (cached) {
+            const f = window._inventoryFilters;
+            let items = [...cached];
+
+            if (f.category) {
+                items = items.filter(it => it.category === f.category);
+            }
+            if (f.name) {
+                const q = f.name.toLowerCase().trim();
+                const searchWords = q.split(/\s+/).filter(w => w.length > 0);
+                items = items.filter(it => {
+                    const targetText = `${it.itemName} ${it.itemCode}`.toLowerCase();
+                    return searchWords.every(word => targetText.includes(word));
+                });
+            }
+
+            // Sort: Gudang Jadi first, then Bahan Baku, then alphabetical
+            const catOrder = { FINISHED_GOODS: 1, RAW_MATERIAL: 2 };
+            items.sort((a, b) => {
+                const orderA = catOrder[a.category] || 99;
+                const orderB = catOrder[b.category] || 99;
+                if (orderA !== orderB) return orderA - orderB;
+                return (a.itemName || '').localeCompare(b.itemName || '');
+            });
+
+            const tbody = document.getElementById('inventory_table_body');
+            const emptyState = document.getElementById('inventory_empty_state');
+            const countEl = document.querySelector('[data-item-count]');
+
+            if (tbody) tbody.innerHTML = renderInventoryRows(items);
+            if (emptyState) emptyState.classList.toggle('hidden', items.length > 0);
+            if (countEl) countEl.textContent = `Showing ${items.length} Registered Items`;
+        } else {
+            // Fallback: full re-render (first load or cache missing)
+            renderInventoryMaster();
+        }
+    }, 150);
 };
 
 window.resetInventoryFilters = () => {
@@ -620,7 +659,7 @@ window.resetInventoryFilters = () => {
 
 window.renderInventoryItemForm = (id = null, context = null) => {
     if (window.pushCurrentToHistory) window.pushCurrentToHistory();
-    const item = id ? db.findById('inventoryItems', id) : null;
+    const item = id ? ((window._tempInventoryItems || []).find(it => it.id === id) || db.findById('inventoryItems', id)) : null;
     const units = ['KG', 'GR', 'Lembar', 'PCS', 'BOX', 'SAK', 'KARTON', 'LITER'];
     const unitOpts = units.map(u => `<option ${item?.unit === u ? 'selected' : ''}>${u}</option>`).join('');
     
@@ -684,7 +723,7 @@ window.renderInventoryItemForm = (id = null, context = null) => {
             <div></div>
             <div class="flex items-center gap-3">
                 <button onclick="window._lastItemContext === 'purchase' ? renderPurchaseMasterItems() : (window._lastItemContext === 'production' ? renderProductionStockMaster() : renderInventoryMaster())" class="px-6 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95">Batal</button>
-                <button onclick="saveInventoryItem('${id || ''}')" class="px-8 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg active:scale-95 flex items-center gap-2">
+                <button onclick="saveInventoryItem('${id || ''}', this)" class="px-8 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg active:scale-95 flex items-center gap-2">
                     <i class="fas fa-check-circle text-[10px]"></i> Simpan Data Item
                 </button>
             </div>
@@ -832,21 +871,24 @@ window.invUpdateCodePreview = () => {
     }
 };
 
-window.saveInventoryItem = async (id) => {
+window.saveInventoryItem = async (id, btnEl) => {
     const name = document.getElementById('inv_name').value.trim();
     const category = document.getElementById('inv_category').value;
     const unit = document.getElementById('inv_unit').value;
     const minStock = parseFloat(document.getElementById('inv_min_stock').value) || 0;
-    const status = document.getElementById('inv_status').value;
+    const statusEl = document.getElementById('inv_status');
+    const status = statusEl ? statusEl.value : 'ACTIVE';
     const purchasePrice = parseFloat(document.getElementById('inv_price').value) || 0;
     if (!name || !category || !unit) { showToast('Nama, Kategori, dan Satuan wajib diisi', 'error'); return; }
 
     const initialStock = parseFloat(document.getElementById('inv_initial_stock')?.value) || 0;
 
-    const btn = event.currentTarget || event.target;
-    const oldHtml = btn.innerHTML;
-    btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>Menyimpan...`;
-    btn.disabled = true;
+    const btn = btnEl || (typeof event !== 'undefined' && (event.currentTarget || event.target)) || null;
+    const oldHtml = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>Menyimpan...`;
+        btn.disabled = true;
+    }
 
     try {
         if (id) {
@@ -857,16 +899,18 @@ window.saveInventoryItem = async (id) => {
             showToast('Item baru berhasil ditambahkan');
         }
         
-        // SYNC ALL RELEVANT TABLES
-        await db.sync('inventoryItems');
-        await db.sync('stockTransactions');
+        // Bust the master cache so next open fetches fresh data
+        window._tempInventoryMasterItems = null;
 
         closeModal();
         returnToMasterView();
     } catch (err) {
-        showToast(err.message, 'error');
-        btn.innerHTML = oldHtml;
-        btn.disabled = false;
+        console.error('saveInventoryItem error:', err);
+        showToast(err.message || 'Gagal menyimpan item', 'error');
+        if (btn) {
+            btn.innerHTML = oldHtml;
+            btn.disabled = false;
+        }
     }
 };
 
