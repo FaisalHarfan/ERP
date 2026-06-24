@@ -4678,124 +4678,6 @@ window.viewPO = (id, fromPage = 'po') => {
     const suppliers = db.read('suppliers');
     const sup = suppliers.find(s => s.id === po.supplierId) || { name: '-' };
 
-    // --- History Penerimaan Barang ---
-    let receipts = po.receipts || [];
-    if (typeof receipts === 'string') {
-        try {
-            receipts = JSON.parse(receipts);
-        } catch (e) {
-            receipts = [];
-        }
-    }
-    let receiptHistoryHtml = '';
-    if (receipts && receipts.length > 0) {
-        const cards = receipts.map((receipt, idx) => {
-            const dateStr = receipt.date ? receipt.date.split('T')[0] : '';
-            const sjStr = receipt.suratJalan || receipt.sjNumber || '-';
-            const notesStr = receipt.notes || receipt.receiver || '-';
-            const npbStr = receipt.npbNumber || receipt.npb || '-';
-            
-            const rows = (receipt.items || []).map((item, i) => `
-                <tr class="text-xs text-slate-700 hover:bg-slate-50/30 transition-colors">
-                    <td class="py-3 px-5 text-center font-bold text-slate-400 border-b border-slate-100">${i + 1}</td>
-                    <td class="py-3 px-5 font-black uppercase text-slate-800 border-b border-slate-100">${item.prodText || item.name || '-'}</td>
-                    <td class="py-3 px-5 text-center font-black text-slate-900 border-b border-slate-100">${(item.receivedQty || item.qty || 0).toLocaleString('id-ID')}</td>
-                    <td class="py-3 px-5 text-center font-bold text-slate-500 uppercase border-b border-slate-100">${item.unit || 'PCS'}</td>
-                </tr>
-            `).join('');
-
-            return `
-                <div class="bg-white rounded-3xl border border-slate-200/60 shadow-sm p-6 mb-6 transition-all hover:shadow-md relative overflow-hidden group">
-                    <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4 mb-4">
-                        <div class="flex items-center gap-3">
-                            <div class="px-3.5 py-1.5 rounded-xl bg-slate-900 text-white text-[9px] font-black tracking-widest uppercase">
-                                Penerimaan ke-${idx + 1}
-                            </div>
-                            <div class="text-xs font-mono font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-lg border border-blue-100">
-                                ${npbStr}
-                            </div>
-                        </div>
-                        <button onclick="printNPB('${po.id}', '${receipt.id}')"
-                            class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 active:scale-95 shadow-md shadow-emerald-500/10 hover:shadow-emerald-500/20">
-                            <i class="fas fa-print text-[10px]"></i> Cetak NPB
-                        </button>
-                    </div>
-                    
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-4 bg-slate-50/50 p-4 rounded-2xl border border-slate-100/50">
-                        <div>
-                            <span class="block text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Tanggal Terima</span>
-                            <span class="text-xs font-black text-slate-700">${dateStr}</span>
-                        </div>
-                        <div>
-                            <span class="block text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">No. SJ Supplier</span>
-                            <span class="text-xs font-black text-slate-700 uppercase">${sjStr}</span>
-                        </div>
-                        <div>
-                            <span class="block text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Nama Penerima / Keterangan</span>
-                            <span class="text-xs font-black text-slate-700 uppercase">${notesStr}</span>
-                        </div>
-                    </div>
-                    
-                    <div class="mt-4 bg-white rounded-2xl border border-slate-150 overflow-hidden shadow-sm">
-                        <table class="w-full text-left border-collapse">
-                            <thead>
-                                <tr class="bg-slate-50 border-b border-slate-150 text-[9px] font-black text-slate-400 uppercase tracking-wider">
-                                    <th class="py-3 px-5 w-12 text-center">No</th>
-                                    <th class="py-3 px-5">Deskripsi Barang</th>
-                                    <th class="py-3 px-5 text-center w-32">Qty Diterima</th>
-                                    <th class="py-3 px-5 text-center w-24">Satuan</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${rows}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            `;
-        }).join('');
-
-        receiptHistoryHtml = `
-            <div class="max-w-4xl mx-auto mt-8 px-6 no-print">
-                <div class="flex items-center gap-3 mb-6">
-                    <div class="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 shadow-sm border border-indigo-100/50">
-                        <i class="fas fa-history text-sm"></i>
-                    </div>
-                    <div>
-                        <h3 class="text-base font-black text-slate-800 tracking-tight">Riwayat Penerimaan Barang</h3>
-                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Daftar Penerimaan Parsial & Nota Penerimaan Barang (NPB)</p>
-                    </div>
-                </div>
-                ${cards}
-            </div>
-        `;
-    } else {
-        receiptHistoryHtml = `
-            <div class="max-w-4xl mx-auto mt-8 px-6 no-print">
-                <div class="flex items-center gap-3 mb-6">
-                    <div class="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 shadow-sm border border-indigo-100/50">
-                        <i class="fas fa-history text-sm"></i>
-                    </div>
-                    <div>
-                        <h3 class="text-base font-black text-slate-800 tracking-tight">Riwayat Penerimaan Barang</h3>
-                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Daftar Penerimaan Parsial & Nota Penerimaan Barang (NPB)</p>
-                    </div>
-                </div>
-                <div class="bg-white rounded-3xl border border-slate-200/60 shadow-sm p-8 text-center text-slate-400 font-bold uppercase tracking-wider">
-                    <i class="fas fa-info-circle text-2xl mb-2 text-slate-300"></i>
-                    <p class="text-xs">Belum ada riwayat penerimaan barang untuk PO ini</p>
-                </div>
-            </div>
-        `;
-    }
-    const itemRows = (po.items || []).map(i => `
-        <tr class="border-b border-gray-100">
-            <td class="py-2 px-2">${i.prodText}</td>
-            <td class="py-2 px-2 text-right">${formatNumber(i.qty)} ${i.unit || ''}</td>
-            <td class="py-2 px-2 text-right">${formatCurrency(i.price)}</td>
-            <td class="py-2 px-2 text-right font-medium">${formatCurrency(i.subtotal)}</td>
-        </tr>`).join('');
-
     // --- Delivery timeline section ---
     const today = new Date(); today.setHours(0, 0, 0, 0);
     let deliveryHtml = '';
@@ -4959,10 +4841,112 @@ window.viewPO = (id, fromPage = 'po') => {
             <!-- Scrollable Content Area -->
             <div class="flex-1 overflow-y-auto bg-slate-50/50 custom-scrollbar pb-24 pt-8">
                 ${printable}
-                ${receiptHistoryHtml}
             </div>
         </div>
     `;
+};
+
+window.showPOReceiptHistoryModal = (poId) => {
+    const po = db.findById('purchaseOrders', poId);
+    if (!po) return;
+
+    let receipts = po.receipts || [];
+    if (typeof receipts === 'string') {
+        try {
+            receipts = JSON.parse(receipts);
+        } catch (e) {
+            receipts = [];
+        }
+    }
+
+    let bodyHtml = '';
+    if (receipts && receipts.length > 0) {
+        const cards = receipts.map((receipt, idx) => {
+            const dateStr = receipt.date ? receipt.date.split('T')[0] : '';
+            const sjStr = receipt.suratJalan || receipt.sjNumber || '-';
+            const notesStr = receipt.notes || receipt.receiver || '-';
+            const npbStr = receipt.npbNumber || receipt.npb || '-';
+            
+            const rows = (receipt.items || []).map((item, i) => `
+                <tr class="text-xs text-slate-700 hover:bg-slate-50/30 transition-colors">
+                    <td class="py-3 px-5 text-center font-bold text-slate-400 border-b border-slate-100">${i + 1}</td>
+                    <td class="py-3 px-5 font-black uppercase text-slate-800 border-b border-slate-100">${item.prodText || item.name || '-'}</td>
+                    <td class="py-3 px-5 text-center font-black text-slate-900 border-b border-slate-100">${(item.receivedQty || item.qty || 0).toLocaleString('id-ID')}</td>
+                    <td class="py-3 px-5 text-center font-bold text-slate-500 uppercase border-b border-slate-100">${item.unit || 'PCS'}</td>
+                </tr>
+            `).join('');
+
+            return `
+                <div class="bg-white rounded-3xl border border-slate-200/60 shadow-sm p-6 mb-6 transition-all hover:shadow-md relative overflow-hidden group">
+                    <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-4 mb-4">
+                        <div class="flex items-center gap-3">
+                            <span class="px-3 py-1 bg-slate-900 text-white rounded-lg text-[9px] font-black uppercase tracking-widest">
+                                Penerimaan ke-${idx + 1}
+                            </span>
+                            <span class="text-xs font-mono font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-lg border border-blue-100">
+                                ${npbStr}
+                            </span>
+                        </div>
+                        <button onclick="printNPB('${po.id}', '${receipt.id}')"
+                            class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 active:scale-95 shadow-md shadow-emerald-500/10 hover:shadow-emerald-500/20">
+                            <i class="fas fa-print text-[10px]"></i> Cetak NPB
+                        </button>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4 bg-slate-50/50 p-4 rounded-2xl border border-slate-100/50">
+                        <div>
+                            <span class="block text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Tanggal Terima</span>
+                            <span class="text-xs font-black text-slate-700">${dateStr}</span>
+                        </div>
+                        <div>
+                            <span class="block text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">No. SJ Supplier</span>
+                            <span class="text-xs font-black text-slate-700 uppercase">${sjStr}</span>
+                        </div>
+                        <div>
+                            <span class="block text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1">Nama Penerima / Keterangan</span>
+                            <span class="text-xs font-black text-slate-700 uppercase">${notesStr}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4 bg-white rounded-2xl border border-slate-150 overflow-hidden shadow-sm">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-50 border-b border-slate-150 text-[9px] font-black text-slate-400 uppercase tracking-wider">
+                                    <th class="py-3 px-5 w-12 text-center">No</th>
+                                    <th class="py-3 px-5">Deskripsi Barang</th>
+                                    <th class="py-3 px-5 text-center w-32">Qty Diterima</th>
+                                    <th class="py-3 px-5 text-center w-24">Satuan</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rows}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        bodyHtml = `
+            <div class="space-y-4">
+                <p class="text-xs text-slate-450 font-bold uppercase tracking-wider mb-4">Daftar Penerimaan Parsial & Nota Penerimaan Barang (NPB) untuk PO ${po.poNumber}</p>
+                <div class="max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                    ${cards}
+                </div>
+            </div>
+        `;
+    } else {
+        bodyHtml = `
+            <div class="p-8 text-center text-slate-400 font-bold uppercase tracking-wider">
+                <i class="fas fa-info-circle text-3xl mb-3 text-slate-300"></i>
+                <p class="text-xs">Belum ada riwayat penerimaan barang untuk PO ${po.poNumber}</p>
+            </div>
+        `;
+    }
+
+    showModal(`Riwayat Penerimaan - ${po.poNumber}`, bodyHtml, `
+        <button onclick="closeModal()" class="px-6 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-200 transition-all">TUTUP</button>
+    `, 'lg');
 };
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ PURCHASE INVOICES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -6854,6 +6838,14 @@ function renderPurchaseOrders() {
             </button>
         `;
 
+        if (po.status === 'PARTIALLY RECEIVED' || po.status === 'RECEIVED') {
+            poOptions += `
+                <button onclick="handlePOAction('receipt_history', '${po.id}')" class="group flex items-center w-full px-4 py-2 text-[11px] text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-all font-bold text-left" role="menuitem">
+                    <i class="fas fa-history w-4 mr-2 text-slate-400 group-hover:text-indigo-500 transition-colors"></i> Riwayat Penerimaan
+                </button>
+            `;
+        }
+
         if (canEdit && po.status === 'DRAFT') {
             poOptions += `
                 <button onclick="handlePOAction('edit', '${po.id}')" class="group flex items-center w-full px-4 py-2 text-[11px] text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-all font-bold text-left" role="menuitem">
@@ -7177,6 +7169,8 @@ window.handlePRAction = function(action, value) {
         window.openPurchaseInvoiceForm(cleanId);
     } else if (action === 'print_npb') {
         window.printNPB(cleanId);
+    } else if (action === 'receipt_history') {
+        window.showPOReceiptHistoryModal(cleanId);
     }
 };
 
@@ -7236,6 +7230,9 @@ function renderPurchaseReceiving() {
                 dropdownOptions.push(['receive', 'Terima Barang', 'fas fa-box-open text-blue-500']);
             }
             dropdownOptions.push(['view', 'Lihat PO', 'fas fa-eye text-slate-500']);
+            if (po.status === 'PARTIALLY RECEIVED') {
+                dropdownOptions.push(['receipt_history', 'Riwayat Penerimaan', 'fas fa-history text-indigo-500']);
+            }
 
             const actionHtml = window.renderActionsDropdownHtml(`pr-${po.id}`, 'handlePRAction', dropdownOptions);
 
@@ -7373,6 +7370,7 @@ function renderPurchaseReceiving() {
             }
             dropdownOptions.push(['print_npb', 'Cetak NPB', 'fas fa-print text-slate-500']);
             dropdownOptions.push(['view', 'Lihat PO', 'fas fa-eye text-slate-500']);
+            dropdownOptions.push(['receipt_history', 'Riwayat Penerimaan', 'fas fa-history text-indigo-500']);
 
             const actionHtml = window.renderActionsDropdownHtml(`prhist-${po.id}`, 'handlePRAction', dropdownOptions);
 
@@ -7580,6 +7578,7 @@ window.handlePOAction = (actionOrSelectEl, poId) => {
     if (action === 'send')    return openSendPOModal(cleanId);
     if (action === 'approve') return updatePOStatus(cleanId, 'APPROVED');
     if (action === 'delete')  return deletePO(cleanId);
+    if (action === 'receipt_history') return window.showPOReceiptHistoryModal(cleanId);
 };
 
 window.togglePOActionsDropdown = (id) => {
