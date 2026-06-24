@@ -4769,6 +4769,24 @@ window.viewPO = (id, fromPage = 'po') => {
                 ${cards}
             </div>
         `;
+    } else {
+        receiptHistoryHtml = `
+            <div class="max-w-4xl mx-auto mt-8 px-6 no-print">
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 shadow-sm border border-indigo-100/50">
+                        <i class="fas fa-history text-sm"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-black text-slate-800 tracking-tight">Riwayat Penerimaan Barang</h3>
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Daftar Penerimaan Parsial & Nota Penerimaan Barang (NPB)</p>
+                    </div>
+                </div>
+                <div class="bg-white rounded-3xl border border-slate-200/60 shadow-sm p-8 text-center text-slate-400 font-bold uppercase tracking-wider">
+                    <i class="fas fa-info-circle text-2xl mb-2 text-slate-300"></i>
+                    <p class="text-xs">Belum ada riwayat penerimaan barang untuk PO ini</p>
+                </div>
+            </div>
+        `;
     }
     const itemRows = (po.items || []).map(i => `
         <tr class="border-b border-gray-100">
