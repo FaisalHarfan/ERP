@@ -1,6 +1,45 @@
 // production.js - Modul Produksi
 // Tahap: OVEN_BASAH -> OVEN_KERING -> FINISH_GOOD
 
+// ─── Searchable Dropdown Helpers (fallback jika inventory.js belum load) ───
+if (typeof window.toggleSearchableSelect !== 'function') {
+    window.toggleSearchableSelect = (id) => {
+        const dropdown = document.getElementById(id + '_dropdown');
+        if (!dropdown) return;
+        document.querySelectorAll('.searchable-dropdown').forEach(d => {
+            if (d.id !== id + '_dropdown') d.classList.add('hidden');
+        });
+        dropdown.classList.toggle('hidden');
+        if (!dropdown.classList.contains('hidden')) {
+            const input = document.getElementById(id + '_search');
+            if (input) { input.value = ''; input.focus(); window.filterSearchableOptions(id); }
+        }
+    };
+}
+if (typeof window.filterSearchableOptions !== 'function') {
+    window.filterSearchableOptions = (id) => {
+        const q = document.getElementById(id + '_search')?.value.toLowerCase() || '';
+        const options = document.querySelectorAll(`#${id}_options > div`);
+        options.forEach(opt => { opt.classList.toggle('hidden', !opt.innerText.toLowerCase().includes(q)); });
+    };
+}
+if (typeof window.selectSearchableOption !== 'function') {
+    window.selectSearchableOption = (id, value, label) => {
+        const hiddenInput = document.getElementById(id);
+        const displaySpan = document.getElementById(id + '_display');
+        if (hiddenInput) {
+            hiddenInput.value = value;
+            hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
+            if (typeof hiddenInput.onchange === 'function') hiddenInput.onchange();
+        }
+        if (displaySpan) {
+            displaySpan.innerText = label;
+            displaySpan.classList.remove('text-slate-400');
+        }
+        window.toggleSearchableSelect(id);
+    };
+}
+
 const PROD_STAGES = [
     { key: 'OVEN_BASAH', label: 'Oven Basah', icon: 'fas fa-fire', color: 'bg-orange-50 text-orange-600', hasStock: true, hasShrinkage: true, inputFrom: 'RAW_MATERIAL' },
     { key: 'OVEN_KERING', label: 'Oven Kering', icon: 'fas fa-sun', color: 'bg-yellow-50 text-yellow-600', hasStock: true, hasShrinkage: true, inputFrom: 'OVEN_BASAH' },
@@ -451,37 +490,98 @@ window.openMOModal = async (stagePreset = '') => {
                                 <input type="text" id="mo_number_display" readonly
                                     class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-blue-600 font-mono outline-none">
                             </div>
-                            <div>
+                            <div class="searchable-select-container relative">
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Tahap Produksi <span class="text-red-400">*</span></label>
-                                <select id="mo_stage" onchange="updateMOForm()"
-                                    class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 outline-none cursor-pointer">
-                                    <option value="">-- Pilih Tahap --</option>${stageOpts}
-                                </select>
+                                <input type="hidden" id="mo_stage" value="${stagePreset || ''}" onchange="updateMOForm()">
+                                <button type="button" onclick="toggleSearchableSelect('mo_stage')"
+                                    class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer flex justify-between items-center transition-all hover:bg-slate-200/50">
+                                    <span id="mo_stage_display" class="${stagePreset ? 'text-slate-800' : 'text-slate-400'}">${stagePreset ? (PROD_STAGES.find(s => s.key === stagePreset)?.label || '-- Pilih Tahap --') : '-- Pilih Tahap --'}</span>
+                                    <i class="fas fa-chevron-down text-slate-400 text-[10px]"></i>
+                                </button>
+                                <div id="mo_stage_dropdown" class="searchable-dropdown hidden absolute left-0 right-0 top-full mt-2 bg-white rounded-2xl shadow-xl border border-slate-100 z-[200] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                    <div class="p-3 border-b border-slate-50">
+                                        <div class="relative">
+                                            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+                                            <input type="text" placeholder="Cari tahap..." onkeyup="filterSearchableOptions('mo_stage')" id="mo_stage_search"
+                                                class="w-full pl-9 pr-3 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                        </div>
+                                    </div>
+                                    <div class="max-h-60 overflow-y-auto p-1" id="mo_stage_options">
+                                        ${PROD_STAGES.map(s => `
+                                            <div onclick="selectMOStage('${s.key}', '${s.label}')"
+                                                class="px-4 py-2.5 rounded-lg text-sm font-bold text-slate-600 hover:bg-blue-50 hover:text-blue-600 cursor-pointer transition-colors flex items-center justify-between">
+                                                <span>${s.label}</span>
+                                                <i class="fas fa-check text-[10px] text-blue-500 ${stagePreset === s.key ? 'opacity-100' : 'opacity-0'}"></i>
+                                            </div>`).join('')}
+                                    </div>
+                                </div>
                             </div>
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Tanggal Produksi <span class="text-red-400">*</span></label>
                                 <input type="date" id="mo_date" value="${todayStr}" onchange="recalcMONumber()"
                                     class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 outline-none">
                             </div>
-                            <div id="mo_grp_shift">
+                            <div id="mo_grp_shift" class="searchable-select-container relative">
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Shift <span class="text-red-400">*</span></label>
-                                <select id="mo_shift"
-                                    class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 outline-none cursor-pointer">
-                                    <option value="">-- Pilih Shift --</option>
-                                    <option value="1">Shift 1</option>
-                                    <option value="2">Shift 2</option>
-                                    <option value="3">Shift 3</option>
-                                </select>
+                                <input type="hidden" id="mo_shift" value="">
+                                <button type="button" onclick="toggleSearchableSelect('mo_shift')"
+                                    class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer flex justify-between items-center transition-all hover:bg-slate-200/50">
+                                    <span id="mo_shift_display" class="text-slate-400">-- Pilih Shift --</span>
+                                    <i class="fas fa-chevron-down text-slate-400 text-[10px]"></i>
+                                </button>
+                                <div id="mo_shift_dropdown" class="searchable-dropdown hidden absolute left-0 right-0 top-full mt-2 bg-white rounded-2xl shadow-xl border border-slate-100 z-[200] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                    <div class="p-3 border-b border-slate-50">
+                                        <div class="relative">
+                                            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+                                            <input type="text" placeholder="Cari shift..." onkeyup="filterSearchableOptions('mo_shift')" id="mo_shift_search"
+                                                class="w-full pl-9 pr-3 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                        </div>
+                                    </div>
+                                    <div class="max-h-60 overflow-y-auto p-1" id="mo_shift_options">
+                                        ${[['1','Shift 1'],['2','Shift 2'],['3','Shift 3']].map(([v,l]) => `
+                                            <div onclick="selectSearchableOption('mo_shift', '${v}', '${l}')"
+                                                class="px-4 py-2.5 rounded-lg text-sm font-bold text-slate-600 hover:bg-blue-50 hover:text-blue-600 cursor-pointer transition-colors flex items-center justify-between">
+                                                <span>${l}</span>
+                                                <i class="fas fa-check text-[10px] text-blue-500 opacity-0"></i>
+                                            </div>`).join('')}
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                            <div id="mo_grp_bom">
+                            <div id="mo_grp_bom" class="searchable-select-container relative">
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Resep Produksi (BOM)</label>
-                                <select id="mo_bom_id" onchange="loadBOMMaterialsToMO()"
-                                    class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer">
-                                    <option value="">-- Tanpa Resep --</option>${bomOpts}
-                                </select>
+                                <input type="hidden" id="mo_bom_id" value="" onchange="loadBOMMaterialsToMO()">
+                                <button type="button" onclick="toggleSearchableSelect('mo_bom_id')"
+                                    class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700 outline-none cursor-pointer flex justify-between items-center transition-all hover:bg-slate-200/50">
+                                    <span id="mo_bom_id_display" class="text-slate-400">-- Tanpa Resep --</span>
+                                    <i class="fas fa-chevron-down text-slate-400 text-[10px]"></i>
+                                </button>
+                                <div id="mo_bom_id_dropdown" class="searchable-dropdown hidden absolute left-0 right-0 top-full mt-2 bg-white rounded-2xl shadow-xl border border-slate-100 z-[200] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                    <div class="p-3 border-b border-slate-50">
+                                        <div class="relative">
+                                            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+                                            <input type="text" placeholder="Cari resep BOM..." onkeyup="filterSearchableOptions('mo_bom_id')" id="mo_bom_id_search"
+                                                class="w-full pl-9 pr-3 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500/20">
+                                        </div>
+                                    </div>
+                                    <div class="max-h-60 overflow-y-auto p-1" id="mo_bom_id_options">
+                                        <div onclick="selectSearchableOption('mo_bom_id', '', '-- Tanpa Resep --')"
+                                            class="px-4 py-2.5 rounded-lg text-sm font-bold text-slate-400 hover:bg-blue-50 hover:text-blue-600 cursor-pointer transition-colors">
+                                            -- Tanpa Resep --
+                                        </div>
+                                        ${boms.map(b => {
+                                            const prod = db.findById('inventoryItems', b.productId);
+                                            const name = b.productName || b.name || (prod ? prod.itemName : 'Resep Tanpa Nama');
+                                            return `<div onclick="selectSearchableOption('mo_bom_id', '${b.id}', '${name.replace(/'/g, '\\&apos;')}')"
+                                                class="px-4 py-2.5 rounded-lg text-sm font-bold text-slate-600 hover:bg-blue-50 hover:text-blue-600 cursor-pointer transition-colors flex items-center justify-between">
+                                                <span>${name}</span>
+                                                <i class="fas fa-check text-[10px] text-blue-500 opacity-0"></i>
+                                            </div>`;
+                                        }).join('')}
+                                    </div>
+                                </div>
                             </div>
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Catatan Tambahan</label>
@@ -569,6 +669,11 @@ window.openMOModal = async (stagePreset = '') => {
         </div>`;
 
     // Define helper and listeners AFTER form is in DOM
+    window.selectMOStage = (value, label) => {
+        selectSearchableOption('mo_stage', value, label);
+        updateMOForm();
+    };
+
     window.recalcMONumber = () => {
         const d = document.getElementById('mo_date')?.value;
         const mo = db.generateMONumber(d);
