@@ -418,7 +418,9 @@ const Account = sequelize.define('accounts', {
     type: DataTypes.STRING(20), // ASSET, LIABILITY, EQUITY, INCOME, EXPENSE
     description: DataTypes.TEXT,
     status: { type: DataTypes.STRING(20), defaultValue: 'ACTIVE' },
-    opening_balance: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 }
+    opening_balance: { type: DataTypes.DECIMAL(15, 2), defaultValue: 0 },
+    parentId: { type: DataTypes.STRING(50), allowNull: true, field: 'parent_id' },
+    isGroup: { type: DataTypes.BOOLEAN, defaultValue: false, field: 'is_group' }
 });
 
 const JournalEntry = sequelize.define('journal_entries', {

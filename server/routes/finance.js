@@ -17,18 +17,32 @@ function generateId() {
 // ─── CHARTS OF ACCOUNTS ───
 router.post('/accounts', authenticateToken, requirePermission('finance', 'edit'), async (req, res) => {
     try {
-        const { id, code, name, type, description, openingBalance, status } = req.body;
+        const { id, code, name, type, description, openingBalance, parentId, isGroup, status } = req.body;
         
         if (id) {
             const acc = await Account.findByPk(id);
             if (!acc) return res.status(404).json({ error: 'Account not found' });
-            await acc.update({ code, name, type, description, opening_balance: openingBalance, status });
+            await acc.update({
+                code,
+                name,
+                type,
+                description,
+                opening_balance: openingBalance,
+                parentId: parentId || null,
+                isGroup: isGroup || false,
+                status
+            });
             res.json(acc);
         } else {
             const acc = await Account.create({
                 id: generateId(),
-                code, name, type, description,
+                code,
+                name,
+                type,
+                description,
                 opening_balance: openingBalance || 0,
+                parentId: parentId || null,
+                isGroup: isGroup || false,
                 status: status || 'ACTIVE'
             });
             res.status(201).json(acc);
