@@ -508,14 +508,7 @@ window.renderFinanceAccounts = function () {
                         <div class="hidden group-hover:flex items-center gap-1 animate-in fade-in zoom-in duration-200">
                             ${!node.id.startsWith('root_') ? `
                                 <button onclick="editAccount('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-slate-600 shadow-sm">Edit</button>
-                                ${![
-                                    'acc_cash', 'acc_bank', 'acc_ar', 'acc_inv_rm', 'acc_inv_fg', 'acc_inv_wip',
-                                    'acc_ap', 'acc_tax_payable', 'acc_ar_overpay', 'acc_equity', 'acc_sales',
-                                    'acc_sales_return', 'acc_cogs', 'acc_purchase_return', 'acc_exp_prod',
-                                    'acc_exp_op', 'acc_exp_mkt'
-                                ].includes(node.id) ? `
-                                    <button onclick="deleteAccount('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-red-500 shadow-sm">Delete</button>
-                                ` : ''}
+                                <button onclick="deleteAccount('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-red-500 shadow-sm">Delete</button>
                             ` : ''}
                             <button onclick="addChildAccount('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-blue-600 shadow-sm">Add Child</button>
                             ${!node.id.startsWith('root_') ? `

@@ -63,7 +63,7 @@ async function seedDefaults() {
 
     // 4. Default Chart of Accounts
     const existingAccounts = await models.Account.count();
-    if (existingAccounts === 0) {
+    if (false && existingAccounts === 0) {
         await models.Account.bulkCreate([
             { id: 'acc_cash', code: '1101', name: '', type: 'ASSET', description: 'Kas tunai perusahaan' },
             { id: 'acc_bank', code: '1102', name: '', type: 'ASSET', description: 'Rekening Bank BCA' },

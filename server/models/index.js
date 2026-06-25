@@ -423,6 +423,31 @@ const Account = sequelize.define('accounts', {
     isGroup: { type: DataTypes.BOOLEAN, defaultValue: false, field: 'is_group' }
 });
 
+Account.beforeCreate((account, options) => {
+    const SYSTEM_CODE_TO_ID = {
+        '1101': 'acc_cash',
+        '1102': 'acc_bank',
+        '1201': 'acc_ar',
+        '1301': 'acc_inv_rm',
+        '1302': 'acc_inv_fg',
+        '1303': 'acc_inv_wip',
+        '2101': 'acc_ap',
+        '2102': 'acc_tax_payable',
+        '2103': 'acc_ar_overpay',
+        '3101': 'acc_equity',
+        '4101': 'acc_sales',
+        '4102': 'acc_sales_return',
+        '5101': 'acc_cogs',
+        '5102': 'acc_purchase_return',
+        '5201': 'acc_exp_prod',
+        '5301': 'acc_exp_op',
+        '5302': 'acc_exp_mkt'
+    };
+    if (account.code && SYSTEM_CODE_TO_ID[account.code]) {
+        account.id = SYSTEM_CODE_TO_ID[account.code];
+    }
+});
+
 const JournalEntry = sequelize.define('journal_entries', {
     id: { type: DataTypes.STRING(50), primaryKey: true },
     date: DataTypes.DATE,
