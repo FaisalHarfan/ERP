@@ -452,18 +452,6 @@ window.renderFinanceAccounts = function () {
                 roots.push(node);
             }
         });
-        if (roots.length === list.length && list.length > 0) {
-            const types = ['ASSET', 'LIABILITY', 'EQUITY', 'INCOME', 'EXPENSE'];
-            const typeRoots = types.map(t => ({
-                id: `root_${t}`,
-                name: t.charAt(0) + t.slice(1).toLowerCase(),
-                code: '',
-                type: t,
-                isGroup: true,
-                children: list.filter(a => a.type === t)
-            }));
-            return typeRoots;
-        }
         return roots;
     };
 
