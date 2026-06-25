@@ -505,14 +505,23 @@ window.renderFinanceAccounts = function () {
                                 ${displayHTML}
                             </span>
                         </div>
-                        ${isGroup ? `
                         <div class="hidden group-hover:flex items-center gap-1 animate-in fade-in zoom-in duration-200">
-                            <button onclick="editAccount('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-slate-600 shadow-sm">Edit</button>
-                            <button onclick="deleteAccount('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-red-500 shadow-sm">Delete</button>
+                            ${!node.id.startsWith('root_') ? `
+                                <button onclick="editAccount('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-slate-600 shadow-sm">Edit</button>
+                                ${![
+                                    'acc_cash', 'acc_bank', 'acc_ar', 'acc_inv_rm', 'acc_inv_fg', 'acc_inv_wip',
+                                    'acc_ap', 'acc_tax_payable', 'acc_ar_overpay', 'acc_equity', 'acc_sales',
+                                    'acc_sales_return', 'acc_cogs', 'acc_purchase_return', 'acc_exp_prod',
+                                    'acc_exp_op', 'acc_exp_mkt'
+                                ].includes(node.id) ? `
+                                    <button onclick="deleteAccount('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-red-500 shadow-sm">Delete</button>
+                                ` : ''}
+                            ` : ''}
                             <button onclick="addChildAccount('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-blue-600 shadow-sm">Add Child</button>
-                            <button onclick="viewAccountLedger('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-slate-600 shadow-sm">Ledger</button>
+                            ${!node.id.startsWith('root_') ? `
+                                <button onclick="viewAccountLedger('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-slate-600 shadow-sm">Ledger</button>
+                            ` : ''}
                         </div>
-                        ` : ''}
                     </div>
                     <div class="text-right">
                         <span class="text-sm font-bold ${balance >= 0 ? 'text-blue-600' : 'text-red-500'}">${balanceFormatted}</span>
@@ -623,6 +632,14 @@ window.openAccountModal = function (accountId = null, parentId = null) {
     }
     const accounts = db.read('accounts') || [];
     
+    // Check if parentId is a virtual root (e.g. root_ASSET)
+    let defaultType = 'ASSET';
+    let cleanParentId = parentId;
+    if (parentId && parentId.startsWith('root_')) {
+        defaultType = parentId.replace('root_', '');
+        cleanParentId = '';
+    }
+
     const body = `
         <form id="accountForm" class="space-y-4">
             <input type="hidden" id="editAccountId" value="${acc ? acc.id : ''}">
@@ -640,18 +657,18 @@ window.openAccountModal = function (accountId = null, parentId = null) {
                 <div>
                     <label class="block text-xs font-bold text-gray-500 mb-1">Tipe Akun</label>
                     <select id="accType" class="w-full border border-gray-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                        <option value="ASSET" ${acc && acc.type === 'ASSET' ? 'selected' : ''}>Aset (Harta)</option>
-                        <option value="LIABILITY" ${acc && acc.type === 'LIABILITY' ? 'selected' : ''}>Liabilitas (Hutang)</option>
-                        <option value="EQUITY" ${acc && acc.type === 'EQUITY' ? 'selected' : ''}>Ekuitas (Modal)</option>
-                        <option value="INCOME" ${acc && acc.type === 'INCOME' ? 'selected' : ''}>Pendapatan</option>
-                        <option value="EXPENSE" ${acc && acc.type === 'EXPENSE' ? 'selected' : ''}>Beban/Biaya</option>
+                        <option value="ASSET" ${(acc ? acc.type : defaultType) === 'ASSET' ? 'selected' : ''}>Aset (Harta)</option>
+                        <option value="LIABILITY" ${(acc ? acc.type : defaultType) === 'LIABILITY' ? 'selected' : ''}>Liabilitas (Hutang)</option>
+                        <option value="EQUITY" ${(acc ? acc.type : defaultType) === 'EQUITY' ? 'selected' : ''}>Ekuitas (Modal)</option>
+                        <option value="INCOME" ${(acc ? acc.type : defaultType) === 'INCOME' ? 'selected' : ''}>Pendapatan</option>
+                        <option value="EXPENSE" ${(acc ? acc.type : defaultType) === 'EXPENSE' ? 'selected' : ''}>Beban/Biaya</option>
                     </select>
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-gray-500 mb-1">Akun Induk (Parent)</label>
                     <select id="accParentId" class="w-full border border-gray-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
                         <option value="">-- Tanpa Induk --</option>
-                        ${accounts.filter(a => a.isGroup).map(a => `<option value="${a.id}" ${(acc ? acc.parentId : parentId) === a.id ? 'selected' : ''}>${a.code} - ${a.name}</option>`).join('')}
+                        ${accounts.filter(a => a.isGroup).map(a => `<option value="${a.id}" ${(acc ? acc.parentId : cleanParentId) === a.id ? 'selected' : ''}>${a.code} - ${a.name}</option>`).join('')}
                     </select>
                 </div>
             </div>
