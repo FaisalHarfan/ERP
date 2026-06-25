@@ -74,7 +74,7 @@ async function main() {
             const baseName = fg.itemName.replace(/\s*\([^)]+\)/g, '').trim();
             
             // 1. Process Oven Basah
-            const obName = `${baseName} (Oven Basah)`;
+            const obName = baseName;
             const existingOB = await InventoryItem.findOne({
                 where: {
                     itemName: obName,
@@ -102,7 +102,7 @@ async function main() {
             }
 
             // 2. Process Oven Kering
-            const okName = `${baseName} (Oven Kering)`;
+            const okName = baseName;
             const existingOK = await InventoryItem.findOne({
                 where: {
                     itemName: okName,
