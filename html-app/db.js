@@ -602,30 +602,30 @@ const db = {
         if (db.read('accounts').length === 0) {
             db.save('accounts', [
                 // Assets (1000)
-                { id: 'acc_cash', code: '1101', name: 'Kas Utama', type: 'ASSET', description: 'Kas tunai perusahaan', status: 'ACTIVE' },
-                { id: 'acc_bank', code: '1102', name: 'Bank BCA', type: 'ASSET', description: 'Rekening Bank BCA', status: 'ACTIVE' },
-                { id: 'acc_ar', code: '1201', name: 'Piutang Usaha', type: 'ASSET', description: 'Tagihan ke pelanggan', status: 'ACTIVE' },
-                { id: 'acc_inv_rm', code: '1301', name: 'Persediaan Bahan Baku', type: 'ASSET', description: 'Stok Bahan Baku', status: 'ACTIVE' },
-                { id: 'acc_inv_wip', code: '1303', name: 'Persediaan Barang Dalam Proses', type: 'ASSET', description: 'Stok WIP (Cancel)', status: 'ACTIVE' },
-                { id: 'acc_inv_fg', code: '1302', name: 'Persediaan Barang Jadi', type: 'ASSET', description: 'Stok Gudang Jadi', status: 'ACTIVE' },
+                { id: 'acc_cash', code: '1101', name: '', type: 'ASSET', description: 'Kas tunai perusahaan', status: 'ACTIVE' },
+                { id: 'acc_bank', code: '1102', name: '', type: 'ASSET', description: 'Rekening Bank BCA', status: 'ACTIVE' },
+                { id: 'acc_ar', code: '1201', name: '', type: 'ASSET', description: 'Tagihan ke pelanggan', status: 'ACTIVE' },
+                { id: 'acc_inv_rm', code: '1301', name: '', type: 'ASSET', description: 'Stok Bahan Baku', status: 'ACTIVE' },
+                { id: 'acc_inv_wip', code: '1303', name: '', type: 'ASSET', description: 'Stok WIP (Cancel)', status: 'ACTIVE' },
+                { id: 'acc_inv_fg', code: '1302', name: '', type: 'ASSET', description: 'Stok Gudang Jadi', status: 'ACTIVE' },
 
                 // Liabilities (2000)
-                { id: 'acc_ap', code: '2101', name: 'Hutang Usaha', type: 'LIABILITY', description: 'Hutang ke supplier', status: 'ACTIVE' },
-                { id: 'acc_tax_payable', code: '2102', name: 'Hutang PPN (Tax Payable)', type: 'LIABILITY', description: 'Hutang Pajak Penjualan/Pembelian', status: 'ACTIVE' },
+                { id: 'acc_ap', code: '2101', name: '', type: 'LIABILITY', description: 'Hutang ke supplier', status: 'ACTIVE' },
+                { id: 'acc_tax_payable', code: '2102', name: '', type: 'LIABILITY', description: 'Hutang Pajak Penjualan/Pembelian', status: 'ACTIVE' },
 
                 // Equity (3000)
-                { id: 'acc_equity', code: '3101', name: 'Modal Disetor', type: 'EQUITY', description: 'Modal awal', status: 'ACTIVE' },
+                { id: 'acc_equity', code: '3101', name: '', type: 'EQUITY', description: 'Modal awal', status: 'ACTIVE' },
 
                 // Income (4000)
-                { id: 'acc_sales', code: '4101', name: 'Pendapatan Penjualan', type: 'INCOME', description: 'Hasil penjualan produk', status: 'ACTIVE' },
-                { id: 'acc_sales_return', code: '4102', name: 'Retur Penjualan', type: 'INCOME', description: 'Pengurang pendapatan (Retur)', status: 'ACTIVE' },
+                { id: 'acc_sales', code: '4101', name: '', type: 'INCOME', description: 'Hasil penjualan produk', status: 'ACTIVE' },
+                { id: 'acc_sales_return', code: '4102', name: '', type: 'INCOME', description: 'Pengurang pendapatan (Retur)', status: 'ACTIVE' },
 
                 // Expense (5000)
-                { id: 'acc_cogs', code: '5101', name: 'Beban Pokok Penjualan (HPP)', type: 'EXPENSE', description: 'Cost of Goods Sold', status: 'ACTIVE' },
-                { id: 'acc_purchase_return', code: '5102', name: 'Retur Pembelian', type: 'EXPENSE', description: 'Pengurang beban (Retur)', status: 'ACTIVE' },
-                { id: 'acc_exp_prod', code: '5201', name: 'Biaya Produksi', type: 'EXPENSE', description: 'Biaya operasional produksi', status: 'ACTIVE' },
-                { id: 'acc_exp_op', code: '5301', name: 'Biaya Operasional', type: 'EXPENSE', description: 'Listrik, Air, Wifi, dll', status: 'ACTIVE' },
-                { id: 'acc_exp_mkt', code: '5302', name: 'Biaya Pemasaran', type: 'EXPENSE', description: 'Iklan dan promosi', status: 'ACTIVE' }
+                { id: 'acc_cogs', code: '5101', name: '', type: 'EXPENSE', description: 'Cost of Goods Sold', status: 'ACTIVE' },
+                { id: 'acc_purchase_return', code: '5102', name: '', type: 'EXPENSE', description: 'Pengurang beban (Retur)', status: 'ACTIVE' },
+                { id: 'acc_exp_prod', code: '5201', name: '', type: 'EXPENSE', description: 'Biaya operasional produksi', status: 'ACTIVE' },
+                { id: 'acc_exp_op', code: '5301', name: '', type: 'EXPENSE', description: 'Listrik, Air, Wifi, dll', status: 'ACTIVE' },
+                { id: 'acc_exp_mkt', code: '5302', name: '', type: 'EXPENSE', description: 'Iklan dan promosi', status: 'ACTIVE' }
             ]);
         }
 
