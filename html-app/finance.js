@@ -763,7 +763,7 @@ window.openAccountModal = function (accountId = null, parentId = null) {
             </div>
             <div>
                 <label class="block text-xs font-bold text-gray-500 mb-1">Saldo Awal</label>
-                <input type="number" id="accOpeningBalance" value="${acc && acc.openingBalance !== undefined ? acc.openingBalance : ''}" class="w-full border border-gray-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="0">
+                <input type="text" id="accOpeningBalance" oninput="this.value = formatAmountInput(this.value)" value="${acc && acc.openingBalance !== undefined ? formatAmountInput(acc.openingBalance) : ''}" class="w-full border border-gray-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="0">
             </div>
             <div>
                 <label class="block text-xs font-bold text-gray-500 mb-1">Deskripsi</label>
@@ -787,7 +787,7 @@ window.saveAccount = async function () {
     const isGroup = document.getElementById('accIsGroup').checked;
     const description = document.getElementById('accDescription').value;
     const openingBalanceStr = document.getElementById('accOpeningBalance')?.value;
-    const openingBalance = openingBalanceStr ? parseFloat(openingBalanceStr) : 0;
+    const openingBalance = openingBalanceStr ? parseAmountInput(openingBalanceStr) : 0;
 
     if (!code || !name) return alert('Mohon isi kode dan nama akun.');
 
