@@ -244,7 +244,14 @@ router.get('/ledger/:accountId', authenticateToken, requirePermission('finance',
                     const credit = parseFloat(item.credit) || 0;
 
                     // Normal Balance Logic
-                    if (['ASSET', 'EXPENSE'].includes(account.type)) {
+                    const typeUpper = (account.type || '').toUpperCase();
+                    const isDebit = typeUpper.includes('ASSET') || 
+                                    typeUpper.includes('ASET') || 
+                                    typeUpper.includes('HARTA') || 
+                                    typeUpper.includes('EXPENSE') || 
+                                    typeUpper.includes('BEBAN') || 
+                                    typeUpper.includes('BIAYA');
+                    if (isDebit) {
                         runningBalance += (debit - credit);
                     } else {
                         runningBalance += (credit - debit);

@@ -1,6 +1,14 @@
-// finance.js - Finance Module Logic
-
 // Initialize Global States and Filters
+window.getBaseType = function(type) {
+    const t = (type || '').toUpperCase();
+    if (t.includes('ASSET') || t.includes('ASET') || t.includes('HARTA') || t.includes('KAS') || t.includes('BANK')) return 'ASSET';
+    if (t.includes('LIABILITY') || t.includes('LIABILITAS') || t.includes('HUTANG') || t.includes('KEWAJIBAN')) return 'LIABILITY';
+    if (t.includes('EQUITY') || t.includes('EKUITAS') || t.includes('MODAL')) return 'EQUITY';
+    if (t.includes('INCOME') || t.includes('PENDAPATAN') || t.includes('PENJUALAN')) return 'INCOME';
+    if (t.includes('EXPENSE') || t.includes('BEBAN') || t.includes('BIAYA')) return 'EXPENSE';
+    return 'ASSET'; // default fallback
+};
+
 window._uiState = window._uiState || {};
 window._apFilters = window._apFilters || { status: 'BELUM_LUNAS', supplierId: '', startDate: '', endDate: '' };
 window._apHistoryFilters = window._apHistoryFilters || { supplierId: '', date: '', method: '' };
@@ -55,8 +63,8 @@ window.renderFinanceDashboard = function () {
     const totalOutgoingPayment = allSuppPayments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
 
     // 2. Profit and Loss Stats
-    const totalIncomeThisYear = accounts.filter(a => a && a.type === 'INCOME').reduce((sum, a) => sum + Math.abs(db.getAccountBalance(a.id) || 0), 0);
-    const totalExpenseThisYear = accounts.filter(a => a && a.type === 'EXPENSE').reduce((sum, a) => sum + Math.abs(db.getAccountBalance(a.id) || 0), 0);
+    const totalIncomeThisYear = accounts.filter(a => a && getBaseType(a.type) === 'INCOME').reduce((sum, a) => sum + Math.abs(db.getAccountBalance(a.id) || 0), 0);
+    const totalExpenseThisYear = accounts.filter(a => a && getBaseType(a.type) === 'EXPENSE').reduce((sum, a) => sum + Math.abs(db.getAccountBalance(a.id) || 0), 0);
     const profitThisYear = totalIncomeThisYear - totalExpenseThisYear;
 
     const summaryCard = (title, value) => `
@@ -372,7 +380,7 @@ window.initFinanceChartsERP = function(accounts, journal, salesInvoices, purchas
     }
 
     // 6. Budget Variance (Bar)
-    const expenseAccounts = accounts.filter(a => a.type === 'EXPENSE');
+    const expenseAccounts = accounts.filter(a => getBaseType(a.type) === 'EXPENSE');
     const expLabels = expenseAccounts.map(a => a.name);
     const expActuals = expenseAccounts.map(a => {
         let balance = 0;
@@ -637,13 +645,14 @@ window.openAccountModal = function (accountId = null, parentId = null) {
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <label class="block text-xs font-bold text-gray-500 mb-1">Tipe Akun</label>
-                    <select id="accType" class="w-full border border-gray-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                        <option value="ASSET" ${(acc ? acc.type : defaultType) === 'ASSET' ? 'selected' : ''}>Aset (Harta)</option>
-                        <option value="LIABILITY" ${(acc ? acc.type : defaultType) === 'LIABILITY' ? 'selected' : ''}>Liabilitas (Hutang)</option>
-                        <option value="EQUITY" ${(acc ? acc.type : defaultType) === 'EQUITY' ? 'selected' : ''}>Ekuitas (Modal)</option>
-                        <option value="INCOME" ${(acc ? acc.type : defaultType) === 'INCOME' ? 'selected' : ''}>Pendapatan</option>
-                        <option value="EXPENSE" ${(acc ? acc.type : defaultType) === 'EXPENSE' ? 'selected' : ''}>Beban/Biaya</option>
-                    </select>
+                    <input type="text" id="accType" list="accTypeSuggestions" value="${acc ? acc.type : defaultType}" class="w-full border border-gray-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Misal: Aset, Kewajiban, Beban..." required>
+                    <datalist id="accTypeSuggestions">
+                        <option value="ASSET">Aset (Harta)</option>
+                        <option value="LIABILITY">Liabilitas (Hutang)</option>
+                        <option value="EQUITY">Ekuitas (Modal)</option>
+                        <option value="INCOME">Pendapatan</option>
+                        <option value="EXPENSE">Beban/Biaya</option>
+                    </datalist>
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-gray-500 mb-1">Akun Induk (Parent)</label>
@@ -1175,7 +1184,7 @@ window.resetReceiptFilters = function() {
 window.openReceiptModal = function () {
     const mc = document.getElementById('main-content');
     window.renderBreadcrumb(['Finance', 'Penerimaan Kas & Bank', 'Catat Penerimaan']);
-    const assetAccounts = db.read('accounts').filter(a => a.type === 'ASSET' && a.code.startsWith('11'));
+    const assetAccounts = db.read('accounts').filter(a => getBaseType(a.type) === 'ASSET' && a.code.startsWith('11'));
     const allAccounts = db.read('accounts');
 
     mc.innerHTML = `
@@ -1307,8 +1316,8 @@ window.saveReceipt = async function () {
 window.openExpenseModal = function () {
     const mc = document.getElementById('main-content');
     window.renderBreadcrumb(['Finance', 'Pengeluaran Kas & Bank', 'Catat Pengeluaran']);
-    const assetAccounts = db.read('accounts').filter(a => a.type === 'ASSET' && a.code.startsWith('11'));
-    const expenseAccounts = db.read('accounts').filter(a => a.type === 'EXPENSE');
+    const assetAccounts = db.read('accounts').filter(a => getBaseType(a.type) === 'ASSET' && a.code.startsWith('11'));
+    const expenseAccounts = db.read('accounts').filter(a => getBaseType(a.type) === 'EXPENSE');
     const depts = db.read('departments');
 
     mc.innerHTML = `
@@ -2341,7 +2350,7 @@ window.openFinanceARPaymentModal = () => {
     const invoices = db.read('salesInvoices');
     const payments = db.read('payments');
     const customers = db.read('customers');
-    const assetAccounts = db.read('accounts').filter(a => a.type === 'ASSET' && a.code.startsWith('11'));
+    const assetAccounts = db.read('accounts').filter(a => getBaseType(a.type) === 'ASSET' && a.code.startsWith('11'));
 
     const unpaidInvoices = invoices.filter(inv => inv.status === 'UNPAID' || inv.status === 'PARTIAL');
     if (unpaidInvoices.length === 0) {
@@ -3065,7 +3074,7 @@ window.openFinanceAPPaymentModal = () => {
     const invoices = db.read('purchaseInvoices').filter(i => i.status === 'UNPAID' || i.status === 'PARTIAL');
     const payments = db.read('supplierPayments');
     const suppliers = db.read('suppliers');
-    const assetAccounts = db.read('accounts').filter(a => a.type === 'ASSET' && a.code.startsWith('11'));
+    const assetAccounts = db.read('accounts').filter(a => getBaseType(a.type) === 'ASSET' && a.code.startsWith('11'));
 
     if (invoices.length === 0) {
         showToast('Tidak ada tagihan supplier yang belum dibayar.', 'error');
@@ -3479,7 +3488,7 @@ window.renderFinanceSettings = function () {
 
     const banks = db.read('bankAccounts');
     const departments = db.read('departments');
-    const accounts = db.read('accounts').filter(a => a.type === 'ASSET');
+    const accounts = db.read('accounts').filter(a => getBaseType(a.type) === 'ASSET');
 
     mc.innerHTML = `
         <div class="space-y-6">
@@ -3601,7 +3610,7 @@ window.switchFinanceSettingTab = function (tab) {
 // --- CRUD Bank Account ---
 window.openBankAccountModal = function (id = null) {
     const ba = id ? db.findById('bankAccounts', id) : null;
-    const accounts = db.read('accounts').filter(a => a.type === 'ASSET');
+    const accounts = db.read('accounts').filter(a => getBaseType(a.type) === 'ASSET');
 
     const body = `
         <div class="space-y-4">
@@ -4785,12 +4794,12 @@ window.renderFinanceProfitLoss = function () {
         });
         // For P&L, credit balance on income is positive, debit balance on expense is positive.
         const acc = accounts.find(a => a.id === accId);
-        if (acc.type === 'INCOME') return -bal; // Income usually has credit balance
+        if (getBaseType(acc.type) === 'INCOME') return -bal; // Income usually has credit balance
         return bal; // Expenses usually have debit balance
     };
 
-    const incomeAccs = accounts.filter(a => a.type === 'INCOME');
-    const expenseAccs = accounts.filter(a => a.type === 'EXPENSE');
+    const incomeAccs = accounts.filter(a => getBaseType(a.type) === 'INCOME');
+    const expenseAccs = accounts.filter(a => getBaseType(a.type) === 'EXPENSE');
 
     const totalIncome = incomeAccs.reduce((sum, a) => sum + getPeriodBalance(a.id), 0);
     const totalExpense = expenseAccs.reduce((sum, a) => sum + getPeriodBalance(a.id), 0);
@@ -4934,7 +4943,8 @@ window.renderFinanceTrialBalance = function () {
         let finalDebit = 0;
         let finalCredit = 0;
 
-        if (acc.type === 'ASSET' || acc.type === 'EXPENSE') {
+        const baseT = getBaseType(acc.type);
+        if (baseT === 'ASSET' || baseT === 'EXPENSE') {
              if (balance >= 0) finalDebit = balance;
              else finalCredit = Math.abs(balance);
         } else {
