@@ -561,15 +561,30 @@ window.renderFinanceAccounts = function () {
                                 ${displayHTML}
                             </span>
                         </div>
-                        <div class="hidden group-hover:flex items-center gap-1 animate-in fade-in zoom-in duration-200">
-                            ${!isVirtual ? `
-                                <button onclick="editAccount('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-slate-600 shadow-sm">Edit</button>
-                                <button onclick="deleteAccount('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-red-500 shadow-sm">Delete</button>
-                            ` : ''}
-                            <button onclick="addChildAccount('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-blue-600 shadow-sm">Add Child</button>
-                            ${!isVirtual ? `
-                                <button onclick="viewAccountLedger('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-slate-600 shadow-sm">Ledger</button>
-                            ` : ''}
+                        
+                        <!-- Dropdown Aksi -->
+                        <div class="relative inline-block text-left">
+                            <button onclick="toggleCOAActionDropdown('${node.id}', event)" class="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-slate-400 hover:text-blue-600 hover:bg-slate-100 rounded-lg flex items-center justify-center w-6 h-6 shadow-sm border border-slate-100 bg-white" title="Pilihan Aksi">
+                                <i class="fas fa-ellipsis-v text-[10px]"></i>
+                            </button>
+                            <div id="dropdown-${node.id}" class="coa-dropdown hidden absolute left-0 mt-1 w-32 bg-white rounded-xl border border-slate-200 shadow-xl z-50 py-1.5 text-xs text-left animate-in fade-in slide-in-from-top-1 duration-150">
+                                ${!isVirtual ? `
+                                    <button onclick="editAccount('${node.id}'); hideCOAActionDropdowns(event);" class="w-full text-left px-3 py-1.5 text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2 font-semibold">
+                                        <i class="fas fa-edit text-slate-400 w-4 text-center"></i> Edit
+                                    </button>
+                                    <button onclick="deleteAccount('${node.id}'); hideCOAActionDropdowns(event);" class="w-full text-left px-3 py-1.5 text-red-600 hover:bg-red-50/50 transition-colors flex items-center gap-2 font-semibold">
+                                        <i class="fas fa-trash-alt text-red-400 w-4 text-center"></i> Delete
+                                    </button>
+                                ` : ''}
+                                <button onclick="addChildAccount('${node.id}'); hideCOAActionDropdowns(event);" class="w-full text-left px-3 py-1.5 text-blue-600 hover:bg-blue-50/50 transition-colors flex items-center gap-2 font-semibold">
+                                    <i class="fas fa-plus text-blue-400 w-4 text-center"></i> Add Child
+                                </button>
+                                ${!isVirtual ? `
+                                    <button onclick="viewAccountLedger('${node.id}'); hideCOAActionDropdowns(event);" class="w-full text-left px-3 py-1.5 text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2 font-semibold">
+                                        <i class="fas fa-file-invoice text-slate-400 w-4 text-center"></i> Ledger
+                                    </button>
+                                ` : ''}
+                            </div>
                         </div>
                     </div>
                     <div class="text-right">
@@ -611,7 +626,7 @@ window.renderFinanceAccounts = function () {
             </div>
 
             <!-- Tree Container -->
-            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-visible">
                 <div class="p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between text-[10px] font-black text-slate-400 uppercase tracking-widest">
                     <span>Account Name</span>
                     <span>Balance</span>
@@ -639,6 +654,37 @@ window.renderFinanceAccounts = function () {
         input.value = val;
     }
 };
+
+window.toggleCOAActionDropdown = function(id, event) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+    const dropdown = document.getElementById(`dropdown-${id}`);
+    if (!dropdown) return;
+    
+    const wasHidden = dropdown.classList.contains('hidden');
+    document.querySelectorAll('.coa-dropdown').forEach(d => d.classList.add('hidden'));
+    
+    if (wasHidden) {
+        dropdown.classList.remove('hidden');
+    }
+};
+
+window.hideCOAActionDropdowns = function(event) {
+    if (event) {
+        event.stopPropagation();
+    }
+    document.querySelectorAll('.coa-dropdown').forEach(d => d.classList.add('hidden'));
+};
+
+// Global click listener to close dropdowns when clicking anywhere outside
+if (!window._coaDropdownListenerAdded) {
+    document.addEventListener('click', () => {
+        document.querySelectorAll('.coa-dropdown').forEach(d => d.classList.add('hidden'));
+    });
+    window._coaDropdownListenerAdded = true;
+}
 
 window.toggleCOANode = function(id, event) {
     if (event) event.stopPropagation();
