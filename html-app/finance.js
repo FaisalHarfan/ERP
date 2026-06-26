@@ -426,6 +426,7 @@ window.renderFinanceAccounts = function () {
     
     let accounts = db.read('accounts');
     let q = (window._coaFilters?.q || '').toLowerCase();
+    const accountTypes = db.read('accountTypes') || [];
     let filteredAccounts = accounts;
     
     if (q) {
@@ -453,20 +454,114 @@ window.renderFinanceAccounts = function () {
         filteredAccounts.forEach(a => { if (a.isGroup) window._coaExpandedNodes[a.id] = true; });
     }
 
+    const getCalculatedBalance = (node) => {
+        if (!node) return 0;
+        if (!node.id.startsWith('root_') && !node.id.startsWith('type_') && !node.isGroup) {
+            return db.getAccountBalance(node.id);
+        }
+        let total = 0;
+        if (node.children && node.children.length > 0) {
+            node.children.forEach(child => {
+                total += getCalculatedBalance(child);
+            });
+        }
+        return total;
+    };
+
     const buildTree = (list) => {
-        const map = {}, roots = [];
-        list.forEach((node, index) => {
-            map[node.id] = index;
-            node.children = [];
+        const baseRoots = {
+            'ASSET': { id: 'root_ASSET', name: 'Harta (Assets)', isGroup: true, children: [], code: '1' },
+            'LIABILITY': { id: 'root_LIABILITY', name: 'Kewajiban (Liabilities)', isGroup: true, children: [], code: '2' },
+            'EQUITY': { id: 'root_EQUITY', name: 'Modal (Equity)', isGroup: true, children: [], code: '3' },
+            'INCOME': { id: 'root_INCOME', name: 'Pendapatan (Income)', isGroup: true, children: [], code: '4' },
+            'EXPENSE': { id: 'root_EXPENSE', name: 'Beban (Expenses)', isGroup: true, children: [], code: '5' }
+        };
+
+        const typeNodes = {};
+        accountTypes.forEach(t => {
+            typeNodes[`type_${t.id}`] = {
+                id: `type_${t.id}`,
+                name: t.name,
+                isGroup: true,
+                baseType: t.baseType,
+                children: []
+            };
         });
-        list.forEach((node) => {
-            if (node.parentId && map[node.parentId] !== undefined) {
-                list[map[node.parentId]].children.push(node);
+
+        const defaultTypes = {
+            'ASSET': { id: 'type_default_ASSET', name: 'Aset Lainnya', isGroup: true, baseType: 'ASSET', children: [] },
+            'LIABILITY': { id: 'type_default_LIABILITY', name: 'Liabilitas Lainnya', isGroup: true, baseType: 'LIABILITY', children: [] },
+            'EQUITY': { id: 'type_default_EQUITY', name: 'Ekuitas Lainnya', isGroup: true, baseType: 'EQUITY', children: [] },
+            'INCOME': { id: 'type_default_INCOME', name: 'Pendapatan Lainnya', isGroup: true, baseType: 'INCOME', children: [] },
+            'EXPENSE': { id: 'type_default_EXPENSE', name: 'Beban Lainnya', isGroup: true, baseType: 'EXPENSE', children: [] },
+            'UNKNOWN': { id: 'type_unknown', name: 'Tipe Tidak Diketahui', isGroup: true, baseType: 'ASSET', children: [] }
+        };
+
+        const accountMap = {};
+        list.forEach(acc => {
+            accountMap[acc.id] = { ...acc, children: [] };
+        });
+
+        const resolveTypeNodeId = (accType) => {
+            if (!accType) return 'UNKNOWN';
+            const match = accountTypes.find(t => t.id === accType || t.name.toLowerCase() === accType.toLowerCase());
+            if (match) return `type_${match.id}`;
+            const upper = accType.toUpperCase();
+            if (['ASSET', 'LIABILITY', 'EQUITY', 'INCOME', 'EXPENSE'].includes(upper)) {
+                return upper;
+            }
+            return 'UNKNOWN';
+        };
+
+        const usedTypeNodeIds = new Set();
+
+        list.forEach(acc => {
+            const node = accountMap[acc.id];
+            if (acc.parentId && accountMap[acc.parentId]) {
+                accountMap[acc.parentId].children.push(node);
             } else {
-                roots.push(node);
+                const typeId = resolveTypeNodeId(acc.type);
+                usedTypeNodeIds.add(typeId);
+
+                if (typeNodes[typeId]) {
+                    typeNodes[typeId].children.push(node);
+                } else if (defaultTypes[typeId]) {
+                    defaultTypes[typeId].children.push(node);
+                } else {
+                    defaultTypes['UNKNOWN'].children.push(node);
+                    usedTypeNodeIds.add('UNKNOWN');
+                }
             }
         });
-        return roots;
+
+        Object.keys(typeNodes).forEach(typeId => {
+            const typeNode = typeNodes[typeId];
+            const baseType = typeNode.baseType || 'ASSET';
+            if (baseRoots[baseType]) {
+                baseRoots[baseType].children.push(typeNode);
+            }
+        });
+
+        Object.keys(defaultTypes).forEach(typeId => {
+            if (usedTypeNodeIds.has(typeId)) {
+                const typeNode = defaultTypes[typeId];
+                const baseType = typeNode.baseType || 'ASSET';
+                if (baseRoots[baseType]) {
+                    baseRoots[baseType].children.push(typeNode);
+                }
+            }
+        });
+
+        const finalRoots = Object.values(baseRoots);
+        if (q) {
+            // Remove type nodes that have no children
+            finalRoots.forEach(r => {
+                r.children = r.children.filter(t => t.children && t.children.length > 0);
+            });
+            // Return only base roots that have at least one type node with children
+            return finalRoots.filter(r => r.children && r.children.length > 0);
+        }
+        return finalRoots;
     };
 
     const treeData = buildTree(JSON.parse(JSON.stringify(filteredAccounts)));
@@ -474,7 +569,7 @@ window.renderFinanceAccounts = function () {
     const renderNode = (node, depth = 0) => {
         const isGroup = node.isGroup || (node.children && node.children.length > 0);
         const isExpanded = window._coaExpandedNodes[node.id] || false;
-        const balance = node.id.startsWith('root_') ? 0 : db.getAccountBalance(node.id);
+        const balance = getCalculatedBalance(node);
         const balanceFormatted = formatCurrency(Math.abs(balance));
         const balanceType = balance >= 0 ? 'Dr' : 'Cr';
         
@@ -487,6 +582,8 @@ window.renderFinanceAccounts = function () {
             const regex = new RegExp(`(${q})`, 'gi');
             displayHTML = displayHTML.replace(regex, '<mark class="bg-yellow-200 text-slate-900">$1</mark>');
         }
+
+        const isVirtual = node.id.startsWith('root_') || node.id.startsWith('type_');
         
         return `
             <div class="group border-b border-gray-50 hover:bg-blue-50/20 transition-all">
@@ -508,12 +605,12 @@ window.renderFinanceAccounts = function () {
                             </span>
                         </div>
                         <div class="hidden group-hover:flex items-center gap-1 animate-in fade-in zoom-in duration-200">
-                            ${!node.id.startsWith('root_') ? `
+                            ${!isVirtual ? `
                                 <button onclick="editAccount('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-slate-600 shadow-sm">Edit</button>
                                 <button onclick="deleteAccount('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-red-500 shadow-sm">Delete</button>
                             ` : ''}
                             <button onclick="addChildAccount('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-blue-600 shadow-sm">Add Child</button>
-                            ${!node.id.startsWith('root_') ? `
+                            ${!isVirtual ? `
                                 <button onclick="viewAccountLedger('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-slate-600 shadow-sm">Ledger</button>
                             ` : ''}
                         </div>
@@ -599,6 +696,10 @@ window.expandAllCOA = function() {
     });
     // Add roots
     ['root_ASSET', 'root_LIABILITY', 'root_EQUITY', 'root_INCOME', 'root_EXPENSE'].forEach(r => window._coaExpandedNodes[r] = true);
+    // Add type nodes
+    const accountTypes = db.read('accountTypes') || [];
+    accountTypes.forEach(t => window._coaExpandedNodes[`type_${t.id}`] = true);
+    ['type_default_ASSET', 'type_default_LIABILITY', 'type_default_EQUITY', 'type_default_INCOME', 'type_default_EXPENSE', 'type_unknown'].forEach(t => window._coaExpandedNodes[t] = true);
     renderFinanceAccounts();
 };
 
@@ -631,13 +732,23 @@ window.openAccountModal = function (accountId = null, parentId = null) {
     const accounts = db.read('accounts') || [];
     const accountTypes = db.read('accountTypes') || [];
     
-    // Check if parentId is a virtual root (e.g. root_ASSET)
-    let defaultType = 'type_asset';
+    // Check if parentId is a virtual root (e.g. root_ASSET or type_xxx)
+    let defaultType = accountTypes[0]?.id || 'type_asset';
     let cleanParentId = parentId;
     if (parentId && parentId.startsWith('root_')) {
         const rootCategory = parentId.replace('root_', '').toUpperCase();
         const matchingType = accountTypes.find(t => t.baseType === rootCategory);
-        defaultType = matchingType ? matchingType.id : 'type_asset';
+        defaultType = matchingType ? matchingType.id : (accountTypes[0]?.id || 'type_asset');
+        cleanParentId = '';
+    } else if (parentId && parentId.startsWith('type_')) {
+        if (parentId.startsWith('type_default_')) {
+            const rootCategory = parentId.replace('type_default_', '').toUpperCase();
+            const matchingType = accountTypes.find(t => t.baseType === rootCategory);
+            defaultType = matchingType ? matchingType.id : (accountTypes[0]?.id || 'type_asset');
+        } else {
+            const typeId = parentId.replace('type_', '');
+            defaultType = typeId;
+        }
         cleanParentId = '';
     }
 
