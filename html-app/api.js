@@ -100,6 +100,11 @@ const api = {
                 body: JSON.stringify(record)
             });
             if (!res.ok) {
+                if (res.status === 401) {
+                    console.error('[API] Token expired. Redirecting to login.');
+                    window.location.href = 'login.html';
+                    return null;
+                }
                 const errBody = await res.json().catch(() => ({}));
                 console.error(`[API] Insert error (${table}): Status ${res.status}`, errBody);
                 throw new Error(`Insert failed: ${res.status}. ${errBody.error || ''}`);
@@ -125,7 +130,10 @@ const api = {
                 headers: authHeaders(),
                 body: JSON.stringify(updates)
             });
-            if (!res.ok) throw new Error(`Update failed: ${res.status}`);
+            if (!res.ok) {
+                if (res.status === 401) { window.location.href = 'login.html'; return null; }
+                throw new Error(`Update failed: ${res.status}`);
+            }
             return await res.json();
         } catch (err) {
             console.error(`API update(${table}, ${id}) error:`, err);
@@ -143,7 +151,10 @@ const api = {
                 method: 'DELETE',
                 headers: authHeaders()
             });
-            if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
+            if (!res.ok) {
+                if (res.status === 401) { window.location.href = 'login.html'; return; }
+                throw new Error(`Delete failed: ${res.status}`);
+            }
         } catch (err) {
             console.error(`API delete(${table}, ${id}) error:`, err);
         }
