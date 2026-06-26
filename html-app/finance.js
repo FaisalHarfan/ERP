@@ -456,7 +456,7 @@ window.renderFinanceAccounts = function () {
 
     const getCalculatedBalance = (node) => {
         if (!node) return 0;
-        if (!node.isGroup) {
+        if (!node.id.startsWith('type_') && !node.isGroup) {
             return db.getAccountBalance(node.id);
         }
         let total = 0;
@@ -469,19 +469,56 @@ window.renderFinanceAccounts = function () {
     };
 
     const buildTree = (list) => {
-        const map = {}, roots = [];
-        list.forEach((node, index) => {
-            map[node.id] = index;
-            node.children = [];
+        const typeRoots = {};
+        accountTypes.forEach(t => {
+            typeRoots[t.id] = {
+                id: `type_${t.id}`,
+                name: t.name,
+                isGroup: true,
+                children: []
+            };
         });
-        list.forEach((node) => {
-            if (node.parentId && map[node.parentId] !== undefined) {
-                list[map[node.parentId]].children.push(node);
+
+        const unknownRoot = {
+            id: 'type_unknown',
+            name: 'Tanpa Tipe',
+            isGroup: true,
+            children: []
+        };
+
+        const accountMap = {};
+        list.forEach(acc => {
+            accountMap[acc.id] = { ...acc, children: [] };
+        });
+
+        list.forEach(acc => {
+            const node = accountMap[acc.id];
+            if (acc.parentId && accountMap[acc.parentId] !== undefined) {
+                accountMap[acc.parentId].children.push(node);
             } else {
-                roots.push(node);
+                const typeId = acc.type;
+                if (typeRoots[typeId]) {
+                    typeRoots[typeId].children.push(node);
+                } else {
+                    const match = accountTypes.find(t => t.name.toLowerCase() === (typeId || '').toLowerCase());
+                    if (match && typeRoots[match.id]) {
+                        typeRoots[match.id].children.push(node);
+                    } else {
+                        unknownRoot.children.push(node);
+                    }
+                }
             }
         });
-        return roots;
+
+        const finalRoots = Object.values(typeRoots);
+        if (unknownRoot.children.length > 0) {
+            finalRoots.push(unknownRoot);
+        }
+
+        if (q) {
+            return finalRoots.filter(r => r.children && r.children.length > 0);
+        }
+        return finalRoots;
     };
 
     const treeData = buildTree(JSON.parse(JSON.stringify(filteredAccounts)));
@@ -502,6 +539,8 @@ window.renderFinanceAccounts = function () {
             const regex = new RegExp(`(${q})`, 'gi');
             displayHTML = displayHTML.replace(regex, '<mark class="bg-yellow-200 text-slate-900">$1</mark>');
         }
+
+        const isVirtual = node.id.startsWith('type_');
         
         return `
             <div class="group border-b border-gray-50 hover:bg-blue-50/20 transition-all">
@@ -523,10 +562,14 @@ window.renderFinanceAccounts = function () {
                             </span>
                         </div>
                         <div class="hidden group-hover:flex items-center gap-1 animate-in fade-in zoom-in duration-200">
-                            <button onclick="editAccount('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-slate-600 shadow-sm">Edit</button>
-                            <button onclick="deleteAccount('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-red-500 shadow-sm">Delete</button>
+                            ${!isVirtual ? `
+                                <button onclick="editAccount('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-slate-600 shadow-sm">Edit</button>
+                                <button onclick="deleteAccount('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-red-500 shadow-sm">Delete</button>
+                            ` : ''}
                             <button onclick="addChildAccount('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-blue-600 shadow-sm">Add Child</button>
-                            <button onclick="viewAccountLedger('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-slate-600 shadow-sm">Ledger</button>
+                            ${!isVirtual ? `
+                                <button onclick="viewAccountLedger('${node.id}')" class="px-2 py-0.5 text-[10px] bg-white border border-slate-200 rounded-md hover:bg-slate-50 text-slate-600 shadow-sm">Ledger</button>
+                            ` : ''}
                         </div>
                     </div>
                     <div class="text-right">
