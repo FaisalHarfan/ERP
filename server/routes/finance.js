@@ -1,7 +1,7 @@
 // server/routes/finance.js
 const router = require('express').Router();
 const { authenticateToken, requirePermission } = require('../middleware/auth');
-const { Account, JournalEntry, Expense, Receipt, SystemLog, sequelize } = require('../models');
+const { Account, JournalEntry, Expense, Receipt, SystemLog, AccountType, sequelize } = require('../models');
 
 // Helper: Generate Finance Tx No (Simplified)
 function generateTxNo(type) {
@@ -215,6 +215,31 @@ router.get('/ledger/:accountId', authenticateToken, requirePermission('finance',
         const account = await Account.findByPk(accountId);
         if (!account) return res.status(404).json({ error: 'Account not found' });
 
+        // Resolve account type base_type from database
+        let baseType = 'ASSET';
+        if (account.type) {
+            const accType = await AccountType.findOne({
+                where: {
+                    [sequelize.Sequelize.Op.or]: [
+                        { id: account.type },
+                        { name: account.type }
+                    ]
+                }
+            });
+            if (accType) {
+                baseType = accType.base_type;
+            } else {
+                // fallback to text heuristic
+                const typeUpper = account.type.toUpperCase();
+                if (typeUpper.includes('ASSET') || typeUpper.includes('ASET') || typeUpper.includes('HARTA')) baseType = 'ASSET';
+                else if (typeUpper.includes('LIABILITY') || typeUpper.includes('LIABILITAS') || typeUpper.includes('HUTANG') || typeUpper.includes('KEWAJIBAN')) baseType = 'LIABILITY';
+                else if (typeUpper.includes('EQUITY') || typeUpper.includes('EKUITAS') || typeUpper.includes('MODAL')) baseType = 'EQUITY';
+                else if (typeUpper.includes('INCOME') || typeUpper.includes('PENDAPATAN') || typeUpper.includes('PENJUALAN')) baseType = 'INCOME';
+                else if (typeUpper.includes('EXPENSE') || typeUpper.includes('BEBAN') || typeUpper.includes('BIAYA')) baseType = 'EXPENSE';
+            }
+        }
+        const isDebit = baseType === 'ASSET' || baseType === 'EXPENSE';
+
         // Fetch all journal entries that touch this account
         // Optimization: In a huge DB, we might want to use a specific JournalItem table
         // but currently we store items as JSONB in JournalEntry.
@@ -244,13 +269,6 @@ router.get('/ledger/:accountId', authenticateToken, requirePermission('finance',
                     const credit = parseFloat(item.credit) || 0;
 
                     // Normal Balance Logic
-                    const typeUpper = (account.type || '').toUpperCase();
-                    const isDebit = typeUpper.includes('ASSET') || 
-                                    typeUpper.includes('ASET') || 
-                                    typeUpper.includes('HARTA') || 
-                                    typeUpper.includes('EXPENSE') || 
-                                    typeUpper.includes('BEBAN') || 
-                                    typeUpper.includes('BIAYA');
                     if (isDebit) {
                         runningBalance += (debit - credit);
                     } else {

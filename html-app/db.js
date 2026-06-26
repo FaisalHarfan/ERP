@@ -102,7 +102,8 @@ const db = {
             'inventoryItems', 'stockTransactions', 'notifications',
             'machines', 'bomHeaders', 'bomMaterials', 'manufacturingOrders', 'dailyProductionLogs', 'productionLineBatches',
             'accounts', 'expenses', 'journalEntries', 'bankAccounts', 'departments', 'creditNotes', 'debitNotes',
-            'salesReturns', 'productExchanges', 'deliveryOrders', 'inventoryJudgments', 'inventoryConversions', 'packBreakdowns'];
+            'salesReturns', 'productExchanges', 'deliveryOrders', 'inventoryJudgments', 'inventoryConversions', 'packBreakdowns',
+            'accountTypes'];
         // users, roles, systemLogs dikecualikan — BLOCKED di generic CRUD, pakai /api/settings
     },
 

@@ -1,6 +1,12 @@
 // Initialize Global States and Filters
 window.getBaseType = function(type) {
-    const t = (type || '').toUpperCase();
+    if (!type) return 'ASSET';
+    const customTypes = db.read('accountTypes') || [];
+    const match = customTypes.find(t => t.id === type || t.name.toLowerCase() === type.toLowerCase());
+    if (match && match.baseType) {
+        return match.baseType.toUpperCase();
+    }
+    const t = type.toUpperCase();
     if (t.includes('ASSET') || t.includes('ASET') || t.includes('HARTA') || t.includes('KAS') || t.includes('BANK')) return 'ASSET';
     if (t.includes('LIABILITY') || t.includes('LIABILITAS') || t.includes('HUTANG') || t.includes('KEWAJIBAN')) return 'LIABILITY';
     if (t.includes('EQUITY') || t.includes('EKUITAS') || t.includes('MODAL')) return 'EQUITY';
@@ -544,6 +550,9 @@ window.renderFinanceAccounts = function () {
                     <button onclick="collapseAllCOA()" class="px-3 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-bold text-slate-600 hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm">
                         <i class="fas fa-compress-arrows-alt"></i> COLLAPSE
                     </button>
+                    <button onclick="openManageAccountTypesModal()" class="px-3 py-2 bg-slate-800 text-white rounded-xl text-[10px] font-bold hover:bg-slate-900 transition-all flex items-center gap-2 shadow-sm">
+                        <i class="fas fa-tags"></i> KELOLA TIPE AKUN
+                    </button>
                 </div>
             </div>
 
@@ -620,14 +629,24 @@ window.openAccountModal = function (accountId = null, parentId = null) {
         acc = db.findById('accounts', accountId);
     }
     const accounts = db.read('accounts') || [];
+    const accountTypes = db.read('accountTypes') || [];
     
     // Check if parentId is a virtual root (e.g. root_ASSET)
-    let defaultType = 'ASSET';
+    let defaultType = 'type_asset';
     let cleanParentId = parentId;
     if (parentId && parentId.startsWith('root_')) {
-        defaultType = parentId.replace('root_', '');
+        const rootCategory = parentId.replace('root_', '').toUpperCase();
+        const matchingType = accountTypes.find(t => t.baseType === rootCategory);
+        defaultType = matchingType ? matchingType.id : 'type_asset';
         cleanParentId = '';
     }
+
+    const selectedType = acc ? acc.type : defaultType;
+    const cleanSelectedType = selectedType === 'ASSET' ? 'type_asset' :
+                              selectedType === 'LIABILITY' ? 'type_liability' :
+                              selectedType === 'EQUITY' ? 'type_equity' :
+                              selectedType === 'INCOME' ? 'type_income' :
+                              selectedType === 'EXPENSE' ? 'type_expense' : selectedType;
 
     const body = `
         <form id="accountForm" class="space-y-4">
@@ -645,14 +664,38 @@ window.openAccountModal = function (accountId = null, parentId = null) {
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <label class="block text-xs font-bold text-gray-500 mb-1">Tipe Akun</label>
-                    <input type="text" id="accType" list="accTypeSuggestions" value="${acc ? acc.type : defaultType}" class="w-full border border-gray-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Misal: Aset, Kewajiban, Beban..." required>
-                    <datalist id="accTypeSuggestions">
-                        <option value="ASSET">Aset (Harta)</option>
-                        <option value="LIABILITY">Liabilitas (Hutang)</option>
-                        <option value="EQUITY">Ekuitas (Modal)</option>
-                        <option value="INCOME">Pendapatan</option>
-                        <option value="EXPENSE">Beban/Biaya</option>
-                    </datalist>
+                    <div class="flex gap-2">
+                        <select id="accType" class="flex-1 border border-gray-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none" required>
+                            ${accountTypes.map(t => `<option value="${t.id}" ${cleanSelectedType === t.id ? 'selected' : ''}>${t.name}</option>`).join('')}
+                        </select>
+                        <button type="button" onclick="toggleNewAccountTypeForm()" class="px-3 bg-blue-50 border border-blue-200 hover:bg-blue-100 text-blue-600 rounded-lg transition-colors flex items-center justify-center" title="Tambah Tipe Akun Baru">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                    </div>
+                    <!-- Inline Add Account Type Form Card (Initially Hidden) -->
+                    <div id="newAccountTypeCard" class="hidden border border-blue-100 bg-blue-50/30 rounded-xl p-3.5 mt-3 space-y-3 shadow-inner">
+                        <p class="text-xs font-bold text-blue-800 uppercase tracking-wider">Tambah Tipe Akun Baru</p>
+                        <div class="space-y-2">
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 mb-1">Nama Tipe Akun</label>
+                                <input type="text" id="newTypeName" class="w-full border border-gray-200 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none bg-white" placeholder="Misal: Kas & Bank">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-bold text-slate-500 mb-1">Kategori Dasar (Base Type)</label>
+                                <select id="newTypeBase" class="w-full border border-gray-200 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                                    <option value="ASSET">Asset (Harta)</option>
+                                    <option value="LIABILITY">Liabilitas (Hutang)</option>
+                                    <option value="EQUITY">Ekuitas (Modal)</option>
+                                    <option value="INCOME">Pendapatan</option>
+                                    <option value="EXPENSE">Beban/Biaya</option>
+                                </select>
+                            </div>
+                            <div class="flex justify-end gap-2 pt-1">
+                                <button type="button" onclick="toggleNewAccountTypeForm()" class="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-[10px] font-bold rounded-md transition-colors">Batal</button>
+                                <button type="button" onclick="saveNewAccountTypeInline()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-bold rounded-md shadow-sm transition-colors">Simpan</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-gray-500 mb-1">Akun Induk (Parent)</label>
@@ -703,6 +746,154 @@ window.saveAccount = async function () {
         renderFinanceAccounts();
     } catch (err) {
         showToast(err.message, 'error');
+    }
+};
+
+window.toggleNewAccountTypeForm = function() {
+    const card = document.getElementById('newAccountTypeCard');
+    if (card) {
+        card.classList.toggle('hidden');
+        document.getElementById('newTypeName').value = '';
+    }
+};
+
+window.saveNewAccountTypeInline = async function() {
+    const name = document.getElementById('newTypeName')?.value?.trim();
+    const baseType = document.getElementById('newTypeBase')?.value;
+
+    if (!name) return alert('Mohon isi nama tipe akun.');
+
+    try {
+        const result = await db.insert('accountTypes', { name, baseType });
+        if (result) {
+            showToast('Tipe akun berhasil ditambahkan', 'success');
+            // Re-populate select dropdown
+            const select = document.getElementById('accType');
+            if (select) {
+                const types = db.read('accountTypes') || [];
+                select.innerHTML = types.map(t => `<option value="${t.id}" ${t.id === result.id ? 'selected' : ''}>${t.name}</option>`).join('');
+            }
+            toggleNewAccountTypeForm();
+        } else {
+            showToast('Gagal menambahkan tipe akun', 'error');
+        }
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+};
+
+window.openManageAccountTypesModal = function() {
+    const types = db.read('accountTypes') || [];
+    const accounts = db.read('accounts') || [];
+
+    const body = `
+        <div class="space-y-6">
+            <!-- Add Form -->
+            <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                <p class="text-xs font-black text-slate-400 uppercase tracking-widest">Tambah Tipe Akun Baru</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-[10px] font-bold text-gray-500 mb-1">Nama Tipe Akun</label>
+                        <input type="text" id="manageTypeName" class="w-full border border-gray-200 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none bg-white" placeholder="Misal: Kas & Bank">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-gray-500 mb-1">Kategori Dasar (Base Type)</label>
+                        <select id="manageTypeBase" class="w-full border border-gray-200 rounded-lg p-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                            <option value="ASSET">Asset (Harta)</option>
+                            <option value="LIABILITY">Liabilitas (Hutang)</option>
+                            <option value="EQUITY">Ekuitas (Modal)</option>
+                            <option value="INCOME">Pendapatan</option>
+                            <option value="EXPENSE">Beban/Biaya</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="flex justify-end pt-1">
+                    <button onclick="saveManageAccountType()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold shadow-sm transition-colors">
+                        Tambah Tipe
+                    </button>
+                </div>
+            </div>
+
+            <!-- List Table -->
+            <div class="space-y-2">
+                <p class="text-xs font-black text-slate-400 uppercase tracking-widest">Daftar Tipe Akun</p>
+                <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-200">
+                                <th class="px-4 py-3">Nama Tipe Akun</th>
+                                <th class="px-4 py-3">Kategori Dasar</th>
+                                <th class="px-4 py-3 text-right">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 text-xs font-medium text-slate-700" id="manageTypesTableBody">
+                            ${types.map(t => {
+                                const inUse = accounts.some(a => a.type === t.id || a.type === t.name);
+                                return `
+                                <tr>
+                                    <td class="px-4 py-3.5 font-bold">${t.name}</td>
+                                    <td class="px-4 py-3.5">
+                                        <span class="px-2 py-1 rounded-md text-[10px] font-bold 
+                                            ${t.baseType === 'ASSET' ? 'bg-blue-50 text-blue-600' :
+                                              t.baseType === 'LIABILITY' ? 'bg-red-50 text-red-600' :
+                                              t.baseType === 'EQUITY' ? 'bg-purple-50 text-purple-600' :
+                                              t.baseType === 'INCOME' ? 'bg-green-50 text-green-600' :
+                                              'bg-orange-50 text-orange-600'}">
+                                            ${t.baseType}
+                                        </span>
+                                    </td>
+                                    <td class="px-4 py-3.5 text-right">
+                                        ${inUse ? `
+                                            <span class="text-[10px] text-slate-400 italic">Sedang Digunakan</span>
+                                        ` : `
+                                            <button onclick="deleteManageAccountType('${t.id}')" class="text-red-500 hover:text-red-700 font-bold hover:underline">Hapus</button>
+                                        `}
+                                    </td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    `;
+
+    const footer = `
+        <button onclick="closeModal()" class="px-5 py-2 bg-gray-100 text-slate-600 rounded-lg text-xs font-bold transition-all hover:bg-gray-200">Tutup</button>
+    `;
+
+    showModal('Kelola Tipe Akun', body, footer);
+};
+
+window.saveManageAccountType = async function() {
+    const name = document.getElementById('manageTypeName')?.value?.trim();
+    const baseType = document.getElementById('manageTypeBase')?.value;
+
+    if (!name) return alert('Mohon isi nama tipe akun.');
+
+    try {
+        const result = await db.insert('accountTypes', { name, baseType });
+        if (result) {
+            showToast('Tipe akun berhasil ditambahkan', 'success');
+            // Refresh modal
+            openManageAccountTypesModal();
+        } else {
+            showToast('Gagal menambahkan tipe akun', 'error');
+        }
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+};
+
+window.deleteManageAccountType = async function(id) {
+    if (!confirm('Yakin ingin menghapus tipe akun ini?')) return;
+
+    try {
+        await db.delete('accountTypes', id);
+        showToast('Tipe akun berhasil dihapus', 'info');
+        openManageAccountTypesModal();
+    } catch (e) {
+        showToast(e.message, 'error');
     }
 };
 

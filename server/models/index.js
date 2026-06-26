@@ -411,6 +411,12 @@ const BOM = sequelize.define('boms', {
 // ═══════════════════════════════════════════════
 // 7. FINANCE
 // ═══════════════════════════════════════════════
+const AccountType = sequelize.define('account_types', {
+    id: { type: DataTypes.STRING(50), primaryKey: true },
+    name: { type: DataTypes.STRING(100), allowNull: false, unique: true },
+    base_type: { type: DataTypes.STRING(20), allowNull: false } // ASSET, LIABILITY, EQUITY, INCOME, EXPENSE
+});
+
 const Account = sequelize.define('accounts', {
     id: { type: DataTypes.STRING(50), primaryKey: true },
     code: { type: DataTypes.STRING(20), allowNull: false },
@@ -537,7 +543,7 @@ const models = {
     Machine, BOMHeader, BOMMaterial, ManufacturingOrder, DailyProductionLog,
     ProductionLineBatch, ProductionOrder, BOM,
     Account, JournalEntry, Expense, Receipt, BankAccount, CreditNote, DebitNote,
-    Notification, PackBreakdown,
+    Notification, PackBreakdown, AccountType,
     sequelize
 };
 
@@ -562,7 +568,7 @@ models.TABLE_MAP = {
     boms: BOM,
     accounts: Account, journalEntries: JournalEntry, expenses: Expense, receipts: Receipt,
     bankAccounts: BankAccount, creditNotes: CreditNote, debitNotes: DebitNote,
-    notifications: Notification, packBreakdowns: PackBreakdown
+    notifications: Notification, packBreakdowns: PackBreakdown, accountTypes: AccountType
 };
 
 module.exports = models;

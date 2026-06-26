@@ -74,6 +74,7 @@ const TABLE_PERMISSION_MAP = {
     bankAccounts:   'finance',
     creditNotes:    'finance',
     debitNotes:     'finance',
+    accountTypes:   'finance',
 
     // ── Public: any authenticated user ──
     notifications: 'PUBLIC',

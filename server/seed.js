@@ -86,6 +86,19 @@ async function seedDefaults() {
         console.log('  ✅ Chart of Accounts seeded');
     }
 
+    // 4b. Default Account Types
+    const existingAccountTypes = await models.AccountType.count();
+    if (existingAccountTypes === 0) {
+        await models.AccountType.bulkCreate([
+            { id: 'type_asset', name: 'Asset (Harta)', base_type: 'ASSET' },
+            { id: 'type_liability', name: 'Liabilitas (Hutang)', base_type: 'LIABILITY' },
+            { id: 'type_equity', name: 'Ekuitas (Modal)', base_type: 'EQUITY' },
+            { id: 'type_income', name: 'Pendapatan', base_type: 'INCOME' },
+            { id: 'type_expense', name: 'Beban/Biaya', base_type: 'EXPENSE' }
+        ]);
+        console.log('  ✅ Default Account Types seeded');
+    }
+
     // 5. Bank Accounts
     const existingBanks = await models.BankAccount.count();
     if (existingBanks === 0) {
