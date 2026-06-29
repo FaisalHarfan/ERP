@@ -110,6 +110,10 @@ async function start() {
         await sequelize.authenticate();
         console.log('✅ Database connected successfully');
 
+        // Manual migration to ensure columns exist (Sequelize sync alter can fail sometimes)
+        await sequelize.query('ALTER TABLE receipts ADD COLUMN IF NOT EXISTS received_from VARCHAR(255);').catch(e => console.warn('Migration warning receipts:', e.message));
+        await sequelize.query('ALTER TABLE expenses ADD COLUMN IF NOT EXISTS paid_to VARCHAR(255);').catch(e => console.warn('Migration warning expenses:', e.message));
+
         await sequelize.sync({ alter: !isProd });
         console.log(`✅ Database tables synced (alter: ${!isProd})`);
 

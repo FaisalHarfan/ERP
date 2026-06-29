@@ -1,6 +1,6 @@
 // server/routes/purchase.js — API untuk Modul Pembelian (Atomic Transactions)
 const router = require('express').Router();
-const { PurchaseOrder, InventoryItem, StockTransaction, JournalEntry, PurchaseInvoice, SupplierPayment, SystemLog, sequelize } = require('../models');
+const { PurchaseOrder, InventoryItem, StockTransaction, JournalEntry, PurchaseInvoice, SupplierPayment, SystemLog, BankAccount, sequelize } = require('../models');
 const { authenticateToken, requirePermission } = require('../middleware/auth');
 const { v4: uuidv4 } = require('uuid');
 
@@ -194,7 +194,7 @@ router.post('/payments/:invoiceId/pay', authenticateToken, requirePermission('pe
         const inv = await PurchaseInvoice.findByPk(req.params.invoiceId, { transaction: t });
         if (!inv) throw new Error('Invoice tidak ditemukan');
 
-        const { amount, method, referenceNote, date } = req.body;
+        const { amount, method, referenceNote, date, bankAccountId } = req.body;
         if (!amount || amount <= 0) throw new Error('Jumlah pembayaran tidak valid');
 
         // Cari total yang sudah dibayar
@@ -219,8 +219,22 @@ router.post('/payments/:invoiceId/pay', authenticateToken, requirePermission('pe
             amount: amount,
             method: method || 'Cash',
             reference: referenceNote || '',
+            bank_account_id: bankAccountId,
             notes: `Pembayaran untuk ${inv.inv_number || ''}`
         }, { transaction: t });
+
+        // Resolve credit account from BankAccount settings
+        let creditAccount = 'acc_cash'; // Default fallback
+        if (bankAccountId) {
+            const bank = await BankAccount.findByPk(bankAccountId);
+            if (bank && bank.account_id) {
+                creditAccount = bank.account_id;
+            } else {
+                creditAccount = method === 'Transfer Bank' ? 'acc_bank' : 'acc_cash';
+            }
+        } else {
+            creditAccount = method === 'Transfer Bank' ? 'acc_bank' : 'acc_cash';
+        }
 
         // 2. Create Journal Entry
         await JournalEntry.create({
@@ -231,7 +245,7 @@ router.post('/payments/:invoiceId/pay', authenticateToken, requirePermission('pe
             reference_id: paymentId,
             items: [
                 { accountId: 'acc_ap', debit: amount, credit: 0 },
-                { accountId: method === 'Transfer Bank' ? 'acc_bank' : 'acc_cash', debit: 0, credit: amount }
+                { accountId: creditAccount, debit: 0, credit: amount }
             ],
             total_debit: amount,
             total_credit: amount

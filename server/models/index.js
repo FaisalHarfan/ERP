@@ -203,6 +203,7 @@ const SalesInvoice = sequelize.define('sales_invoices', {
 
 const Payment = sequelize.define('payments', {
     id: { type: DataTypes.STRING(50), primaryKey: true },
+    paymentNumber: { type: DataTypes.STRING(100), field: 'payment_number' },
     invoice_id: DataTypes.STRING(50),
     date: DataTypes.DATE,
     amount: DataTypes.DECIMAL(15, 2),
@@ -335,6 +336,7 @@ const PurchaseInvoice = sequelize.define('purchase_invoices', {
 
 const SupplierPayment = sequelize.define('supplier_payments', {
     id: { type: DataTypes.STRING(50), primaryKey: true },
+    paymentNumber: { type: DataTypes.STRING(100), field: 'payment_number' },
     invoice_id: DataTypes.STRING(50),
     date: DataTypes.DATE,
     amount: DataTypes.DECIMAL(15, 2),
@@ -479,7 +481,8 @@ const Expense = sequelize.define('expenses', {
     to_account_id: DataTypes.STRING(50),
     department_id: DataTypes.STRING(50),
     method: DataTypes.STRING(50),
-    journal_id: DataTypes.STRING(50)
+    journal_id: DataTypes.STRING(50),
+    paid_to: DataTypes.STRING(255)
 });
 
 const Receipt = sequelize.define('receipts', {
@@ -491,7 +494,8 @@ const Receipt = sequelize.define('receipts', {
     target_account_id: DataTypes.STRING(50),
     source_account_id: DataTypes.STRING(50),
     method: DataTypes.STRING(50),
-    journal_id: DataTypes.STRING(50)
+    journal_id: DataTypes.STRING(50),
+    received_from: DataTypes.STRING(255)
 });
 
 const BankAccount = sequelize.define('bank_accounts', {

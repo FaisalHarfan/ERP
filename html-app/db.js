@@ -633,8 +633,7 @@ const db = {
         // Seed Bank Accounts
         if (db.read('bankAccounts').length === 0) {
             db.save('bankAccounts', [
-                { id: 'bank_cash', name: 'Kas Tunai', accountNumber: '-', bankName: 'Cash', accountId: 'acc_cash' },
-                { id: 'bank_bca', name: 'BCA Utama', accountNumber: '1234567890', bankName: 'BCA', accountId: 'acc_bank' }
+                { id: 'bank_cash', name: 'Kas Tunai', accountNumber: '-', bankName: 'Cash', accountId: 'acc_cash' }
             ]);
         }
 

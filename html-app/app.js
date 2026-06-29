@@ -5981,6 +5981,7 @@ window.openSupplierPaymentModal = (invoiceId = null) => {
     const allInvoices = db.read('purchaseInvoices');
     const allPayments = db.read('supplierPayments');
     const suppliers = db.read('suppliers');
+    const bankAccounts = db.read('bankAccounts') || [];
     const unpaidInvoices = allInvoices.filter(i => i.status === 'UNPAID');
     if (!unpaidInvoices.length) { showToast('Tidak ada invoice yang belum dibayar', 'error'); return; }
     const invOpts = unpaidInvoices.map(inv => {
@@ -5997,6 +5998,10 @@ window.openSupplierPaymentModal = (invoiceId = null) => {
             </select></div>
         <div><label class="block text-sm font-medium text-gray-700 mb-1">Tanggal Bayar</label>
             <input type="date" id="spay_date" value="${new Date().toISOString().split('T')[0]}" class="w-full border border-gray-300 rounded px-3 py-2"></div>
+        <div><label class="block text-sm font-medium text-gray-700 mb-1">Sumber Rekening Kas/Bank</label>
+            <select id="spay_bank_account_id" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
+                ${bankAccounts.map(ba => `<option value="${ba.id}">${ba.name} (${ba.bankName || ''} - ${ba.accountNumber || ba.account_number || ''})</option>`).join('')}
+            </select></div>
         <div><label class="block text-sm font-medium text-gray-700 mb-1">Metode</label>
             <select id="spay_method" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
                 <option>Transfer Bank</option><option>Tunai</option><option>Giro/Cek</option>
@@ -6028,6 +6033,7 @@ window.saveSupplierPayment = async () => {
     const method = document.getElementById('spay_method').value;
     const ref = document.getElementById('spay_ref').value.trim();
     const date = document.getElementById('spay_date').value;
+    const bankAccountId = document.getElementById('spay_bank_account_id')?.value || '';
     if (!invoiceId) { showToast('Pilih invoice', 'error'); return; }
     if (!amount || amount <= 0) { showToast('Jumlah tidak valid', 'error'); return; }
     const inv = allInvoices.find(i => i.id === invoiceId);
@@ -6038,13 +6044,14 @@ window.saveSupplierPayment = async () => {
     try {
         // Use Phase 2 API for Atomic Transaction (Payment + Journal + Invoice Status)
         const result = await api.paySupplierInvoice(invoiceId, {
-            amount, method, referenceNote: ref, date: new Date(date).toISOString()
+            amount, method, referenceNote: ref, date: new Date(date).toISOString(), bankAccountId
         });
 
         // Optimistic UI update
         db.insert('supplierPayments', {
             paymentNumber: 'SPAY-' + Date.now().toString().slice(-6),
-            invoiceId, date: new Date(date).toISOString(), method, referenceNote: ref, amount
+            invoiceId, date: new Date(date).toISOString(), method, referenceNote: ref, amount,
+            bank_account_id: bankAccountId, bankAccountId: bankAccountId
         });
 
         if (result.isPaid) {
@@ -6790,11 +6797,13 @@ function renderPurchaseOrders() {
     let filters = window.currentFilters.purchaseOrders || {};
     const suppliers = db.read('suppliers') || [];
 
-    // Load raw POs and enrich with supplierName for sorting
-    let rawPos = (db.read('purchaseOrders') || []).map(po => ({
-        ...po,
-        supplierName: (suppliers.find(s => s.id === po.supplierId) || { name: '' }).name
-    }));
+    // Load raw POs and enrich with supplierName for sorting, filtering out DELETED POs
+    let rawPos = (db.read('purchaseOrders') || [])
+        .filter(po => po.status !== 'DELETED')
+        .map(po => ({
+            ...po,
+            supplierName: (suppliers.find(s => s.id === po.supplierId) || { name: '' }).name
+        }));
 
     // Check if any date filter is applied
     const hasDateFilter = filters.start || filters.end;
@@ -7010,6 +7019,9 @@ function renderPurchaseOrders() {
                     </div>
 
                     <div class="flex items-center gap-2">
+                        <button onclick="renderDeletedPOHistory()" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 px-4 py-2 rounded-lg transition-all text-sm font-semibold shadow-sm flex items-center gap-2 active:scale-95">
+                            <i class="fas fa-archive text-amber-500"></i> Arsip PO Terhapus
+                        </button>
                         <button onclick="openPOForm()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg transition-all text-sm font-medium shadow-sm flex items-center gap-2 active:scale-95">
                             <i class="fas fa-plus"></i> Buat PO Baru
                         </button>
@@ -7553,11 +7565,113 @@ window.resetPGRHistoryHeaderDateFilter = () => {
 };
 
 // --- Purchase Orders Helper Functions ---
-window.deletePO = (id) => {
+window.deletePO = async (id) => {
     if (confirm('Yakin ingin menghapus Purchase Order ini?')) {
-        db.delete('purchaseOrders', id);
-        showToast('Purchase Order berhasil dihapus');
-        renderPurchaseOrders();
+        showToast('Menghapus PO...', 'info');
+        const success = await db.update('purchaseOrders', id, { status: 'DELETED' });
+        if (success) {
+            showToast('Purchase Order berhasil dihapus', 'success');
+            await db.sync('purchaseOrders');
+            renderPurchaseOrders();
+        } else {
+            showToast('Gagal menghapus Purchase Order', 'error');
+        }
+    }
+};
+
+window.renderDeletedPOHistory = () => {
+    renderBreadcrumb(['Purchasing', 'Purchase Orders', 'Arsip PO Terhapus']);
+    document.getElementById('pageTitle').innerText = 'Arsip PO Terhapus';
+    const mainContent = document.getElementById('main-content');
+    const suppliers = db.read('suppliers') || [];
+    
+    // Load POs that have DELETED status
+    let pos = (db.read('purchaseOrders') || [])
+        .filter(po => po.status === 'DELETED')
+        .map(po => ({
+            ...po,
+            supplierName: (suppliers.find(s => s.id === po.supplierId) || { name: 'Unknown' }).name
+        }));
+
+    let rows = pos.map(po => {
+        return `
+            <tr class="border-b border-gray-100 hover:bg-slate-50 transition-colors">
+                <td class="py-4 px-6 whitespace-nowrap">
+                    <span class="font-mono text-sm font-bold text-slate-700 bg-slate-100 px-3.5 py-1.5 rounded-lg border border-slate-200 shadow-sm inline-block">
+                        ${po.poNumber.toUpperCase()}
+                    </span>
+                </td>
+                <td class="py-4 px-6 text-sm text-slate-500 font-medium">${formatDate(po.date).split(' ')[0]}</td>
+                <td class="py-4 px-6 text-sm text-slate-900 font-bold tracking-tight">${po.supplierName}</td>
+                <td class="py-4 px-6 text-sm text-slate-800 font-bold text-right">${formatCurrency(po.totalAmount)}</td>
+                <td class="py-4 px-6 text-right whitespace-nowrap">
+                    <div class="flex items-center justify-end gap-2 px-1">
+                        <button onclick="restorePO('${po.id}')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg transition-all text-xs font-bold shadow-sm flex items-center gap-2 active:scale-95">
+                            <i class="fas fa-undo"></i> Pulihkan
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    if (pos.length === 0) {
+        rows = `<tr><td colspan="5" class="py-24 text-center">
+            <div class="flex flex-col items-center justify-center">
+                <i class="fas fa-archive text-6xl text-slate-250 mb-4 opacity-30"></i>
+                <p class="text-slate-400 font-bold uppercase tracking-widest text-sm">Tidak ada Purchase Order di dalam arsip terhapus</p>
+            </div>
+        </td></tr>`;
+    }
+
+    mainContent.innerHTML = `
+        <div class="animate-in fade-in duration-300 h-[calc(100vh-64px)] flex flex-col bg-slate-50 -m-4 sm:-m-6">
+            <!-- Header bar with Back button -->
+            <div class="bg-white border-b border-gray-200 shrink-0 z-40 shadow-sm relative">
+                <div class="flex justify-between items-center px-6 py-4">
+                    <div class="flex items-center gap-3">
+                        <button onclick="renderPurchaseOrders()" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 w-10 h-10 rounded-xl transition-all shadow-sm flex items-center justify-center active:scale-95" title="Kembali ke Daftar PO">
+                            <i class="fas fa-arrow-left"></i>
+                        </button>
+                        <h3 class="text-sm font-black text-slate-700 uppercase tracking-wider">Arsip Purchase Order Terhapus</h3>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Table Container wrapper -->
+            <div class="flex-1 overflow-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-slate-50 sticky top-0 z-30 shadow-[0_1px_0_#e2e8f0]">
+                        <tr class="bg-gray-50/50">
+                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">No. PO</th>
+                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tanggal</th>
+                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Supplier</th>
+                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Total</th>
+                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 bg-white">${rows}</tbody>
+                </table>
+            </div>
+            
+            <div class="bg-slate-50 border-t border-slate-200 p-2 text-center text-[10px] font-black text-slate-400 tracking-widest uppercase shrink-0">
+                TOTAL: ${pos.length} DOKUMEN DIARSIPKAN
+            </div>
+        </div>
+    `;
+};
+
+window.restorePO = async (id) => {
+    if (confirm('Pulihkan Purchase Order ini ke status DRAFT?')) {
+        showToast('Memulihkan PO...', 'info');
+        const success = await db.update('purchaseOrders', id, { status: 'DRAFT' });
+        if (success) {
+            showToast('Purchase Order berhasil dipulihkan ke DRAFT', 'success');
+            await db.sync('purchaseOrders');
+            renderDeletedPOHistory();
+        } else {
+            showToast('Gagal memulihkan Purchase Order', 'error');
+        }
     }
 };
 
@@ -14131,6 +14245,7 @@ window.openNewPaymentModal = () => {
     const invoices = db.read('salesInvoices');
     const payments = db.read('payments');
     const customers = db.read('customers');
+    const bankAccounts = db.read('bankAccounts') || [];
 
     // Find unpaid invoices
     const unpaidInvoices = invoices.filter(inv => inv.status === 'UNPAID');
@@ -14161,6 +14276,12 @@ window.openNewPaymentModal = () => {
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Tanggal Bayar</label>
                     <input type="date" id="pay_date" value="${new Date().toISOString().split('T')[0]}" class="w-full border border-gray-300 rounded px-3 py-2 bg-gray-50">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Pilih Rekening Kas/Bank</label>
+                    <select id="pay_bank_account_id" class="w-full border border-gray-300 rounded px-3 py-2 bg-white">
+                        ${bankAccounts.map(ba => `<option value="${ba.id}">${ba.name} (${ba.bankName || ''} - ${ba.accountNumber || ba.account_number || ''})</option>`).join('')}
+                    </select>
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Metode Pembayaran</label>
@@ -14208,6 +14329,7 @@ window.saveNewPayment = async () => {
 
     const invoiceId = document.getElementById('pay_invoice_id').value;
     const method = document.getElementById('pay_method').value;
+    const bankAccountId = document.getElementById('pay_bank_account_id')?.value || '';
     const inputAmount = parseFloat(document.getElementById('pay_amount').value);
     const dateInput = document.getElementById('pay_date').value;
     const proofRef = document.getElementById('pay_proof').value.trim();
@@ -14237,20 +14359,27 @@ window.saveNewPayment = async () => {
         method: method,
         amount: inputAmount,
         proofReference: proofRef,
-        notes: notes
+        notes: notes,
+        bank_account_id: bankAccountId,
+        bankAccountId: bankAccountId
     });
 
     // Otomatis buat Jurnal: Debit Kas/Bank, Kredit Piutang
     if (typeof db.addJournalEntry === 'function' && payment) {
-        let debitAccount = '11110'; // Default: Kas
-        if (method === 'Transfer Bank') debitAccount = '11110'; // Default: Bank BCA (as seeded)
+        let debitAccount = 'acc_cash'; // Default fallback
+        const selectedBank = db.findById('bankAccounts', bankAccountId);
+        if (selectedBank && (selectedBank.accountId || selectedBank.account_id)) {
+            debitAccount = selectedBank.accountId || selectedBank.account_id;
+        } else {
+            debitAccount = method === 'Transfer Bank' ? 'acc_bank' : 'acc_cash';
+        }
 
         await db.addJournalEntry({
             date: payment.date,
             description: `Pelunasan Invoice ${inv.invoiceNumber} (${method}) ${proofRef ? '- Proof: ' + proofRef : ''}`,
             reference: payment.paymentNumber,
             items: [
-                { accountId: method === 'Transfer Bank' ? 'acc_bank' : 'acc_cash', debit: inputAmount, credit: 0 },
+                { accountId: debitAccount, debit: inputAmount, credit: 0 },
                 { accountId: 'acc_ar', debit: 0, credit: inputAmount } // Piutang Usaha
             ]
         });

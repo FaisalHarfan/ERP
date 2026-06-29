@@ -660,7 +660,7 @@ window.resetInventoryFilters = () => {
 window.renderInventoryItemForm = (id = null, context = null) => {
     if (window.pushCurrentToHistory) window.pushCurrentToHistory();
     const item = id ? ((window._tempInventoryItems || []).find(it => it.id === id) || db.findById('inventoryItems', id)) : null;
-    const units = ['KG', 'GR', 'Lembar', 'PCS', 'BOX', 'SAK', 'KARTON', 'LITER'];
+    const units = ['KG', 'GR', 'Lembar', 'PCS', 'BOX', 'SAK', 'KARTON', 'LITER', 'Tabung', 'Batang'];
     const unitOpts = units.map(u => `<option ${item?.unit === u ? 'selected' : ''}>${u}</option>`).join('');
     
     // Dynamic Categories based on context
@@ -901,6 +901,9 @@ window.saveInventoryItem = async (id, btnEl) => {
         
         // Bust the master cache so next open fetches fresh data
         window._tempInventoryMasterItems = null;
+
+        // Synchronize local cache with server data
+        await db.sync('inventoryItems');
 
         closeModal();
         returnToMasterView();

@@ -3,8 +3,8 @@ window.getBaseType = function(type) {
     if (!type) return 'ASSET';
     const customTypes = db.read('accountTypes') || [];
     const match = customTypes.find(t => t.id === type || t.name.toLowerCase() === type.toLowerCase());
-    if (match && match.baseType) {
-        return match.baseType.toUpperCase();
+    if (match && (match.base_type || match.baseType)) {
+        return (match.base_type || match.baseType).toUpperCase();
     }
     const t = type.toUpperCase();
     if (t.includes('ASSET') || t.includes('ASET') || t.includes('HARTA') || t.includes('KAS') || t.includes('BANK')) return 'ASSET';
@@ -21,8 +21,8 @@ window._apHistoryFilters = window._apHistoryFilters || { supplierId: '', date: '
 window._arFilters = window._arFilters || { customer: '', date: '' };
 window._arHistoryFilters = window._arHistoryFilters || { customer: '', date: '', method: '' };
 window._journalFilters = window._journalFilters || { q: '' };
-window._expenseFilters = window._expenseFilters || { start: '', end: '', coaId: '' };
-window._receiptFilters = window._receiptFilters || { start: '', end: '', coaId: '' };
+window._expenseFilters = window._expenseFilters || { q: '', dateFrom: '', dateTo: '', sortOrder: 'desc' };
+window._receiptFilters = window._receiptFilters || { q: '', dateFrom: '', dateTo: '', sortOrder: 'desc' };
 window._coaFilters = window._coaFilters || { q: '', type: '' };
 window._coaExpandedNodes = window._coaExpandedNodes || {};
 
@@ -35,7 +35,9 @@ window._uiState.arHistFilterOpen = window._uiState.arHistFilterOpen ?? false;
 window._uiState.arActiveTab = window._uiState.arActiveTab || 'unpaid';
 window._uiState.journalFilterOpen = window._uiState.journalFilterOpen ?? false;
 window._uiState.expFilterOpen = window._uiState.expFilterOpen ?? false;
+window._uiState.expenseActiveTab = window._uiState.expenseActiveTab || 'list';
 window._uiState.recFilterOpen = window._uiState.recFilterOpen ?? false;
+window._uiState.receiptActiveTab = window._uiState.receiptActiveTab || 'list';
 window._uiState.coaFilterOpen = window._uiState.coaFilterOpen ?? false;
 window._uiState.repFilterOpen = window._uiState.repFilterOpen ?? false;
 
@@ -49,6 +51,27 @@ window.formatAmountInput = function(val) {
 window.parseAmountInput = function(val) {
     if (!val) return 0;
     return parseFloat(val.toString().replace(/\./g, '')) || 0;
+};
+
+// Format date as DD/MM/YYYY (date only, no time)
+window.formatDateOnly = function(isoString) {
+    if (!isoString) return '-';
+    try {
+        // Handle YYYY-MM-DD and ISO datetime strings
+        const dateStr = isoString.split('T')[0];
+        const parts = dateStr.split('-');
+        if (parts.length === 3) {
+            return `${parts[2]}/${parts[1]}/${parts[0]}`;
+        }
+        const date = new Date(isoString);
+        if (isNaN(date.getTime())) return isoString;
+        const d = String(date.getDate()).padStart(2, '0');
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const y = date.getFullYear();
+        return `${d}/${m}/${y}`;
+    } catch (e) {
+        return isoString;
+    }
 };
 
 window.renderFinanceDashboard = function () {
@@ -568,22 +591,24 @@ window.renderFinanceAccounts = function () {
                                 <i class="fas fa-ellipsis-v text-[10px]"></i>
                             </button>
                             <div id="dropdown-${node.id}" class="coa-dropdown hidden absolute left-0 mt-1 w-32 bg-white rounded-xl border border-slate-200 shadow-xl z-50 py-1.5 text-xs text-left animate-in fade-in slide-in-from-top-1 duration-150">
-                                ${!isVirtual ? `
+                                ${isVirtual ? `
+                                    <button onclick="editAccountType('${node.id.replace('type_', '')}'); hideCOAActionDropdowns(event);" class="w-full text-left px-3 py-1.5 text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2 font-semibold">
+                                        <i class="fas fa-edit text-slate-400 w-4 text-center"></i> Edit Tipe
+                                    </button>
+                                ` : `
                                     <button onclick="editAccount('${node.id}'); hideCOAActionDropdowns(event);" class="w-full text-left px-3 py-1.5 text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2 font-semibold">
                                         <i class="fas fa-edit text-slate-400 w-4 text-center"></i> Edit
                                     </button>
                                     <button onclick="deleteAccount('${node.id}'); hideCOAActionDropdowns(event);" class="w-full text-left px-3 py-1.5 text-red-600 hover:bg-red-50/50 transition-colors flex items-center gap-2 font-semibold">
                                         <i class="fas fa-trash-alt text-red-400 w-4 text-center"></i> Delete
                                     </button>
-                                ` : ''}
+                                `}
                                 <button onclick="addChildAccount('${node.id}'); hideCOAActionDropdowns(event);" class="w-full text-left px-3 py-1.5 text-blue-600 hover:bg-blue-50/50 transition-colors flex items-center gap-2 font-semibold">
                                     <i class="fas fa-plus text-blue-400 w-4 text-center"></i> Add Child
                                 </button>
-                                ${!isVirtual ? `
-                                    <button onclick="viewAccountLedger('${node.id}'); hideCOAActionDropdowns(event);" class="w-full text-left px-3 py-1.5 text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2 font-semibold">
-                                        <i class="fas fa-file-invoice text-slate-400 w-4 text-center"></i> Ledger
-                                    </button>
-                                ` : ''}
+                                <button onclick="viewAccountLedger('${node.id}'); hideCOAActionDropdowns(event);" class="w-full text-left px-3 py-1.5 text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-2 font-semibold">
+                                    <i class="fas fa-file-invoice text-slate-400 w-4 text-center"></i> Ledger
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -710,7 +735,7 @@ window.addChildAccount = function(parentId) {
 };
 
 window.viewAccountLedger = function(accountId) {
-    navigateTo('finance-journal', { accountId: accountId });
+    viewAccountMutasi(accountId);
 };
 
 window.updateCOAFilters = function() {
@@ -840,6 +865,7 @@ window.saveAccount = async function () {
     try {
         await api.saveAccount({ id: editId, code, name, type, parentId, isGroup, description, openingBalance, status: 'ACTIVE' });
         showToast(editId ? 'Akun berhasil diupdate' : 'Akun berhasil ditambahkan');
+        await db.sync('accounts');
         closeModal();
         renderFinanceAccounts();
     } catch (err) {
@@ -995,6 +1021,61 @@ window.deleteManageAccountType = async function(id) {
     }
 };
 
+window.editAccountType = function(typeId) {
+    const customTypes = db.read('accountTypes') || [];
+    const t = customTypes.find(type => type.id === typeId);
+    if (!t) return showToast('Tipe akun tidak ditemukan.', 'error');
+
+    const body = `
+        <div class="space-y-4">
+            <div>
+                <label class="block text-xs font-bold text-gray-500 mb-1">Nama Tipe Akun</label>
+                <input type="text" id="editTypeName" value="${t.name}" class="w-full border border-gray-200 rounded-lg p-2.5 text-xs focus:ring-2 focus:ring-blue-500 outline-none bg-white font-semibold text-slate-750">
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-500 mb-1">Kategori Dasar (Base Type)</label>
+                <select id="editTypeBase" class="w-full border border-gray-200 rounded-lg p-2.5 text-xs focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+                    <option value="ASSET" ${t.base_type === 'ASSET' || t.baseType === 'ASSET' ? 'selected' : ''}>Asset (Harta)</option>
+                    <option value="LIABILITY" ${t.base_type === 'LIABILITY' || t.baseType === 'LIABILITY' ? 'selected' : ''}>Liabilitas (Hutang)</option>
+                    <option value="EQUITY" ${t.base_type === 'EQUITY' || t.baseType === 'EQUITY' ? 'selected' : ''}>Ekuitas (Modal)</option>
+                    <option value="INCOME" ${t.base_type === 'INCOME' || t.baseType === 'INCOME' ? 'selected' : ''}>Pendapatan</option>
+                    <option value="EXPENSE" ${t.base_type === 'EXPENSE' || t.baseType === 'EXPENSE' ? 'selected' : ''}>Beban/Biaya</option>
+                </select>
+            </div>
+        </div>
+    `;
+
+    const footer = `
+        <button onclick="closeModal()" class="px-4 py-2 bg-gray-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-gray-200 mr-2 transition-all">Batal</button>
+        <button onclick="saveEditAccountType('${typeId}')" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-sm">Simpan</button>
+    `;
+
+    showModal('Edit Tipe Akun', body, footer);
+};
+
+window.saveEditAccountType = async function(typeId) {
+    const name = document.getElementById('editTypeName')?.value?.trim();
+    const baseType = document.getElementById('editTypeBase')?.value;
+
+    if (!name) return alert('Nama tipe akun tidak boleh kosong.');
+
+    try {
+        const customTypes = db.read('accountTypes') || [];
+        const index = customTypes.findIndex(t => t.id === typeId);
+        if (index !== -1) {
+            customTypes[index].name = name;
+            customTypes[index].base_type = baseType;
+            customTypes[index].baseType = baseType;
+            await db.update('accountTypes', typeId, customTypes[index]);
+            showToast('Tipe akun berhasil diperbarui', 'success');
+            closeModal();
+            renderFinanceAccounts();
+        }
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+};
+
 window.editAccount = function(id) {
     openAccountModal(id);
 };
@@ -1008,7 +1089,24 @@ window.deleteAccount = function(id) {
 };
 
 window.viewAccountMutasi = async function(accountId, startDate = '', endDate = '') {
-    const acc = db.findById('accounts', accountId);
+    let acc = null;
+    const isVirtual = accountId.startsWith('type_');
+    
+    if (isVirtual) {
+        const typeId = accountId.replace('type_', '');
+        const customTypes = db.read('accountTypes') || [];
+        const t = customTypes.find(type => type.id === typeId);
+        if (t) {
+            acc = {
+                id: accountId,
+                code: 'Kategori',
+                name: t.name
+            };
+        }
+    } else {
+        acc = db.findById('accounts', accountId);
+    }
+    
     if (!acc) return;
     
     try {
@@ -1016,74 +1114,78 @@ window.viewAccountMutasi = async function(accountId, startDate = '', endDate = '
         const filteredLedger = ledger;
 
         const body = `
-            <div class="space-y-4">
+            <div class="space-y-6">
                 <!-- Filter & Action Header -->
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center p-4 bg-slate-50 border border-slate-200 rounded-xl gap-4 no-print">
-                    <div class="flex flex-wrap items-center gap-3">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end p-5 bg-slate-50/80 border border-slate-100 rounded-2xl gap-4 no-print">
+                    <div class="flex flex-wrap items-end gap-3 w-full sm:w-auto">
                         <div class="flex flex-col">
-                            <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Dari Tanggal</label>
-                            <input type="date" id="mutasi_start" value="${startDate}" class="border-2 border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold focus:border-blue-500 outline-none">
+                            <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Dari Tanggal</label>
+                            <input type="date" id="mutasi_start" value="${startDate}" class="border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-slate-800 transition-all bg-white shadow-sm">
                         </div>
                         <div class="flex flex-col">
-                            <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Sampai Tanggal</label>
-                            <input type="date" id="mutasi_end" value="${endDate}" class="border-2 border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold focus:border-blue-500 outline-none">
+                            <label class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Sampai Tanggal</label>
+                            <input type="date" id="mutasi_end" value="${endDate}" class="border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-slate-800 transition-all bg-white shadow-sm">
                         </div>
-                        <button onclick="applyMutasiFilter('${accountId}')" class="mt-4 bg-blue-600 hover:bg-slate-900 text-white px-5 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all">
-                            <i class="fas fa-filter mr-2"></i> FILTER
+                        <button onclick="applyMutasiFilter('${accountId}')" class="bg-slate-800 hover:bg-slate-950 text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95">
+                            <i class="fas fa-filter"></i> FILTER
                         </button>
                     </div>
-                    <div class="flex gap-2 w-full md:w-auto mt-2 md:mt-0">
-                        <button onclick="exportMutasiToPDF('${accountId}', '${startDate}', '${endDate}')" class="flex-1 md:flex-none bg-red-600 hover:bg-black text-white px-5 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2">
-                            <i class="fas fa-file-pdf"></i> CETAK PDF
+                    <div class="flex gap-2 w-full sm:w-auto">
+                        <button onclick="exportMutasiToPDF('${accountId}', '${startDate}', '${endDate}')" class="flex-1 sm:flex-none border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-sm active:scale-95">
+                            <i class="fas fa-file-pdf text-red-500"></i> CETAK PDF
                         </button>
                     </div>
                 </div>
 
-                <div class="flex justify-between items-center bg-white p-4 rounded-lg border-2 border-slate-100 shadow-sm">
+                <!-- Account Information Card -->
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gradient-to-r from-slate-50 to-white p-5 rounded-2xl border border-slate-100 shadow-sm gap-3">
                     <div>
-                        <h4 class="text-sm font-black text-slate-800 uppercase tracking-widest">${acc.code} - ${acc.name}</h4>
-                        <p class="text-[10px] text-gray-500 uppercase font-bold tracking-tight mt-1">Periode: <span class="text-blue-600">${startDate || 'Awal'} s/d ${endDate || 'Sekarang'}</span></p>
+                        <h4 class="text-base font-extrabold text-slate-850 tracking-wide">${acc.code} — ${acc.name}</h4>
+                        <p class="text-[10px] text-slate-500 uppercase font-black tracking-widest mt-1">Periode: <span class="text-slate-800 font-bold">${startDate || 'Awal'} s/d ${endDate || 'Sekarang'}</span></p>
                     </div>
-                    <div class="text-right">
-                        <p class="text-[10px] text-gray-400 uppercase font-black">Saldo Akhir Periode</p>
-                        <p class="text-lg font-black text-blue-600">${formatCurrency(Math.abs(filteredLedger[0]?.balance || 0))}</p>
+                    <div class="text-left sm:text-right bg-white px-4 py-2 border border-slate-100 rounded-xl shadow-inner">
+                        <p class="text-[9px] text-slate-400 uppercase font-black tracking-widest">Saldo Akhir Periode</p>
+                        <p class="text-xl font-black text-slate-800 mt-0.5">${formatCurrency(Math.abs(filteredLedger[0]?.balance || 0))}</p>
                     </div>
                 </div>
 
-                <div class="overflow-x-auto border rounded-xl overflow-hidden shadow-sm bg-white">
-                    <table id="mutasiTable" class="w-full text-left text-xs border-collapse">
-                        <thead class="bg-slate-800 text-white uppercase tracking-widest text-[9px]">
-                            <tr>
-                                <th class="px-4 py-3 border-r border-slate-700">Tanggal</th>
-                                <th class="px-4 py-3 border-r border-slate-700">Ref / Jurnal</th>
-                                <th class="px-4 py-3 border-r border-slate-700">Keterangan</th>
-                                <th class="px-4 py-3 text-right border-r border-slate-700 uppercase">Debit</th>
-                                <th class="px-4 py-3 text-right border-r border-slate-700 uppercase">Kredit</th>
-                                <th class="px-4 py-3 text-right uppercase">Saldo</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-100">
-                            ${filteredLedger.map(l => `
-                                <tr class="hover:bg-blue-50/50 transition-colors">
-                                    <td class="px-4 py-3 text-gray-400 whitespace-nowrap font-medium">${l.date ? l.date.slice(0, 10).split('-').reverse().join('/') : '-'}</td>
-                                    <td class="px-4 py-3 font-bold text-slate-700 whitespace-nowrap">${l.journalNo}</td>
-                                    <td class="px-4 py-3 text-gray-600 min-w-[200px] font-medium">${l.description}</td>
-                                    <td class="px-4 py-3 text-right font-bold ${l.debit > 0 ? 'text-blue-600' : 'text-slate-100'}">${l.debit > 0 ? formatCurrency(l.debit).replace('Rp ', '') : '0,00'}</td>
-                                    <td class="px-4 py-3 text-right font-bold ${l.credit > 0 ? 'text-red-500' : 'text-slate-100'}">${l.credit > 0 ? formatCurrency(l.credit).replace('Rp ', '') : '0,00'}</td>
-                                    <td class="px-4 py-3 text-right font-black text-slate-800 bg-slate-50/50">${formatCurrency(Math.abs(l.balance)).replace('Rp ', '')}</td>
+                <!-- Ledger Table -->
+                <div class="overflow-hidden border border-slate-100 rounded-2xl shadow-sm bg-white">
+                    <div class="overflow-x-auto">
+                        <table id="mutasiTable" class="w-full text-left text-xs border-collapse">
+                            <thead class="bg-slate-50/80 text-slate-500 uppercase tracking-wider text-[9px] font-black border-b border-slate-100">
+                                <tr>
+                                    <th class="px-5 py-3.5">Tanggal</th>
+                                    <th class="px-5 py-3.5">Ref / Jurnal</th>
+                                    <th class="px-5 py-3.5">Keterangan</th>
+                                    <th class="px-5 py-3.5 text-right uppercase">Debit</th>
+                                    <th class="px-5 py-3.5 text-right uppercase">Kredit</th>
+                                    <th class="px-5 py-3.5 text-right uppercase">Saldo</th>
                                 </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody class="divide-y divide-slate-50 text-slate-700">
+                                ${filteredLedger.map(l => `
+                                    <tr class="hover:bg-slate-50/40 transition-colors">
+                                        <td class="px-5 py-3.5 text-slate-450 whitespace-nowrap font-semibold">${l.date ? l.date.slice(0, 10).split('-').reverse().join('/') : '-'}</td>
+                                        <td class="px-5 py-3.5 font-bold text-slate-800 whitespace-nowrap">${l.journalNo || '-'}</td>
+                                        <td class="px-5 py-3.5 text-slate-600 min-w-[200px] font-medium">${l.description}</td>
+                                        <td class="px-5 py-3.5 text-right font-bold ${l.debit > 0 ? 'text-slate-850' : 'text-slate-300'}">${l.debit > 0 ? formatCurrency(l.debit).replace('Rp ', '') : '-'}</td>
+                                        <td class="px-5 py-3.5 text-right font-bold ${l.credit > 0 ? 'text-slate-850' : 'text-slate-300'}">${l.credit > 0 ? formatCurrency(l.credit).replace('Rp ', '') : '-'}</td>
+                                        <td class="px-5 py-3.5 text-right font-black text-slate-800 bg-slate-50/30">${formatCurrency(Math.abs(l.balance)).replace('Rp ', '')}</td>
+                                    </tr>
+                                `).join('') || '<tr><td colspan="6" class="px-5 py-12 text-center text-slate-400 font-medium">Belum ada riwayat mutasi pada periode ini.</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         `;
         
         const footer = `
-            <button onclick="closeModal()" class="px-8 py-2.5 bg-slate-900 text-white rounded-lg text-xs font-black uppercase tracking-widest hover:bg-black transition-all">Tutup</button>
+            <button onclick="closeModal()" class="px-6 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all shadow-md active:scale-95">Tutup</button>
         `;
         
-        showModal(`Mutasi Buku Besar: ${acc.name}`, body, footer, 'full');
+        showModal(`Mutasi Buku Besar`, body, footer, 'full');
     } catch (err) {
         showToast(err.message, 'error');
     }
@@ -1165,269 +1267,455 @@ window.exportMutasiToPDF = function(accountId, startDate, endDate) {
 window.renderFinanceExpenses = function () {
     document.getElementById('pageTitle').innerText = 'Pengeluaran Kas & Bank';
     const mc = document.getElementById('main-content');
-    
-    window._uiState.expenseActiveTab = window._uiState.expenseActiveTab || 'list';
-    const activeTab = window._uiState.expenseActiveTab;
 
-    window._expenseFilters = window._expenseFilters || { q: '', start: '', end: '', coaId: '' };
+    window._uiState.expenseActiveTab = window._uiState.expenseActiveTab || 'list';
+    window._expenseFilters = window._expenseFilters || { q: '', dateFrom: '', dateTo: '', sortOrder: 'desc' };
+
+    const activeTab = window._uiState.expenseActiveTab;
     const f = window._expenseFilters;
-    
+
     let expenses = db.read('expenses') || [];
+
     if (f.q) {
         const q = f.q.toLowerCase();
-        expenses = expenses.filter(e => e.expenseNo.toLowerCase().includes(q) || e.description.toLowerCase().includes(q));
+        expenses = expenses.filter(e =>
+            (e.expenseNo || '').toLowerCase().includes(q) ||
+            (e.description || '').toLowerCase().includes(q) ||
+            (e.method || '').toLowerCase().includes(q) ||
+            (db.findById('accounts', e.toAccountId)?.name || '').toLowerCase().includes(q) ||
+            (db.findById('accounts', e.fromAccountId)?.name || '').toLowerCase().includes(q)
+        );
     }
-    if (f.start) expenses = expenses.filter(e => e.date >= f.start);
-    if (f.end) expenses = expenses.filter(e => e.date <= f.end);
+
+    if (f.dateFrom || f.dateTo) {
+        expenses = expenses.filter(e => {
+            let ok = true;
+            const eDate = (e.date || '').split('T')[0];
+            if (f.dateFrom && eDate < f.dateFrom) ok = false;
+            if (f.dateTo && eDate > f.dateTo) ok = false;
+            return ok;
+        });
+    }
+
+    const defaultExpSort = (arr) => [...arr].sort((a, b) => ((b.date || '') > (a.date || '') ? 1 : -1));
+    expenses = window.applyTableSort(expenses, 'fin_exp', defaultExpSort);
 
     const totalAmount = expenses.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
 
-    let contentHtml = '';
-    // Reusable Filter Bar
+    // Filter bar - same pattern as AR/AP
     const filterBarHtml = `
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex flex-col md:flex-row items-center gap-3 mb-4">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex flex-col md:flex-row items-center gap-3">
             <div class="relative flex-1 group w-full">
                 <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors"></i>
-                <input type="text" onkeyup="if(event.key==='Enter') { window._expenseFilters.q=this.value; renderFinanceExpenses(); }"
-                    value="${f.q || ''}" placeholder="Cari di ${activeTab === 'list' ? 'Daftar' : 'Riwayat'}..." 
-                    class="w-full pl-11 pr-4 py-2.5 bg-slate-50/50 rounded-xl border border-slate-100 focus:border-blue-500 focus:bg-white text-sm font-semibold text-slate-700 outline-none transition-all">
+                <input type="text" id="expenseSearchInput"
+                    onkeyup="if(event.key==='Enter') applyExpenseSearch()"
+                    value="${f.q || ''}"
+                    placeholder="Cari No. Pengeluaran, Kebutuhan, Kategori, atau Kas/Bank..."
+                    class="w-full pl-11 pr-4 py-2.5 bg-slate-50/50 rounded-xl border border-slate-100 focus:border-blue-500 focus:bg-white text-sm font-semibold text-slate-700 outline-none transition-all"
+                >
             </div>
             <div class="flex items-center gap-3 w-full md:w-auto px-1">
-                <div class="px-5 py-1.5 bg-red-50 rounded-xl border border-red-100 flex flex-col items-center justify-center min-w-[160px] h-10 shadow-sm">
-                    <span class="text-[9px] font-black text-red-400 uppercase tracking-widest leading-none mb-0.5">Total ${activeTab === 'list' ? 'Item' : 'Riwayat'}</span>
-                    <span class="text-sm font-black text-red-700 leading-none">${formatCurrency(totalAmount)}</span>
+                <div class="relative flex items-center h-10 bg-white border border-slate-200 rounded-xl shadow-sm overflow-visible">
+                    <button onclick="window._expenseFilters.sortOrder = window._expenseFilters.sortOrder === 'asc' ? 'desc' : 'asc'; renderFinanceExpenses()"
+                        class="w-10 h-full flex items-center justify-center bg-slate-50 border-r border-slate-200 text-slate-400 hover:text-blue-600 transition-all">
+                        <i class="fas fa-sort-amount-${f.sortOrder === 'asc' ? 'up' : 'down'}-alt text-xs"></i>
+                    </button>
+                    <div onclick="window._uiState.expenseDatePopoverOpen = !window._uiState.expenseDatePopoverOpen; renderFinanceExpenses()"
+                        class="relative flex items-center h-full px-4 cursor-pointer hover:bg-slate-50 transition-all group min-w-[100px]">
+                        <span class="text-sm font-bold text-blue-600 mr-3">Date</span>
+                        <i class="fas fa-chevron-down text-blue-300 text-[10px] transition-transform ${window._uiState.expenseDatePopoverOpen ? 'rotate-180' : ''}"></i>
+                    </div>
+                    <div class="${window._uiState.expenseDatePopoverOpen ? 'block' : 'hidden'} absolute top-full left-0 mt-3 w-80 bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100 p-6 z-[100] animate-in fade-in zoom-in-95 duration-200">
+                        <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-5">FILTER RANGE</div>
+                        <div class="grid grid-cols-2 gap-4 mb-6">
+                            <div class="space-y-1.5">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">DARI</label>
+                                <input type="date" id="expenseDateFrom" value="${f.dateFrom || ''}" class="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none">
+                            </div>
+                            <div class="space-y-1.5">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">KE</label>
+                                <input type="date" id="expenseDateTo" value="${f.dateTo || ''}" class="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none">
+                            </div>
+                        </div>
+                        <div class="flex gap-3">
+                            <button onclick="applyExpenseDateRange()" class="flex-1 bg-blue-600 text-white py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-200">APPLY</button>
+                            <button onclick="resetExpenseDateRange()" class="flex-1 bg-slate-50 text-slate-400 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest">RESET</button>
+                        </div>
+                    </div>
                 </div>
-                ${activeTab === 'list' ? `
                 <button onclick="openExpenseModal()" class="flex items-center justify-center gap-2 px-6 h-10 bg-blue-600 hover:bg-slate-900 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-200 transition-all active:scale-95 whitespace-nowrap">
                     <i class="fas fa-plus"></i> INPUT PENGELUARAN
-                </button>` : ''}
+                </button>
             </div>
         </div>
     `;
 
+    // Pill tabs - same pattern as AR/AP
+    const tabsHtml = `
+        <div class="flex items-center gap-1 bg-slate-100 p-1.5 rounded-2xl w-fit border border-slate-200/60 shadow-inner overflow-hidden">
+            <button onclick="window._uiState.expenseActiveTab='list'; renderFinanceExpenses();"
+                class="px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 ${activeTab === 'list' ? 'bg-white text-blue-600 shadow-md scale-100 border border-slate-100' : 'text-slate-400 hover:text-slate-600 hover:bg-white/40 opacity-70'}">
+                <i class="fas fa-list-ul"></i> Daftar Pengeluaran
+            </button>
+            <button onclick="window._uiState.expenseActiveTab='history'; renderFinanceExpenses();"
+                class="px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 ${activeTab === 'history' ? 'bg-white text-red-600 shadow-md scale-100 border border-slate-100' : 'text-slate-400 hover:text-slate-600 hover:bg-white/40 opacity-70'}">
+                <i class="fas fa-history"></i> Riwayat Pengeluaran
+            </button>
+        </div>
+    `;
+
+    let tableHtml = '';
     if (activeTab === 'list') {
-        contentHtml = filterBarHtml + `
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        tableHtml = `
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="bg-slate-50/50">
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">TGL & REFERENSI</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">KEBUTUHAN</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">KATEGORI (COA)</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">KAS / BANK</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">JUMLAH</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">AKSI</th>
+                        <thead class="bg-slate-50/50 sticky top-0">
+                            <tr>
+                                ${window.sortTh('fin_exp','paidTo','string','Pengeluaran Kepada','renderFinanceExpenses')}
+                                ${window.sortTh('fin_exp','description','string','Kebutuhan / Deskripsi','renderFinanceExpenses')}
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Kategori (COA)</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Kas / Bank</th>
+                                ${window.sortTh('fin_exp','amount','number','Jumlah','renderFinanceExpenses','text-right')}
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">Aksi</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-50">
                             ${expenses.map(e => `
                                 <tr class="hover:bg-slate-50/50 transition-colors group">
-                                    <td class="px-6 py-4">
-                                        <div class="text-[10px] text-slate-400 font-bold mb-1">${formatDate(e.date).slice(0, 10)}</div>
-                                        <div class="inline-flex items-center px-2 py-1 bg-red-50 text-red-600 rounded-lg font-bold text-[10px] border border-red-100">${e.expenseNo}</div>
+                                    <td class="px-6 py-4 text-sm font-bold text-slate-800">
+                                        ${e.paid_to || e.paidTo || '-'}
                                     </td>
                                     <td class="px-6 py-4">
+                                        <div class="text-[10px] text-slate-400 font-bold mb-1">${formatDateOnly(e.date)}</div>
                                         <div class="text-sm font-bold text-slate-700">${e.description}</div>
-                                        <div class="text-[10px] text-slate-400 mt-0.5 font-medium italic opacity-70">${e.method || 'Tunai'}</div>
+                                        <div class="text-[10px] text-slate-400 mt-1 font-medium italic opacity-70">${e.method || 'Tunai'}</div>
                                     </td>
                                     <td class="px-6 py-4">
                                         <span class="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[9px] font-black uppercase tracking-widest">${db.findById('accounts', e.toAccountId)?.name || '-'}</span>
                                     </td>
                                     <td class="px-6 py-4">
-                                        <span class="text-xs font-bold text-slate-600 uppercase flex items-center gap-2">
-                                            <i class="fas fa-university text-slate-300 text-[10px]"></i>
+                                        <span class="text-xs font-bold text-slate-600 flex items-center gap-2">
+                                            <i class="fas fa-university text-slate-400 text-[10px]"></i>
                                             ${db.findById('accounts', e.fromAccountId)?.name || '-'}
                                         </span>
                                     </td>
                                     <td class="px-6 py-4 text-right font-black text-red-600">${formatCurrency(e.amount)}</td>
-                                    <td class="px-6 py-4 text-right">
-                                        <button onclick="handleExpenseAction('view', '${e.id}')" class="w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-blue-600 transition-all">
-                                            <i class="fas fa-eye"></i>
-                                        </button>
+                                    <td class="px-6 py-4 text-right overflow-visible">
+                                        <div class="flex justify-end overflow-visible">
+                                            <button onclick="handleExpenseAction('view', '${e.id}')" class="w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-blue-600 transition-all flex items-center justify-center">
+                                                <i class="fas fa-eye text-sm"></i>
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
-                            `).join('') || '<tr><td colspan="6" class="px-6 py-10 text-center text-slate-400 italic">Tidak ada data.</td></tr>'}
+                            `).join('') || `
+                                <tr>
+                                    <td colspan="8" class="px-6 py-20 text-center text-slate-400 italic">
+                                        <div class="flex flex-col items-center justify-center space-y-3 py-6">
+                                            <i class="fas fa-file-invoice text-slate-200 text-5xl"></i>
+                                            <span class="text-sm font-bold text-slate-400 uppercase tracking-widest">TIDAK ADA DATA PENGELUARAN</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `}
                         </tbody>
                     </table>
                 </div>
+                <div class="px-10 py-6 flex items-center justify-between border-t border-slate-100 bg-slate-50/50">
+                    <div>
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 opacity-70">Total Pengeluaran</p>
+                        <p class="text-2xl font-black font-mono tracking-tighter text-red-600">${formatCurrency(totalAmount)}</p>
+                    </div>
+                </div>
             </div>
         `;
-    } else if (activeTab === 'history') {
-        contentHtml = filterBarHtml + `
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in slide-in-from-bottom-4 duration-500">
+    } else {
+        tableHtml = `
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden animate-in slide-in-from-bottom-4 duration-500">
                 <table class="w-full text-left border-collapse">
                     <thead>
                         <tr class="bg-slate-50/50">
-                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">TANGGAL</th>
-                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">NOMOR</th>
-                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">KETERANGAN</th>
-                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">JUMLAH</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Tanggal</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Nomor</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Keterangan</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">Jumlah</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-50">
                         ${expenses.map(e => `
-                            <tr class="hover:bg-slate-50 transition-colors">
-                                <td class="px-6 py-4 text-sm text-slate-600">${formatDate(e.date)}</td>
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="px-6 py-4 text-xs font-bold text-slate-500">${formatDateOnly(e.date)}</td>
                                 <td class="px-6 py-4 font-bold text-slate-700">${e.expenseNo}</td>
-                                <td class="px-6 py-4 text-sm text-slate-500">${e.description}</td>
+                                <td class="px-6 py-4 text-sm text-slate-600">${e.description}</td>
                                 <td class="px-6 py-4 text-right font-black text-red-600">${formatCurrency(e.amount)}</td>
                             </tr>
-                        `).join('') || '<tr><td colspan="4" class="px-6 py-10 text-center text-slate-400">Belum ada riwayat.</td></tr>'}
+                        `).join('') || `
+                            <tr>
+                                <td colspan="4" class="px-6 py-20 text-center text-slate-400 italic">
+                                    <div class="flex flex-col items-center justify-center space-y-3 py-6">
+                                        <i class="fas fa-history text-slate-200 text-5xl"></i>
+                                        <span class="text-sm font-bold text-slate-400 uppercase tracking-widest">BELUM ADA RIWAYAT PENGELUARAN</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        `}
                     </tbody>
                 </table>
+                <div class="px-10 py-6 flex items-center justify-between border-t border-slate-100 bg-slate-50/50">
+                    <div>
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 opacity-70">Total Dikeluarkan</p>
+                        <p class="text-2xl font-black font-mono tracking-tighter text-red-600">${formatCurrency(totalAmount)}</p>
+                    </div>
+                </div>
             </div>
         `;
     }
 
     mc.innerHTML = `
-        <div class="flex flex-col gap-4 animate-in fade-in duration-500">
-            <div class="flex items-center gap-8 border-b border-slate-200 mb-2 px-2">
-                <button onclick="window._uiState.expenseActiveTab='list'; renderFinanceExpenses()" 
-                    class="pb-3 text-sm font-bold transition-all relative ${activeTab === 'list' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
-                    Daftar Pengeluaran
-                    ${activeTab === 'list' ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-sm"></div>' : ''}
-                </button>
-                <button onclick="window._uiState.expenseActiveTab='history'; renderFinanceExpenses()" 
-                    class="pb-3 text-sm font-bold transition-all relative ${activeTab === 'history' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
-                    Riwayat Pengeluaran
-                    ${activeTab === 'history' ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-sm"></div>' : ''}
-                </button>
+        <div class="space-y-6">
+            ${filterBarHtml}
+            ${tabsHtml}
+            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                TOTAL: ${expenses.length} TRANSAKSI
             </div>
-            ${contentHtml}
+            ${tableHtml}
         </div>
     `;
+
+    const input = document.getElementById('expenseSearchInput');
+    if (input) { input.focus(); const val = input.value; input.value = ''; input.value = val; }
 };
 
 window.renderFinanceReceipts = function () {
     document.getElementById('pageTitle').innerText = 'Penerimaan Kas & Bank';
     const mc = document.getElementById('main-content');
-    
-    window._uiState.receiptActiveTab = window._uiState.receiptActiveTab || 'list';
-    const activeTab = window._uiState.receiptActiveTab;
 
-    window._receiptFilters = window._receiptFilters || { q: '', start: '', end: '', coaId: '' };
+    window._uiState.receiptActiveTab = window._uiState.receiptActiveTab || 'list';
+    window._receiptFilters = window._receiptFilters || { q: '', dateFrom: '', dateTo: '', sortOrder: 'desc' };
+
+    const activeTab = window._uiState.receiptActiveTab;
     const f = window._receiptFilters;
-    
+
     let receipts = db.read('receipts') || [];
+
     if (f.q) {
         const q = f.q.toLowerCase();
-        receipts = receipts.filter(r => r.receiptNo.toLowerCase().includes(q) || r.description.toLowerCase().includes(q));
+        receipts = receipts.filter(r =>
+            (r.receiptNo || r.no || '').toLowerCase().includes(q) ||
+            (r.description || '').toLowerCase().includes(q) ||
+            (r.method || '').toLowerCase().includes(q) ||
+            (db.findById('accounts', r.sourceAccountId)?.name || '').toLowerCase().includes(q) ||
+            (db.findById('accounts', r.targetAccountId)?.name || '').toLowerCase().includes(q)
+        );
     }
-    if (f.start) receipts = receipts.filter(r => r.date >= f.start);
-    if (f.end) receipts = receipts.filter(r => r.date <= f.end);
+
+    if (f.dateFrom || f.dateTo) {
+        receipts = receipts.filter(r => {
+            let ok = true;
+            const rDate = (r.date || '').split('T')[0];
+            if (f.dateFrom && rDate < f.dateFrom) ok = false;
+            if (f.dateTo && rDate > f.dateTo) ok = false;
+            return ok;
+        });
+    }
+    const defaultRecSort = (arr) => [...arr].sort((a, b) => ((b.date || '') > (a.date || '') ? 1 : -1));
+    receipts = receipts.map(r => ({ ...r, receiptNum: r.receiptNo || r.no || '' }));
+    receipts = window.applyTableSort(receipts, 'fin_rec', defaultRecSort);
 
     const totalAmount = receipts.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
 
-    let contentHtml = '';
-    // Reusable Filter Bar
+    // Filter bar - same pattern as AR/AP
     const filterBarHtml = `
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex flex-col md:flex-row items-center gap-3 mb-4">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex flex-col md:flex-row items-center gap-3">
             <div class="relative flex-1 group w-full">
                 <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors"></i>
-                <input type="text" onkeyup="if(event.key==='Enter') { window._receiptFilters.q=this.value; renderFinanceReceipts(); }"
-                    value="${f.q || ''}" placeholder="Cari di ${activeTab === 'list' ? 'Daftar' : 'Riwayat'}..." 
-                    class="w-full pl-11 pr-4 py-2.5 bg-slate-50/50 rounded-xl border border-slate-100 focus:border-blue-500 focus:bg-white text-sm font-semibold text-slate-700 outline-none transition-all">
+                <input type="text" id="recSearchInput"
+                    onkeyup="if(event.key==='Enter') applyRecSearch()"
+                    value="${f.q || ''}"
+                    placeholder="Cari No. Penerimaan, Keterangan, COA, atau Kas/Bank..."
+                    class="w-full pl-11 pr-4 py-2.5 bg-slate-50/50 rounded-xl border border-slate-100 focus:border-blue-500 focus:bg-white text-sm font-semibold text-slate-700 outline-none transition-all"
+                >
             </div>
             <div class="flex items-center gap-3 w-full md:w-auto px-1">
-                <div class="px-5 py-1.5 bg-blue-50 rounded-xl border border-blue-100 flex flex-col items-center justify-center min-w-[160px] h-10 shadow-sm">
-                    <span class="text-[9px] font-black text-blue-400 uppercase tracking-widest leading-none mb-0.5">Total ${activeTab === 'list' ? 'Item' : 'Riwayat'}</span>
-                    <span class="text-sm font-black text-blue-700 leading-none">${formatCurrency(totalAmount)}</span>
+                <div class="relative flex items-center h-10 bg-white border border-slate-200 rounded-xl shadow-sm overflow-visible">
+                    <button onclick="window._receiptFilters.sortOrder = window._receiptFilters.sortOrder === 'asc' ? 'desc' : 'asc'; renderFinanceReceipts()"
+                        class="w-10 h-full flex items-center justify-center bg-slate-50 border-r border-slate-200 text-slate-400 hover:text-blue-600 transition-all">
+                        <i class="fas fa-sort-amount-${f.sortOrder === 'asc' ? 'up' : 'down'}-alt text-xs"></i>
+                    </button>
+                    <div onclick="window._uiState.recDatePopoverOpen = !window._uiState.recDatePopoverOpen; renderFinanceReceipts()"
+                        class="relative flex items-center h-full px-4 cursor-pointer hover:bg-slate-50 transition-all group min-w-[100px]">
+                        <span class="text-sm font-bold text-blue-600 mr-3">Date</span>
+                        <i class="fas fa-chevron-down text-blue-300 text-[10px] transition-transform ${window._uiState.recDatePopoverOpen ? 'rotate-180' : ''}"></i>
+                    </div>
+                    <div class="${window._uiState.recDatePopoverOpen ? 'block' : 'hidden'} absolute top-full left-0 mt-3 w-80 bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100 p-6 z-[100] animate-in fade-in zoom-in-95 duration-200">
+                        <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-5">FILTER RANGE</div>
+                        <div class="grid grid-cols-2 gap-4 mb-6">
+                            <div class="space-y-1.5">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">DARI</label>
+                                <input type="date" id="recDateFrom" value="${f.dateFrom || ''}" class="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none">
+                            </div>
+                            <div class="space-y-1.5">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">KE</label>
+                                <input type="date" id="recDateTo" value="${f.dateTo || ''}" class="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none">
+                            </div>
+                        </div>
+                        <div class="flex gap-3">
+                            <button onclick="applyRecDateRange()" class="flex-1 bg-blue-600 text-white py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-200">APPLY</button>
+                            <button onclick="resetRecDateRange()" class="flex-1 bg-slate-50 text-slate-400 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest">RESET</button>
+                        </div>
+                    </div>
                 </div>
-                ${activeTab === 'list' ? `
                 <button onclick="openReceiptModal()" class="flex items-center justify-center gap-2 px-6 h-10 bg-blue-600 hover:bg-slate-900 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-200 transition-all active:scale-95 whitespace-nowrap">
                     <i class="fas fa-plus"></i> INPUT PENERIMAAN
-                </button>` : ''}
+                </button>
             </div>
         </div>
     `;
 
+    // Pill tabs - same pattern as AR/AP
+    const tabsHtml = `
+        <div class="flex items-center gap-1 bg-slate-100 p-1.5 rounded-2xl w-fit border border-slate-200/60 shadow-inner overflow-hidden">
+            <button onclick="window._uiState.receiptActiveTab='list'; renderFinanceReceipts();"
+                class="px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 ${activeTab === 'list' ? 'bg-white text-blue-600 shadow-md scale-100 border border-slate-100' : 'text-slate-400 hover:text-slate-600 hover:bg-white/40 opacity-70'}">
+                <i class="fas fa-file-invoice-dollar"></i> Daftar Penerimaan
+            </button>
+            <button onclick="window._uiState.receiptActiveTab='history'; renderFinanceReceipts();"
+                class="px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 ${activeTab === 'history' ? 'bg-white text-green-600 shadow-md scale-100 border border-slate-100' : 'text-slate-400 hover:text-slate-600 hover:bg-white/40 opacity-70'}">
+                <i class="fas fa-history"></i> Riwayat Penerimaan
+            </button>
+        </div>
+    `;
+
+    let tableHtml = '';
     if (activeTab === 'list') {
-        contentHtml = filterBarHtml + `
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        tableHtml = `
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="bg-slate-50/50">
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">TGL & REFERENSI</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">KETERANGAN</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">SUMBER (COA)</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">JUMLAH</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">AKSI</th>
+                        <thead class="bg-slate-50/50 sticky top-0">
+                            <tr>
+                                ${window.sortTh('fin_rec','receivedFrom','string','Penerimaan Dari','renderFinanceReceipts')}
+                                ${window.sortTh('fin_rec','description','string','Keterangan','renderFinanceReceipts')}
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Sumber (COA)</th>
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Kas / Bank Penerima</th>
+                                ${window.sortTh('fin_rec','amount','number','Jumlah','renderFinanceReceipts','text-right')}
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">Aksi</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-50">
                             ${receipts.map(r => `
                                 <tr class="hover:bg-slate-50/50 transition-colors group">
-                                    <td class="px-6 py-4">
-                                        <div class="text-[10px] text-slate-400 font-bold mb-1">${formatDate(r.date).slice(0, 10)}</div>
-                                        <div class="inline-flex items-center px-2 py-1 bg-blue-50 text-blue-600 rounded-lg font-bold text-[10px] border border-blue-100">${r.receiptNo}</div>
+                                    <td class="px-6 py-4 text-sm font-bold text-slate-800">
+                                        ${r.received_from || r.receivedFrom || '-'}
                                     </td>
                                     <td class="px-6 py-4">
+                                        <div class="text-[10px] text-slate-400 font-bold mb-1">${formatDateOnly(r.date)}</div>
                                         <div class="text-sm font-bold text-slate-700">${r.description}</div>
-                                        <div class="text-[10px] text-slate-400 mt-0.5 font-medium italic opacity-70">${r.method || 'Transfer'}</div>
+                                        <div class="text-[10px] text-slate-400 mt-1 font-medium italic opacity-70">${r.method || 'Transfer'}</div>
                                     </td>
                                     <td class="px-6 py-4">
                                         <span class="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[9px] font-black uppercase tracking-widest">${db.findById('accounts', r.sourceAccountId)?.name || '-'}</span>
                                     </td>
+                                    <td class="px-6 py-4">
+                                        <span class="text-xs font-bold text-slate-600 flex items-center gap-2">
+                                            <i class="fas fa-university text-slate-400 text-[10px]"></i>
+                                            ${db.findById('accounts', r.targetAccountId)?.name || '-'}
+                                        </span>
+                                    </td>
                                     <td class="px-6 py-4 text-right font-black text-blue-600">${formatCurrency(r.amount)}</td>
-                                    <td class="px-6 py-4 text-right">
-                                        <button onclick="handleReceiptAction('view', '${r.id}')" class="w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-blue-600 transition-all">
-                                            <i class="fas fa-eye"></i>
-                                        </button>
+                                    <td class="px-6 py-4 text-right overflow-visible">
+                                        <div class="flex justify-end overflow-visible">
+                                            <button onclick="handleReceiptAction('view', '${r.id}')" class="w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-blue-600 transition-all flex items-center justify-center">
+                                                <i class="fas fa-eye"></i>
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
-                            `).join('') || '<tr><td colspan="5" class="px-6 py-10 text-center text-slate-400 italic">Tidak ada data.</td></tr>'}
+                            `).join('') || `
+                                <tr>
+                                    <td colspan="7" class="px-6 py-20 text-center text-slate-400 italic">
+                                        <div class="flex flex-col items-center justify-center space-y-3 py-6">
+                                            <i class="fas fa-file-invoice-dollar text-slate-200 text-5xl"></i>
+                                            <span class="text-sm font-bold text-slate-400 uppercase tracking-widest">TIDAK ADA DATA PENERIMAAN</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `}
                         </tbody>
                     </table>
                 </div>
+                <div class="px-10 py-6 flex items-center justify-between border-t border-slate-100 bg-slate-50/50">
+                    <div>
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 opacity-70">Total Penerimaan</p>
+                        <p class="text-2xl font-black font-mono tracking-tighter text-blue-600">${formatCurrency(totalAmount)}</p>
+                    </div>
+                </div>
             </div>
         `;
-    } else if (activeTab === 'history') {
-        contentHtml = filterBarHtml + `
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in slide-in-from-bottom-4 duration-500">
+    } else {
+        tableHtml = `
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden animate-in slide-in-from-bottom-4 duration-500">
                 <table class="w-full text-left border-collapse">
                     <thead>
                         <tr class="bg-slate-50/50">
-                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">TANGGAL</th>
-                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">NOMOR</th>
-                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">KETERANGAN</th>
-                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">JUMLAH</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Tanggal</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Nomor</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Keterangan</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">Jumlah</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-50">
                         ${receipts.map(r => `
-                            <tr class="hover:bg-slate-50 transition-colors">
-                                <td class="px-6 py-4 text-sm text-slate-600">${formatDate(r.date)}</td>
-                                <td class="px-6 py-4 font-bold text-slate-700">${r.receiptNo}</td>
-                                <td class="px-6 py-4 text-sm text-slate-500">${r.description}</td>
+                            <tr class="hover:bg-slate-50/50 transition-colors">
+                                <td class="px-6 py-4 text-xs font-bold text-slate-500">${formatDateOnly(r.date)}</td>
+                                <td class="px-6 py-4 font-bold text-slate-700">${r.receiptNo || r.no || '-'}</td>
+                                <td class="px-6 py-4 text-sm text-slate-600">${r.description}</td>
                                 <td class="px-6 py-4 text-right font-black text-blue-600">${formatCurrency(r.amount)}</td>
                             </tr>
-                        `).join('') || '<tr><td colspan="4" class="px-6 py-10 text-center text-slate-400">Belum ada riwayat.</td></tr>'}
+                        `).join('') || `
+                            <tr>
+                                <td colspan="4" class="px-6 py-20 text-center text-slate-400 italic">
+                                    <div class="flex flex-col items-center justify-center space-y-3 py-6">
+                                        <i class="fas fa-history text-slate-200 text-5xl"></i>
+                                        <span class="text-sm font-bold text-slate-400 uppercase tracking-widest">BELUM ADA RIWAYAT PENERIMAAN</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        `}
                     </tbody>
                 </table>
+                <div class="px-10 py-6 flex items-center justify-between border-t border-slate-100 bg-slate-50/50">
+                    <div>
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 opacity-70">Total Diterima</p>
+                        <p class="text-2xl font-black font-mono tracking-tighter text-blue-600">${formatCurrency(totalAmount)}</p>
+                    </div>
+                </div>
             </div>
         `;
     }
 
     mc.innerHTML = `
-        <div class="flex flex-col gap-4 animate-in fade-in duration-500">
-            <div class="flex items-center gap-8 border-b border-slate-200 mb-2 px-2">
-                <button onclick="window._uiState.receiptActiveTab='list'; renderFinanceReceipts()" 
-                    class="pb-3 text-sm font-bold transition-all relative ${activeTab === 'list' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
-                    Daftar Penerimaan
-                    ${activeTab === 'list' ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-sm"></div>' : ''}
-                </button>
-                <button onclick="window._uiState.receiptActiveTab='history'; renderFinanceReceipts()" 
-                    class="pb-3 text-sm font-bold transition-all relative ${activeTab === 'history' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
-                    Riwayat Penerimaan
-                    ${activeTab === 'history' ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-sm"></div>' : ''}
-                </button>
+        <div class="space-y-6">
+            ${filterBarHtml}
+            ${tabsHtml}
+            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                TOTAL: ${receipts.length} TRANSAKSI
             </div>
-            ${contentHtml}
+            ${tableHtml}
         </div>
     `;
+
+    const input = document.getElementById('recSearchInput');
+    if (input) { input.focus(); const val = input.value; input.value = ''; input.value = val; }
 };
+
+window.applyExpenseSearch = function() { window._expenseFilters.q = document.getElementById('expenseSearchInput')?.value || ''; renderFinanceExpenses(); };
+window.applyExpenseDateRange = function() { window._expenseFilters.dateFrom = document.getElementById('expenseDateFrom')?.value || ''; window._expenseFilters.dateTo = document.getElementById('expenseDateTo')?.value || ''; window._uiState.expenseDatePopoverOpen = false; renderFinanceExpenses(); };
+window.resetExpenseDateRange = function() { window._expenseFilters.dateFrom = ''; window._expenseFilters.dateTo = ''; window._uiState.expenseDatePopoverOpen = false; renderFinanceExpenses(); };
+window.applyRecSearch = function() { window._receiptFilters.q = document.getElementById('recSearchInput')?.value || ''; renderFinanceReceipts(); };
+window.applyRecDateRange = function() { window._receiptFilters.dateFrom = document.getElementById('recDateFrom')?.value || ''; window._receiptFilters.dateTo = document.getElementById('recDateTo')?.value || ''; window._uiState.recDatePopoverOpen = false; renderFinanceReceipts(); };
+window.resetRecDateRange = function() { window._receiptFilters.dateFrom = ''; window._receiptFilters.dateTo = ''; window._uiState.recDatePopoverOpen = false; renderFinanceReceipts(); };
 
 window.toggleReceiptFilter = function() {
     window._uiState.recFilterOpen = !window._uiState.recFilterOpen;
@@ -1473,7 +1761,21 @@ window.resetReceiptFilters = function() {
 window.openReceiptModal = function () {
     const mc = document.getElementById('main-content');
     window.renderBreadcrumb(['Finance', 'Penerimaan Kas & Bank', 'Catat Penerimaan']);
-    const assetAccounts = db.read('accounts').filter(a => getBaseType(a.type) === 'ASSET' && a.code.startsWith('11'));
+    
+    const bankAccounts = db.read('bankAccounts') || [];
+    let assetAccounts = [];
+    if (bankAccounts.length > 0) {
+        assetAccounts = bankAccounts.map(ba => {
+            const coaAcc = db.findById('accounts', ba.accountId || ba.account_id);
+            return {
+                id: coaAcc ? coaAcc.id : (ba.accountId || ba.account_id),
+                name: ba.name,
+                code: ba.accountNumber || ba.account_number || (coaAcc ? coaAcc.code : '')
+            };
+        });
+    } else {
+        assetAccounts = db.read('accounts').filter(a => getBaseType(a.type) === 'ASSET' && a.code.startsWith('11'));
+    }
     const allAccounts = db.read('accounts');
 
     mc.innerHTML = `
@@ -1484,7 +1786,7 @@ window.openReceiptModal = function () {
             </button>
         </div>
         <div class="space-y-6">
-            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-visible">
                 <div class="px-8 py-4 border-b border-slate-100">
                     <span class="text-[10px] font-black text-blue-600 uppercase tracking-widest">
                         <i class="fas fa-circle text-[6px] mr-1"></i> INFORMASI PENERIMAAN
@@ -1492,6 +1794,10 @@ window.openReceiptModal = function () {
                 </div>
                 <div class="px-8 py-6">
                     <div class="grid grid-cols-1 gap-5">
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Penerimaan Dari <span class="text-red-400">*</span></label>
+                            <input type="text" id="recReceivedFrom" placeholder="Nama pengirim / Asal dana..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all">
+                        </div>
                         <div class="grid grid-cols-2 gap-5">
                             <div>
                                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Tanggal Terima <span class="text-red-400">*</span></label>
@@ -1571,7 +1877,7 @@ window.openReceiptModal = function () {
                             </div>
                             <div>
                                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Keterangan Transaksi</label>
-                                <textarea id="recDesc" rows="2" placeholder="Tuliskan alasan atau detail penerimaan dana..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all resize-none"></textarea>
+                                <textarea id="recDesc" rows="3" placeholder="Tuliskan alasan atau detail penerimaan dana..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all resize-none"></textarea>
                             </div>
                         </div>
                     </div>
@@ -1589,13 +1895,17 @@ window.saveReceipt = async function () {
     const sourceAccountId = document.getElementById('recSourceAccount').value;
     const method = document.getElementById('recMethod').value;
     const description = document.getElementById('recDesc').value;
+    const receivedFrom = document.getElementById('recReceivedFrom').value;
 
     if (!amount || amount <= 0) return showToast('Mohon isi jumlah penerimaan.', 'error');
     if (!sourceAccountId) return showToast('Mohon pilih akun sumber (COA).', 'error');
 
     try {
-        await api.saveReceipt({ date, amount, targetAccountId, sourceAccountId, method, description });
+        await api.saveReceipt({ date, amount, targetAccountId, sourceAccountId, method, description, receivedFrom });
         showToast('Penerimaan berhasil dicatat', 'success');
+        await db.sync('receipts');
+        await db.sync('journalEntries');
+        await db.sync('accounts');
         renderFinanceReceipts();
     } catch (err) {
         showToast(err.message, 'error');
@@ -1605,7 +1915,21 @@ window.saveReceipt = async function () {
 window.openExpenseModal = function () {
     const mc = document.getElementById('main-content');
     window.renderBreadcrumb(['Finance', 'Pengeluaran Kas & Bank', 'Catat Pengeluaran']);
-    const assetAccounts = db.read('accounts').filter(a => getBaseType(a.type) === 'ASSET' && a.code.startsWith('11'));
+    
+    const bankAccounts = db.read('bankAccounts') || [];
+    let assetAccounts = [];
+    if (bankAccounts.length > 0) {
+        assetAccounts = bankAccounts.map(ba => {
+            const coaAcc = db.findById('accounts', ba.accountId || ba.account_id);
+            return {
+                id: coaAcc ? coaAcc.id : (ba.accountId || ba.account_id),
+                name: ba.name,
+                code: ba.accountNumber || ba.account_number || (coaAcc ? coaAcc.code : '')
+            };
+        });
+    } else {
+        assetAccounts = db.read('accounts').filter(a => getBaseType(a.type) === 'ASSET' && a.code.startsWith('11'));
+    }
     const expenseAccounts = db.read('accounts').filter(a => getBaseType(a.type) === 'EXPENSE');
     const depts = db.read('departments');
 
@@ -1617,7 +1941,7 @@ window.openExpenseModal = function () {
             </button>
         </div>
         <div class="space-y-6">
-            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-visible">
                 <div class="px-8 py-4 border-b border-slate-100">
                     <span class="text-[10px] font-black text-blue-600 uppercase tracking-widest">
                         <i class="fas fa-circle text-[6px] mr-1"></i> INFORMASI PENGELUARAN
@@ -1625,6 +1949,10 @@ window.openExpenseModal = function () {
                 </div>
                 <div class="px-8 py-6">
                     <div class="grid grid-cols-1 gap-5">
+                        <div>
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Pengeluaran Kepada <span class="text-red-400">*</span></label>
+                            <input type="text" id="expPaidTo" placeholder="Nama penerima / Pihak luar..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all">
+                        </div>
                         <div class="grid grid-cols-2 gap-5">
                             <div>
                                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Tanggal Dibayar <span class="text-red-400">*</span></label>
@@ -1731,13 +2059,18 @@ window.saveExpense = async function () {
     const departmentId = document.getElementById('expDept').value;
     const method = document.getElementById('expMethod').value;
     const description = document.getElementById('expDesc').value;
+    const paidTo = document.getElementById('expPaidTo').value;
 
+    if (!paidTo) return showToast('Mohon isi nama penerima pengeluaran.', 'error');
     if (!amount || amount <= 0) return showToast('Mohon isi jumlah pengeluaran.', 'error');
     if (!toAccountId) return showToast('Mohon pilih COA (Kategori Biaya).', 'error');
 
     try {
-        await api.saveExpense({ date, amount, fromAccountId, toAccountId, departmentId, description, method });
+        await api.saveExpense({ date, amount, fromAccountId, toAccountId, departmentId, description, method, paidTo });
         showToast('Pengeluaran berhasil dicatat', 'success');
+        await db.sync('expenses');
+        await db.sync('journalEntries');
+        await db.sync('accounts');
         renderFinanceExpenses();
     } catch (err) {
         showToast(err.message, 'error');
@@ -1823,7 +2156,7 @@ window.renderFinanceJournal = function () {
                             <tr class="bg-slate-50/50">
                                 <td class="px-6 py-4" colspan="2">
                                     <div class="flex items-center gap-3">
-                                        <div class="px-2 py-1 bg-blue-100 text-blue-700 rounded font-bold text-[9px]">${j.journalNo}</div>
+                                        <div class="px-2 py-1 bg-blue-100 text-blue-700 rounded font-bold text-[9px]">${j.journal_no || j.journalNo || (j.reference_type ? `${j.reference_type}-${j.id.slice(0, 8).toUpperCase()}` : `JRN-${j.id.slice(0, 8).toUpperCase()}`)}</div>
                                         <div>
                                             <span class="font-bold text-gray-800">${j.description}</span>
                                             <span class="ml-2 text-[10px] text-gray-400">${formatDate(j.date).slice(0, 10)} ${j.partnerName ? `· <span class="text-indigo-600 font-bold">${j.partnerName}</span>` : ''}</span>
@@ -2190,12 +2523,10 @@ window.renderFinanceAR = function () {
     const allPayments = db.read('payments') || [];
     const allInvoices = db.read('salesInvoices') || [];
 
-    const tabs = [
-        { id: 'unpaid', label: 'Antrean Piutang', icon: 'fa-clock' },
-        { id: 'history', label: 'Riwayat Penerimaan', icon: 'fa-history' }
-    ];
-
-    let contentHtml = '';
+    let filterBarHtml = '';
+    let tableHtml = '';
+    let totalCount = 0;
+    let totalLabelText = '';
 
     if (activeTab === 'unpaid') {
         const q = (window._arFilters.q || '').toLowerCase();
@@ -2219,18 +2550,33 @@ window.renderFinanceAR = function () {
             });
         }
 
-        // Apply Sorting
-        const order = window._arFilters.sortOrder === 'asc' ? 1 : -1;
-        invoices.sort((a, b) => (a.date > b.date ? 1 : -1) * order);
-
-        const totalAR = invoices.reduce((sum, i) => {
+        // Enrich with computed fields for sortTh
+        invoices = invoices.map(i => {
             const paid = allPayments.filter(p => p.invoiceId === i.id).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
-            return sum + (parseFloat(i.totalAmount) - paid);
-        }, 0);
+            return { ...i, customerName: i.customerName || db.findById('customers', i.customerId)?.name || '', balance: parseFloat(i.totalAmount) - paid };
+        });
+        const defaultARSort = (arr) => [...arr].sort((a, b) => ((b.date || '') > (a.date || '') ? 1 : -1));
+        invoices = window.applyTableSort(invoices, 'fin_ar', defaultARSort);
 
-        contentHtml = `
+        let totalAROutstanding = 0;
+        let totalARTagihan = 0;
+        let totalARTerbayar = 0;
+
+        invoices.forEach(i => {
+            const paid = allPayments.filter(p => p.invoiceId === i.id).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+            const balance = parseFloat(i.totalAmount) - paid;
+            totalARTagihan += parseFloat(i.totalAmount) || 0;
+            totalARTerbayar += paid;
+            totalAROutstanding += balance;
+        });
+        const totalAR = totalAROutstanding;
+
+        totalCount = invoices.length;
+        totalLabelText = 'DOKUMEN MENUNGGU';
+
+        filterBarHtml = `
             <!-- Unified Filter & Action Box -->
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex flex-col md:flex-row items-center gap-3 mb-6">
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex flex-col md:flex-row items-center gap-3">
                 <div class="relative flex-1 group w-full">
                     <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors"></i>
                     <input type="text" id="arSearchInput" 
@@ -2272,35 +2618,24 @@ window.renderFinanceAR = function () {
                         </div>
                     </div>
 
-                    <div class="px-5 py-1.5 bg-orange-50 rounded-xl border border-orange-100 flex flex-col items-center justify-center min-w-[160px] h-10 shadow-sm shadow-orange-50">
-                        <span class="text-[9px] font-black text-orange-400 uppercase tracking-widest leading-none mb-0.5">Total Outstanding</span>
-                        <span class="text-sm font-black text-orange-700 leading-none">${formatCurrency(totalAR)}</span>
-                    </div>
-
                     <button onclick="openFinanceARPaymentModal()" class="flex items-center justify-center gap-2 px-6 h-10 bg-blue-600 hover:bg-slate-900 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-200 transition-all active:scale-95 whitespace-nowrap">
                         <i class="fas fa-plus"></i> INPUT PELUNASAN
                     </button>
                 </div>
             </div>
+        `;
 
-            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
-                TOTAL: ${invoices.length} PIUTANG AKTIF
-            </div>
-
-            <!-- Table View -->
+        tableHtml = `
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="bg-slate-50/50">
-                                <th class="px-4 py-4 w-10">
-                                    <input type="checkbox" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500">
-                                </th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Customer Name</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Status</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Date</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">Balance</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">No. Invoice</th>
+                        <thead class="bg-slate-50/50 sticky top-0">
+                            <tr>
+                                ${window.sortTh('fin_ar','customerName','string','Customer Name','renderFinanceAR')}
+                                ${window.sortTh('fin_ar','status','string','Status','renderFinanceAR','text-center')}
+                                ${window.sortTh('fin_ar','date','date','Date','renderFinanceAR','text-center')}
+                                ${window.sortTh('fin_ar','balance','number','Balance','renderFinanceAR','text-right')}
+                                ${window.sortTh('fin_ar','invoiceNumber','string','No. Invoice','renderFinanceAR')}
                                 <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">Aksi</th>
                             </tr>
                         </thead>
@@ -2323,9 +2658,7 @@ window.renderFinanceAR = function () {
 
                                 return `
                                 <tr class="hover:bg-slate-50/50 transition-colors group">
-                                    <td class="px-4 py-4">
-                                        <input type="checkbox" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500">
-                                    </td>
+
                                     <td class="px-6 py-4">
                                         <div class="text-sm font-bold text-slate-800">${i.customerName || db.findById('customers', i.customerId)?.name || 'Unknown'}</div>
                                     </td>
@@ -2335,7 +2668,7 @@ window.renderFinanceAR = function () {
                                         </span>
                                     </td>
                                     <td class="px-6 py-4 text-center text-xs font-bold text-slate-600">
-                                        ${i.date ? i.date.split('-').reverse().join('-') : '-'}
+                                        ${formatDateOnly(i.date)}
                                     </td>
                                     <td class="px-6 py-4 text-right">
                                         <div class="text-sm font-bold text-slate-800">${formatCurrency(balance)}</div>
@@ -2354,15 +2687,36 @@ window.renderFinanceAR = function () {
                             `}).join('') || `
                                 <tr>
                                     <td colspan="7" class="px-6 py-20 text-center text-slate-400 italic">
-                                        Tidak ada data piutang ditemukan.
+                                        <div class="flex flex-col items-center justify-center space-y-3 py-6">
+                                            <i class="fas fa-file-invoice-dollar text-slate-300 text-5xl"></i>
+                                            <span class="text-sm font-bold text-slate-400 uppercase tracking-widest">TIDAK ADA ANTRIAN PIUTANG</span>
+                                        </div>
                                     </td>
                                 </tr>
                             `}
                         </tbody>
                     </table>
                 </div>
-            </div>
 
+                <!-- Totals Summary Bar (Minimalist) -->
+                <div class="px-10 py-6 flex items-center justify-between border-t border-slate-100 bg-slate-50/50">
+                    <div>
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 opacity-70">Total Outstanding</p>
+                        <p class="text-2xl font-black font-mono tracking-tighter text-slate-800">${formatCurrency(totalAROutstanding)}</p>
+                    </div>
+                    
+                    <div class="flex gap-12 text-right items-center">
+                        <div class="flex flex-col">
+                            <span class="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1">Total Tagihan</span>
+                            <span class="text-sm font-bold font-mono text-slate-500">${formatCurrency(totalARTagihan)}</span>
+                        </div>
+                        <div class="flex flex-col">
+                            <span class="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1">Total Terbayar</span>
+                            <span class="text-sm font-bold font-mono text-slate-500">${formatCurrency(totalARTerbayar)}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
         `;
     } else {
         const q = (window._arHistoryFilters.q || '').toLowerCase();
@@ -2373,7 +2727,10 @@ window.renderFinanceAR = function () {
             payments = payments.filter(p => {
                 const inv = db.findById('salesInvoices', p.invoiceId);
                 const cName = (inv?.customerName || db.findById('customers', inv?.customerId)?.name || '').toLowerCase();
-                return p.paymentNumber.toLowerCase().includes(q) || cName.includes(q);
+                const refNo = (p.paymentNumber || p.reference || '').toLowerCase();
+                const method = (p.method || '').toLowerCase();
+                const notes = (p.notes || '').toLowerCase();
+                return refNo.includes(q) || cName.includes(q) || method.includes(q) || notes.includes(q);
             });
         }
 
@@ -2387,17 +2744,21 @@ window.renderFinanceAR = function () {
             });
         }
 
-        contentHtml = `
+        const totalReceived = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+        totalCount = payments.length;
+        totalLabelText = 'DOKUMEN SELESAI';
+
+        filterBarHtml = `
             <!-- History Filter Row -->
-            <div class="flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-6">
-                <div class="flex items-center gap-4 w-full md:w-auto flex-1">
+            <div class="flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-3 rounded-2xl border border-slate-100 shadow-sm">
+                <div class="flex items-center gap-3 w-full md:w-auto flex-1">
                     <div class="relative flex-1 md:flex-none md:w-80 group">
                         <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                             <i class="fas fa-search text-slate-400 group-focus-within:text-blue-500 transition-colors"></i>
                         </div>
                         <input type="text" id="arHistSearchInput" value="${window._arHistoryFilters.q || ''}" 
                             onkeyup="if(event.key==='Enter') applyARHistSearch()"
-                            placeholder="Cari No. Ref atau Pelanggan..." 
+                            placeholder="Cari Metode, Catatan atau Pelanggan..." 
                             class="block w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all">
                     </div>
                     
@@ -2431,17 +2792,16 @@ window.renderFinanceAR = function () {
                         </div>
                     </div>
                 </div>
-                <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    TOTAL: ${payments.length} PENERIMAAN
-                </div>
             </div>
+        `;
 
+        tableHtml = `
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <table class="w-full text-left border-collapse">
                     <thead>
                         <tr class="bg-slate-50/50">
                             <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Tanggal</th>
-                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">No. Ref</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Metode & Catatan</th>
                             <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Faktur</th>
                             <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Customer</th>
                             <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">Jumlah</th>
@@ -2453,9 +2813,10 @@ window.renderFinanceAR = function () {
                             const cName = inv.customerName || db.findById('customers', inv.customerId)?.name || '-';
                             return `
                                 <tr class="hover:bg-slate-50/50 transition-colors group">
-                                    <td class="px-6 py-4 text-xs font-bold text-slate-500">${p.date.split('-').reverse().join('-')}</td>
+                                    <td class="px-6 py-4 text-xs font-bold text-slate-500">${formatDateOnly(p.date)}</td>
                                     <td class="px-6 py-4">
-                                        <div class="text-sm font-black text-slate-700">${p.paymentNumber}</div>
+                                        <div class="text-sm font-bold text-slate-700">${p.method || '-'}</div>
+                                        ${p.notes ? `<div class="text-[10px] text-slate-450 font-medium mt-0.5">${p.notes}</div>` : ''}
                                     </td>
                                     <td class="px-6 py-4">
                                         <div class="text-[10px] font-black px-2 py-1 bg-slate-100 text-slate-500 rounded-md w-fit">${inv.invoiceNumber}</div>
@@ -2464,30 +2825,57 @@ window.renderFinanceAR = function () {
                                     <td class="px-6 py-4 text-right font-black text-emerald-600">${formatCurrency(p.amount)}</td>
                                 </tr>
                             `;
-                        }).join('') || '<tr><td colspan="5" class="px-6 py-12 text-center text-slate-400 italic">Belum ada riwayat.</td></tr>'}
+                        }).join('') || `
+                            <tr>
+                                <td colspan="5" class="px-6 py-20 text-center text-slate-400 italic">
+                                    <div class="flex flex-col items-center justify-center space-y-3 py-6">
+                                        <i class="fas fa-history text-slate-200 text-5xl"></i>
+                                        <span class="text-sm font-bold text-slate-400 uppercase tracking-widest">BELUM ADA RIWAYAT PENERIMAAN</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        `}
                     </tbody>
                 </table>
+
+                <!-- Totals Summary Bar (Minimalist) -->
+                <div class="px-10 py-6 flex items-center justify-between border-t border-slate-100 bg-slate-50/50">
+                    <div>
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 opacity-70">Total Diterima</p>
+                        <p class="text-2xl font-black font-mono tracking-tighter text-emerald-600">${formatCurrency(totalReceived)}</p>
+                    </div>
+                </div>
             </div>
         `;
     }
 
+    const tabsHtml = `
+        <div class="flex items-center gap-1 bg-slate-100 p-1.5 rounded-2xl w-fit border border-slate-200/60 shadow-inner overflow-hidden">
+            <button onclick="window._uiState.arActiveTab='unpaid'; renderFinanceAR();" 
+                class="px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 ${activeTab === 'unpaid' ? 'bg-white text-blue-600 shadow-md scale-100 border border-slate-100' : 'text-slate-400 hover:text-slate-600 hover:bg-white/40 opacity-70'}">
+                <i class="fas fa-file-invoice-dollar"></i> Antrean Piutang
+            </button>
+            <button onclick="window._uiState.arActiveTab='history'; renderFinanceAR();" 
+                class="px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 ${activeTab === 'history' ? 'bg-white text-green-600 shadow-md scale-100 border border-slate-100' : 'text-slate-400 hover:text-slate-600 hover:bg-white/40 opacity-70'}">
+                <i class="fas fa-history"></i> Riwayat Penerimaan
+            </button>
+        </div>
+    `;
+
     mc.innerHTML = `
         <div class="space-y-6">
-            <div class="flex items-center gap-8 border-b border-slate-200 mb-6 px-2">
-                ${tabs.map(t => `
-                    <button onclick="window._uiState.arActiveTab='${t.id}'; renderFinanceAR()" 
-                        class="pb-4 text-sm font-bold transition-all relative ${activeTab === t.id ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
-                        ${t.label}
-                        ${activeTab === t.id ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-[0_2px_10px_rgba(37,99,235,0.3)]"></div>' : ''}
-                    </button>
-                `).join('')}
+            ${filterBarHtml}
+            ${tabsHtml}
+            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
+                TOTAL: ${totalCount} ${totalLabelText}
             </div>
-            ${contentHtml}
+            ${tableHtml}
         </div>
     `;
 
     // Maintain search focus
-    const input = document.getElementById('arSearchInput');
+    const inputId = activeTab === 'unpaid' ? 'arSearchInput' : 'arHistSearchInput';
+    const input = document.getElementById(inputId);
     if (input) {
         input.focus();
         const val = input.value; input.value = ''; input.value = val;
@@ -2508,7 +2896,7 @@ window.applyARHistFilters = function() {
 };
 
 window.resetARHistoryFilters = function() {
-    window._arHistoryFilters = { customer: '', date: '' };
+    window._arHistoryFilters = { q: '', customer: '', date: '', dateFrom: '', dateTo: '' };
     renderFinanceAR();
 };
 
@@ -2696,11 +3084,11 @@ window.openFinanceARPaymentModal = () => {
             <div class="grid grid-cols-2 gap-4">
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1" title="Sesuai sisa piutang faktur">Alokasi Piutang (Rp)</label>
-                    <input type="number" id="far_amount" placeholder="0" class="w-full border border-gray-300 rounded px-3 py-2 text-lg font-bold text-blue-600">
+                    <input type="text" id="far_amount" placeholder="0" oninput="this.value=formatAmountInput(this.value)" class="w-full border border-gray-300 rounded px-3 py-2 text-lg font-bold text-blue-600">
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1" title="Input jika ada kelebihan nominal transfer">Uang Lebih Titipan (Rp)</label>
-                    <input type="number" id="far_overpay" placeholder="0" value="0" class="w-full border border-gray-300 rounded px-3 py-2 text-lg font-bold text-green-600">
+                    <input type="text" id="far_overpay" placeholder="0" value="0" oninput="this.value=formatAmountInput(this.value)" class="w-full border border-gray-300 rounded px-3 py-2 text-lg font-bold text-green-600">
                 </div>
             </div>
             <div>
@@ -2828,11 +3216,11 @@ window.openFinanceARPaymentModal = () => {
                         <div class="grid grid-cols-2 gap-5">
                             <div>
                                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Alokasi Piutang (Rp) <span class="text-red-400">*</span></label>
-                                <input type="number" id="far_amount" placeholder="0" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-blue-600 outline-none focus:border-blue-500 focus:bg-white transition-all">
+                                <input type="text" id="far_amount" placeholder="0" oninput="this.value=formatAmountInput(this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-blue-600 outline-none focus:border-blue-500 focus:bg-white transition-all">
                             </div>
                             <div>
                                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Uang Lebih Titipan (Rp)</label>
-                                <input type="number" id="far_overpay" placeholder="0" value="0" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-emerald-600 outline-none focus:border-blue-500 focus:bg-white transition-all">
+                                <input type="text" id="far_overpay" placeholder="0" value="0" oninput="this.value=formatAmountInput(this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-emerald-600 outline-none focus:border-blue-500 focus:bg-white transition-all">
                             </div>
                         </div>
                         <!-- Catatan -->
@@ -2915,7 +3303,7 @@ window.updateFinanceARPaymentDefaultAmount = () => {
     const hiddenInput = document.getElementById('far_invoice_id');
     if (hiddenInput && hiddenInput.value) {
         const balance = hiddenInput.dataset.balance || '0';
-        document.getElementById('far_amount').value = balance;
+        document.getElementById('far_amount').value = formatAmountInput(balance);
     }
 };
 
@@ -2924,8 +3312,8 @@ window.saveFinanceARPayment = async () => {
     const dateInput = document.getElementById('far_date').value;
     const accountId = document.getElementById('far_account_id').value;
     const method = document.getElementById('far_method').value;
-    const inputAmount = parseFloat(document.getElementById('far_amount').value);
-    const overpayAmount = parseFloat(document.getElementById('far_overpay').value) || 0;
+    const inputAmount = parseAmountInput(document.getElementById('far_amount').value);
+    const overpayAmount = parseAmountInput(document.getElementById('far_overpay').value) || 0;
     const fileInput = document.getElementById('far_proof_file');
     const notes = document.getElementById('far_notes').value.trim();
 
@@ -2965,6 +3353,7 @@ window.saveFinanceARPayment = async () => {
 
     const payRecord = db.insert('payments', {
         paymentNumber,
+        reference: paymentNumber,  // DB column name compatibility
         invoiceId: inv.id,
         date: new Date(dateInput).toISOString(),
         amount: inputAmount,
@@ -3049,14 +3438,27 @@ window.renderFinanceAP = function () {
             });
         }
 
-        // Apply Sorting
-        const order = window._apFilters.sortOrder === 'asc' ? 1 : -1;
-        invoices.sort((a, b) => (a.date > b.date ? 1 : -1) * order);
-
-        const totalAP = invoices.reduce((sum, i) => {
+        // Enrich with computed fields for sortTh
+        invoices = invoices.map(i => {
             const paid = allPayments.filter(p => p.invoiceId === i.id).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
-            return sum + (parseFloat(i.totalAmount) - paid);
-        }, 0);
+            const supp = suppliers.find(s => s.id === i.supplierId || s.name === i.supplierId) || { name: i.supplierId };
+            return { ...i, supplierName: supp.name, balance: parseFloat(i.totalAmount) - paid };
+        });
+        const defaultAPSort = (arr) => [...arr].sort((a, b) => ((b.date || '') > (a.date || '') ? 1 : -1));
+        invoices = window.applyTableSort(invoices, 'fin_ap', defaultAPSort);
+
+        let totalAPOutstanding = 0;
+        let totalAPTagihan = 0;
+        let totalAPTerbayar = 0;
+
+        invoices.forEach(i => {
+            const paid = allPayments.filter(p => p.invoiceId === i.id).reduce((s, p) => s + (parseFloat(p.amount) || 0), 0);
+            const balance = parseFloat(i.totalAmount) - paid;
+            totalAPTagihan += parseFloat(i.totalAmount) || 0;
+            totalAPTerbayar += paid;
+            totalAPOutstanding += balance;
+        });
+        const totalAP = totalAPOutstanding;
 
         contentHtml = `
             <!-- Unified Filter & Action Box -->
@@ -3102,35 +3504,38 @@ window.renderFinanceAP = function () {
                         </div>
                     </div>
 
-                    <div class="px-5 py-1.5 bg-rose-50 rounded-xl border border-rose-100 flex flex-col items-center justify-center min-w-[160px] h-10 shadow-sm shadow-rose-50">
-                        <span class="text-[9px] font-black text-rose-400 uppercase tracking-widest leading-none mb-0.5">Total Outstanding</span>
-                        <span class="text-sm font-black text-rose-700 leading-none">${formatCurrency(totalAP)}</span>
-                    </div>
-
                     <button onclick="openFinanceAPPaymentModal()" class="flex items-center justify-center gap-2 px-6 h-10 bg-blue-600 hover:bg-slate-900 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-200 transition-all active:scale-95 whitespace-nowrap">
                         <i class="fas fa-plus"></i> INPUT PEMBAYARAN
                     </button>
                 </div>
             </div>
 
-            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
-                TOTAL: ${invoices.length} TAGIHAN AKTIF
+            <!-- Tab Navigation Container -->
+            <div class="flex items-center gap-1 bg-slate-100 p-1.5 rounded-2xl w-fit border border-slate-200/60 shadow-inner overflow-hidden mb-6">
+                <button onclick="window._uiState.apActiveTab='unpaid'; renderFinanceAP();" 
+                    class="px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 bg-white text-blue-600 shadow-md scale-100 border border-slate-100">
+                    <i class="fas fa-file-invoice"></i> Antrean Hutang
+                </button>
+                <button onclick="window._uiState.apActiveTab='history'; renderFinanceAP();" 
+                    class="px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 text-slate-400 hover:text-slate-600 hover:bg-white/40 opacity-70">
+                    <i class="fas fa-history"></i> Riwayat Pembayaran
+                </button>
             </div>
 
+            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
+                TOTAL: ${invoices.length} DOKUMEN MENUNGGU
+            </div>
 
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="bg-slate-50/50">
-                                <th class="px-4 py-4 w-10">
-                                    <input type="checkbox" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500">
-                                </th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Supplier Name</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Status</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Jatuh Tempo</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">Sisa Hutang</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">No. Tagihan</th>
+                        <thead class="bg-slate-50/50 sticky top-0">
+                            <tr>
+                                ${window.sortTh('fin_ap','supplierName','string','Supplier Name','renderFinanceAP')}
+                                ${window.sortTh('fin_ap','status','string','Status','renderFinanceAP','text-center')}
+                                ${window.sortTh('fin_ap','date','date','Jatuh Tempo','renderFinanceAP','text-center')}
+                                ${window.sortTh('fin_ap','balance','number','Sisa Hutang','renderFinanceAP','text-right')}
+                                ${window.sortTh('fin_ap','invNumber','string','No. Tagihan','renderFinanceAP')}
                                 <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">Aksi</th>
                             </tr>
                         </thead>
@@ -3153,12 +3558,9 @@ window.renderFinanceAP = function () {
 
                                 return `
                                 <tr class="hover:bg-slate-50/50 transition-colors group">
-                                    <td class="px-4 py-4">
-                                        <input type="checkbox" class="rounded border-slate-300 text-blue-600 focus:ring-blue-500">
-                                    </td>
+
                                     <td class="px-6 py-4">
                                         <div class="text-sm font-bold text-slate-800">${supp.name}</div>
-                                        <div class="text-[10px] text-slate-400 font-bold uppercase mt-0.5">${i.id.substring(0,8)}</div>
                                     </td>
                                     <td class="px-6 py-4 text-center">
                                         <span class="px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider border ${statusClass}">
@@ -3166,7 +3568,7 @@ window.renderFinanceAP = function () {
                                         </span>
                                     </td>
                                     <td class="px-6 py-4 text-center text-xs font-bold text-slate-600">
-                                        ${i.dueDate ? formatDate(i.dueDate).slice(0, 10) : '-'}
+                                        ${formatDateOnly(i.dueDate)}
                                     </td>
                                     <td class="px-6 py-4 text-right">
                                         <div class="text-sm font-bold text-slate-800">${formatCurrency(balance)}</div>
@@ -3182,12 +3584,41 @@ window.renderFinanceAP = function () {
                                         </div>
                                     </td>
                                 </tr>
-                            `}).join('') || '<tr><td colspan="7" class="px-6 py-20 text-center text-slate-400 italic">Tidak ada tagihan supplier.</td></tr>'}
+                            `}).join('') || `
+                                <tr>
+                                    <td colspan="7" class="px-6 py-20 text-center text-slate-400 italic">
+                                        <div class="flex flex-col items-center justify-center space-y-3 py-6">
+                                            <i class="fas fa-file-invoice text-slate-300 text-5xl"></i>
+                                            <span class="text-sm font-bold text-slate-400 uppercase tracking-widest">TIDAK ADA ANTRIAN HUTANG</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `}
                         </tbody>
                     </table>
                 </div>
+
+                <!-- Totals Summary Bar (Minimalist) -->
+                <div class="px-10 py-6 flex items-center justify-between border-t border-slate-100 bg-slate-50/50">
+                    <div>
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 opacity-70">Total Outstanding</p>
+                        <p class="text-2xl font-black font-mono tracking-tighter text-slate-800">${formatCurrency(totalAPOutstanding)}</p>
+                    </div>
+                    
+                    <div class="flex gap-12 text-right items-center">
+                        <div class="flex flex-col">
+                            <span class="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1">Total Tagihan</span>
+                            <span class="text-sm font-bold font-mono text-slate-500">${formatCurrency(totalAPTagihan)}</span>
+                        </div>
+                        <div class="flex flex-col">
+                            <span class="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1">Total Terbayar</span>
+                            <span class="text-sm font-bold font-mono text-slate-500">${formatCurrency(totalAPTerbayar)}</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         `;
+
     } else {
         const q = (window._apHistoryFilters.q || '').toLowerCase();
         let payments = [...allPayments].sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -3196,7 +3627,10 @@ window.renderFinanceAP = function () {
             payments = payments.filter(p => {
                 const inv = db.findById('purchaseInvoices', p.invoiceId);
                 const sName = (suppliers.find(s => s.id === inv?.supplierId || s.name === inv?.supplierId)?.name || '').toLowerCase();
-                return p.paymentNumber.toLowerCase().includes(q) || sName.includes(q);
+                const refNo = (p.paymentNumber || p.reference || '').toLowerCase();
+                const method = (p.method || '').toLowerCase();
+                const notes = (p.notes || '').toLowerCase();
+                return refNo.includes(q) || sName.includes(q) || method.includes(q) || notes.includes(q);
             });
         }
 
@@ -3209,16 +3643,18 @@ window.renderFinanceAP = function () {
             });
         }
 
+        const totalPaid = payments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+
         contentHtml = `
-            <div class="flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-6">
-                <div class="flex items-center gap-4 w-full md:w-auto flex-1">
+            <div class="flex flex-col md:flex-row items-center justify-between gap-4 bg-white p-3 rounded-2xl border border-slate-100 shadow-sm mb-6">
+                <div class="flex items-center gap-3 w-full md:w-auto flex-1">
                     <div class="relative flex-1 md:flex-none md:w-80 group">
                         <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
                             <i class="fas fa-search text-slate-400 group-focus-within:text-blue-500 transition-colors"></i>
                         </div>
                         <input type="text" id="apHistSearchInput" value="${window._apHistoryFilters.q || ''}" 
                             onkeyup="if(event.key==='Enter') applyAPHistSearch()"
-                            placeholder="Cari No. Ref atau Supplier..." 
+                            placeholder="Cari Metode, Catatan atau Supplier..." 
                             class="block w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all">
                     </div>
                     
@@ -3251,9 +3687,22 @@ window.renderFinanceAP = function () {
                         </div>
                     </div>
                 </div>
-                <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                    TOTAL: ${payments.length} PEMBAYARAN
-                </div>
+            </div>
+
+            <!-- Tab Navigation Container -->
+            <div class="flex items-center gap-1 bg-slate-100 p-1.5 rounded-2xl w-fit border border-slate-200/60 shadow-inner overflow-hidden mb-6">
+                <button onclick="window._uiState.apActiveTab='unpaid'; renderFinanceAP();" 
+                    class="px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 text-slate-400 hover:text-slate-600 hover:bg-white/40 opacity-70">
+                    <i class="fas fa-file-invoice"></i> Antrean Hutang
+                </button>
+                <button onclick="window._uiState.apActiveTab='history'; renderFinanceAP();" 
+                    class="px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 bg-white text-green-600 shadow-md scale-100 border border-slate-100">
+                    <i class="fas fa-history"></i> Riwayat Pembayaran
+                </button>
+            </div>
+
+            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
+                TOTAL: ${payments.length} DOKUMEN SELESAI
             </div>
 
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -3261,7 +3710,7 @@ window.renderFinanceAP = function () {
                     <thead>
                         <tr class="bg-slate-50/50">
                             <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Tanggal</th>
-                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">No. Ref</th>
+                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Metode & Catatan</th>
                             <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Tagihan</th>
                             <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Supplier</th>
                             <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">Jumlah</th>
@@ -3273,37 +3722,49 @@ window.renderFinanceAP = function () {
                             const supp = suppliers.find(s => s.id === inv.supplierId || s.name === inv.supplierId) || { name: '-' };
                             return `
                                 <tr class="hover:bg-slate-50/50 transition-colors group">
-                                    <td class="px-6 py-4 text-xs font-bold text-slate-500">${p.date.split('T')[0].split('-').reverse().join('-')}</td>
-                                    <td class="px-6 py-4 font-black text-slate-700">${p.paymentNumber}</td>
+                                    <td class="px-6 py-4 text-xs font-bold text-slate-500">${formatDateOnly(p.date)}</td>
+                                    <td class="px-6 py-4">
+                                        <div class="text-sm font-bold text-slate-700">${p.method || '-'}</div>
+                                        ${p.notes ? `<div class="text-[10px] text-slate-455 font-medium mt-0.5">${p.notes}</div>` : ''}
+                                    </td>
                                     <td class="px-6 py-4 text-xs text-slate-500 font-bold">${inv.invNumber || inv.invoiceNumber || '-'}</td>
                                     <td class="px-6 py-4 text-sm font-bold text-slate-600">${supp.name}</td>
                                     <td class="px-6 py-4 text-right font-black text-rose-600">${formatCurrency(p.amount)}</td>
                                 </tr>
                             `;
-                        }).join('') || '<tr><td colspan="5" class="px-6 py-12 text-center text-slate-400 italic">Belum ada riwayat.</td></tr>'}
+                        }).join('') || `
+                            <tr>
+                                <td colspan="5" class="px-6 py-20 text-center text-slate-400 italic">
+                                    <div class="flex flex-col items-center justify-center space-y-3 py-6">
+                                        <i class="fas fa-history text-slate-200 text-5xl"></i>
+                                        <span class="text-sm font-bold text-slate-400 uppercase tracking-widest">BELUM ADA RIWAYAT PEMBAYARAN</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        `}
                     </tbody>
                 </table>
+
+                <!-- Totals Summary Bar (Minimalist) -->
+                <div class="px-10 py-6 flex items-center justify-between border-t border-slate-100 bg-slate-50/50">
+                    <div>
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 opacity-70">Total Dibayar</p>
+                        <p class="text-2xl font-black font-mono tracking-tighter text-rose-600">${formatCurrency(totalPaid)}</p>
+                    </div>
+                </div>
             </div>
         `;
     }
 
     mc.innerHTML = `
         <div class="space-y-6">
-            <div class="flex items-center gap-8 border-b border-slate-200 mb-6 px-2">
-                ${tabs.map(t => `
-                    <button onclick="window._uiState.apActiveTab='${t.id}'; renderFinanceAP()" 
-                        class="pb-4 text-sm font-bold transition-all relative ${activeTab === t.id ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
-                        ${t.label}
-                        ${activeTab === t.id ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-[0_2px_10px_rgba(37,99,235,0.3)]"></div>' : ''}
-                    </button>
-                `).join('')}
-            </div>
             ${contentHtml}
         </div>
     `;
 
     // Maintain focus
-    const input = document.getElementById('apSearchInput') || document.getElementById('apHistSearchInput');
+    const inputId = activeTab === 'unpaid' ? 'apSearchInput' : 'apHistSearchInput';
+    const input = document.getElementById(inputId);
     if (input) {
         input.focus();
         const val = input.value; input.value = ''; input.value = val;
@@ -3418,7 +3879,7 @@ window.openFinanceAPPaymentModal = () => {
                 </div>
                 <div>
                     <label class="block text-sm font-medium text-gray-700 mb-1">Jumlah Bayar (Rp)</label>
-                    <input type="number" id="fap_amount" placeholder="0" class="w-full border border-gray-300 rounded px-3 py-2 text-lg font-bold text-red-600">
+                    <input type="text" id="fap_amount" placeholder="0" oninput="this.value=formatAmountInput(this.value)" class="w-full border border-gray-300 rounded px-3 py-2 text-lg font-bold text-red-600">
                 </div>
             </div>
             <!-- Informasi Rekening Supplier (Penerima) -->
@@ -3562,7 +4023,7 @@ window.openFinanceAPPaymentModal = () => {
                             </div>
                             <div>
                                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Jumlah Bayar (Rp) <span class="text-red-400">*</span></label>
-                                <input type="number" id="fap_amount" placeholder="0" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-rose-600 outline-none focus:border-blue-500 focus:bg-white transition-all">
+                                <input type="text" id="fap_amount" placeholder="0" oninput="this.value=formatAmountInput(this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-rose-600 outline-none focus:border-blue-500 focus:bg-white transition-all">
                             </div>
                         </div>
                         <!-- Bank Info Supplier -->
@@ -3643,7 +4104,13 @@ window.updateAPInvoicesBySupplier = () => {
         const invPayments = payments.filter(p => p.invoiceId === inv.id);
         const totalPaid = invPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
         const balance = inv.totalAmount - totalPaid;
-        const displayLabel = `${inv.invNumber || inv.invoiceNumber || '-'} (Sisa: ${formatCurrency(balance)})`;
+        
+        // Ambil No. NPB (Nota Penerimaan Barang)
+        const po = db.findById('purchaseOrders', inv.purchaseOrderId);
+        const receipt = po ? (po.receipts || []).find(r => r.id === inv.receiptId) : null;
+        const npbNo = receipt ? (receipt.npbNumber || receipt.npb || '-') : '-';
+
+        const displayLabel = `${inv.invNumber || inv.invoiceNumber || '-'} (NPB: ${npbNo}) (Sisa: ${formatCurrency(balance)})`;
         return `<div class="px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 cursor-pointer transition-colors" 
             onclick="selectFinanceDropdown('ap_invoice', '${inv.id}', '${displayLabel}', 'updateFinanceAPPaymentDefaultAmount', '${balance}')">${displayLabel}</div>`;
     }).join('');
@@ -3669,7 +4136,7 @@ window.updateFinanceAPPaymentDefaultAmount = () => {
 
     if (hiddenInput && hiddenInput.value) {
         const balance = hiddenInput.dataset.balance || '0';
-        document.getElementById('fap_amount').value = balance;
+        document.getElementById('fap_amount').value = formatAmountInput(balance);
 
         const invId = hiddenInput.value;
         const inv = db.findById('purchaseInvoices', invId);
@@ -3691,7 +4158,7 @@ window.saveFinanceAPPayment = async () => {
     const dateInput = document.getElementById('fap_date').value;
     const accountId = document.getElementById('fap_account_id').value;
     const method = document.getElementById('fap_method').value;
-    const inputAmount = parseFloat(document.getElementById('fap_amount').value);
+    const inputAmount = parseAmountInput(document.getElementById('fap_amount').value);
     const notes = document.getElementById('fap_notes').value.trim();
     const fileInput = document.getElementById('fap_receipt');
 
@@ -3736,6 +4203,7 @@ window.saveFinanceAPPayment = async () => {
 
     db.insert('supplierPayments', {
         paymentNumber,
+        reference: paymentNumber,  // DB column name compatibility
         invoiceId: inv.id,
         date: new Date(dateInput).toISOString(),
         amount: inputAmount,
@@ -4037,7 +4505,7 @@ window.renderFinanceCreditNotes = function () {
     window._uiState.creditNoteActiveTab = window._uiState.creditNoteActiveTab || 'list';
     const activeTab = window._uiState.creditNoteActiveTab;
 
-    window._cnFilters = window._cnFilters || { q: '' };
+    window._cnFilters = window._cnFilters || { q: '', dateFrom: '', dateTo: '', sortOrder: 'desc' };
     const f = window._cnFilters;
     
     let notes = db.read('creditNotes') || [];
@@ -4045,26 +4513,60 @@ window.renderFinanceCreditNotes = function () {
         const q = f.q.toLowerCase();
         notes = notes.filter(n => {
             const cName = (db.findById('customers', n.customerId)?.name || '').toLowerCase();
-            return n.noteNumber.toLowerCase().includes(q) || (n.notes && n.notes.toLowerCase().includes(q)) || cName.includes(q);
+            return (n.noteNumber || '').toLowerCase().includes(q) || (n.notes && n.notes.toLowerCase().includes(q)) || cName.includes(q);
         });
     }
+
+    if (f.dateFrom || f.dateTo) {
+        notes = notes.filter(n => {
+            let ok = true;
+            const nDate = (n.date || '').slice(0, 10);
+            if (f.dateFrom && nDate < f.dateFrom) ok = false;
+            if (f.dateTo && nDate > f.dateTo) ok = false;
+            return ok;
+        });
+    }
+
+    const defaultCNSort = (arr) => [...arr].sort((a, b) => ((b.date || '') > (a.date || '') ? 1 : -1));
+    notes = window.applyTableSort(notes, 'fin_cn', defaultCNSort);
 
     const totalAmount = notes.reduce((sum, n) => sum + (parseFloat(n.amount) || 0), 0);
 
     let contentHtml = '';
-    // Reusable Filter Bar
+    // Reusable Filter Bar exactly styled like AP/AR with Date popover instead of Total badge
     const filterBarHtml = `
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex flex-col md:flex-row items-center gap-3 mb-4">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex flex-col md:flex-row items-center gap-3 mb-6">
             <div class="relative flex-1 group w-full">
                 <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors"></i>
-                <input type="text" onkeyup="if(event.key==='Enter') { window._cnFilters.q=this.value; renderFinanceCreditNotes(); }"
-                    value="${f.q || ''}" placeholder="Cari di ${activeTab === 'list' ? 'Daftar' : 'Riwayat'}..." 
+                <input type="text" id="cnSearchInput" onkeyup="if(event.key==='Enter') { window._cnFilters.q=this.value; renderFinanceCreditNotes(); }"
+                    value="${f.q || ''}" placeholder="Cari No. Credit Note, Keterangan, atau Pelanggan..." 
                     class="w-full pl-11 pr-4 py-2.5 bg-slate-50/50 rounded-xl border border-slate-100 focus:border-blue-500 focus:bg-white text-sm font-semibold text-slate-700 outline-none transition-all">
             </div>
             <div class="flex items-center gap-3 w-full md:w-auto px-1">
-                <div class="px-5 py-1.5 bg-blue-50 rounded-xl border border-blue-100 flex flex-col items-center justify-center min-w-[160px] h-10 shadow-sm">
-                    <span class="text-[9px] font-black text-blue-400 uppercase tracking-widest leading-none mb-0.5">Total ${activeTab === 'list' ? 'Item' : 'Riwayat'}</span>
-                    <span class="text-sm font-black text-blue-700 leading-none">${formatCurrency(totalAmount)}</span>
+                <div class="relative flex items-center h-10 bg-white border border-slate-200 rounded-xl shadow-sm overflow-visible">
+                    <div onclick="window._uiState.cnDatePopoverOpen = !window._uiState.cnDatePopoverOpen; renderFinanceCreditNotes()" 
+                        class="relative flex items-center h-full px-4 cursor-pointer hover:bg-slate-50 transition-all group min-w-[100px]">
+                        <span class="text-xs font-bold text-blue-600 mr-3">Date</span>
+                        <i class="fas fa-chevron-down text-blue-300 text-[10px] transition-transform ${window._uiState.cnDatePopoverOpen ? 'rotate-180' : ''}"></i>
+                    </div>
+
+                    <div class="${window._uiState.cnDatePopoverOpen ? 'block' : 'hidden'} absolute top-full left-0 mt-3 w-80 bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100 p-6 z-[100] animate-in fade-in zoom-in-95 duration-200">
+                        <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-5">FILTER RANGE</div>
+                        <div class="grid grid-cols-2 gap-4 mb-6">
+                            <div class="space-y-1.5">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">DARI</label>
+                                <input type="date" id="cnDateFrom" value="${f.dateFrom || ''}" class="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none">
+                            </div>
+                            <div class="space-y-1.5">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">KE</label>
+                                <input type="date" id="cnDateTo" value="${f.dateTo || ''}" class="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none">
+                            </div>
+                        </div>
+                        <div class="flex gap-3">
+                            <button onclick="applyCNDateRange()" class="flex-1 bg-blue-600 text-white py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-200">APPLY</button>
+                            <button onclick="resetCNDateRange()" class="flex-1 bg-slate-50 text-slate-400 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest">RESET</button>
+                        </div>
+                    </div>
                 </div>
                 ${activeTab === 'list' ? `
                 <button onclick="openCreditNoteModal()" class="flex items-center justify-center gap-2 px-6 h-10 bg-blue-600 hover:bg-slate-900 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-200 transition-all active:scale-95 whitespace-nowrap">
@@ -4075,21 +4577,26 @@ window.renderFinanceCreditNotes = function () {
     `;
 
     if (activeTab === 'list') {
-        contentHtml = filterBarHtml + `
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        contentHtml = `
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
                         <thead>
                             <tr class="bg-slate-50/50">
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">TGL & REFERENSI</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">KETERANGAN</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">PELANGGAN</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">JUMLAH</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">AKSI</th>
+                                ${window.sortTh('fin_cn', 'date', 'date', 'Tgl & Referensi', 'renderFinanceCreditNotes')}
+                                ${window.sortTh('fin_cn', 'notes', 'string', 'Keterangan', 'renderFinanceCreditNotes')}
+                                ${window.sortTh('fin_cn', 'customerId', 'string', 'Pelanggan', 'renderFinanceCreditNotes')}
+                                ${window.sortTh('fin_cn', 'amount', 'number', 'Jumlah', 'renderFinanceCreditNotes', 'text-right')}
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">Aksi</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-50">
-                            ${notes.map(n => `
+                            ${notes.map(n => {
+                                const dropdownOptions = [
+                                    ['view', 'Detail', 'fas fa-eye']
+                                ];
+                                const actionHtml = window.renderActionsDropdownHtml(`cn-${n.id}`, 'handleCreditNoteAction', dropdownOptions);
+                                return `
                                 <tr class="hover:bg-slate-50/50 transition-colors group">
                                     <td class="px-6 py-4">
                                         <div class="text-[10px] text-slate-400 font-bold mb-1">${formatDate(n.date).slice(0, 10)}</div>
@@ -4102,62 +4609,98 @@ window.renderFinanceCreditNotes = function () {
                                         <span class="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[9px] font-black uppercase tracking-widest">${db.findById('customers', n.customerId)?.name || 'N/A'}</span>
                                     </td>
                                     <td class="px-6 py-4 text-right font-black text-blue-600">${formatCurrency(n.amount)}</td>
-                                    <td class="px-6 py-4 text-right">
-                                        <button onclick="viewCreditNote('${n.id}')" class="w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-blue-600 transition-all">
-                                            <i class="fas fa-eye"></i>
-                                        </button>
+                                    <td class="px-6 py-4 text-right overflow-visible">
+                                        <div class="flex justify-end overflow-visible">
+                                            ${actionHtml}
+                                        </div>
                                     </td>
                                 </tr>
-                            `).join('') || '<tr><td colspan="5" class="px-6 py-10 text-center text-slate-400 italic">Tidak ada data.</td></tr>'}
+                            `}).join('') || '<tr><td colspan="5" class="px-6 py-10 text-center text-slate-400 italic">Tidak ada data.</td></tr>'}
                         </tbody>
                     </table>
+                </div>
+                <!-- Totals Summary Bar (Minimalist) at the bottom -->
+                <div class="px-10 py-6 flex items-center justify-between border-t border-slate-100 bg-slate-50/50">
+                    <div>
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 opacity-70">Total Credit Note</p>
+                        <p class="text-2xl font-black font-mono tracking-tighter text-blue-600">${formatCurrency(totalAmount)}</p>
+                    </div>
                 </div>
             </div>
         `;
     } else if (activeTab === 'history') {
-        contentHtml = filterBarHtml + `
+        contentHtml = `
             <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in slide-in-from-bottom-4 duration-500">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="bg-slate-50/50">
-                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">TANGGAL</th>
-                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">NOMOR</th>
-                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">KETERANGAN</th>
-                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">JUMLAH</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-50">
-                        ${notes.map(n => `
-                            <tr class="hover:bg-slate-50 transition-colors">
-                                <td class="px-6 py-4 text-sm text-slate-600">${formatDate(n.date).slice(0, 10)}</td>
-                                <td class="px-6 py-4 font-bold text-slate-700">${n.noteNumber}</td>
-                                <td class="px-6 py-4 text-sm text-slate-500">${n.notes || '-'}</td>
-                                <td class="px-6 py-4 text-right font-black text-blue-600">${formatCurrency(n.amount)}</td>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50/50">
+                                ${window.sortTh('fin_cn', 'date', 'date', 'Tanggal', 'renderFinanceCreditNotes')}
+                                ${window.sortTh('fin_cn', 'noteNumber', 'string', 'Nomor', 'renderFinanceCreditNotes')}
+                                ${window.sortTh('fin_cn', 'notes', 'string', 'Keterangan', 'renderFinanceCreditNotes')}
+                                ${window.sortTh('fin_cn', 'amount', 'number', 'Jumlah', 'renderFinanceCreditNotes', 'text-right')}
                             </tr>
-                        `).join('') || '<tr><td colspan="4" class="px-6 py-10 text-center text-slate-400">Belum ada riwayat.</td></tr>'}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50">
+                            ${notes.map(n => `
+                                <tr class="hover:bg-slate-50 transition-colors">
+                                    <td class="px-6 py-4 text-sm text-slate-600">${formatDate(n.date).slice(0, 10)}</td>
+                                    <td class="px-6 py-4 font-bold text-slate-700">${n.noteNumber}</td>
+                                    <td class="px-6 py-4 text-sm text-slate-500">${n.notes || '-'}</td>
+                                    <td class="px-6 py-4 text-right font-black text-blue-600">${formatCurrency(n.amount)}</td>
+                                </tr>
+                            `).join('') || '<tr><td colspan="4" class="px-6 py-10 text-center text-slate-400">Belum ada riwayat.</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+                <!-- Totals Summary Bar (Minimalist) at the bottom -->
+                <div class="px-10 py-6 flex items-center justify-between border-t border-slate-100 bg-slate-50/50">
+                    <div>
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 opacity-70">Total Credit Note (Riwayat)</p>
+                        <p class="text-2xl font-black font-mono tracking-tighter text-blue-600">${formatCurrency(totalAmount)}</p>
+                    </div>
+                </div>
             </div>
         `;
     }
 
+    const tabsHtml = `
+        <div class="flex items-center gap-1 bg-slate-100 p-1.5 rounded-2xl w-fit border border-slate-200/60 shadow-inner overflow-hidden mb-6">
+            <button onclick="window._uiState.creditNoteActiveTab='list'; renderFinanceCreditNotes();" 
+                class="px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 ${activeTab === 'list' ? 'bg-white text-blue-600 shadow-md scale-100 border border-slate-100' : 'text-slate-400 hover:text-slate-600 hover:bg-white/40 opacity-70'}">
+                <i class="fas fa-file-invoice-dollar"></i> Daftar Credit Note
+            </button>
+            <button onclick="window._uiState.creditNoteActiveTab='history'; renderFinanceCreditNotes();" 
+                class="px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 ${activeTab === 'history' ? 'bg-white text-green-600 shadow-md scale-100 border border-slate-100' : 'text-slate-400 hover:text-slate-600 hover:bg-white/40 opacity-70'}">
+                <i class="fas fa-history"></i> Riwayat Jurnal
+            </button>
+        </div>
+    `;
+
     mc.innerHTML = `
-        <div class="flex flex-col gap-4 animate-in fade-in duration-500">
-            <div class="flex items-center gap-8 border-b border-slate-200 mb-2 px-2">
-                <button onclick="window._uiState.creditNoteActiveTab='list'; renderFinanceCreditNotes()" 
-                    class="pb-3 text-sm font-bold transition-all relative ${activeTab === 'list' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
-                    Daftar Credit Note
-                    ${activeTab === 'list' ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-sm"></div>' : ''}
-                </button>
-                <button onclick="window._uiState.creditNoteActiveTab='history'; renderFinanceCreditNotes()" 
-                    class="pb-3 text-sm font-bold transition-all relative ${activeTab === 'history' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
-                    Riwayat Credit Note
-                    ${activeTab === 'history' ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-sm"></div>' : ''}
-                </button>
+        <div class="space-y-6 animate-in fade-in duration-500">
+            ${filterBarHtml}
+            ${tabsHtml}
+            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
+                TOTAL: ${notes.length} DOKUMEN
             </div>
             ${contentHtml}
         </div>
     `;
+};
+
+window.applyCNDateRange = function() {
+    window._cnFilters.dateFrom = document.getElementById('cnDateFrom')?.value || '';
+    window._cnFilters.dateTo = document.getElementById('cnDateTo')?.value || '';
+    window._uiState.cnDatePopoverOpen = false;
+    renderFinanceCreditNotes();
+};
+
+window.resetCNDateRange = function() {
+    window._cnFilters.dateFrom = '';
+    window._cnFilters.dateTo = '';
+    window._uiState.cnDatePopoverOpen = false;
+    renderFinanceCreditNotes();
 };
 window.updateCNFilters = function() {
     window._cnFilters = {
@@ -4255,6 +4798,7 @@ window.updateDNNumberPreview = function() {
 window.openCreditNoteModal = function () {
     const mc = document.getElementById('main-content');
     const customers = db.read('customers');
+    const bankAccounts = db.read('bankAccounts') || [];
     
     mc.innerHTML = `
         <div class="-mx-4 -mt-4 sm:-mx-6 sm:-mt-6 mb-6 bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-end gap-3 sticky top-0 z-10">
@@ -4296,16 +4840,25 @@ window.openCreditNoteModal = function () {
                                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">No. Credit Note <span class="text-red-400">*</span></label>
                                 <div class="flex">
                                      <select id="cn_is_tax" onchange="updateCNNumberPreview()" class="border border-slate-200 border-r-0 rounded-l-xl px-4 py-3 bg-slate-50 text-sm font-semibold focus:outline-none focus:ring-0 text-slate-700 transition-all">
-                                        <option value="true">TAX</option>
-                                        <option value="false">NT</option>
+                                         <option value="true">TAX</option>
+                                         <option value="false">NT</option>
                                      </select>
                                      <input type="text" id="cn_number" value="${generateCreditNoteNumber(true)}" class="w-full bg-slate-50 border border-slate-200 rounded-r-xl px-4 py-3 text-sm font-mono focus:outline-none text-slate-700 focus:border-indigo-500 focus:bg-white transition-all" readonly>
                                 </div>
                             </div>
                         </div>
-                        <div>
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Jumlah Pemotongan (Amount) <span class="text-red-400">*</span></label>
-                            <input type="text" id="cn_amount" oninput="this.value=formatAmountInput(this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-red-600 outline-none focus:border-indigo-500 focus:bg-white transition-all" placeholder="0">
+                        <div class="grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Jumlah Pemotongan (Amount) <span class="text-red-400">*</span></label>
+                                <input type="text" id="cn_amount" oninput="this.value=formatAmountInput(this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-red-600 outline-none focus:border-indigo-500 focus:bg-white transition-all" placeholder="0">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Refund Via Rekening Kas/Bank (Opsional)</label>
+                                <select id="cn_bank_account_id" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-indigo-500 focus:bg-white transition-all">
+                                    <option value="">-- Potong Piutang Usaha (Default) --</option>
+                                    ${bankAccounts.map(ba => `<option value="${ba.id}">${ba.name} (${ba.bankName || ''} - ${ba.accountNumber || ba.account_number || ''})</option>`).join('')}
+                                </select>
+                            </div>
                         </div>
                         <div>
                             <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Alasan / Catatan</label>
@@ -4337,6 +4890,7 @@ window.saveCreditNote = function () {
     const isTax = document.getElementById('cn_is_tax')?.value === 'true';
     const taxType = isTax ? 'A' : 'B';
     const noteNumberStr = document.getElementById('cn_number')?.value;
+    const bankAccountId = document.getElementById('cn_bank_account_id')?.value || '';
 
     if (!customerId || amount <= 0) { showToast('Mohon pilih pelanggan dan isi jumlah yang valid.', 'error'); return; }
     
@@ -4344,14 +4898,33 @@ window.saveCreditNote = function () {
     const isoDate = new Date(dateInput).toISOString();
     const noteNumber = noteNumberStr || ('CN-' + Date.now().toString().slice(-6));
     
-    const cn = db.insert('creditNotes', { noteNumber, date: isoDate, customerId, amount, notes, invoiceId, taxType });
-    if (typeof db.addJournalEntry === 'function') {
+    const cn = db.insert('creditNotes', { 
+        noteNumber, 
+        date: isoDate, 
+        customerId, 
+        amount, 
+        notes, 
+        invoiceId, 
+        taxType,
+        bank_account_id: bankAccountId,
+        bankAccountId: bankAccountId
+    });
+    
+    if (typeof db.addJournalEntry === 'function' && cn) {
+        let creditAccount = 'acc_ar'; // Default fallback
+        if (bankAccountId) {
+            const selectedBank = db.findById('bankAccounts', bankAccountId);
+            if (selectedBank && (selectedBank.accountId || selectedBank.account_id)) {
+                creditAccount = selectedBank.accountId || selectedBank.account_id;
+            }
+        }
+        
         db.addJournalEntry({
             description: `Credit Note ${noteNumber} - ${notes}`,
             referenceId: cn.id, referenceType: 'CREDIT_NOTE',
             items: [
                 { accountId: 'acc_sales_return', debit: amount, credit: 0 },
-                { accountId: 'acc_ar', debit: 0, credit: amount }
+                { accountId: creditAccount, debit: 0, credit: amount }
             ]
         });
     }
@@ -4367,7 +4940,7 @@ window.renderFinanceDebitNotes = function () {
     window._uiState.debitNoteActiveTab = window._uiState.debitNoteActiveTab || 'list';
     const activeTab = window._uiState.debitNoteActiveTab;
 
-    window._dnFilters = window._dnFilters || { q: '' };
+    window._dnFilters = window._dnFilters || { q: '', dateFrom: '', dateTo: '', sortOrder: 'desc' };
     const f = window._dnFilters;
     
     let notes = db.read('debitNotes') || [];
@@ -4375,26 +4948,60 @@ window.renderFinanceDebitNotes = function () {
         const q = f.q.toLowerCase();
         notes = notes.filter(n => {
             const sName = (db.findById('suppliers', n.supplierId)?.name || '').toLowerCase();
-            return n.noteNumber.toLowerCase().includes(q) || (n.notes && n.notes.toLowerCase().includes(q)) || sName.includes(q);
+            return (n.noteNumber || '').toLowerCase().includes(q) || (n.notes && n.notes.toLowerCase().includes(q)) || sName.includes(q);
         });
     }
+
+    if (f.dateFrom || f.dateTo) {
+        notes = notes.filter(n => {
+            let ok = true;
+            const nDate = (n.date || '').slice(0, 10);
+            if (f.dateFrom && nDate < f.dateFrom) ok = false;
+            if (f.dateTo && nDate > f.dateTo) ok = false;
+            return ok;
+        });
+    }
+
+    const defaultDNSort = (arr) => [...arr].sort((a, b) => ((b.date || '') > (a.date || '') ? 1 : -1));
+    notes = window.applyTableSort(notes, 'fin_dn', defaultDNSort);
 
     const totalAmount = notes.reduce((sum, n) => sum + (parseFloat(n.amount) || 0), 0);
 
     let contentHtml = '';
-    // Reusable Filter Bar
+    // Reusable Filter Bar exactly styled like AP/AR with Date popover instead of Total badge
     const filterBarHtml = `
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex flex-col md:flex-row items-center gap-3 mb-4">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-3 flex flex-col md:flex-row items-center gap-3 mb-6">
             <div class="relative flex-1 group w-full">
                 <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors"></i>
-                <input type="text" onkeyup="if(event.key==='Enter') { window._dnFilters.q=this.value; renderFinanceDebitNotes(); }"
-                    value="${f.q || ''}" placeholder="Cari di ${activeTab === 'list' ? 'Daftar' : 'Riwayat'}..." 
+                <input type="text" id="dnSearchInput" onkeyup="if(event.key==='Enter') { window._dnFilters.q=this.value; renderFinanceDebitNotes(); }"
+                    value="${f.q || ''}" placeholder="Cari No. Debit Note, Keterangan, atau Supplier..." 
                     class="w-full pl-11 pr-4 py-2.5 bg-slate-50/50 rounded-xl border border-slate-100 focus:border-blue-500 focus:bg-white text-sm font-semibold text-slate-700 outline-none transition-all">
             </div>
             <div class="flex items-center gap-3 w-full md:w-auto px-1">
-                <div class="px-5 py-1.5 bg-blue-50 rounded-xl border border-blue-100 flex flex-col items-center justify-center min-w-[160px] h-10 shadow-sm">
-                    <span class="text-[9px] font-black text-blue-400 uppercase tracking-widest leading-none mb-0.5">Total ${activeTab === 'list' ? 'Item' : 'Riwayat'}</span>
-                    <span class="text-sm font-black text-blue-700 leading-none">${formatCurrency(totalAmount)}</span>
+                <div class="relative flex items-center h-10 bg-white border border-slate-200 rounded-xl shadow-sm overflow-visible">
+                    <div onclick="window._uiState.dnDatePopoverOpen = !window._uiState.dnDatePopoverOpen; renderFinanceDebitNotes()" 
+                        class="relative flex items-center h-full px-4 cursor-pointer hover:bg-slate-50 transition-all group min-w-[100px]">
+                        <span class="text-xs font-bold text-blue-600 mr-3">Date</span>
+                        <i class="fas fa-chevron-down text-blue-300 text-[10px] transition-transform ${window._uiState.dnDatePopoverOpen ? 'rotate-180' : ''}"></i>
+                    </div>
+
+                    <div class="${window._uiState.dnDatePopoverOpen ? 'block' : 'hidden'} absolute top-full left-0 mt-3 w-80 bg-white rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-slate-100 p-6 z-[100] animate-in fade-in zoom-in-95 duration-200">
+                        <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-5">FILTER RANGE</div>
+                        <div class="grid grid-cols-2 gap-4 mb-6">
+                            <div class="space-y-1.5">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">DARI</label>
+                                <input type="date" id="dnDateFrom" value="${f.dateFrom || ''}" class="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none">
+                            </div>
+                            <div class="space-y-1.5">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">KE</label>
+                                <input type="date" id="dnDateTo" value="${f.dateTo || ''}" class="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none">
+                            </div>
+                        </div>
+                        <div class="flex gap-3">
+                            <button onclick="applyDNDateRange()" class="flex-1 bg-blue-600 text-white py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-200">APPLY</button>
+                            <button onclick="resetDNDateRange()" class="flex-1 bg-slate-50 text-slate-400 py-3.5 rounded-2xl text-xs font-black uppercase tracking-widest">RESET</button>
+                        </div>
+                    </div>
                 </div>
                 ${activeTab === 'list' ? `
                 <button onclick="openDebitNoteModal()" class="flex items-center justify-center gap-2 px-6 h-10 bg-blue-600 hover:bg-slate-900 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-200 transition-all active:scale-95 whitespace-nowrap">
@@ -4405,21 +5012,26 @@ window.renderFinanceDebitNotes = function () {
     `;
 
     if (activeTab === 'list') {
-        contentHtml = filterBarHtml + `
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        contentHtml = `
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
                         <thead>
                             <tr class="bg-slate-50/50">
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">TGL & REFERENSI</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">KETERANGAN</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">SUPPLIER</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">JUMLAH</th>
-                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">AKSI</th>
+                                ${window.sortTh('fin_dn', 'date', 'date', 'Tgl & Referensi', 'renderFinanceDebitNotes')}
+                                ${window.sortTh('fin_dn', 'notes', 'string', 'Keterangan', 'renderFinanceDebitNotes')}
+                                ${window.sortTh('fin_dn', 'supplierId', 'string', 'Supplier', 'renderFinanceDebitNotes')}
+                                ${window.sortTh('fin_dn', 'amount', 'number', 'Jumlah', 'renderFinanceDebitNotes', 'text-right')}
+                                <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">Aksi</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-50">
-                            ${notes.map(n => `
+                            ${notes.map(n => {
+                                const dropdownOptions = [
+                                    ['view', 'Detail', 'fas fa-eye']
+                                ];
+                                const actionHtml = window.renderActionsDropdownHtml(`dn-${n.id}`, 'handleDebitNoteAction', dropdownOptions);
+                                return `
                                 <tr class="hover:bg-slate-50/50 transition-colors group">
                                     <td class="px-6 py-4">
                                         <div class="text-[10px] text-slate-400 font-bold mb-1">${formatDate(n.date).slice(0, 10)}</div>
@@ -4432,62 +5044,98 @@ window.renderFinanceDebitNotes = function () {
                                         <span class="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-[9px] font-black uppercase tracking-widest">${db.findById('suppliers', n.supplierId)?.name || 'N/A'}</span>
                                     </td>
                                     <td class="px-6 py-4 text-right font-black text-blue-600">${formatCurrency(n.amount)}</td>
-                                    <td class="px-6 py-4 text-right">
-                                        <button onclick="viewDebitNote('${n.id}')" class="w-8 h-8 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-blue-600 transition-all">
-                                            <i class="fas fa-eye"></i>
-                                        </button>
+                                    <td class="px-6 py-4 text-right overflow-visible">
+                                        <div class="flex justify-end overflow-visible">
+                                            ${actionHtml}
+                                        </div>
                                     </td>
                                 </tr>
-                            `).join('') || '<tr><td colspan="5" class="px-6 py-10 text-center text-slate-400 italic">Tidak ada data.</td></tr>'}
+                            `}).join('') || '<tr><td colspan="5" class="px-6 py-10 text-center text-slate-400 italic">Tidak ada data.</td></tr>'}
                         </tbody>
                     </table>
+                </div>
+                <!-- Totals Summary Bar (Minimalist) at the bottom -->
+                <div class="px-10 py-6 flex items-center justify-between border-t border-slate-100 bg-slate-50/50">
+                    <div>
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 opacity-70">Total Debit Note</p>
+                        <p class="text-2xl font-black font-mono tracking-tighter text-blue-600">${formatCurrency(totalAmount)}</p>
+                    </div>
                 </div>
             </div>
         `;
     } else if (activeTab === 'history') {
-        contentHtml = filterBarHtml + `
+        contentHtml = `
             <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in slide-in-from-bottom-4 duration-500">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="bg-slate-50/50">
-                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">TANGGAL</th>
-                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">NOMOR</th>
-                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">KETERANGAN</th>
-                            <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-right">JUMLAH</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-50">
-                        ${notes.map(n => `
-                            <tr class="hover:bg-slate-50 transition-colors">
-                                <td class="px-6 py-4 text-sm text-slate-600">${formatDate(n.date).slice(0, 10)}</td>
-                                <td class="px-6 py-4 font-bold text-slate-700">${n.noteNumber}</td>
-                                <td class="px-6 py-4 text-sm text-slate-500">${n.notes || '-'}</td>
-                                <td class="px-6 py-4 text-right font-black text-blue-600">${formatCurrency(n.amount)}</td>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50/50">
+                                ${window.sortTh('fin_dn', 'date', 'date', 'Tanggal', 'renderFinanceDebitNotes')}
+                                ${window.sortTh('fin_dn', 'noteNumber', 'string', 'Nomor', 'renderFinanceDebitNotes')}
+                                ${window.sortTh('fin_dn', 'notes', 'string', 'Keterangan', 'renderFinanceDebitNotes')}
+                                ${window.sortTh('fin_dn', 'amount', 'number', 'Jumlah', 'renderFinanceDebitNotes', 'text-right')}
                             </tr>
-                        `).join('') || '<tr><td colspan="4" class="px-6 py-10 text-center text-slate-400">Belum ada riwayat.</td></tr>'}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50">
+                            ${notes.map(n => `
+                                <tr class="hover:bg-slate-50 transition-colors">
+                                    <td class="px-6 py-4 text-sm text-slate-600">${formatDate(n.date).slice(0, 10)}</td>
+                                    <td class="px-6 py-4 font-bold text-slate-700">${n.noteNumber}</td>
+                                    <td class="px-6 py-4 text-sm text-slate-500">${n.notes || '-'}</td>
+                                    <td class="px-6 py-4 text-right font-black text-blue-600">${formatCurrency(n.amount)}</td>
+                                </tr>
+                            `).join('') || '<tr><td colspan="4" class="px-6 py-10 text-center text-slate-400">Belum ada riwayat.</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+                <!-- Totals Summary Bar (Minimalist) at the bottom -->
+                <div class="px-10 py-6 flex items-center justify-between border-t border-slate-100 bg-slate-50/50">
+                    <div>
+                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 opacity-70">Total Debit Note (Riwayat)</p>
+                        <p class="text-2xl font-black font-mono tracking-tighter text-blue-600">${formatCurrency(totalAmount)}</p>
+                    </div>
+                </div>
             </div>
         `;
     }
 
+    const tabsHtml = `
+        <div class="flex items-center gap-1 bg-slate-100 p-1.5 rounded-2xl w-fit border border-slate-200/60 shadow-inner overflow-hidden mb-6">
+            <button onclick="window._uiState.debitNoteActiveTab='list'; renderFinanceDebitNotes();" 
+                class="px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 ${activeTab === 'list' ? 'bg-white text-blue-600 shadow-md scale-100 border border-slate-100' : 'text-slate-400 hover:text-slate-600 hover:bg-white/40 opacity-70'}">
+                <i class="fas fa-file-invoice-dollar"></i> Daftar Debit Note
+            </button>
+            <button onclick="window._uiState.debitNoteActiveTab='history'; renderFinanceDebitNotes();" 
+                class="px-8 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all duration-300 flex items-center gap-2 ${activeTab === 'history' ? 'bg-white text-green-600 shadow-md scale-100 border border-slate-100' : 'text-slate-400 hover:text-slate-600 hover:bg-white/40 opacity-70'}">
+                <i class="fas fa-history"></i> Riwayat Jurnal
+            </button>
+        </div>
+    `;
+
     mc.innerHTML = `
-        <div class="flex flex-col gap-4 animate-in fade-in duration-500">
-            <div class="flex items-center gap-8 border-b border-slate-200 mb-2 px-2">
-                <button onclick="window._uiState.debitNoteActiveTab='list'; renderFinanceDebitNotes()" 
-                    class="pb-3 text-sm font-bold transition-all relative ${activeTab === 'list' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
-                    Daftar Debit Note
-                    ${activeTab === 'list' ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-sm"></div>' : ''}
-                </button>
-                <button onclick="window._uiState.debitNoteActiveTab='history'; renderFinanceDebitNotes()" 
-                    class="pb-3 text-sm font-bold transition-all relative ${activeTab === 'history' ? 'text-blue-600' : 'text-slate-400 hover:text-slate-600'}">
-                    Riwayat Debit Note
-                    ${activeTab === 'history' ? '<div class="absolute -bottom-[1px] left-0 w-full h-[3px] bg-blue-600 rounded-full shadow-sm"></div>' : ''}
-                </button>
+        <div class="space-y-6 animate-in fade-in duration-500">
+            ${filterBarHtml}
+            ${tabsHtml}
+            <div class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">
+                TOTAL: ${notes.length} DOKUMEN
             </div>
             ${contentHtml}
         </div>
     `;
+};
+
+window.applyDNDateRange = function() {
+    window._dnFilters.dateFrom = document.getElementById('dnDateFrom')?.value || '';
+    window._dnFilters.dateTo = document.getElementById('dnDateTo')?.value || '';
+    window._uiState.dnDatePopoverOpen = false;
+    renderFinanceDebitNotes();
+};
+
+window.resetDNDateRange = function() {
+    window._dnFilters.dateFrom = '';
+    window._dnFilters.dateTo = '';
+    window._uiState.dnDatePopoverOpen = false;
+    renderFinanceDebitNotes();
 };
 
 window.updateDNFilters = function() {
@@ -4501,6 +5149,7 @@ window.updateDNFilters = function() {
 window.openDebitNoteModal = function () {
     const mc = document.getElementById('main-content');
     const suppliers = db.read('suppliers');
+    const bankAccounts = db.read('bankAccounts') || [];
     
     mc.innerHTML = `
         <div class="-mx-4 -mt-4 sm:-mx-6 sm:-mt-6 mb-6 bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-end gap-3 sticky top-0 z-10">
@@ -4549,9 +5198,18 @@ window.openDebitNoteModal = function () {
                                 </div>
                             </div>
                         </div>
-                        <div>
-                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Jumlah Pemotongan (Amount) <span class="text-red-400">*</span></label>
-                            <input type="text" id="dn_amount" oninput="this.value=formatAmountInput(this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-green-600 outline-none focus:border-blue-500 focus:bg-white transition-all" placeholder="0">
+                        <div class="grid grid-cols-2 gap-5">
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Jumlah Pemotongan (Amount) <span class="text-red-400">*</span></label>
+                                <input type="text" id="dn_amount" oninput="this.value=formatAmountInput(this.value)" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-green-600 outline-none focus:border-blue-500 focus:bg-white transition-all" placeholder="0">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Refund Via Rekening Kas/Bank (Opsional)</label>
+                                <select id="dn_bank_account_id" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition-all">
+                                    <option value="">-- Potong Hutang Usaha (Default) --</option>
+                                    ${bankAccounts.map(ba => `<option value="${ba.id}">${ba.name} (${ba.bankName || ''} - ${ba.accountNumber || ba.account_number || ''})</option>`).join('')}
+                                </select>
+                            </div>
                         </div>
                         <div>
                             <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Alasan / Catatan</label>
@@ -4583,19 +5241,39 @@ window.saveDebitNote = function () {
     const isTax = document.getElementById('dn_is_tax')?.value === 'true';
     const taxType = isTax ? 'A' : 'B';
     const noteNumberStr = document.getElementById('dn_number')?.value;
+    const bankAccountId = document.getElementById('dn_bank_account_id')?.value || '';
 
     if (!supplierId || amount <= 0) { showToast('Mohon pilih supplier dan isi jumlah yang valid.', 'error'); return; }
     
     const isoDate = new Date(dateInput).toISOString();
     const noteNumber = noteNumberStr || ('DN-' + Date.now().toString().slice(-6));
     
-    const dn = db.insert('debitNotes', { noteNumber, date: isoDate, supplierId, amount, notes, invoiceId, taxType });
-    if (typeof db.addJournalEntry === 'function') {
+    const dn = db.insert('debitNotes', { 
+        noteNumber, 
+        date: isoDate, 
+        supplierId, 
+        amount, 
+        notes, 
+        invoiceId, 
+        taxType,
+        bank_account_id: bankAccountId,
+        bankAccountId: bankAccountId
+    });
+    
+    if (typeof db.addJournalEntry === 'function' && dn) {
+        let debitAccount = 'acc_ap'; // Default fallback
+        if (bankAccountId) {
+            const selectedBank = db.findById('bankAccounts', bankAccountId);
+            if (selectedBank && (selectedBank.accountId || selectedBank.account_id)) {
+                debitAccount = selectedBank.accountId || selectedBank.account_id;
+            }
+        }
+        
         db.addJournalEntry({
             description: `Debit Note ${noteNumber} - ${notes}`,
             referenceId: dn.id, referenceType: 'DEBIT_NOTE',
             items: [
-                { accountId: 'acc_ap', debit: amount, credit: 0 },
+                { accountId: debitAccount, debit: amount, credit: 0 },
                 { accountId: 'acc_purchase_return', debit: 0, credit: amount }
             ]
         });
@@ -5593,6 +6271,18 @@ window.renderFinanceAPAging = function () {
             </div>
         </div>
     `;
+};
+
+window.handleCreditNoteAction = function (action, id) {
+    if (action === 'view') {
+        viewCreditNote(id);
+    }
+};
+
+window.handleDebitNoteAction = function (action, id) {
+    if (action === 'view') {
+        viewDebitNote(id);
+    }
 };
 
 
