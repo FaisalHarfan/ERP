@@ -91,20 +91,175 @@ function prodFmt(n) { return new Intl.NumberFormat('id-ID', { maximumFractionDig
 function prodDate(d) { return d ? new Date(d).toLocaleDateString('id-ID') : '-'; }
 
 // --- DASHBOARD: VISUAL PIPELINE ---
+// Global Production Dashboard Filter State
+window.mfgDashFilters = window.mfgDashFilters || {
+    periodType: 'year', // 'year', 'month', 'custom', 'all'
+    fiscalYear: new Date().getFullYear(),
+    month: new Date().getMonth() + 1,
+    startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0]
+};
+
+window.toggleMfgDashDropdown = (dropdownId) => {
+    const dd = document.getElementById(dropdownId);
+    if (!dd) return;
+    const isHidden = dd.classList.contains('hidden');
+    // Close other dropdowns
+    document.querySelectorAll('[id$="_dropdown"][id^="mfg_dash_"]').forEach(d => {
+        if (d.id !== dropdownId) d.classList.add('hidden');
+    });
+    if (isHidden) {
+        dd.classList.remove('hidden');
+    } else {
+        dd.classList.add('hidden');
+    }
+};
+
+window.selectMfgDashPeriodType = (val, labelText) => {
+    const hiddenInput = document.getElementById('mfg_dash_period_type');
+    const labelSpan = document.getElementById('mfg_dash_period_type_label');
+    const dd = document.getElementById('mfg_dash_period_type_dropdown');
+
+    if (hiddenInput) hiddenInput.value = val;
+    if (labelSpan) labelSpan.textContent = labelText;
+    dd?.classList.add('hidden');
+
+    window.onMfgDashPeriodChangeDirect(val);
+};
+
+window.selectMfgDashYear = (year) => {
+    const hiddenInput = document.getElementById('mfg_dash_year');
+    const labelSpan = document.getElementById('mfg_dash_year_label');
+    const dd = document.getElementById('mfg_dash_year_dropdown');
+
+    if (hiddenInput) hiddenInput.value = year;
+    if (labelSpan) labelSpan.textContent = year;
+    dd?.classList.add('hidden');
+};
+
+window.selectMfgDashMonth = (monthVal, monthName) => {
+    const hiddenInput = document.getElementById('mfg_dash_month');
+    const labelSpan = document.getElementById('mfg_dash_month_label');
+    const dd = document.getElementById('mfg_dash_month_dropdown');
+
+    if (hiddenInput) hiddenInput.value = monthVal;
+    if (labelSpan) labelSpan.textContent = monthName;
+    dd?.classList.add('hidden');
+};
+
+window.onMfgDashPeriodChangeDirect = (periodType) => {
+    const yearWrap = document.getElementById('mfg_dash_year_wrap');
+    const monthWrap = document.getElementById('mfg_dash_month_wrap');
+    const startWrap = document.getElementById('mfg_dash_start_wrap');
+    const endWrap = document.getElementById('mfg_dash_end_wrap');
+
+    if (periodType === 'year') {
+        yearWrap?.classList.remove('hidden');
+        monthWrap?.classList.add('hidden');
+        startWrap?.classList.add('hidden');
+        endWrap?.classList.add('hidden');
+    } else if (periodType === 'month') {
+        yearWrap?.classList.remove('hidden');
+        monthWrap?.classList.remove('hidden');
+        startWrap?.classList.add('hidden');
+        endWrap?.classList.add('hidden');
+    } else if (periodType === 'custom') {
+        yearWrap?.classList.add('hidden');
+        monthWrap?.classList.add('hidden');
+        startWrap?.classList.remove('hidden');
+        endWrap?.classList.remove('hidden');
+    } else if (periodType === 'all') {
+        yearWrap?.classList.add('hidden');
+        monthWrap?.classList.add('hidden');
+        startWrap?.classList.add('hidden');
+        endWrap?.classList.add('hidden');
+    }
+};
+
+window.onMfgDashPeriodChange = () => {
+    const periodType = document.getElementById('mfg_dash_period_type')?.value;
+    window.onMfgDashPeriodChangeDirect(periodType);
+};
+
+window.applyMfgDashFilters = () => {
+    const periodType = document.getElementById('mfg_dash_period_type')?.value;
+    const fiscalYear = parseInt(document.getElementById('mfg_dash_year')?.value) || new Date().getFullYear();
+    const month = parseInt(document.getElementById('mfg_dash_month')?.value) || 1;
+    const startDate = document.getElementById('mfg_dash_start')?.value;
+    const endDate = document.getElementById('mfg_dash_end')?.value;
+
+    window.mfgDashFilters.periodType = periodType;
+    window.mfgDashFilters.fiscalYear = fiscalYear;
+    window.mfgDashFilters.month = month;
+    window.mfgDashFilters.startDate = startDate;
+    window.mfgDashFilters.endDate = endDate;
+
+    showToast('Filter Dashboard Produksi Berhasil Diterapkan', 'success');
+    renderProductionDashboard();
+};
+
+// Global click listener to close dropdowns when clicking outside
+document.addEventListener('click', (e) => {
+    const dropdowns = ['mfg_dash_period_type', 'mfg_dash_year', 'mfg_dash_month'];
+    dropdowns.forEach(prefix => {
+        const dd = document.getElementById(prefix + '_dropdown');
+        const trigger = document.getElementById(prefix + '_trigger');
+        if (dd && !dd.contains(e.target) && !trigger?.contains(e.target)) {
+            dd.classList.add('hidden');
+        }
+    });
+});
+
 window.renderProductionDashboard = () => {
     document.getElementById('pageTitle').innerText = 'Produksi & Work In Progress';
     const mc = document.getElementById('main-content');
     const mos = db.read('productionOrders') || [];
+    const filters = window.mfgDashFilters;
+
+    let startDate = null;
+    let endDate = null;
+
+    if (filters.periodType === 'year') {
+        startDate = new Date(filters.fiscalYear, 0, 1, 0, 0, 0, 0);
+        endDate = new Date(filters.fiscalYear, 11, 31, 23, 59, 59, 999);
+    } else if (filters.periodType === 'month') {
+        startDate = new Date(filters.fiscalYear, filters.month - 1, 1, 0, 0, 0, 0);
+        endDate = new Date(filters.fiscalYear, filters.month, 0, 23, 59, 59, 999);
+    } else if (filters.periodType === 'custom') {
+        if (filters.startDate) {
+            startDate = new Date(filters.startDate);
+            startDate.setHours(0, 0, 0, 0);
+        }
+        if (filters.endDate) {
+            endDate = new Date(filters.endDate);
+            endDate.setHours(23, 59, 59, 999);
+        }
+    }
+
+    // Filter mos by date range
+    let filteredMOs = mos.filter(m => {
+        const d = new Date(m.date || m.createdAt);
+        if (startDate && d < startDate) return false;
+        if (endDate && d > endDate) return false;
+        return true;
+    });
 
     const getStageStock = (loc) => {
         const invTxs = db.read('stockTransactions') || [];
-        return invTxs.filter(t => t.location === loc).reduce((total, t) => {
+        return invTxs.filter(t => {
+            if (t.location !== loc) return false;
+            if (endDate) {
+                const txDate = new Date(t.date || t.createdAt);
+                if (txDate > endDate) return false;
+            }
+            return true;
+        }).reduce((total, t) => {
             return t.type === 'IN' ? total + parseFloat(t.qty) : total - parseFloat(t.qty);
         }, 0);
     };
 
     const dashboardCards = PROD_STAGES.map((st, idx) => {
-        const stageMOs = mos.filter(m => m.stage === st.key && m.status === 'IN_PROGRESS');
+        const stageMOs = filteredMOs.filter(m => m.stage === st.key && m.status === 'IN_PROGRESS');
         const loc = STAGE_LOCATIONS[st.key];
         const stockQty = loc ? getStageStock(loc) : null;
 
@@ -136,13 +291,111 @@ window.renderProductionDashboard = () => {
 
     // Calculate Top Produced Products (by total KG)
     const topProdsRaw = {};
-    mos.filter(m => m.status === 'DONE' || m.status === 'PARTIAL').forEach(m => {
+    filteredMOs.filter(m => m.status === 'DONE' || m.status === 'PARTIAL').forEach(m => {
         const name = m.productName || (m.outputProducts && m.outputProducts.length > 0 ? m.outputProducts[0].itemName : null) || 'Unknown';
         topProdsRaw[name] = (topProdsRaw[name] || 0) + (parseFloat(m.outputQty) || 0);
     });
     const sortedProds = Object.entries(topProdsRaw).sort((a,b) => b[1] - a[1]).slice(0, 5);
 
+    const yearListOptions = [];
+    const minYear = 2024;
+    const maxYear = new Date().getFullYear() + 2;
+    for (let y = minYear; y <= maxYear; y++) {
+        yearListOptions.push(y);
+    }
+    const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
     mc.innerHTML = `
+        <!-- Global Date Filter Bar -->
+        <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] flex flex-wrap items-center gap-4 justify-between mb-6">
+            <div class="flex items-center gap-2">
+                <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                    <i class="fas fa-calendar-alt text-sm"></i>
+                </div>
+                <span class="text-sm font-bold text-slate-800">Filter Analisis Produksi</span>
+            </div>
+            
+            <div class="flex flex-wrap items-center gap-3">
+                <!-- Tipe Periode Custom Dropdown -->
+                <div class="flex flex-col min-w-[150px] relative" id="mfg_dash_period_type_container">
+                    <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Tipe Periode</span>
+                    <div id="mfg_dash_period_type_trigger" onclick="toggleMfgDashDropdown('mfg_dash_period_type_dropdown')" 
+                        class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 cursor-pointer hover:bg-slate-100/50 transition-all flex justify-between items-center h-11 shadow-sm">
+                        <span id="mfg_dash_period_type_label">
+                            ${filters.periodType === 'year' ? 'Per Tahun' : 
+                              filters.periodType === 'month' ? 'Per Bulan' : 
+                              filters.periodType === 'custom' ? 'Kustom Tanggal' : 'Semua Waktu'}
+                        </span>
+                        <i class="fas fa-chevron-down text-[9px] text-slate-400"></i>
+                    </div>
+                    <input type="hidden" id="mfg_dash_period_type" value="${filters.periodType}">
+                    
+                    <div id="mfg_dash_period_type_dropdown" class="absolute left-0 top-full mt-2 bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] hidden overflow-hidden animate-in fade-in zoom-in-95 duration-150 min-w-full">
+                        <div class="p-1.5 flex flex-col">
+                            <div onclick="selectMfgDashPeriodType('year', 'Per Tahun')" class="px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5 ${filters.periodType === 'year' ? 'bg-slate-50 text-blue-600 font-extrabold' : ''}">Per Tahun</div>
+                            <div onclick="selectMfgDashPeriodType('month', 'Per Bulan')" class="px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5 ${filters.periodType === 'month' ? 'bg-slate-50 text-blue-600 font-extrabold' : ''}">Per Bulan</div>
+                            <div onclick="selectMfgDashPeriodType('custom', 'Kustom Tanggal')" class="px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5 ${filters.periodType === 'custom' ? 'bg-slate-50 text-blue-600 font-extrabold' : ''}">Kustom Tanggal</div>
+                            <div onclick="selectMfgDashPeriodType('all', 'Semua Waktu')" class="px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5 ${filters.periodType === 'all' ? 'bg-slate-50 text-blue-600 font-extrabold' : ''}">Semua Waktu</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tahun Custom Dropdown -->
+                <div class="flex flex-col min-w-[100px] relative ${filters.periodType === 'custom' || filters.periodType === 'all' ? 'hidden' : ''}" id="mfg_dash_year_wrap">
+                    <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Tahun</span>
+                    <div id="mfg_dash_year_trigger" onclick="toggleMfgDashDropdown('mfg_dash_year_dropdown')" 
+                        class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 cursor-pointer hover:bg-slate-100/50 transition-all flex justify-between items-center h-11 shadow-sm">
+                        <span id="mfg_dash_year_label">${filters.fiscalYear}</span>
+                        <i class="fas fa-chevron-down text-[9px] text-slate-400"></i>
+                    </div>
+                    <input type="hidden" id="mfg_dash_year" value="${filters.fiscalYear}">
+                    
+                    <div id="mfg_dash_year_dropdown" class="absolute left-0 top-full mt-2 bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] hidden overflow-hidden animate-in fade-in zoom-in-95 duration-150 min-w-full max-h-60 overflow-y-auto">
+                        <div class="p-1.5 flex flex-col">
+                            ${yearListOptions.map(y => `
+                                <div onclick="selectMfgDashYear(${y})" class="px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5 ${filters.fiscalYear === y ? 'bg-slate-50 text-blue-600 font-extrabold' : ''}">${y}</div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bulan Custom Dropdown -->
+                <div class="flex flex-col min-w-[140px] relative ${filters.periodType !== 'month' ? 'hidden' : ''}" id="mfg_dash_month_wrap">
+                    <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Bulan</span>
+                    <div id="mfg_dash_month_trigger" onclick="toggleMfgDashDropdown('mfg_dash_month_dropdown')" 
+                        class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 cursor-pointer hover:bg-slate-100/50 transition-all flex justify-between items-center h-11 shadow-sm">
+                        <span id="mfg_dash_month_label">${monthNames[filters.month - 1]}</span>
+                        <i class="fas fa-chevron-down text-[9px] text-slate-400"></i>
+                    </div>
+                    <input type="hidden" id="mfg_dash_month" value="${filters.month}">
+                    
+                    <div id="mfg_dash_month_dropdown" class="absolute left-0 top-full mt-2 bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] hidden overflow-hidden animate-in fade-in zoom-in-95 duration-150 min-w-full max-h-60 overflow-y-auto">
+                        <div class="p-1.5 flex flex-col">
+                            ${monthNames.map((name, index) => `
+                                <div onclick="selectMfgDashMonth(${index + 1}, '${name}')" class="px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5 ${filters.month === (index + 1) ? 'bg-slate-50 text-blue-600 font-extrabold' : ''}">${name}</div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-col ${filters.periodType !== 'custom' ? 'hidden' : ''}" id="mfg_dash_start_wrap">
+                    <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Dari Tanggal</span>
+                    <input type="date" id="mfg_dash_start" value="${filters.startDate || ''}" class="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all h-11 shadow-sm">
+                </div>
+
+                <div class="flex flex-col ${filters.periodType !== 'custom' ? 'hidden' : ''}" id="mfg_dash_end_wrap">
+                    <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Sampai Tanggal</span>
+                    <input type="date" id="mfg_dash_end" value="${filters.endDate || ''}" class="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all h-11 shadow-sm">
+                </div>
+
+                <div class="flex flex-col justify-end pt-[21px]">
+                    <button onclick="window.applyMfgDashFilters()" class="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-6 rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-[0_4px_12px_rgba(37,99,235,0.2)] hover:shadow-[0_6px_20px_rgba(37,99,235,0.3)] active:scale-95 flex items-center justify-center gap-2 h-11 hover:-translate-y-0.5 duration-150">
+                        <i class="fas fa-filter text-xs"></i> Terapkan Filter
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <div class="mb-6 flex justify-between items-end border-b border-slate-100 pb-4">
             <div>
                 <p class="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">Status Produksi</p>
@@ -275,7 +528,10 @@ window.renderProductionMO = async () => {
         if (!hasDateFilter) {
             const today = new Date(); today.setHours(0, 0, 0, 0);
             const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
-            if (moDate < today || moDate > todayEnd) return false;
+            const isToday = moDate >= today && moDate <= todayEnd;
+            // Tampilkan MO hari ini, atau MO hari sebelumnya yang masih PROSES/PARTIAL (belum selesai)
+            const isUnfinished = m.status === 'IN_PROGRESS' || m.status === 'PARTIAL';
+            if (!isToday && !isUnfinished) return false;
         } else {
             moDate.setHours(0, 0, 0, 0);
             if (f.start) { const sd = new Date(f.start); sd.setHours(0, 0, 0, 0); if (moDate < sd) return false; }
@@ -314,16 +570,11 @@ window.renderProductionMO = async () => {
                             <div id="dropdown-${mo.id}" class="inventory-action-menu hidden absolute right-0 top-full mt-1 w-44 bg-white rounded-xl shadow-[0_10px_25px_-5px_rgba(0,0,0,0.1),0_8px_10px_-6px_rgba(0,0,0,0.1)] border border-slate-100 z-[2000] overflow-hidden text-left animate-in fade-in zoom-in-95 duration-100">
                                 <div class="py-1.5 flex flex-col">
                                     <button onclick="viewProductionMO('${mo.id}')" class="text-left px-4 py-2 text-xs font-bold text-slate-600 hover:text-blue-600 hover:bg-blue-50/50 flex items-center gap-3 transition-colors">
-                                        <i class="fas fa-eye w-4 text-slate-400"></i> Detail MO
+                                        <i class="fas fa-history w-4 text-slate-400"></i> Riwayat Parsial
                                     </button>
                                     <button onclick="printProductionMO('${mo.id}')" class="text-left px-4 py-2 text-xs font-bold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50/50 flex items-center gap-3 transition-colors">
                                         <i class="fas fa-print w-4 text-slate-400"></i> Cetak MO
                                     </button>
-                                    ${mo.history && mo.history.length > 0 ? `
-                                    <button onclick="window.viewMOHistoryModal('${mo.id}')" class="text-left px-4 py-2 text-xs font-bold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50/50 flex items-center gap-3 transition-colors">
-                                        <i class="fas fa-history w-4 text-slate-400"></i> Riwayat Parsial
-                                    </button>
-                                    ` : ''}
                                     ${mo.status !== 'DONE' ? `
                                     <button onclick="openCompleteMOModal('${mo.id}')" class="text-left px-4 py-2 text-xs font-black text-emerald-600 hover:bg-emerald-50/50 flex items-center gap-3 transition-colors">
                                         <i class="fas fa-check-circle w-4 text-emerald-500"></i> Selesaikan
@@ -918,37 +1169,129 @@ window.filterMOProducts = () => {
     // No, better let user select manually.
 };
 
-window.addRMRowMO = () => {
+window.addRMRowMO = (itemId = '', qty = 0, location = 'GUDANG') => {
     const list = document.getElementById('mo_rm_list');
     if (!list) return;
 
+    const rowId = 'rm_row_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
     const row = document.createElement('div');
-    row.className = 'flex items-center gap-2 group animate-in slide-in-from-left-2 duration-300';
-
-    // Get options from hidden select
-    const opts = document.getElementById('mo_rm_opts')?.innerHTML || '';
+    row.className = 'flex items-start gap-2 group animate-in slide-in-from-left-2 duration-300';
+    row.id = rowId;
 
     row.innerHTML = `
-        <div class="w-24">
-            <select class="mo_rm_loc w-full border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold bg-white focus:border-indigo-500 outline-none">
-                <option value="WHS">GUDANG</option>
+        <div class="w-24 shrink-0">
+            <select class="mo_rm_location w-full border border-slate-200 rounded-lg px-2 py-2 text-[10px] font-bold bg-white focus:border-indigo-500 outline-none uppercase">
+                <option value="GUDANG" ${location === 'GUDANG' || location === 'WHS' ? 'selected' : ''}>GUDANG</option>
+                <option value="BUMBU" ${location === 'BUMBU' ? 'selected' : ''}>BUMBU</option>
             </select>
         </div>
-        <div class="flex-1">
-            <select class="mo_rm_item w-full border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold bg-white focus:border-indigo-500 outline-none">
-                <option value="">-- Pilih Bahan --</option>${opts}
-            </select>
+        <div class="flex-1 relative">
+            <div id="${rowId}_trigger"
+                onclick="openRMDropdown('${rowId}')"
+                class="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-400 cursor-pointer hover:border-indigo-400 hover:bg-slate-50 transition-all flex justify-between items-center h-[34px] shadow-sm">
+                <span id="${rowId}_label" class="truncate pr-2">-- Pilih Bahan --</span>
+                <i class="fas fa-chevron-down text-[9px] text-slate-300"></i>
+            </div>
+            <input type="hidden" class="mo_rm_item" id="${rowId}_val" value="${itemId || ''}">
+            <input type="hidden" class="mo_rm_unit" id="${rowId}_unit">
+            <input type="hidden" class="mo_rm_stock" id="${rowId}_stock">
+
+            <div id="${rowId}_dropdown" class="hidden absolute z-[500] top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                <div class="p-2 border-b border-slate-50 bg-slate-50/50">
+                    <input type="text" placeholder="Cari bahan baku..." oninput="filterRMDropdown('${rowId}', this.value)"
+                        class="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:border-indigo-400 transition-all">
+                </div>
+                <div id="${rowId}_list" class="max-h-52 overflow-y-auto p-1 custom-scrollbar">
+                    <!-- populated by openRMDropdown -->
+                </div>
+            </div>
         </div>
-        <div class="w-28 flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2">
-            <input type="text" inputmode="decimal" class="mo_rm_qty w-full border-0 p-1.5 text-xs font-black text-indigo-700 text-right focus:ring-0 outline-none" placeholder="0.00">
+        <div class="w-28 flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 shrink-0">
+            <input type="text" inputmode="decimal" class="mo_rm_qty w-full border-0 p-1.5 text-xs font-black text-indigo-700 text-right focus:ring-0 outline-none" placeholder="0.00" value="${qty || ''}">
             <span class="text-[9px] font-black text-slate-400 uppercase tracking-tighter">Kg</span>
         </div>
-        <button type="button" onclick="removeRMRowMO(this)" class="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 transition-colors">
+        <button type="button" onclick="removeRMRowMO(this)" class="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 transition-colors shrink-0 mt-0.5">
             <i class="fas fa-times-circle"></i>
         </button>`;
 
     list.appendChild(row);
+
+    if (itemId) {
+        const opts = document.getElementById('mo_rm_opts');
+        if (opts) {
+            const opt = Array.from(opts.options).find(o => o.value === itemId);
+            if (opt) {
+                const stock = opt.getAttribute('data-stock') || '0';
+                const unit = opt.getAttribute('data-unit') || 'Kg';
+                const itemText = opt.text;
+                selectRMItem(rowId, itemId, itemText, unit, stock);
+            }
+        }
+    }
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function closeRM(e) {
+        const dd = document.getElementById(rowId + '_dropdown');
+        const trigger = document.getElementById(rowId + '_trigger');
+        if (dd && !dd.contains(e.target) && !trigger?.contains(e.target)) {
+            dd.classList.add('hidden');
+        }
+    });
 };
+
+window.openRMDropdown = (rowId) => {
+    const dd = document.getElementById(rowId + '_dropdown');
+    if (!dd) return;
+    const isHidden = dd.classList.contains('hidden');
+    // Close all other open RM dropdowns
+    document.querySelectorAll('[id$="_dropdown"][id^="rm_row_"]').forEach(d => d.classList.add('hidden'));
+    if (isHidden) {
+        renderRMDropdownList(rowId, '');
+        dd.classList.remove('hidden');
+        // Focus search
+        setTimeout(() => dd.querySelector('input')?.focus(), 50);
+    }
+};
+
+window.renderRMDropdownList = (rowId, query) => {
+    const listEl = document.getElementById(rowId + '_list');
+    if (!listEl) return;
+    const opts = document.getElementById('mo_rm_opts');
+    if (!opts) return;
+    const q = (query || '').toLowerCase();
+    const items = Array.from(opts.options).filter(o => o.value && o.text.toLowerCase().includes(q));
+    if (items.length === 0) {
+        listEl.innerHTML = '<div class="px-4 py-6 text-center text-xs text-slate-300 italic">Tidak ada bahan ditemukan</div>';
+        return;
+    }
+    listEl.innerHTML = items.map(o => {
+        const stock = o.getAttribute('data-stock') || '0';
+        const unit = o.getAttribute('data-unit') || 'Kg';
+        return `<div onclick="selectRMItem('${rowId}', '${o.value}', '${o.text.replace(/'/g,"&apos;")}', '${unit}', '${stock}')"
+            class="px-3 py-2 text-xs font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 rounded-lg cursor-pointer transition-colors m-0.5 flex justify-between items-center">
+            <span>${o.getAttribute('data-label') || o.text.split(' (')[0]}</span>
+            <span class="text-[10px] text-slate-400 font-normal ml-2 shrink-0">Stok: ${parseFloat(stock).toFixed(0)} ${unit}</span>
+        </div>`;
+    }).join('');
+};
+
+window.filterRMDropdown = (rowId, q) => renderRMDropdownList(rowId, q);
+
+window.selectRMItem = (rowId, itemId, itemText, unit, stock) => {
+    const label = document.getElementById(rowId + '_label');
+    const val = document.getElementById(rowId + '_val');
+    const unitEl = document.getElementById(rowId + '_unit');
+    const stockEl = document.getElementById(rowId + '_stock');
+    const dd = document.getElementById(rowId + '_dropdown');
+    // Display only item name (without stock text)
+    const displayName = itemText.split(' (')[0];
+    if (label) { label.textContent = displayName; label.classList.remove('text-slate-400'); label.classList.add('text-slate-800'); }
+    if (val) val.value = itemId;
+    if (unitEl) unitEl.value = unit;
+    if (stockEl) stockEl.value = stock;
+    dd?.classList.add('hidden');
+};
+
 
 window.removeRMRowMO = (btn) => {
     btn.closest('.flex').remove();
@@ -1117,11 +1460,10 @@ window.startMO = async () => {
     try {
         await api.startProductionOrder(moData);
         showToast(`MO ${moNumber} dimulai!`, 'success');
-        // Ensure the list shows today's MO after submit
-        window._prodSearchPerformed = true;
-        const todayStr2 = new Date().toISOString().split('T')[0];
-        if (!window._prodFilters) window._prodFilters = {};
-        if (!window._prodFilters.end || window._prodFilters.end < todayStr2) window._prodFilters.end = todayStr2;
+        // Reset date filter so it shows today's MOs by default
+        if (!window._prodFilters) window._prodFilters = { stage: '', search: '', start: '', end: '' };
+        window._prodFilters.start = '';
+        window._prodFilters.end = '';
         await renderProductionMO();
     } catch (err) {
         showToast(err.message, 'error');
@@ -2119,24 +2461,7 @@ window.addOvenBasahOutputRow = () => {
 
     if (emptyMsg) emptyMsg.classList.add('hidden');
 };
-
-window.addRMRowMO = (itemId = '', qty = 0, location = 'GUDANG') => {
-    const list = document.getElementById('mo_rm_list');
-    const optsEl = document.getElementById('mo_rm_opts');
-    if (!list || !optsEl) return;
-    const div = document.createElement('div');
-    div.className = 'flex items-center gap-2';
-    div.innerHTML = `
-        <select class="mo_rm_location w-24 border border-gray-300 rounded-lg px-2 py-2 text-[10px] font-black text-indigo-600 bg-white uppercase">
-            <option value="GUDANG" ${location === 'GUDANG' ? 'selected' : ''}>Gudang</option>
-            <option value="BUMBU" ${location === 'BUMBU' ? 'selected' : ''}>Bumbu</option>
-        </select>
-        <select class="mo_rm_item flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white">${optsEl.innerHTML}</select>
-        <input type="number" class="mo_rm_qty w-28 border border-gray-300 rounded-lg px-3 py-2 text-sm" min="0.01" step="0.01" placeholder="Qty" value="${qty || ''}">
-        <button type="button" onclick="this.parentElement.remove()" class="text-red-400 hover:text-red-600 px-2"><i class="fas fa-times"></i></button>`;
-    list.appendChild(div);
-    if (itemId) div.querySelector('.mo_rm_item').value = itemId;
-};
+// Duplicate addRMRowMO removed (using custom fancy search dropdown version defined earlier)
 
 window.loadBOMMaterialsToMO = async () => {
     const bomId = document.getElementById('mo_bom_id')?.value;

@@ -132,46 +132,153 @@ router.post('/orders/:id/complete', authenticateToken, requirePermission('produk
 
         // --- 1. PROSES OVEN BASAH ---
         if (stage === 'OVEN_BASAH') {
-            // Kurangi Bahan Baku (OUT)
-            if (mo.inputItems && Array.isArray(mo.inputItems)) {
-                for (const item of mo.inputItems) {
-                    await StockTransaction.create({
-                        id: generateId(),
-                        txNo: `PRD-OUT-${Date.now().toString().slice(-6)}`,
-                        date: new Date(),
-                        itemId: item.inventoryItemId,
-                        itemName: item.itemName,
-                        type: 'OUT',
-                        qty: parseFloat(item.qty),
-                        reference: 'PRODUCTION_OUT',
-                        referenceId: moRecord.id,
-                        notes: `FINISH Oven Basah MO ${moNumber}: Consumed for ${mo.productName}`,
-                        createdBy: req.user.email,
-                        location: 'WHS'
-                    }, { transaction: t });
+            if (updates.isPartial) {
+                const partialDate = updates.partialDate ? new Date(updates.partialDate) : new Date();
+                
+                // Reduce raw materials used in this run
+                if (updates.partialInputItems && Array.isArray(updates.partialInputItems)) {
+                    for (const item of updates.partialInputItems) {
+                        const qtyVal = parseFloat(item.qty);
+                        if (isNaN(qtyVal) || qtyVal <= 0) continue;
+                        await StockTransaction.create({
+                            id: generateId(),
+                            txNo: moNumber,
+                            date: partialDate,
+                            itemId: item.inventoryItemId,
+                            itemName: item.itemName,
+                            type: 'OUT',
+                            qty: qtyVal,
+                            reference: 'PRODUCTION_OUT',
+                            referenceId: moRecord.id,
+                            notes: `PARTIAL Oven Basah MO ${moNumber}: Consumed for ${mo.productName}. Notes: ${updates.notes || ''}`,
+                            createdBy: req.user.email,
+                            location: 'WHS'
+                        }, { transaction: t });
+                    }
                 }
-            }
 
-            // Tambah Hasil Produksi ke WIP Oven Basah (IN)
-            if (mo.outputProducts && Array.isArray(mo.outputProducts)) {
-                for (const op of mo.outputProducts) {
-                    const wipItemId = await ensureWIPItem(op.itemId, 'Oven Basah', t);
-                    const targetName = op.itemName + ' (Oven Basah)';
-                    
-                    await StockTransaction.create({
-                        id: generateId(),
-                        txNo: `PRD-IN-${Date.now().toString().slice(-6)}`,
-                        date: new Date(),
-                        itemId: wipItemId,
-                        itemName: targetName,
-                        type: 'IN',
-                        qty: parseFloat(op.qty),
-                        reference: 'PRODUCTION_IN',
-                        referenceId: moRecord.id,
-                        notes: `FINISH Oven Basah MO ${moNumber}: Produced ${targetName}`,
-                        createdBy: req.user.email,
-                        location: 'OVEN_BASAH'
-                    }, { transaction: t });
+                // Add products produced in this run
+                if (updates.partialOutputProducts && Array.isArray(updates.partialOutputProducts)) {
+                    for (const op of updates.partialOutputProducts) {
+                        const qtyVal = parseFloat(op.qty);
+                        if (isNaN(qtyVal) || qtyVal <= 0) continue;
+                        const wipItemId = await ensureWIPItem(op.itemId, 'Oven Basah', t);
+                        const targetName = op.itemName + ' (Oven Basah)';
+                        
+                        await StockTransaction.create({
+                            id: generateId(),
+                            txNo: moNumber,
+                            date: partialDate,
+                            itemId: wipItemId,
+                            itemName: targetName,
+                            type: 'IN',
+                            qty: qtyVal,
+                            reference: 'PRODUCTION_IN',
+                            referenceId: moRecord.id,
+                            notes: `PARTIAL Oven Basah MO ${moNumber}: Produced ${targetName}. Notes: ${updates.notes || ''}`,
+                            createdBy: req.user.email,
+                            location: 'OVEN_BASAH'
+                        }, { transaction: t });
+                    }
+                }
+
+                // Update MO history
+                const currentHistory = moRecord.data.history || [];
+                const historyEntry = {
+                    id: generateId(),
+                    date: updates.partialDate || new Date().toISOString().split('T')[0],
+                    inputItems: updates.partialInputItems || [],
+                    outputProducts: updates.partialOutputProducts || [],
+                    notes: updates.notes || '',
+                    createdBy: req.user.email
+                };
+                currentHistory.push(historyEntry);
+
+                // Recalculate cumulative outputQty and outputProducts
+                const cumulativeOutput = {};
+                currentHistory.forEach(h => {
+                    (h.outputProducts || []).forEach(op => {
+                        const val = parseFloat(op.qty);
+                        if (!isNaN(val)) {
+                            cumulativeOutput[op.itemId] = (cumulativeOutput[op.itemId] || 0) + val;
+                        }
+                    });
+                });
+
+                // Update outputProducts for the MO
+                const updatedOutputProducts = Object.entries(cumulativeOutput).map(([itemId, qty]) => {
+                    const originalOP = (mo.outputProducts || []).find(op => op.itemId === itemId) || 
+                                     (mo.targetProducts || []).find(tp => tp.itemId === itemId) || {};
+                    return {
+                        itemId,
+                        itemName: originalOP.itemName || '',
+                        qty
+                    };
+                });
+
+                const totalOutputQty = Object.values(cumulativeOutput).reduce((sum, q) => sum + q, 0);
+
+                // Update mo object
+                mo.history = currentHistory;
+                mo.outputProducts = updatedOutputProducts;
+                mo.outputQty = totalOutputQty;
+                mo.outputSacks = totalOutputQty; // in Kg
+                if (updatedOutputProducts.length > 0) {
+                    mo.outputItemId = updatedOutputProducts[0].itemId;
+                }
+                
+                if (updates.status === 'DONE') {
+                    mo.status = 'DONE';
+                    mo.completedAt = updates.partialDate || new Date().toISOString();
+                } else {
+                    mo.status = 'PARTIAL';
+                }
+                
+                mo.notes = (moRecord.data.notes || '') + (updates.notes ? `\n[PARTIAL ${historyEntry.date}]: ` + updates.notes : '');
+
+            } else {
+                // Fallback / legacy complete flow
+                // Kurangi Bahan Baku (OUT)
+                if (mo.inputItems && Array.isArray(mo.inputItems)) {
+                    for (const item of mo.inputItems) {
+                        await StockTransaction.create({
+                            id: generateId(),
+                            txNo: moNumber,
+                            date: new Date(),
+                            itemId: item.inventoryItemId,
+                            itemName: item.itemName,
+                            type: 'OUT',
+                            qty: parseFloat(item.qty),
+                            reference: 'PRODUCTION_OUT',
+                            referenceId: moRecord.id,
+                            notes: `FINISH Oven Basah MO ${moNumber}: Consumed for ${mo.productName}`,
+                            createdBy: req.user.email,
+                            location: 'WHS'
+                        }, { transaction: t });
+                    }
+                }
+
+                // Tambah Hasil Produksi ke WIP Oven Basah (IN)
+                if (mo.outputProducts && Array.isArray(mo.outputProducts)) {
+                    for (const op of mo.outputProducts) {
+                        const wipItemId = await ensureWIPItem(op.itemId, 'Oven Basah', t);
+                        const targetName = op.itemName + ' (Oven Basah)';
+                        
+                        await StockTransaction.create({
+                            id: generateId(),
+                            txNo: moNumber,
+                            date: new Date(),
+                            itemId: wipItemId,
+                            itemName: targetName,
+                            type: 'IN',
+                            qty: parseFloat(op.qty),
+                            reference: 'PRODUCTION_IN',
+                            referenceId: moRecord.id,
+                            notes: `FINISH Oven Basah MO ${moNumber}: Produced ${targetName}`,
+                            createdBy: req.user.email,
+                            location: 'OVEN_BASAH'
+                        }, { transaction: t });
+                    }
                 }
             }
         }
@@ -186,7 +293,7 @@ router.post('/orders/:id/complete', authenticateToken, requirePermission('produk
                     // OUT dari Oven Basah
                     await StockTransaction.create({
                         id: generateId(),
-                        txNo: `PRD-OUT-${Date.now().toString().slice(-6)}`,
+                        txNo: moNumber,
                         date: new Date(),
                         itemId: inputWipId,
                         itemName: tp.itemName + ' (Oven Basah)',
@@ -202,7 +309,7 @@ router.post('/orders/:id/complete', authenticateToken, requirePermission('produk
                     // IN ke Oven Kering
                     await StockTransaction.create({
                         id: generateId(),
-                        txNo: `PRD-IN-${Date.now().toString().slice(-6)}`,
+                        txNo: moNumber,
                         date: new Date(),
                         itemId: outputWipId,
                         itemName: tp.itemName + ' (Oven Kering)',
@@ -232,7 +339,7 @@ router.post('/orders/:id/complete', authenticateToken, requirePermission('produk
                     // OUT dari Oven Kering
                     await StockTransaction.create({
                         id: generateId(),
-                        txNo: `PRD-OUT-${Date.now().toString().slice(-6)}`,
+                        txNo: moNumber,
                         date: new Date(),
                         itemId: inputWipId,
                         itemName: tp.itemName + ' (Oven Kering)',
@@ -248,7 +355,7 @@ router.post('/orders/:id/complete', authenticateToken, requirePermission('produk
                     // IN ke Gudang Jadi (WHS)
                     await StockTransaction.create({
                         id: generateId(),
-                        txNo: `PRD-IN-${Date.now().toString().slice(-6)}`,
+                        txNo: moNumber,
                         date: new Date(),
                         itemId: outputItemId,
                         itemName: tp.itemName,
@@ -270,7 +377,7 @@ router.post('/orders/:id/complete', authenticateToken, requirePermission('produk
                 // OUT dari Oven Kering
                 await StockTransaction.create({
                     id: generateId(),
-                    txNo: `PRD-OUT-${Date.now().toString().slice(-6)}`,
+                    txNo: moNumber,
                     date: new Date(),
                     itemId: inputWipId,
                     type: 'OUT',
@@ -285,7 +392,7 @@ router.post('/orders/:id/complete', authenticateToken, requirePermission('produk
                 // IN ke Gudang Jadi (WHS)
                 await StockTransaction.create({
                     id: generateId(),
-                    txNo: `PRD-IN-${Date.now().toString().slice(-6)}`,
+                    txNo: moNumber,
                     date: new Date(),
                     itemId: outputItemId,
                     type: 'IN',

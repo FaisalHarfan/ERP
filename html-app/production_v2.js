@@ -275,7 +275,10 @@ window.renderProductionMO = async () => {
         if (!hasDateFilter) {
             const today = new Date(); today.setHours(0, 0, 0, 0);
             const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
-            if (moDate < today || moDate > todayEnd) return false;
+            const isToday = moDate >= today && moDate <= todayEnd;
+            // Tampilkan MO hari ini, atau MO hari sebelumnya yang masih PROSES/PARTIAL (belum selesai)
+            const isUnfinished = m.status === 'IN_PROGRESS' || m.status === 'PARTIAL';
+            if (!isToday && !isUnfinished) return false;
         } else {
             moDate.setHours(0, 0, 0, 0);
             if (f.start) { const sd = new Date(f.start); sd.setHours(0, 0, 0, 0); if (moDate < sd) return false; }
@@ -314,16 +317,11 @@ window.renderProductionMO = async () => {
                             <div id="dropdown-${mo.id}" class="inventory-action-menu hidden absolute right-0 top-full mt-1 w-44 bg-white rounded-xl shadow-[0_10px_25px_-5px_rgba(0,0,0,0.1),0_8px_10px_-6px_rgba(0,0,0,0.1)] border border-slate-100 z-[2000] overflow-hidden text-left animate-in fade-in zoom-in-95 duration-100">
                                 <div class="py-1.5 flex flex-col">
                                     <button onclick="viewProductionMO('${mo.id}')" class="text-left px-4 py-2 text-xs font-bold text-slate-600 hover:text-blue-600 hover:bg-blue-50/50 flex items-center gap-3 transition-colors">
-                                        <i class="fas fa-eye w-4 text-slate-400"></i> Detail MO
+                                        <i class="fas fa-history w-4 text-slate-400"></i> Riwayat Parsial
                                     </button>
                                     <button onclick="printProductionMO('${mo.id}')" class="text-left px-4 py-2 text-xs font-bold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50/50 flex items-center gap-3 transition-colors">
                                         <i class="fas fa-print w-4 text-slate-400"></i> Cetak MO
                                     </button>
-                                    ${mo.history && mo.history.length > 0 ? `
-                                    <button onclick="window.viewMOHistoryModal('${mo.id}')" class="text-left px-4 py-2 text-xs font-bold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50/50 flex items-center gap-3 transition-colors">
-                                        <i class="fas fa-history w-4 text-slate-400"></i> Riwayat Parsial
-                                    </button>
-                                    ` : ''}
                                     ${mo.status !== 'DONE' ? `
                                     <button onclick="openCompleteMOModal('${mo.id}')" class="text-left px-4 py-2 text-xs font-black text-emerald-600 hover:bg-emerald-50/50 flex items-center gap-3 transition-colors">
                                         <i class="fas fa-check-circle w-4 text-emerald-500"></i> Selesaikan
@@ -922,33 +920,111 @@ window.addRMRowMO = () => {
     const list = document.getElementById('mo_rm_list');
     if (!list) return;
 
+    const rowId = 'rm_row_' + Date.now();
     const row = document.createElement('div');
-    row.className = 'flex items-center gap-2 group animate-in slide-in-from-left-2 duration-300';
-
-    // Get options from hidden select
-    const opts = document.getElementById('mo_rm_opts')?.innerHTML || '';
+    row.className = 'flex items-start gap-2 group animate-in slide-in-from-left-2 duration-300';
+    row.id = rowId;
 
     row.innerHTML = `
-        <div class="w-24">
-            <select class="mo_rm_loc w-full border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold bg-white focus:border-indigo-500 outline-none">
+        <div class="w-24 shrink-0">
+            <select class="mo_rm_loc w-full border border-slate-200 rounded-lg px-2 py-2 text-[10px] font-bold bg-white focus:border-indigo-500 outline-none">
                 <option value="WHS">GUDANG</option>
             </select>
         </div>
-        <div class="flex-1">
-            <select class="mo_rm_item w-full border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold bg-white focus:border-indigo-500 outline-none">
-                <option value="">-- Pilih Bahan --</option>${opts}
-            </select>
+        <div class="flex-1 relative">
+            <div id="${rowId}_trigger"
+                onclick="openRMDropdown('${rowId}')"
+                class="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-400 cursor-pointer hover:border-indigo-400 hover:bg-slate-50 transition-all flex justify-between items-center h-[34px] shadow-sm">
+                <span id="${rowId}_label" class="truncate pr-2">-- Pilih Bahan --</span>
+                <i class="fas fa-chevron-down text-[9px] text-slate-300"></i>
+            </div>
+            <input type="hidden" class="mo_rm_item" id="${rowId}_val">
+            <input type="hidden" class="mo_rm_unit" id="${rowId}_unit">
+            <input type="hidden" class="mo_rm_stock" id="${rowId}_stock">
+
+            <div id="${rowId}_dropdown" class="hidden absolute z-[500] top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                <div class="p-2 border-b border-slate-50 bg-slate-50/50">
+                    <input type="text" placeholder="Cari bahan baku..." oninput="filterRMDropdown('${rowId}', this.value)"
+                        class="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold outline-none focus:border-indigo-400 transition-all">
+                </div>
+                <div id="${rowId}_list" class="max-h-52 overflow-y-auto p-1 custom-scrollbar">
+                    <!-- populated by openRMDropdown -->
+                </div>
+            </div>
         </div>
-        <div class="w-28 flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2">
+        <div class="w-28 flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-2 shrink-0">
             <input type="text" inputmode="decimal" class="mo_rm_qty w-full border-0 p-1.5 text-xs font-black text-indigo-700 text-right focus:ring-0 outline-none" placeholder="0.00">
             <span class="text-[9px] font-black text-slate-400 uppercase tracking-tighter">Kg</span>
         </div>
-        <button type="button" onclick="removeRMRowMO(this)" class="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 transition-colors">
+        <button type="button" onclick="removeRMRowMO(this)" class="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 transition-colors shrink-0 mt-0.5">
             <i class="fas fa-times-circle"></i>
         </button>`;
 
     list.appendChild(row);
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function closeRM(e) {
+        const dd = document.getElementById(rowId + '_dropdown');
+        const trigger = document.getElementById(rowId + '_trigger');
+        if (dd && !dd.contains(e.target) && !trigger?.contains(e.target)) {
+            dd.classList.add('hidden');
+        }
+    });
 };
+
+window.openRMDropdown = (rowId) => {
+    const dd = document.getElementById(rowId + '_dropdown');
+    if (!dd) return;
+    const isHidden = dd.classList.contains('hidden');
+    // Close all other open RM dropdowns
+    document.querySelectorAll('[id$="_dropdown"][id^="rm_row_"]').forEach(d => d.classList.add('hidden'));
+    if (isHidden) {
+        renderRMDropdownList(rowId, '');
+        dd.classList.remove('hidden');
+        // Focus search
+        setTimeout(() => dd.querySelector('input')?.focus(), 50);
+    }
+};
+
+window.renderRMDropdownList = (rowId, query) => {
+    const listEl = document.getElementById(rowId + '_list');
+    if (!listEl) return;
+    const opts = document.getElementById('mo_rm_opts');
+    if (!opts) return;
+    const q = (query || '').toLowerCase();
+    const items = Array.from(opts.options).filter(o => o.value && o.text.toLowerCase().includes(q));
+    if (items.length === 0) {
+        listEl.innerHTML = '<div class="px-4 py-6 text-center text-xs text-slate-300 italic">Tidak ada bahan ditemukan</div>';
+        return;
+    }
+    listEl.innerHTML = items.map(o => {
+        const stock = o.getAttribute('data-stock') || '0';
+        const unit = o.getAttribute('data-unit') || 'Kg';
+        return `<div onclick="selectRMItem('${rowId}', '${o.value}', '${o.text.replace(/'/g,"&apos;")}', '${unit}', '${stock}')"
+            class="px-3 py-2 text-xs font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 rounded-lg cursor-pointer transition-colors m-0.5 flex justify-between items-center">
+            <span>${o.getAttribute('data-label') || o.text.split(' (')[0]}</span>
+            <span class="text-[10px] text-slate-400 font-normal ml-2 shrink-0">Stok: ${parseFloat(stock).toFixed(0)} ${unit}</span>
+        </div>`;
+    }).join('');
+};
+
+window.filterRMDropdown = (rowId, q) => renderRMDropdownList(rowId, q);
+
+window.selectRMItem = (rowId, itemId, itemText, unit, stock) => {
+    const label = document.getElementById(rowId + '_label');
+    const val = document.getElementById(rowId + '_val');
+    const unitEl = document.getElementById(rowId + '_unit');
+    const stockEl = document.getElementById(rowId + '_stock');
+    const dd = document.getElementById(rowId + '_dropdown');
+    // Display only item name (without stock text)
+    const displayName = itemText.split(' (')[0];
+    if (label) { label.textContent = displayName; label.classList.remove('text-slate-400'); label.classList.add('text-slate-800'); }
+    if (val) val.value = itemId;
+    if (unitEl) unitEl.value = unit;
+    if (stockEl) stockEl.value = stock;
+    dd?.classList.add('hidden');
+};
+
 
 window.removeRMRowMO = (btn) => {
     btn.closest('.flex').remove();
@@ -1117,11 +1193,10 @@ window.startMO = async () => {
     try {
         await api.startProductionOrder(moData);
         showToast(`MO ${moNumber} dimulai!`, 'success');
-        // Ensure the list shows today's MO after submit
-        window._prodSearchPerformed = true;
-        const todayStr2 = new Date().toISOString().split('T')[0];
-        if (!window._prodFilters) window._prodFilters = {};
-        if (!window._prodFilters.end || window._prodFilters.end < todayStr2) window._prodFilters.end = todayStr2;
+        // Reset date filter so it shows today's MOs by default
+        if (!window._prodFilters) window._prodFilters = { stage: '', search: '', start: '', end: '' };
+        window._prodFilters.start = '';
+        window._prodFilters.end = '';
         await renderProductionMO();
     } catch (err) {
         showToast(err.message, 'error');

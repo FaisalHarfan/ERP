@@ -1800,21 +1800,172 @@ window.saveStockOut = async () => {
 };
 
 // â”€â”€â”€ 4. PRODUCTION COMMAND CENTER (UNIFIED) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+window.mfgBoardFilters = window.mfgBoardFilters || {
+    periodType: 'year', // 'year', 'month', 'custom', 'all'
+    fiscalYear: new Date().getFullYear(),
+    month: new Date().getMonth() + 1,
+    startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0]
+};
+
+window.toggleMfgBoardDropdown = (dropdownId) => {
+    const dd = document.getElementById(dropdownId);
+    if (!dd) return;
+    const isHidden = dd.classList.contains('hidden');
+    document.querySelectorAll('[id$="_dropdown"][id^="mfg_board_"]').forEach(d => {
+        if (d.id !== dropdownId) d.classList.add('hidden');
+    });
+    if (isHidden) {
+        dd.classList.remove('hidden');
+    } else {
+        dd.classList.add('hidden');
+    }
+};
+
+window.selectMfgBoardPeriodType = (val, labelText) => {
+    const hiddenInput = document.getElementById('mfg_board_period_type');
+    const labelSpan = document.getElementById('mfg_board_period_type_label');
+    const dd = document.getElementById('mfg_board_period_type_dropdown');
+
+    if (hiddenInput) hiddenInput.value = val;
+    if (labelSpan) labelSpan.textContent = labelText;
+    dd?.classList.add('hidden');
+
+    window.onMfgBoardPeriodChangeDirect(val);
+};
+
+window.selectMfgBoardYear = (year) => {
+    const hiddenInput = document.getElementById('mfg_board_year');
+    const labelSpan = document.getElementById('mfg_board_year_label');
+    const dd = document.getElementById('mfg_board_year_dropdown');
+
+    if (hiddenInput) hiddenInput.value = year;
+    if (labelSpan) labelSpan.textContent = year;
+    dd?.classList.add('hidden');
+};
+
+window.selectMfgBoardMonth = (monthVal, monthName) => {
+    const hiddenInput = document.getElementById('mfg_board_month');
+    const labelSpan = document.getElementById('mfg_board_month_label');
+    const dd = document.getElementById('mfg_board_month_dropdown');
+
+    if (hiddenInput) hiddenInput.value = monthVal;
+    if (labelSpan) labelSpan.textContent = monthName;
+    dd?.classList.add('hidden');
+};
+
+window.onMfgBoardPeriodChangeDirect = (periodType) => {
+    const yearWrap = document.getElementById('mfg_board_year_wrap');
+    const monthWrap = document.getElementById('mfg_board_month_wrap');
+    const startWrap = document.getElementById('mfg_board_start_wrap');
+    const endWrap = document.getElementById('mfg_board_end_wrap');
+
+    if (periodType === 'year') {
+        yearWrap?.classList.remove('hidden');
+        monthWrap?.classList.add('hidden');
+        startWrap?.classList.add('hidden');
+        endWrap?.classList.add('hidden');
+    } else if (periodType === 'month') {
+        yearWrap?.classList.remove('hidden');
+        monthWrap?.classList.remove('hidden');
+        startWrap?.classList.add('hidden');
+        endWrap?.classList.add('hidden');
+    } else if (periodType === 'custom') {
+        yearWrap?.classList.add('hidden');
+        monthWrap?.classList.add('hidden');
+        startWrap?.classList.remove('hidden');
+        endWrap?.classList.remove('hidden');
+    } else if (periodType === 'all') {
+        yearWrap?.classList.add('hidden');
+        monthWrap?.classList.add('hidden');
+        startWrap?.classList.add('hidden');
+        endWrap?.classList.add('hidden');
+    }
+};
+
+window.applyMfgBoardFilters = () => {
+    const periodType = document.getElementById('mfg_board_period_type')?.value;
+    const fiscalYear = parseInt(document.getElementById('mfg_board_year')?.value) || new Date().getFullYear();
+    const month = parseInt(document.getElementById('mfg_board_month')?.value) || 1;
+    const startDate = document.getElementById('mfg_board_start')?.value;
+    const endDate = document.getElementById('mfg_board_end')?.value;
+
+    window.mfgBoardFilters.periodType = periodType;
+    window.mfgBoardFilters.fiscalYear = fiscalYear;
+    window.mfgBoardFilters.month = month;
+    window.mfgBoardFilters.startDate = startDate;
+    window.mfgBoardFilters.endDate = endDate;
+
+    showToast('Filter Analisis Produksi Diterapkan', 'success');
+    renderProductionBoard();
+};
+
+// Global click listener to close dropdowns when clicking outside
+document.addEventListener('click', (e) => {
+    const dropdowns = ['mfg_board_period_type', 'mfg_board_year', 'mfg_board_month'];
+    dropdowns.forEach(prefix => {
+        const dd = document.getElementById(prefix + '_dropdown');
+        const trigger = document.getElementById(prefix + '_trigger');
+        if (dd && !dd.contains(e.target) && !trigger?.contains(e.target)) {
+            dd.classList.add('hidden');
+        }
+    });
+});
+
 function renderProductionBoard() {
     const canEdit = getModulePermission('logistik').edit;
     document.getElementById('pageTitle').innerText = 'Production Command Center';
     const mc = document.getElementById('main-content');
     
-    const todayStr = new Date().toISOString().split('T')[0];
     const mos = db.read('productionOrders') || [];
-    const activeMOs = mos.filter(m => m.status === 'IN_PROGRESS');
-    const finishedToday = mos.filter(m => m.status === 'DONE' && m.updatedAt?.startsWith(todayStr));
+    const filters = window.mfgBoardFilters;
+
+    let startDate = null;
+    let endDate = null;
+
+    if (filters.periodType === 'year') {
+        startDate = new Date(filters.fiscalYear, 0, 1, 0, 0, 0, 0);
+        endDate = new Date(filters.fiscalYear, 11, 31, 23, 59, 59, 999);
+    } else if (filters.periodType === 'month') {
+        startDate = new Date(filters.fiscalYear, filters.month - 1, 1, 0, 0, 0, 0);
+        endDate = new Date(filters.fiscalYear, filters.month, 0, 23, 59, 59, 999);
+    } else if (filters.periodType === 'custom') {
+        if (filters.startDate) {
+            startDate = new Date(filters.startDate);
+            startDate.setHours(0, 0, 0, 0);
+        }
+        if (filters.endDate) {
+            endDate = new Date(filters.endDate);
+            endDate.setHours(23, 59, 59, 999);
+        }
+    }
+
+    // Filter mos by date range
+    let filteredMOs = mos.filter(m => {
+        const d = new Date(m.date || m.createdAt);
+        if (startDate && d < startDate) return false;
+        if (endDate && d > endDate) return false;
+        return true;
+    });
+
+    const activeMOs = filteredMOs.filter(m => m.status === 'IN_PROGRESS' || m.status === 'PARTIAL');
+    const finishedMOs = filteredMOs.filter(m => m.status === 'DONE' || m.status === 'PARTIAL');
     
     // Calculate Stats
-    const todayOutput = finishedToday.reduce((s, m) => s + (m.outputQty || 0), 0);
-    const avgYield = finishedToday.length ? (finishedToday.reduce((s, m) => s + (m.yield || 100), 0) / finishedToday.length).toFixed(1) : '100';
+    const totalOutput = finishedMOs.reduce((s, m) => s + (m.outputQty || 0), 0);
+    const avgYield = finishedMOs.length ? (finishedMOs.reduce((s, m) => s + (m.yield || 100), 0) / finishedMOs.length).toFixed(1) : '100';
 
-
+    let outputTitle = 'Output Hari Ini (Kg)';
+    if (filters.periodType === 'month') {
+        const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        outputTitle = `Output (${monthNames[filters.month - 1]} ${filters.fiscalYear}) (Kg)`;
+    } else if (filters.periodType === 'year') {
+        outputTitle = `Output (Tahun ${filters.fiscalYear}) (Kg)`;
+    } else if (filters.periodType === 'custom') {
+        outputTitle = 'Output (Periode Terpilih) (Kg)';
+    } else {
+        outputTitle = 'Total Output (Semua Waktu) (Kg)';
+    }
 
     const frappeCard = (title, value) => `
         <div class="bg-white rounded-xl border border-gray-100 p-5 flex flex-col justify-between shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] h-[104px]">
@@ -1828,7 +1979,7 @@ function renderProductionBoard() {
     const statsHeader = `
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-8">
             ${frappeCard('Batch Aktif', activeMOs.length)}
-            ${frappeCard('Output Hari Ini (Kg)', invFmt(todayOutput))}
+            ${frappeCard(outputTitle, invFmt(totalOutput))}
             ${frappeCard('Rata-rata Yield', avgYield + '%')}
         </div>
     `;
@@ -1878,15 +2029,113 @@ function renderProductionBoard() {
         </div>
     `;
 
+    const yearListOptions = [];
+    const minYear = 2024;
+    const maxYear = new Date().getFullYear() + 2;
+    for (let y = minYear; y <= maxYear; y++) {
+        yearListOptions.push(y);
+    }
+    const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
     mc.innerHTML = `
-        <div class="animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div class="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-full mx-auto space-y-4 pt-2 font-sans">
+            <!-- Global Date Filter Bar -->
+            <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] flex flex-wrap items-center gap-4 justify-between mb-6">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                        <i class="fas fa-calendar-alt text-sm"></i>
+                    </div>
+                    <span class="text-sm font-bold text-slate-800">Filter Analisis Produksi</span>
+                </div>
+                
+                <div class="flex flex-wrap items-center gap-3">
+                    <!-- Tipe Periode Custom Dropdown -->
+                    <div class="flex flex-col min-w-[150px] relative" id="mfg_board_period_type_container">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Tipe Periode</span>
+                        <div id="mfg_board_period_type_trigger" onclick="toggleMfgBoardDropdown('mfg_board_period_type_dropdown')" 
+                            class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 cursor-pointer hover:bg-slate-100/50 transition-all flex justify-between items-center h-11 shadow-sm">
+                            <span id="mfg_board_period_type_label">
+                                ${filters.periodType === 'year' ? 'Per Tahun' : 
+                                  filters.periodType === 'month' ? 'Per Bulan' : 
+                                  filters.periodType === 'custom' ? 'Kustom Tanggal' : 'Semua Waktu'}
+                            </span>
+                            <i class="fas fa-chevron-down text-[9px] text-slate-400"></i>
+                        </div>
+                        <input type="hidden" id="mfg_board_period_type" value="${filters.periodType}">
+                        
+                        <div id="mfg_board_period_type_dropdown" class="absolute left-0 top-full mt-2 bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] hidden overflow-hidden animate-in fade-in zoom-in-95 duration-150 min-w-full">
+                            <div class="p-1.5 flex flex-col">
+                                <div onclick="selectMfgBoardPeriodType('year', 'Per Tahun')" class="px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5 ${filters.periodType === 'year' ? 'bg-slate-50 text-blue-600 font-extrabold' : ''}">Per Tahun</div>
+                                <div onclick="selectMfgBoardPeriodType('month', 'Per Bulan')" class="px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5 ${filters.periodType === 'month' ? 'bg-slate-50 text-blue-600 font-extrabold' : ''}">Per Bulan</div>
+                                <div onclick="selectMfgBoardPeriodType('custom', 'Kustom Tanggal')" class="px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5 ${filters.periodType === 'custom' ? 'bg-slate-50 text-blue-600 font-extrabold' : ''}">Kustom Tanggal</div>
+                                <div onclick="selectMfgBoardPeriodType('all', 'Semua Waktu')" class="px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5 ${filters.periodType === 'all' ? 'bg-slate-50 text-blue-600 font-extrabold' : ''}">Semua Waktu</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tahun Custom Dropdown -->
+                    <div class="flex flex-col min-w-[100px] relative ${filters.periodType === 'custom' || filters.periodType === 'all' ? 'hidden' : ''}" id="mfg_board_year_wrap">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Tahun</span>
+                        <div id="mfg_board_year_trigger" onclick="toggleMfgBoardDropdown('mfg_board_year_dropdown')" 
+                            class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 cursor-pointer hover:bg-slate-100/50 transition-all flex justify-between items-center h-11 shadow-sm">
+                            <span id="mfg_board_year_label">${filters.fiscalYear}</span>
+                            <i class="fas fa-chevron-down text-[9px] text-slate-400"></i>
+                        </div>
+                        <input type="hidden" id="mfg_board_year" value="${filters.fiscalYear}">
+                        
+                        <div id="mfg_board_year_dropdown" class="absolute left-0 top-full mt-2 bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] hidden overflow-hidden animate-in fade-in zoom-in-95 duration-150 min-w-full max-h-60 overflow-y-auto">
+                            <div class="p-1.5 flex flex-col">
+                                ${yearListOptions.map(y => `
+                                    <div onclick="selectMfgBoardYear(${y})" class="px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5 ${filters.fiscalYear === y ? 'bg-slate-50 text-blue-600 font-extrabold' : ''}">${y}</div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bulan Custom Dropdown -->
+                    <div class="flex flex-col min-w-[140px] relative ${filters.periodType !== 'month' ? 'hidden' : ''}" id="mfg_board_month_wrap">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Bulan</span>
+                        <div id="mfg_board_month_trigger" onclick="toggleMfgBoardDropdown('mfg_board_month_dropdown')" 
+                            class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 cursor-pointer hover:bg-slate-100/50 transition-all flex justify-between items-center h-11 shadow-sm">
+                            <span id="mfg_board_month_label">${monthNames[filters.month - 1]}</span>
+                            <i class="fas fa-chevron-down text-[9px] text-slate-400"></i>
+                        </div>
+                        <input type="hidden" id="mfg_board_month" value="${filters.month}">
+                        
+                        <div id="mfg_board_month_dropdown" class="absolute left-0 top-full mt-2 bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] hidden overflow-hidden animate-in fade-in zoom-in-95 duration-150 min-w-full max-h-60 overflow-y-auto">
+                            <div class="p-1.5 flex flex-col">
+                                ${monthNames.map((name, index) => `
+                                    <div onclick="selectMfgBoardMonth(${index + 1}, '${name}')" class="px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5 ${filters.month === (index + 1) ? 'bg-slate-50 text-blue-600 font-extrabold' : ''}">${name}</div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col ${filters.periodType !== 'custom' ? 'hidden' : ''}" id="mfg_board_start_wrap">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Dari Tanggal</span>
+                        <input type="date" id="mfg_board_start" value="${filters.startDate || ''}" class="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all h-11 shadow-sm">
+                    </div>
+
+                    <div class="flex flex-col ${filters.periodType !== 'custom' ? 'hidden' : ''}" id="mfg_board_end_wrap">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Sampai Tanggal</span>
+                        <input type="date" id="mfg_board_end" value="${filters.endDate || ''}" class="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all h-11 shadow-sm">
+                    </div>
+
+                    <div class="flex flex-col justify-end pt-[21px]">
+                        <button onclick="window.applyMfgBoardFilters()" class="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-6 rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-[0_4px_12px_rgba(37,99,235,0.2)] hover:shadow-[0_6px_20px_rgba(37,99,235,0.3)] active:scale-95 flex items-center justify-center gap-2 h-11 hover:-translate-y-0.5 duration-150">
+                            <i class="fas fa-filter text-xs"></i> Terapkan Filter
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             ${statsHeader}
             ${chartSection}
         </div>
     `;
 
     setTimeout(() => {
-        if(window.initProdCharts) window.initProdCharts(mos);
+        if(window.initProdCharts) window.initProdCharts(filteredMOs);
     }, 100);
 }
 
@@ -1900,9 +2149,10 @@ window.initProdCharts = function(mos) {
     // 1. Tren Output Produksi (Bar Chart)
     const ctxOutput = document.getElementById('chartProdOutput');
     if (ctxOutput) {
+        const endAnchor = window.mfgBoardFilters?.endDate ? new Date(window.mfgBoardFilters.endDate) : new Date();
         const last7Days = [];
         for (let i = 6; i >= 0; i--) {
-            const d = new Date();
+            const d = new Date(endAnchor);
             d.setDate(d.getDate() - i);
             last7Days.push(d.toISOString().split('T')[0]);
         }
@@ -1911,7 +2161,7 @@ window.initProdCharts = function(mos) {
         const ovenKeringData = [];
 
         last7Days.forEach(dateStr => {
-            const dateMOs = mos.filter(m => m.status === 'DONE' && m.updatedAt?.startsWith(dateStr));
+            const dateMOs = mos.filter(m => (m.status === 'DONE' || m.status === 'PARTIAL') && m.updatedAt?.startsWith(dateStr));
             let ob = 0, ok = 0;
             dateMOs.forEach(m => {
                 if (m.stage === 'OVEN_BASAH') ob += (m.outputQty || 0);
@@ -1965,9 +2215,10 @@ window.initProdCharts = function(mos) {
     const ctxYield = document.getElementById('chartProdYield');
     if (ctxYield) {
         const filterProduct = document.getElementById('chartProdYieldFilter')?.value;
+        const endAnchor = window.mfgBoardFilters?.endDate ? new Date(window.mfgBoardFilters.endDate) : new Date();
         const last7Days = [];
         for (let i = 6; i >= 0; i--) {
-            const d = new Date();
+            const d = new Date(endAnchor);
             d.setDate(d.getDate() - i);
             last7Days.push(d.toISOString().split('T')[0]);
         }
@@ -2053,7 +2304,7 @@ window.initProdCharts = function(mos) {
         if (ctxTop) {
             if (window.topProdChartInstance) window.topProdChartInstance.destroy();
             const topProdsRaw = {};
-            mos.filter(m => m.status === 'DONE').forEach(m => {
+            mos.filter(m => m.status === 'DONE' || m.status === 'PARTIAL').forEach(m => {
                 const name = m.productName || (m.outputProducts && m.outputProducts.length > 0 ? m.outputProducts[0].itemName : null) || 'Unknown';
                 topProdsRaw[name] = (topProdsRaw[name] || 0) + (parseFloat(m.outputQty) || 0);
             });
@@ -3659,7 +3910,15 @@ window.viewProductStockCard = (productId, startDateStr = null, endDateStr = null
 
     const allTxs = db.read('stockTransactions');
     const openingTxs = allTxs.filter(t => t.itemId === productId && new Date(t.date) < startDate);
-    const openingStock = openingTxs.reduce((sum, t) => sum + (t.type === 'IN' ? t.qty : -t.qty), 0);
+    // Helper: classify transaction type as IN (+) or OUT (-)
+    const isInType = tp => ['IN', 'ADJUST_IN', 'PRODUCTION_IN', 'RETURN_IN'].includes((tp || '').toUpperCase());
+    const isOutType = tp => ['OUT', 'SHRINKAGE', 'ADJUST_OUT', 'PRODUCTION_OUT', 'SALES_OUT', 'WASTE'].includes((tp || '').toUpperCase());
+    const openingStock = openingTxs.reduce((sum, t) => {
+        const qty = parseFloat(t.qty) || 0;
+        if (isInType(t.type)) return sum + qty;
+        if (isOutType(t.type)) return sum - qty;
+        return sum;
+    }, 0);
 
     const monthTxs = allTxs.filter(t => t.itemId === productId && new Date(t.date) >= startDate && new Date(t.date) <= new Date(endDate.getTime() + 86400000))
         .sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -3670,8 +3929,9 @@ window.viewProductStockCard = (productId, startDateStr = null, endDateStr = null
     let totalNormalOut = 0;
     let totalShrinkOut = 0;
     const itemRows = monthTxs.map(t => {
-        const qtyIn = t.type === 'IN' ? t.qty : 0;
-        const qtyOut = t.type === 'OUT' ? t.qty : 0;
+        const rawQty = parseFloat(t.qty) || 0;
+        const qtyIn = isInType(t.type) ? rawQty : 0;
+        const qtyOut = isOutType(t.type) ? rawQty : 0;
         
         const refUpper = (t.reference || '').toUpperCase();
         const isShrink = ['SHRINKAGE', 'ADJUST_OUT', 'WASTE', 'JUDGMENT'].includes(refUpper) || (t.notes || '').toLowerCase().includes('susut');
@@ -4058,6 +4318,36 @@ window.printProductStockCard = (productId, startDateStr, endDateStr) => {
 // inventoryViews removed - using the centralized router in app.js
 
 // â”€â”€â”€ 5. STOK WIP & HISTORY (PRODUCTION SPECIFIC) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+window.toggleWIPLocationDropdown = () => {
+    const dd = document.getElementById('wip_msr_location_dropdown');
+    if (!dd) return;
+    dd.classList.toggle('hidden');
+};
+
+window.selectWIPLocation = (val, labelText) => {
+    const hiddenInput = document.getElementById('wip_msr_location');
+    const labelSpan = document.getElementById('wip_msr_location_label');
+    const dd = document.getElementById('wip_msr_location_dropdown');
+
+    if (hiddenInput) {
+        hiddenInput.value = val;
+        window.currentWIPMutationCategory = val;
+    }
+    if (labelSpan) labelSpan.textContent = labelText;
+    dd?.classList.add('hidden');
+
+    if (window.runWIPMutationReport) window.runWIPMutationReport();
+};
+
+// Handle click outside to close the dropdown
+document.addEventListener('click', (e) => {
+    const dd = document.getElementById('wip_msr_location_dropdown');
+    const trigger = document.getElementById('wip_msr_location_trigger');
+    if (dd && !dd.contains(e.target) && !trigger?.contains(e.target)) {
+        dd.classList.add('hidden');
+    }
+});
+
 window.renderProductionWIPStock = function() {
     renderBreadcrumb(['Produksi', 'Reports', 'Mutasi Stock Bulanan']);
     document.getElementById('pageTitle').innerText = 'Mutasi Stock Bulanan';
@@ -4086,15 +4376,24 @@ window.renderProductionWIPStock = function() {
                         class="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-bold text-slate-700 focus:bg-white focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/5 transition-all outline-none cursor-pointer">
                 </div>
 
-                <!-- Location/Stage Filter -->
-                <div class="relative min-w-[180px]">
-                    <i class="fas fa-industry absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none"></i>
-                    <select id="wip_msr_location" onchange="runWIPMutationReport()" 
-                        class="w-full pl-11 pr-10 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-bold text-slate-700 appearance-none cursor-pointer focus:bg-white focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/5 transition-all outline-none">
-                        <option value="OVEN_BASAH" ${window.currentWIPMutationCategory === 'OVEN_BASAH' ? 'selected' : ''}>Oven Basah</option>
-                        <option value="OVEN_KERING" ${window.currentWIPMutationCategory === 'OVEN_KERING' ? 'selected' : ''}>Oven Kering</option>
-                    </select>
-                    <i class="fas fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none text-[10px]"></i>
+                <!-- Location/Stage Filter Custom Dropdown -->
+                <div class="relative min-w-[180px]" id="wip_msr_location_container">
+                    <i class="fas fa-industry absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none z-10"></i>
+                    <div id="wip_msr_location_trigger" onclick="window.toggleWIPLocationDropdown()" 
+                        class="w-full pl-11 pr-10 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-bold text-slate-700 cursor-pointer hover:bg-slate-100/50 transition-all flex justify-between items-center h-[42px] shadow-sm">
+                        <span id="wip_msr_location_label">
+                            ${window.currentWIPMutationCategory === 'OVEN_KERING' ? 'Oven Kering' : 'Oven Basah'}
+                        </span>
+                        <i class="fas fa-chevron-down text-[10px] text-slate-400"></i>
+                    </div>
+                    <input type="hidden" id="wip_msr_location" value="${window.currentWIPMutationCategory}">
+                    
+                    <div id="wip_msr_location_dropdown" class="absolute left-0 top-full mt-2 bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] hidden overflow-hidden animate-in fade-in zoom-in-95 duration-150 min-w-full">
+                        <div class="p-1.5 flex flex-col">
+                            <div onclick="window.selectWIPLocation('OVEN_BASAH', 'Oven Basah')" class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 hover:text-indigo-600 rounded-xl cursor-pointer transition-colors m-0.5 ${window.currentWIPMutationCategory === 'OVEN_BASAH' ? 'bg-slate-50 text-indigo-600 font-extrabold' : ''}">Oven Basah</div>
+                            <div onclick="window.selectWIPLocation('OVEN_KERING', 'Oven Kering')" class="px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 hover:text-indigo-600 rounded-xl cursor-pointer transition-colors m-0.5 ${window.currentWIPMutationCategory === 'OVEN_KERING' ? 'bg-slate-50 text-indigo-600 font-extrabold' : ''}">Oven Kering</div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Actions -->

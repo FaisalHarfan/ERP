@@ -1122,18 +1122,239 @@ window.formatDate = (isoString) => {
 // Global Dashboard Filter State
 window.dashFilters = {
     period: 'Monthly',
+    periodType: 'year', // 'year', 'month', 'custom', 'all'
     fiscalYear: new Date().getFullYear(),
+    month: new Date().getMonth() + 1,
+    startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0],
     groupBy: 'item',
-    includeClosed: false
+    includeClosed: false,
+    company: ''
 };
 
 window.poDashFilters = {
     period: 'Monthly',
+    periodType: 'year', // 'year', 'month', 'custom', 'all'
     fiscalYear: new Date().getFullYear(),
+    month: new Date().getMonth() + 1,
+    startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0],
     groupBy: 'item',
     supplier: '',
     includeCancelled: false
 };
+
+window.toggleSalesDashDropdown = (dropdownId) => {
+    const dd = document.getElementById(dropdownId);
+    if (!dd) return;
+    const isHidden = dd.classList.contains('hidden');
+    // Close other dropdowns
+    document.querySelectorAll('[id$="_dropdown"][id^="sales_dash_"]').forEach(d => {
+        if (d.id !== dropdownId) d.classList.add('hidden');
+    });
+    if (isHidden) {
+        dd.classList.remove('hidden');
+    } else {
+        dd.classList.add('hidden');
+    }
+};
+
+window.selectSalesDashPeriodType = (val, labelText) => {
+    const hiddenInput = document.getElementById('sales_dash_period_type');
+    const labelSpan = document.getElementById('sales_dash_period_type_label');
+    const dd = document.getElementById('sales_dash_period_type_dropdown');
+
+    if (hiddenInput) hiddenInput.value = val;
+    if (labelSpan) labelSpan.textContent = labelText;
+    dd?.classList.add('hidden');
+
+    window.onSalesDashPeriodChangeDirect(val);
+};
+
+window.selectSalesDashYear = (year) => {
+    const hiddenInput = document.getElementById('sales_dash_year');
+    const labelSpan = document.getElementById('sales_dash_year_label');
+    const dd = document.getElementById('sales_dash_year_dropdown');
+
+    if (hiddenInput) hiddenInput.value = year;
+    if (labelSpan) labelSpan.textContent = year;
+    dd?.classList.add('hidden');
+};
+
+window.selectSalesDashMonth = (monthVal, monthName) => {
+    const hiddenInput = document.getElementById('sales_dash_month');
+    const labelSpan = document.getElementById('sales_dash_month_label');
+    const dd = document.getElementById('sales_dash_month_dropdown');
+
+    if (hiddenInput) hiddenInput.value = monthVal;
+    if (labelSpan) labelSpan.textContent = monthName;
+    dd?.classList.add('hidden');
+};
+
+window.onSalesDashPeriodChangeDirect = (periodType) => {
+    const yearWrap = document.getElementById('sales_dash_year_wrap');
+    const monthWrap = document.getElementById('sales_dash_month_wrap');
+    const startWrap = document.getElementById('sales_dash_start_wrap');
+    const endWrap = document.getElementById('sales_dash_end_wrap');
+
+    if (periodType === 'year') {
+        yearWrap?.classList.remove('hidden');
+        monthWrap?.classList.add('hidden');
+        startWrap?.classList.add('hidden');
+        endWrap?.classList.add('hidden');
+    } else if (periodType === 'month') {
+        yearWrap?.classList.remove('hidden');
+        monthWrap?.classList.remove('hidden');
+        startWrap?.classList.add('hidden');
+        endWrap?.classList.add('hidden');
+    } else if (periodType === 'custom') {
+        yearWrap?.classList.add('hidden');
+        monthWrap?.classList.add('hidden');
+        startWrap?.classList.remove('hidden');
+        endWrap?.classList.remove('hidden');
+    } else if (periodType === 'all') {
+        yearWrap?.classList.add('hidden');
+        monthWrap?.classList.add('hidden');
+        startWrap?.classList.add('hidden');
+        endWrap?.classList.add('hidden');
+    }
+};
+
+window.onSalesDashPeriodChange = () => {
+    const periodType = document.getElementById('sales_dash_period_type')?.value;
+    window.onSalesDashPeriodChangeDirect(periodType);
+};
+
+// Global click listener to close dropdowns when clicking outside
+document.addEventListener('click', (e) => {
+    const dropdowns = [
+        'sales_dash_period_type', 'sales_dash_year', 'sales_dash_month',
+        'purchase_dash_period_type', 'purchase_dash_year', 'purchase_dash_month'
+    ];
+    dropdowns.forEach(prefix => {
+        const dd = document.getElementById(prefix + '_dropdown');
+        const trigger = document.getElementById(prefix + '_trigger');
+        if (dd && !dd.contains(e.target) && !trigger?.contains(e.target)) {
+            dd.classList.add('hidden');
+        }
+    });
+});
+
+window.applySalesDashFilters = () => {
+    const periodType = document.getElementById('sales_dash_period_type')?.value;
+    const fiscalYear = parseInt(document.getElementById('sales_dash_year')?.value) || new Date().getFullYear();
+    const month = parseInt(document.getElementById('sales_dash_month')?.value) || 1;
+    const startDate = document.getElementById('sales_dash_start')?.value;
+    const endDate = document.getElementById('sales_dash_end')?.value;
+
+    window.dashFilters.periodType = periodType;
+    window.dashFilters.fiscalYear = fiscalYear;
+    window.dashFilters.month = month;
+    window.dashFilters.startDate = startDate;
+    window.dashFilters.endDate = endDate;
+
+    showToast('Filter Dashboard Berhasil Diterapkan', 'success');
+    renderSalesDashboard();
+};
+
+window.togglePurchaseDashDropdown = (dropdownId) => {
+    const dd = document.getElementById(dropdownId);
+    if (!dd) return;
+    const isHidden = dd.classList.contains('hidden');
+    // Close other dropdowns
+    document.querySelectorAll('[id$="_dropdown"][id^="purchase_dash_"]').forEach(d => {
+        if (d.id !== dropdownId) d.classList.add('hidden');
+    });
+    if (isHidden) {
+        dd.classList.remove('hidden');
+    } else {
+        dd.classList.add('hidden');
+    }
+};
+
+window.selectPurchaseDashPeriodType = (val, labelText) => {
+    const hiddenInput = document.getElementById('purchase_dash_period_type');
+    const labelSpan = document.getElementById('purchase_dash_period_type_label');
+    const dd = document.getElementById('purchase_dash_period_type_dropdown');
+
+    if (hiddenInput) hiddenInput.value = val;
+    if (labelSpan) labelSpan.textContent = labelText;
+    dd?.classList.add('hidden');
+
+    window.onPurchaseDashPeriodChangeDirect(val);
+};
+
+window.selectPurchaseDashYear = (year) => {
+    const hiddenInput = document.getElementById('purchase_dash_year');
+    const labelSpan = document.getElementById('purchase_dash_year_label');
+    const dd = document.getElementById('purchase_dash_year_dropdown');
+
+    if (hiddenInput) hiddenInput.value = year;
+    if (labelSpan) labelSpan.textContent = year;
+    dd?.classList.add('hidden');
+};
+
+window.selectPurchaseDashMonth = (monthVal, monthName) => {
+    const hiddenInput = document.getElementById('purchase_dash_month');
+    const labelSpan = document.getElementById('purchase_dash_month_label');
+    const dd = document.getElementById('purchase_dash_month_dropdown');
+
+    if (hiddenInput) hiddenInput.value = monthVal;
+    if (labelSpan) labelSpan.textContent = monthName;
+    dd?.classList.add('hidden');
+};
+
+window.onPurchaseDashPeriodChangeDirect = (periodType) => {
+    const yearWrap = document.getElementById('purchase_dash_year_wrap');
+    const monthWrap = document.getElementById('purchase_dash_month_wrap');
+    const startWrap = document.getElementById('purchase_dash_start_wrap');
+    const endWrap = document.getElementById('purchase_dash_end_wrap');
+
+    if (periodType === 'year') {
+        yearWrap?.classList.remove('hidden');
+        monthWrap?.classList.add('hidden');
+        startWrap?.classList.add('hidden');
+        endWrap?.classList.add('hidden');
+    } else if (periodType === 'month') {
+        yearWrap?.classList.remove('hidden');
+        monthWrap?.classList.remove('hidden');
+        startWrap?.classList.add('hidden');
+        endWrap?.classList.add('hidden');
+    } else if (periodType === 'custom') {
+        yearWrap?.classList.add('hidden');
+        monthWrap?.classList.add('hidden');
+        startWrap?.classList.remove('hidden');
+        endWrap?.classList.remove('hidden');
+    } else if (periodType === 'all') {
+        yearWrap?.classList.add('hidden');
+        monthWrap?.classList.add('hidden');
+        startWrap?.classList.add('hidden');
+        endWrap?.classList.add('hidden');
+    }
+};
+
+window.onPurchaseDashPeriodChange = () => {
+    const periodType = document.getElementById('purchase_dash_period_type')?.value;
+    window.onPurchaseDashPeriodChangeDirect(periodType);
+};
+
+window.applyPurchaseDashFilters = () => {
+    const periodType = document.getElementById('purchase_dash_period_type')?.value;
+    const fiscalYear = parseInt(document.getElementById('purchase_dash_year')?.value) || new Date().getFullYear();
+    const month = parseInt(document.getElementById('purchase_dash_month')?.value) || 1;
+    const startDate = document.getElementById('purchase_dash_start')?.value;
+    const endDate = document.getElementById('purchase_dash_end')?.value;
+
+    window.poDashFilters.periodType = periodType;
+    window.poDashFilters.fiscalYear = fiscalYear;
+    window.poDashFilters.month = month;
+    window.poDashFilters.startDate = startDate;
+    window.poDashFilters.endDate = endDate;
+
+    showToast('Filter Dashboard Pembelian Berhasil Diterapkan', 'success');
+    renderPurchaseDashboard();
+};
+
 
 function renderSalesDashboard() {
     document.getElementById('pageTitle').innerText = 'Dashboard Penjualan';
@@ -1144,12 +1365,33 @@ function renderSalesDashboard() {
     const invoices = db.read('salesInvoices') || [];
     
     const filters = window.dashFilters;
-    const currentYear = filters.fiscalYear;
     
-    // Apply Global Filter (Fiscal Year, Status & Company)
+    let startDate = null;
+    let endDate = null;
+
+    if (filters.periodType === 'year') {
+        startDate = new Date(filters.fiscalYear, 0, 1, 0, 0, 0, 0);
+        endDate = new Date(filters.fiscalYear, 11, 31, 23, 59, 59, 999);
+    } else if (filters.periodType === 'month') {
+        startDate = new Date(filters.fiscalYear, filters.month - 1, 1, 0, 0, 0, 0);
+        endDate = new Date(filters.fiscalYear, filters.month, 0, 23, 59, 59, 999);
+    } else if (filters.periodType === 'custom') {
+        if (filters.startDate) {
+            startDate = new Date(filters.startDate);
+            startDate.setHours(0, 0, 0, 0);
+        }
+        if (filters.endDate) {
+            endDate = new Date(filters.endDate);
+            endDate.setHours(23, 59, 59, 999);
+        }
+    }
+
+    // Apply filters to orders
     let filteredOrders = orders.filter(o => {
         const d = new Date(o.date || o.createdAt);
-        const yearMatch = d.getFullYear() === currentYear;
+        if (startDate && d < startDate) return false;
+        if (endDate && d > endDate) return false;
+
         const statusMatch = filters.includeClosed ? true : (o.status !== 'CANCELLED' && o.status !== 'COMPLETED' && o.status !== 'VOID');
         
         let companyMatch = true;
@@ -1158,21 +1400,28 @@ function renderSalesDashboard() {
             companyMatch = customer && customer.name.toLowerCase().includes(filters.company.toLowerCase());
         }
         
-        return yearMatch && statusMatch && companyMatch;
+        return statusMatch && companyMatch;
     });
 
-    // Filter Invoices as well
+    // Apply filters to invoices
     let filteredInvoices = (invoices || []).filter(i => {
-        if (!filters.company) return true;
-        const cust = (customers || []).find(c => c.id === i.customerId);
-        return cust && cust.name.toLowerCase().includes(filters.company.toLowerCase());
+        const d = new Date(i.date || i.createdAt);
+        if (startDate && d < startDate) return false;
+        if (endDate && d > endDate) return false;
+
+        let companyMatch = true;
+        if (filters.company) {
+            const cust = (customers || []).find(c => c.id === i.customerId);
+            companyMatch = cust && cust.name.toLowerCase().includes(filters.company.toLowerCase());
+        }
+        return companyMatch;
     });
 
     // Calculate Stats based on filtered data
-    const annualSales = filteredOrders.reduce((sum, o) => sum + parseFloat(o.totalAmount || 0), 0);
+    const totalSales = filteredOrders.reduce((sum, o) => sum + parseFloat(o.totalAmount || 0), 0);
     const soToDeliver = filteredOrders.filter(o => o.status === 'CONFIRMED').length;
     const soToBill = filteredInvoices.filter(i => i.status === 'UNPAID').length;
-    const activeCustomers = filters.company ? (filteredOrders.length > 0 ? 1 : 0) : (customers || []).length;
+    const activeCustomers = filters.company ? (filteredOrders.length > 0 ? 1 : 0) : new Set(filteredOrders.map(o => o.customerId)).size;
 
     // Add Demo Data Trigger for empty state
     if (orders.length === 0) {
@@ -1194,6 +1443,18 @@ function renderSalesDashboard() {
             </div>
         `;
         return;
+    }
+
+    let salesTitle = 'Annual Sales';
+    if (filters.periodType === 'month') {
+        const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        salesTitle = `Sales (${monthNames[filters.month - 1]} ${filters.fiscalYear})`;
+    } else if (filters.periodType === 'year') {
+        salesTitle = `Sales (Tahun ${filters.fiscalYear})`;
+    } else if (filters.periodType === 'custom') {
+        salesTitle = 'Sales (Periode Terpilih)';
+    } else {
+        salesTitle = 'Total Sales (Semua Waktu)';
     }
 
     const frappeCard = (title, value) => `
@@ -1220,11 +1481,109 @@ function renderSalesDashboard() {
 
     const noDataPanel = (title) => chartPanel(title, null, '', '<div class="bg-[#f8f9fa] flex items-center justify-center w-full h-48 rounded-lg"><span class="text-sm text-gray-400">No Data</span></div>');
 
+    const yearListOptions = [];
+    const minYear = 2024;
+    const maxYear = new Date().getFullYear() + 2;
+    for (let y = minYear; y <= maxYear; y++) {
+        yearListOptions.push(y);
+    }
+    const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
     mc.innerHTML = `
         <div class="max-w-full mx-auto space-y-4 animate-fade-in pb-12 font-sans pt-2">
+            <!-- Global Date Filter Bar -->
+            <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] flex flex-wrap items-center gap-4 justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                        <i class="fas fa-calendar-alt text-sm"></i>
+                    </div>
+                    <span class="text-sm font-bold text-slate-800">Filter Analisis Penjualan</span>
+                </div>
+                
+                <div class="flex flex-wrap items-center gap-3">
+                    <!-- Tipe Periode Custom Dropdown -->
+                    <div class="flex flex-col min-w-[150px] relative" id="sales_dash_period_type_container">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Tipe Periode</span>
+                        <div id="sales_dash_period_type_trigger" onclick="toggleSalesDashDropdown('sales_dash_period_type_dropdown')" 
+                            class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 cursor-pointer hover:bg-slate-100/50 transition-all flex justify-between items-center h-11 shadow-sm">
+                            <span id="sales_dash_period_type_label">
+                                ${filters.periodType === 'year' ? 'Per Tahun' : 
+                                  filters.periodType === 'month' ? 'Per Bulan' : 
+                                  filters.periodType === 'custom' ? 'Kustom Tanggal' : 'Semua Waktu'}
+                            </span>
+                            <i class="fas fa-chevron-down text-[9px] text-slate-400"></i>
+                        </div>
+                        <input type="hidden" id="sales_dash_period_type" value="${filters.periodType}">
+                        
+                        <div id="sales_dash_period_type_dropdown" class="absolute left-0 top-full mt-2 bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] hidden overflow-hidden animate-in fade-in zoom-in-95 duration-150 min-w-full">
+                            <div class="p-1.5 flex flex-col">
+                                <div onclick="selectSalesDashPeriodType('year', 'Per Tahun')" class="px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5 ${filters.periodType === 'year' ? 'bg-slate-50 text-blue-600 font-extrabold' : ''}">Per Tahun</div>
+                                <div onclick="selectSalesDashPeriodType('month', 'Per Bulan')" class="px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5 ${filters.periodType === 'month' ? 'bg-slate-50 text-blue-600 font-extrabold' : ''}">Per Bulan</div>
+                                <div onclick="selectSalesDashPeriodType('custom', 'Kustom Tanggal')" class="px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5 ${filters.periodType === 'custom' ? 'bg-slate-50 text-blue-600 font-extrabold' : ''}">Kustom Tanggal</div>
+                                <div onclick="selectSalesDashPeriodType('all', 'Semua Waktu')" class="px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5 ${filters.periodType === 'all' ? 'bg-slate-50 text-blue-600 font-extrabold' : ''}">Semua Waktu</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tahun Custom Dropdown -->
+                    <div class="flex flex-col min-w-[100px] relative ${filters.periodType === 'custom' || filters.periodType === 'all' ? 'hidden' : ''}" id="sales_dash_year_wrap">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Tahun</span>
+                        <div id="sales_dash_year_trigger" onclick="toggleSalesDashDropdown('sales_dash_year_dropdown')" 
+                            class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 cursor-pointer hover:bg-slate-100/50 transition-all flex justify-between items-center h-11 shadow-sm">
+                            <span id="sales_dash_year_label">${filters.fiscalYear}</span>
+                            <i class="fas fa-chevron-down text-[9px] text-slate-400"></i>
+                        </div>
+                        <input type="hidden" id="sales_dash_year" value="${filters.fiscalYear}">
+                        
+                        <div id="sales_dash_year_dropdown" class="absolute left-0 top-full mt-2 bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] hidden overflow-hidden animate-in fade-in zoom-in-95 duration-150 min-w-full max-h-60 overflow-y-auto">
+                            <div class="p-1.5 flex flex-col">
+                                ${yearListOptions.map(y => `
+                                    <div onclick="selectSalesDashYear(${y})" class="px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5 ${filters.fiscalYear === y ? 'bg-slate-50 text-blue-600 font-extrabold' : ''}">${y}</div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bulan Custom Dropdown -->
+                    <div class="flex flex-col min-w-[140px] relative ${filters.periodType !== 'month' ? 'hidden' : ''}" id="sales_dash_month_wrap">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Bulan</span>
+                        <div id="sales_dash_month_trigger" onclick="toggleSalesDashDropdown('sales_dash_month_dropdown')" 
+                            class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 cursor-pointer hover:bg-slate-100/50 transition-all flex justify-between items-center h-11 shadow-sm">
+                            <span id="sales_dash_month_label">${monthNames[filters.month - 1]}</span>
+                            <i class="fas fa-chevron-down text-[9px] text-slate-400"></i>
+                        </div>
+                        <input type="hidden" id="sales_dash_month" value="${filters.month}">
+                        
+                        <div id="sales_dash_month_dropdown" class="absolute left-0 top-full mt-2 bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] hidden overflow-hidden animate-in fade-in zoom-in-95 duration-150 min-w-full max-h-60 overflow-y-auto">
+                            <div class="p-1.5 flex flex-col">
+                                ${monthNames.map((name, index) => `
+                                    <div onclick="selectSalesDashMonth(${index + 1}, '${name}')" class="px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5 ${filters.month === (index + 1) ? 'bg-slate-50 text-blue-600 font-extrabold' : ''}">${name}</div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col ${filters.periodType !== 'custom' ? 'hidden' : ''}" id="sales_dash_start_wrap">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Dari Tanggal</span>
+                        <input type="date" id="sales_dash_start" value="${filters.startDate || ''}" class="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all h-11 shadow-sm">
+                    </div>
+
+                    <div class="flex flex-col ${filters.periodType !== 'custom' ? 'hidden' : ''}" id="sales_dash_end_wrap">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Sampai Tanggal</span>
+                        <input type="date" id="sales_dash_end" value="${filters.endDate || ''}" class="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all h-11 shadow-sm">
+                    </div>
+
+                    <div class="flex flex-col justify-end pt-[21px]">
+                        <button onclick="window.applySalesDashFilters()" class="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-6 rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-[0_4px_12px_rgba(37,99,235,0.2)] hover:shadow-[0_6px_20px_rgba(37,99,235,0.3)] active:scale-95 flex items-center justify-center gap-2 h-11 hover:-translate-y-0.5 duration-150">
+                            <i class="fas fa-filter text-xs"></i> Terapkan Filter
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <!-- KPI Grid -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                ${frappeCard('Annual Sales', formatCurrency(annualSales))}
+                ${frappeCard(salesTitle, formatCurrency(totalSales))}
                 ${frappeCard('Sales Orders to Deliver', soToDeliver)}
                 ${frappeCard('Sales Orders to Bill', soToBill)}
                 ${frappeCard('Active Customers', activeCustomers)}
@@ -1712,13 +2071,66 @@ function renderPurchaseDashboard() {
     const suppliers  = db.read('suppliers')        || [];
     const currentYear = new Date().getFullYear();
 
+    const filters = window.poDashFilters;
+    
+    let startDate = null;
+    let endDate = null;
+
+    if (filters.periodType === 'year') {
+        startDate = new Date(filters.fiscalYear, 0, 1, 0, 0, 0, 0);
+        endDate = new Date(filters.fiscalYear, 11, 31, 23, 59, 59, 999);
+    } else if (filters.periodType === 'month') {
+        startDate = new Date(filters.fiscalYear, filters.month - 1, 1, 0, 0, 0, 0);
+        endDate = new Date(filters.fiscalYear, filters.month, 0, 23, 59, 59, 999);
+    } else if (filters.periodType === 'custom') {
+        if (filters.startDate) {
+            startDate = new Date(filters.startDate);
+            startDate.setHours(0, 0, 0, 0);
+        }
+        if (filters.endDate) {
+            endDate = new Date(filters.endDate);
+            endDate.setHours(23, 59, 59, 999);
+        }
+    }
+
+    // Apply filters to POs
+    let filteredPos = pos.filter(p => {
+        const d = new Date(p.date || p.createdAt);
+        if (startDate && d < startDate) return false;
+        if (endDate && d > endDate) return false;
+
+        const statusMatch = p.status !== 'CANCELLED';
+        
+        let supplierMatch = true;
+        if (filters.supplier) {
+            const s = suppliers.find(x => x.id === p.supplierId) || suppliers.find(x => x.name === p.supplierId);
+            const nm = s ? s.name : String(p.supplierId);
+            supplierMatch = nm.toLowerCase().includes(filters.supplier.toLowerCase());
+        }
+        
+        return statusMatch && supplierMatch;
+    });
+
+    // Apply filters to Invoices
+    let filteredInvs = (invs || []).filter(i => {
+        const d = new Date(i.date || i.createdAt);
+        if (startDate && d < startDate) return false;
+        if (endDate && d > endDate) return false;
+
+        let supplierMatch = true;
+        if (filters.supplier) {
+            const s = suppliers.find(x => x.id === i.supplierId) || suppliers.find(x => x.name === i.supplierId);
+            const nm = s ? s.name : String(i.supplierId);
+            supplierMatch = nm.toLowerCase().includes(filters.supplier.toLowerCase());
+        }
+        return supplierMatch;
+    });
+
     // ── KPI ──────────────────────────────────────────────────────
-    const annualPurchase  = pos
-        .filter(p => p.status !== 'CANCELLED' && new Date(p.date || p.createdAt).getFullYear() === currentYear)
-        .reduce((sum, p) => sum + parseFloat(p.totalAmount || 0), 0);
-    const poToReceive     = pos.filter(p => ['APPROVED', 'PENDING'].includes(p.status)).length;
-    const poToBill        = invs.filter(i => i.status === 'UNPAID').length;
-    const activeSuppliers = suppliers.length;
+    const totalPurchase = filteredPos.reduce((sum, p) => sum + parseFloat(p.totalAmount || 0), 0);
+    const poToReceive     = filteredPos.filter(p => ['APPROVED', 'PENDING'].includes(p.status)).length;
+    const poToBill        = filteredInvs.filter(i => i.status === 'UNPAID').length;
+    const activeSuppliers = filters.supplier ? (filteredPos.length > 0 ? 1 : 0) : new Set(filteredPos.map(p => p.supplierId)).size;
 
     // ── Card / Panel templates (mirrors Sales Dashboard style) ────
     const frappeCard = (title, value) => `
@@ -1751,32 +2163,130 @@ function renderPurchaseDashboard() {
     );
 
     // ── Top Suppliers data ────────────────────────────────────────
-    const poFiltersEarly = window.poDashFilters;
     const supTotals = {};
-    pos.forEach(p => {
-        if (!p.supplierId) return;                    // skip POs with no supplier
-        if (p.status === 'CANCELLED' && !poFiltersEarly.includeCancelled) return;
-        const d = new Date(p.date || p.createdAt || Date.now());
-        if (d.getFullYear() !== (poFiltersEarly.fiscalYear || currentYear)) return;
-        // Apply supplier filter if set
-        if (poFiltersEarly.supplier) {
-            const s = suppliers.find(x => x.id === p.supplierId) || suppliers.find(x => x.name === p.supplierId);
-            const nm = s ? s.name : String(p.supplierId);
-            if (!nm.toLowerCase().includes(poFiltersEarly.supplier.toLowerCase())) return;
-        }
+    filteredPos.forEach(p => {
+        if (!p.supplierId) return;
         supTotals[p.supplierId] = (supTotals[p.supplierId] || 0) + parseFloat(p.totalAmount || 0);
     });
     const sortedSuppliers = Object.entries(supTotals)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5);
 
+    let purchaseTitle = 'Annual Purchase';
+    if (filters.periodType === 'month') {
+        const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+        purchaseTitle = `Purchase (${monthNames[filters.month - 1]} ${filters.fiscalYear})`;
+    } else if (filters.periodType === 'year') {
+        purchaseTitle = `Purchase (Tahun ${filters.fiscalYear})`;
+    } else if (filters.periodType === 'custom') {
+        purchaseTitle = 'Purchase (Periode Terpilih)';
+    } else {
+        purchaseTitle = 'Total Purchase (Semua Waktu)';
+    }
+
+    const yearListOptions = [];
+    const minYear = 2024;
+    const maxYear = new Date().getFullYear() + 2;
+    for (let y = minYear; y <= maxYear; y++) {
+        yearListOptions.push(y);
+    }
+    const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
     mc.innerHTML = `
         <div class="max-w-full mx-auto space-y-4 animate-fade-in pb-12 font-sans pt-2">
+            <!-- Global Date Filter Bar -->
+            <div class="bg-white rounded-2xl border border-slate-100 p-5 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] flex flex-wrap items-center gap-4 justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                        <i class="fas fa-calendar-alt text-sm"></i>
+                    </div>
+                    <span class="text-sm font-bold text-slate-800">Filter Analisis Pembelian</span>
+                </div>
+                
+                <div class="flex flex-wrap items-center gap-3">
+                    <!-- Tipe Periode Custom Dropdown -->
+                    <div class="flex flex-col min-w-[150px] relative" id="purchase_dash_period_type_container">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Tipe Periode</span>
+                        <div id="purchase_dash_period_type_trigger" onclick="togglePurchaseDashDropdown('purchase_dash_period_type_dropdown')" 
+                            class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 cursor-pointer hover:bg-slate-100/50 transition-all flex justify-between items-center h-11 shadow-sm">
+                            <span id="purchase_dash_period_type_label">
+                                ${filters.periodType === 'year' ? 'Per Tahun' : 
+                                  filters.periodType === 'month' ? 'Per Bulan' : 
+                                  filters.periodType === 'custom' ? 'Kustom Tanggal' : 'Semua Waktu'}
+                            </span>
+                            <i class="fas fa-chevron-down text-[9px] text-slate-400"></i>
+                        </div>
+                        <input type="hidden" id="purchase_dash_period_type" value="${filters.periodType}">
+                        
+                        <div id="purchase_dash_period_type_dropdown" class="absolute left-0 top-full mt-2 bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] hidden overflow-hidden animate-in fade-in zoom-in-95 duration-150 min-w-full">
+                            <div class="p-1.5 flex flex-col">
+                                <div onclick="selectPurchaseDashPeriodType('year', 'Per Tahun')" class="px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5 ${filters.periodType === 'year' ? 'bg-slate-50 text-blue-600 font-extrabold' : ''}">Per Tahun</div>
+                                <div onclick="selectPurchaseDashPeriodType('month', 'Per Bulan')" class="px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5 ${filters.periodType === 'month' ? 'bg-slate-50 text-blue-600 font-extrabold' : ''}">Per Bulan</div>
+                                <div onclick="selectPurchaseDashPeriodType('custom', 'Kustom Tanggal')" class="px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5 ${filters.periodType === 'custom' ? 'bg-slate-50 text-blue-600 font-extrabold' : ''}">Kustom Tanggal</div>
+                                <div onclick="selectPurchaseDashPeriodType('all', 'Semua Waktu')" class="px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5 ${filters.periodType === 'all' ? 'bg-slate-50 text-blue-600 font-extrabold' : ''}">Semua Waktu</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tahun Custom Dropdown -->
+                    <div class="flex flex-col min-w-[100px] relative ${filters.periodType === 'custom' || filters.periodType === 'all' ? 'hidden' : ''}" id="purchase_dash_year_wrap">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Tahun</span>
+                        <div id="purchase_dash_year_trigger" onclick="togglePurchaseDashDropdown('purchase_dash_year_dropdown')" 
+                            class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 cursor-pointer hover:bg-slate-100/50 transition-all flex justify-between items-center h-11 shadow-sm">
+                            <span id="purchase_dash_year_label">${filters.fiscalYear}</span>
+                            <i class="fas fa-chevron-down text-[9px] text-slate-400"></i>
+                        </div>
+                        <input type="hidden" id="purchase_dash_year" value="${filters.fiscalYear}">
+                        
+                        <div id="purchase_dash_year_dropdown" class="absolute left-0 top-full mt-2 bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] hidden overflow-hidden animate-in fade-in zoom-in-95 duration-150 min-w-full max-h-60 overflow-y-auto">
+                            <div class="p-1.5 flex flex-col">
+                                ${yearListOptions.map(y => `
+                                    <div onclick="selectPurchaseDashYear(${y})" class="px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5 ${filters.fiscalYear === y ? 'bg-slate-50 text-blue-600 font-extrabold' : ''}">${y}</div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Bulan Custom Dropdown -->
+                    <div class="flex flex-col min-w-[140px] relative ${filters.periodType !== 'month' ? 'hidden' : ''}" id="purchase_dash_month_wrap">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Bulan</span>
+                        <div id="purchase_dash_month_trigger" onclick="togglePurchaseDashDropdown('purchase_dash_month_dropdown')" 
+                            class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 cursor-pointer hover:bg-slate-100/50 transition-all flex justify-between items-center h-11 shadow-sm">
+                            <span id="purchase_dash_month_label">${monthNames[filters.month - 1]}</span>
+                            <i class="fas fa-chevron-down text-[9px] text-slate-400"></i>
+                        </div>
+                        <input type="hidden" id="purchase_dash_month" value="${filters.month}">
+                        
+                        <div id="purchase_dash_month_dropdown" class="absolute left-0 top-full mt-2 bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] hidden overflow-hidden animate-in fade-in zoom-in-95 duration-150 min-w-full max-h-60 overflow-y-auto">
+                            <div class="p-1.5 flex flex-col">
+                                ${monthNames.map((name, index) => `
+                                    <div onclick="selectPurchaseDashMonth(${index + 1}, '${name}')" class="px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5 ${filters.month === (index + 1) ? 'bg-slate-50 text-blue-600 font-extrabold' : ''}">${name}</div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col ${filters.periodType !== 'custom' ? 'hidden' : ''}" id="purchase_dash_start_wrap">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Dari Tanggal</span>
+                        <input type="date" id="purchase_dash_start" value="${filters.startDate || ''}" class="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all h-11 shadow-sm">
+                    </div>
+
+                    <div class="flex flex-col ${filters.periodType !== 'custom' ? 'hidden' : ''}" id="purchase_dash_end_wrap">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Sampai Tanggal</span>
+                        <input type="date" id="purchase_dash_end" value="${filters.endDate || ''}" class="bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 transition-all h-11 shadow-sm">
+                    </div>
+
+                    <div class="flex flex-col justify-end pt-[21px]">
+                        <button onclick="window.applyPurchaseDashFilters()" class="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white px-6 rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-[0_4px_12px_rgba(37,99,235,0.2)] hover:shadow-[0_6px_20px_rgba(37,99,235,0.3)] active:scale-95 flex items-center justify-center gap-2 h-11 hover:-translate-y-0.5 duration-150">
+                            <i class="fas fa-filter text-xs"></i> Terapkan Filter
+                        </button>
+                    </div>
+                </div>
+            </div>
 
             <!-- KPI Grid -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                ${frappeCard('Annual Purchase', formatCurrency(annualPurchase))}
+                ${frappeCard(purchaseTitle, formatCurrency(totalPurchase))}
                 ${frappeCard('Purchase Orders to Receive', poToReceive)}
                 ${frappeCard('Purchase Orders to Bill', poToBill)}
                 ${frappeCard('Active Suppliers', activeSuppliers)}
