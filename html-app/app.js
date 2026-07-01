@@ -5188,6 +5188,14 @@ window.viewPO = (id, fromPage = 'po') => {
     const suppliers = db.read('suppliers');
     const sup = suppliers.find(s => s.id === po.supplierId) || { name: '-' };
 
+    const itemRows = (po.items || []).map(i => `
+        <tr class="border-b border-gray-100">
+            <td class="py-2 px-2">${i.prodText || i.itemName || '-'}</td>
+            <td class="py-2 px-2 text-right">${formatNumber(i.qty)} ${i.unit || ''}</td>
+            <td class="py-2 px-2 text-right">${formatCurrency(i.price)}</td>
+            <td class="py-2 px-2 text-right font-medium">${formatCurrency(i.subtotal || (i.qty * i.price))}</td>
+        </tr>`).join('');
+
     // --- Delivery timeline section ---
     const today = new Date(); today.setHours(0, 0, 0, 0);
     let deliveryHtml = '';
