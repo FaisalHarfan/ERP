@@ -1123,7 +1123,7 @@ window.printDeliveryOrder = function (id) {
                 .sig-line { border-top:2px solid #0f172a; width:80%; margin:0 auto 3px; }
                 .sig-name { font-size:10px; font-weight:700; color:#0f172a; }
                 .notes { margin-top:10px; padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #64748b; border-radius:6px; font-size:9px; color:#475569; line-height:1.4; }
-                @page { size: 9.5in 5.5in; margin: 0; }
+                @page { size: 9.5in 11in; margin: 0; }
                 .page { page-break-after: always; background:#fff; padding:30px; margin-bottom:30px; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 4px 20px rgba(0,0,0,0.1); }
                 .page:last-child { page-break-after: auto; margin-bottom:0; }
                 @media print {

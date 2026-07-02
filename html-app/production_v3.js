@@ -104,7 +104,11 @@ window.renderProductionDashboard = () => {
     };
 
     const dashboardCards = PROD_STAGES.map((st, idx) => {
-        const stageMOs = mos.filter(m => m.stage === st.key && m.status === 'IN_PROGRESS');
+        const stageMOs = mos.filter(m => {
+            const mDate = new Date(m.date || m.createdAt);
+            const isAfterJune = mDate >= new Date('2026-06-01');
+            return m.stage === st.key && m.status === 'IN_PROGRESS' && isAfterJune;
+        });
         const loc = STAGE_LOCATIONS[st.key];
         const stockQty = loc ? getStageStock(loc) : null;
 
@@ -276,8 +280,8 @@ window.renderProductionMO = async () => {
             const today = new Date(); today.setHours(0, 0, 0, 0);
             const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
             const isToday = moDate >= today && moDate <= todayEnd;
-            // Tampilkan MO hari ini, atau MO hari sebelumnya yang masih PROSES/PARTIAL (belum selesai)
-            const isUnfinished = m.status === 'IN_PROGRESS' || m.status === 'PARTIAL';
+            // Tampilkan MO hari ini, atau MO hari sebelumnya yang masih PROSES/PARTIAL (belum selesai) dan dibuat sejak Juni 2026
+            const isUnfinished = (m.status === 'IN_PROGRESS' || m.status === 'PARTIAL') && moDate >= new Date('2026-06-01');
             if (!isToday && !isUnfinished) return false;
         } else {
             moDate.setHours(0, 0, 0, 0);
@@ -452,6 +456,7 @@ document.addEventListener('click', (e) => {
 
 // --- STEP 1: MULAI MO (START) ---------------------------------
 window.openMOModal = async (stagePreset = '') => {
+    window._completeMOReferrer = document.getElementById('pageTitle')?.innerText.includes('Work In Progress') ? 'dashboard' : 'history';
     if (window.pushCurrentToHistory) window.pushCurrentToHistory();
 
     // Tampilkan loading spinner dulu
@@ -1207,11 +1212,11 @@ window.startMO = async () => {
     try {
         await api.startProductionOrder(moData);
         showToast(`MO ${moNumber} dimulai!`, 'success');
-        // Reset date filter so it shows today's MOs by default
-        if (!window._prodFilters) window._prodFilters = { stage: '', search: '', start: '', end: '' };
-        window._prodFilters.start = '';
-        window._prodFilters.end = '';
-        await renderProductionMO();
+        if (window._completeMOReferrer === 'dashboard') {
+            renderProductionDashboard();
+        } else {
+            await renderProductionMO();
+        }
     } catch (err) {
         showToast(err.message, 'error');
     }
@@ -1219,6 +1224,7 @@ window.startMO = async () => {
 
 // --- STEP 2: SELESAIKAN MO (FINISH) ---------------------------
 window.openCompleteMOModal = (id) => {
+    window._completeMOReferrer = document.getElementById('pageTitle')?.innerText.includes('Work In Progress') ? 'dashboard' : 'history';
     if (window.pushCurrentToHistory) window.pushCurrentToHistory();
     const mo = db.findById('productionOrders', id);
     if (!mo) return;
@@ -1505,7 +1511,7 @@ window.openCompleteMOModal = (id) => {
     const moDate = new Date(mo.date || mo.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' });
     const mc = document.getElementById('main-content');
     document.getElementById('pageTitle').innerText = 'Laporan Hasil Produksi';
-    renderBreadcrumb(['Produksi', 'Manufacturing Orders', mo.moNumber, 'Selesaikan']);
+    renderBreadcrumb(window._completeMOReferrer === 'dashboard' ? ['Produksi', 'Work In Progress', mo.moNumber, 'Selesaikan'] : ['Produksi', 'Manufacturing Orders', mo.moNumber, 'Selesaikan']);
 
     mc.innerHTML = `
         <div class="animate-in fade-in slide-in-from-bottom-2 duration-400 -m-4 sm:-m-6 h-[calc(100vh-64px)] flex flex-col overflow-hidden bg-white">
@@ -1514,7 +1520,7 @@ window.openCompleteMOModal = (id) => {
             <div class="sticky top-0 z-40 bg-white border-b border-slate-100 px-8 py-4 flex items-center justify-between shrink-0 shadow-sm">
                 <div></div>
                 <div class="flex items-center gap-3">
-                    <button type="button" onclick="renderProductionMO()"
+                    <button type="button" onclick="window._completeMOReferrer === 'dashboard' ? renderProductionDashboard() : renderProductionMO()"
                         class="px-6 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95">
                         Batal
                     </button>
@@ -1893,12 +1899,16 @@ window.finalizeMO = async (id) => {
         await db.sync('stockTransactions');
         await db.sync('inventoryItems');
         showToast(`Produksi ${mo.moNumber} selesai!`, 'success');
-        // Navigate back to MO list and keep it visible
-        window._prodSearchPerformed = true;
-        const todayStr3 = new Date().toISOString().split('T')[0];
-        if (!window._prodFilters) window._prodFilters = {};
-        if (!window._prodFilters.end || window._prodFilters.end < todayStr3) window._prodFilters.end = todayStr3;
-        await renderProductionMO();
+        if (window._completeMOReferrer === 'dashboard') {
+            renderProductionDashboard();
+        } else {
+            // Navigate back to MO list and keep it visible
+            window._prodSearchPerformed = true;
+            const todayStr3 = new Date().toISOString().split('T')[0];
+            if (!window._prodFilters) window._prodFilters = {};
+            if (!window._prodFilters.end || window._prodFilters.end < todayStr3) window._prodFilters.end = todayStr3;
+            await renderProductionMO();
+        }
     } catch (err) {
         showToast(err.message, 'error');
     }

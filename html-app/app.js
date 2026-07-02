@@ -3176,8 +3176,8 @@ function generatePurchaseOrderNumber(isTax = false, customDate = null) {
     pos.forEach(p => {
         if (!p.poNumber) return;
         const pDate = new Date(p.date || p.createdAt);
-        // We only care about same month/year
-        if (pDate.getMonth() + 1 === month && pDate.getFullYear() === year) {
+        // We only care about same year
+        if (pDate.getFullYear() === year) {
             const parts = p.poNumber.split('-');
             if (parts.length >= 3 && parts[1] === type) {
                 const suffixPart = parts[2].split('/')[0];
@@ -5341,7 +5341,7 @@ window.viewPO = (id, fromPage = 'po') => {
                 </div>
                 
                 <div class="flex items-center gap-3">
-                    <button onclick='printHTML(\`${printable.replace(/`/g, "\\`").replace(/\n/g, "")}\`, "PO ${po.poNumber}", true, "9.5in 5.5in")' 
+                    <button onclick='printHTML(\`${printable.replace(/`/g, "\\`").replace(/\n/g, "")}\`, "PO ${po.poNumber}", true, "9.5in 11in")' 
                         class="px-6 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 hover:border-slate-300 transition-all flex items-center gap-2 active:scale-95 shadow-sm">
                         <i class="fas fa-print text-slate-400"></i> Print PDF
                     </button>
@@ -7015,8 +7015,27 @@ function renderPurchaseMasterItems() {
         'ASSET':      { label: 'Aktiva (Tetap)',     color: 'bg-slate-50 text-slate-700 border-slate-100' },
     };
 
+    window._purchaseMasterItemFilters = window._purchaseMasterItemFilters || { category: '', name: '' };
+    const f = window._purchaseMasterItemFilters;
+
     const allItems = db.read('inventoryItems') || [];
-    const items = allItems.filter(i => PURCHASE_CATEGORIES.includes(i.category) && i.status !== 'INACTIVE');
+    let items = allItems.filter(i => PURCHASE_CATEGORIES.includes(i.category) && i.status !== 'INACTIVE');
+
+    // Apply Filters
+    if (f.category) {
+        items = items.filter(it => it.category === f.category);
+    }
+    if (f.name) {
+        const q = f.name.toLowerCase().trim();
+        const searchWords = q.split(/\s+/).filter(w => w.length > 0);
+        items = items.filter(it => {
+            const targetText = `${it.itemName} ${it.itemCode || ''}`.toLowerCase();
+            return searchWords.every(word => targetText.includes(word));
+        });
+    }
+
+    // Sort items
+    items.sort((a, b) => (a.itemName || '').localeCompare(b.itemName || ''));
 
     let rows = items.map(p => {
         const stock = db.getInventoryStock(p.id);
@@ -7071,20 +7090,75 @@ function renderPurchaseMasterItems() {
         rows = `<tr><td colspan="7" class="py-12 text-center text-slate-400 italic font-medium uppercase tracking-widest text-xs">Belum ada master item pembelian</td></tr>`;
     }
 
+    const selectedCatLabel = f.category ? (CATEGORY_LABELS[f.category]?.label || f.category) : 'All Categories';
+
     mainContent.innerHTML = `
         <div class="animate-in fade-in duration-300 space-y-4">
-            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm">
-                <div class="flex flex-wrap justify-between items-center px-6 py-4 border-b border-slate-100 gap-3">
-                    <div>
-                        <h2 class="text-base font-black text-slate-800 uppercase tracking-wide">Master Item Pembelian</h2>
-                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Packaging · Sparepart · Perlengkapan · Service · Gas · Aktiva</p>
+            <!-- Compact Filter Bar (Search & Category Dropdown) -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                <div class="flex flex-wrap items-center gap-4">
+                    <!-- Search Input -->
+                    <div class="flex-1 min-w-[250px] relative group">
+                        <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-500 transition-colors"></i>
+                        <input type="text" id="purchase_filter_item_name" oninput="updatePurchaseMasterItemFilters(true)" value="${f.name}" placeholder="Search Code or Item Name..." 
+                            class="w-full pl-12 pr-4 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-semibold text-slate-700 placeholder:text-slate-300 focus:bg-white focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all">
                     </div>
-                    <div class="flex gap-2">
+
+                    <!-- Category Filter Dropdown -->
+                    <div class="searchable-select-container relative min-w-[200px]">
+                        <i class="fas fa-filter absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none z-10"></i>
+                        <input type="hidden" id="purchase_filter_item_category" value="${f.category || ''}" onchange="updatePurchaseMasterItemFilters(false)">
+                        <button type="button" onclick="toggleSearchableSelect('purchase_filter_item_category')" 
+                            class="w-full pl-11 pr-10 py-2.5 bg-slate-50 border border-transparent rounded-xl text-sm font-bold text-slate-700 appearance-none cursor-pointer focus:bg-white focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/5 transition-all outline-none flex justify-between items-center text-left">
+                            <span id="purchase_filter_item_category_display">${selectedCatLabel}</span>
+                            <i class="fas fa-chevron-down text-slate-300 text-[10px]"></i>
+                        </button>
+                        
+                        <div id="purchase_filter_item_category_dropdown" class="searchable-dropdown hidden absolute left-0 right-0 top-full mt-2 bg-white rounded-2xl shadow-xl border border-slate-100 z-[100] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                            <div class="p-3 border-b border-slate-50">
+                                <div class="relative">
+                                    <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-300 text-xs"></i>
+                                    <input type="text" placeholder="Cari kategori..." onkeyup="filterSearchableOptions('purchase_filter_item_category')" id="purchase_filter_item_category_search"
+                                        class="w-full pl-9 pr-3 py-2 bg-slate-50 border-none rounded-lg text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20">
+                                </div>
+                            </div>
+                            <div class="max-h-60 overflow-y-auto p-1 custom-scrollbar" id="purchase_filter_item_category_options">
+                                <div onclick="selectSearchableOption('purchase_filter_item_category', '', 'All Categories')"
+                                    class="px-4 py-2.5 rounded-lg text-sm font-bold text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 cursor-pointer transition-colors flex items-center justify-between group">
+                                    <span>All Categories</span>
+                                    <i class="fas fa-check text-[10px] text-indigo-500 transition-opacity ${!f.category ? 'opacity-100' : 'opacity-0'}"></i>
+                                </div>
+                                ${Object.entries(CATEGORY_LABELS).map(([v, info]) => `
+                                    <div onclick="selectSearchableOption('purchase_filter_item_category', '${v}', '${info.label}')"
+                                        class="px-4 py-2.5 rounded-lg text-sm font-bold text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 cursor-pointer transition-colors flex items-center justify-between group">
+                                        <span>${info.label}</span>
+                                        <i class="fas fa-check text-[10px] text-indigo-500 transition-opacity ${f.category === v ? 'opacity-100' : 'opacity-0'}"></i>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="flex gap-3 ml-auto">
                         ${canEdit ? `
                         <button onclick="openAddPurchaseMasterItem()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 flex items-center gap-2">
                             <i class="fas fa-plus"></i> Tambah Item
                         </button>
                         ` : ''}
+                        <button onclick="resetPurchaseMasterItemFilters()" class="bg-white border border-slate-200 text-slate-600 px-5 py-2.5 rounded-xl hover:bg-slate-50 transition-all text-sm font-bold" title="Reset Filters">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Table Card -->
+            <div class="bg-white rounded-2xl border border-slate-100 shadow-sm">
+                <div class="flex flex-wrap justify-between items-center px-6 py-4 border-b border-slate-100 gap-3">
+                    <div>
+                        <h2 class="text-base font-black text-slate-800 uppercase tracking-wide">Master Item Pembelian</h2>
+                        <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Packaging · Sparepart · Perlengkapan · Service · Gas · Aktiva</p>
                     </div>
                 </div>
                 <div class="overflow-visible">
@@ -7100,16 +7174,123 @@ function renderPurchaseMasterItems() {
                                 <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Aksi</th>
                             </tr>
                         </thead>
-                        <tbody>${rows}</tbody>
+                        <tbody id="purchase_master_items_table_body">${rows}</tbody>
                     </table>
                 </div>
-                <div class="px-6 py-3 border-t border-slate-50 text-[10px] font-black text-slate-400 tracking-widest uppercase">
+                <div class="px-6 py-3 border-t border-slate-50 text-[10px] font-black text-slate-400 tracking-widest uppercase" id="purchase_master_items_total_label">
                     TOTAL: ${items.length} ITEM
                 </div>
             </div>
         </div>
     `;
 }
+
+window.updatePurchaseMasterItemFilters = (isSearch = false) => {
+    const nameInput = document.getElementById('purchase_filter_item_name');
+    const catInput = document.getElementById('purchase_filter_item_category');
+    window._purchaseMasterItemFilters = {
+        name: nameInput ? nameInput.value : (window._purchaseMasterItemFilters?.name || ''),
+        category: catInput ? catInput.value : (window._purchaseMasterItemFilters?.category || '')
+    };
+    
+    if (isSearch) {
+        // Fast path: Only filter and update the tbody and total count label to preserve input focus
+        const PURCHASE_CATEGORIES = ['PACKAGING', 'SPAREPART', 'SUPPLIES', 'SERVICE', 'GAS', 'ASSET'];
+        const CATEGORY_LABELS = {
+            'PACKAGING':  { label: 'Packaging',         color: 'bg-purple-50 text-purple-700 border-purple-100' },
+            'SPAREPART':  { label: 'Sparepart',          color: 'bg-orange-50 text-orange-700 border-orange-100' },
+            'SUPPLIES':   { label: 'Perlengkapan',       color: 'bg-yellow-50 text-yellow-700 border-yellow-100' },
+            'SERVICE':    { label: 'Service',            color: 'bg-blue-50 text-blue-700 border-blue-100' },
+            'GAS':        { label: 'Gas',                color: 'bg-cyan-50 text-cyan-700 border-cyan-100' },
+            'ASSET':      { label: 'Aktiva (Tetap)',     color: 'bg-slate-50 text-slate-700 border-slate-100' },
+        };
+        const canEdit = getModulePermission('pembelian').edit;
+        const f = window._purchaseMasterItemFilters;
+
+        const allItems = db.read('inventoryItems') || [];
+        let items = allItems.filter(i => PURCHASE_CATEGORIES.includes(i.category) && i.status !== 'INACTIVE');
+
+        if (f.category) {
+            items = items.filter(it => it.category === f.category);
+        }
+        if (f.name) {
+            const q = f.name.toLowerCase().trim();
+            const searchWords = q.split(/\s+/).filter(w => w.length > 0);
+            items = items.filter(it => {
+                const targetText = `${it.itemName} ${it.itemCode || ''}`.toLowerCase();
+                return searchWords.every(word => targetText.includes(word));
+            });
+        }
+
+        items.sort((a, b) => (a.itemName || '').localeCompare(b.itemName || ''));
+
+        let rowsHtml = items.map(p => {
+            const stock = db.getInventoryStock(p.id);
+            const catInfo = CATEGORY_LABELS[p.category] || { label: p.category, color: 'bg-gray-50 text-gray-700 border-gray-100' };
+            return `
+            <tr class="border-b border-gray-100 hover:bg-slate-50 transition-colors">
+                <td class="py-4 px-6 text-xs text-slate-400 font-mono font-bold">${p.itemCode || '-'}</td>
+                <td class="py-4 px-6 text-sm text-slate-800 font-bold">${p.itemName}</td>
+                <td class="py-4 px-6">
+                    <span class="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${catInfo.color}">
+                        ${catInfo.label}
+                    </span>
+                </td>
+                <td class="py-4 px-6 text-xs font-black text-slate-400 uppercase tracking-widest">${p.unit || '-'}</td>
+                <td class="py-4 px-6 text-sm text-slate-700 font-bold text-right">${formatCurrency(p.purchasePrice || 0)}</td>
+                <td class="py-4 px-6 text-sm font-black text-right ${stock <= 0 ? 'text-red-400' : 'text-slate-700'}">${formatNumber(stock)}</td>
+                <td class="py-4 px-6 text-right overflow-visible">
+                    ${canEdit ? `
+                    <div class="flex justify-end overflow-visible">
+                        <div class="relative inventory-dropdown-container">
+                            <button onclick="toggleRowDropdown(event, '${p.id}')" 
+                                class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 transition-colors text-[11px] font-bold shadow-sm whitespace-nowrap">
+                                Pilih Aksi...
+                                <i class="fas fa-chevron-down text-[9px] text-slate-400"></i>
+                            </button>
+                            
+                            <div id="dropdown-${p.id}" class="inventory-action-menu hidden absolute right-0 top-full mt-1 w-44 bg-white rounded-xl shadow-[0_10px_25px_-5px_rgba(0,0,0,0.1),0_8px_10px_-6px_rgba(0,0,0,0.1)] border border-slate-100 z-[2000] overflow-hidden text-left animate-in fade-in zoom-in-95 duration-100">
+                                <div class="py-1.5 flex flex-col">
+                                    <button onclick="renderInventoryItemForm('${p.id}', 'purchase')" class="text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-indigo-600 hover:bg-indigo-50/50 flex items-center gap-3 transition-colors">
+                                        <i class="fas fa-edit w-4 text-slate-400 group-hover:text-indigo-500"></i> Edit Item
+                                    </button>
+                                    
+                                    ${isCurrentUserAdmin() ? `
+                                    <button onclick="openStockAdjustmentModal('${p.id}')" class="text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-orange-50/50 flex items-center gap-3 transition-colors">
+                                        <i class="fas fa-sync-alt w-4 text-slate-400"></i> Adjustment
+                                    </button>
+                                    <div class="h-px bg-slate-50 my-1 mx-2"></div>
+                                    <button onclick="deletePurchaseMasterItem('${p.id}')" class="text-left px-4 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50/50 flex items-center gap-3 transition-colors">
+                                        <i class="fas fa-trash w-4"></i> Hapus Item
+                                    </button>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    ` : '<span class="text-slate-300 text-[10px] font-bold uppercase italic">No Access</span>'}
+                </td>
+            </tr>`;
+        }).join('');
+
+        if (items.length === 0) {
+            rowsHtml = `<tr><td colspan="7" class="py-12 text-center text-slate-400 italic font-medium uppercase tracking-widest text-xs">Belum ada master item pembelian</td></tr>`;
+        }
+
+        const tbody = document.getElementById('purchase_master_items_table_body');
+        const totalLabel = document.getElementById('purchase_master_items_total_label');
+        if (tbody) tbody.innerHTML = rowsHtml;
+        if (totalLabel) totalLabel.innerText = `TOTAL: ${items.length} ITEM`;
+    } else {
+        // Full render when category changes or resets
+        renderPurchaseMasterItems();
+    }
+};
+
+window.resetPurchaseMasterItemFilters = () => {
+    window._purchaseMasterItemFilters = { category: '', name: '' };
+    renderPurchaseMasterItems();
+};
 
 window.openAddPurchaseMasterItem = () => {
     // Reuse renderInventoryItemForm but with purchase categories pre-selected
@@ -12887,7 +13068,7 @@ window.viewSO = (id) => {
                 </div>
                 
                 <div class="flex items-center gap-3">
-                    <button onclick='printHTML(\`${printableHTML.replace(/`/g, "\\`").replace(/\n/g, "")}\`, "Sales Order ${so.soNumber}")' 
+                    <button onclick='printHTML(\`${printableHTML.replace(/`/g, "\\`").replace(/\n/g, "")}\`, "Sales Order ${so.soNumber}", true, "9.5in 11in")' 
                         class="px-6 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all flex items-center gap-2 active:scale-95">
                         <i class="fas fa-file-pdf text-slate-400"></i> Print / Save PDF
                     </button>
@@ -14078,7 +14259,7 @@ window.printSalesInvoiceLandscape = function(id) {
                 }
                 @media print {
                     @page {
-                        size: 9.5in 5.5in;
+                        size: 9.5in 11in;
                         margin: 0;
                     }
                     body {
