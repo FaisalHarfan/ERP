@@ -2304,7 +2304,7 @@ function renderPurchaseDashboard() {
     `;
 
     // ── Draw Charts ───────────────────────────────────────────────
-    const poFilters = poFiltersEarly;   // alias (already set above)
+    const poFilters = filters;   // alias (already set above)
     setTimeout(() => {
         if (typeof Chart === 'undefined') return;
 
