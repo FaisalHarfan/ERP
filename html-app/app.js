@@ -3171,7 +3171,7 @@ function generatePurchaseOrderNumber(isTax = false, customDate = null) {
     const romanMonth = toRomanPurch(month);
     const type = isTax ? 'A' : 'B';
 
-    // Find the max sequence number for this specific type, month, and year
+    // Find the max sequence number across both Tax (A) and Non-Tax (B) types for the same year
     let maxSeq = 0;
     pos.forEach(p => {
         if (!p.poNumber) return;
@@ -3179,7 +3179,7 @@ function generatePurchaseOrderNumber(isTax = false, customDate = null) {
         // We only care about same year
         if (pDate.getFullYear() === year) {
             const parts = p.poNumber.split('-');
-            if (parts.length >= 3 && parts[1] === type) {
+            if (parts.length >= 3 && (parts[1] === 'A' || parts[1] === 'B')) {
                 const suffixPart = parts[2].split('/')[0];
                 const seq = parseInt(suffixPart);
                 if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
