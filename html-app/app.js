@@ -13106,7 +13106,8 @@ window.generateInvoiceNumber = (isTax, customDate = null) => {
         const parts = inv.invoiceNumber.split('/');
         if (parts.length < 3) return;
         
-        if (parts[1] === romanMonth && parts[2] === String(year)) {
+        // Filter only by year
+        if (parts[2] === String(year)) {
             const prefixParts = parts[0].split('-');
             if (prefixParts.length >= 3 && prefixParts[1] === type) {
                 const seq = parseInt(prefixParts[2]);

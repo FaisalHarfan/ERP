@@ -18,16 +18,28 @@ function doGenNum() {
     const year = now.getFullYear();
     const romanMonth = toRomanDO(month);
 
-    const sameMonthRecords = dos.filter(d => {
-        if (!d.doNumber) return false;
+    // Find the max sequence number across the current year
+    let maxSeq = 0;
+    dos.forEach(d => {
+        if (!d.doNumber) return;
         const parts = d.doNumber.split('/');
-        if (parts.length < 4) return false;
-        return parts[1] === romanMonth && parts[2] === String(year);
+        if (parts.length >= 4 && parts[2] === String(year)) {
+            const seqPart = parts[3];
+            const seq = parseInt(seqPart);
+            if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+        }
     });
 
-    const nextSeq = sameMonthRecords.length + 1;
-    const seqStr = String(nextSeq).padStart(4, '0');
-    return `SJ/${romanMonth}/${year}/${seqStr}`;
+    let nextSeq = maxSeq + 1;
+    let finalNumber = `SJ/${romanMonth}/${year}/${String(nextSeq).padStart(4, '0')}`;
+
+    // Safety uniqueness check
+    while (dos.some(d => d.doNumber === finalNumber)) {
+        nextSeq++;
+        finalNumber = `SJ/${romanMonth}/${year}/${String(nextSeq).padStart(4, '0')}`;
+    }
+
+    return finalNumber;
 }
 
 window.calculateColly = function (qty, kemasan) {
