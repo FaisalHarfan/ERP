@@ -5269,8 +5269,8 @@ window.viewPO = (id, fromPage = 'po') => {
             <div class="text-right"><h3 class="text-xs font-semibold text-gray-500 uppercase mb-1">Detail</h3>
                 <p class="text-sm">Tanggal PO: ${po.date ? po.date.split('T')[0] : '-'}</p>
                 <p class="text-sm">Term Pembayaran: <strong>${po.paymentTerms || '-'}</strong></p>
+                <p class="text-sm">Jatuh Tempo: <strong>${po.dueDate ? po.dueDate.split('T')[0] : '-'}</strong></p>
                 <div class="no-print">
-                    <p class="text-sm">Jatuh Tempo: <strong>${po.dueDate ? po.dueDate.split('T')[0] : '-'}</strong></p>
                     ${po.etd ? `<p class="text-sm">ETD: <strong>${po.etd.split('T')[0]}</strong></p>` : ''}
                     ${po.actualDeliveryDate ? `<p class="text-sm">Tiba: <strong>${po.actualDeliveryDate.split('T')[0]}</strong></p>` : ''}
                     <p class="text-sm">Status: ${statusBadgePurch(po.status)}</p>
@@ -5302,21 +5302,33 @@ window.viewPO = (id, fromPage = 'po') => {
         </div>` : ''}
 
         <div class="grid grid-cols-4 gap-4 mt-12 text-center">
-            <div class="space-y-16">
+            <div class="space-y-12">
                 <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Di Buat</p>
-                <div class="border-b border-gray-300 w-3/4 mx-auto"></div>
+                <div>
+                    <div class="border-b border-gray-300 w-3/4 mx-auto mb-1"></div>
+                    <p class="text-xs font-bold text-gray-700">Maya</p>
+                </div>
             </div>
-            <div class="space-y-16">
+            <div class="space-y-12">
                 <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Di Ketahui</p>
-                <div class="border-b border-gray-300 w-3/4 mx-auto"></div>
+                <div>
+                    <div class="border-b border-gray-300 w-3/4 mx-auto mb-1"></div>
+                    <p class="text-xs font-bold text-gray-700">Tika</p>
+                </div>
             </div>
-            <div class="space-y-16">
+            <div class="space-y-12">
                 <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Di Setujui</p>
-                <div class="border-b border-gray-300 w-3/4 mx-auto"></div>
+                <div>
+                    <div class="border-b border-gray-300 w-3/4 mx-auto mb-1"></div>
+                    <p class="text-xs font-bold text-gray-700">Petrico Wijayanto</p>
+                </div>
             </div>
-            <div class="space-y-16">
+            <div class="space-y-12">
                 <p class="text-[10px] font-black text-gray-400 uppercase tracking-widest">Di Terima</p>
-                <div class="border-b border-gray-300 w-3/4 mx-auto"></div>
+                <div>
+                    <div class="border-b border-gray-300 w-3/4 mx-auto mb-1"></div>
+                    <p class="text-xs font-bold text-gray-700">&nbsp;</p>
+                </div>
             </div>
         </div>
     </div>`;

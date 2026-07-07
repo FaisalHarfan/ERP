@@ -845,7 +845,25 @@ window.updateMOForm = () => {
                 sec.innerHTML = '';
                 const stageLabel = 'Oven Basah';
                 const stageColor = 'orange';
-                const rmItems = invItems.filter(i => (i.category === 'RAW_MATERIAL') && i.status !== 'INACTIVE');
+                const rawRmItems = invItems.filter(i => (i.category === 'RAW_MATERIAL') && i.status !== 'INACTIVE');
+                const rmItems = [];
+                const seenRm = new Set();
+                for (const item of rawRmItems) {
+                    const key = item.itemName.toLowerCase().trim();
+                    if (!seenRm.has(key)) {
+                        seenRm.add(key);
+                        rmItems.push(item);
+                    } else {
+                        const existingIdx = rmItems.findIndex(x => x.itemName.toLowerCase().trim() === key);
+                        if (existingIdx > -1) {
+                            const currentStock = db.getInventoryStock(item.id) || 0;
+                            const existingStock = db.getInventoryStock(rmItems[existingIdx].id) || 0;
+                            if (currentStock > existingStock) {
+                                rmItems[existingIdx] = item;
+                            }
+                        }
+                    }
+                }
                 const rmOpts = rmItems.map(i => `<option value="${i.id}" data-unit="${i.unit}" data-stock="${db.getInventoryStock(i.id)}">${i.itemName} (Gudang: ${prodFmt(db.getInventoryStock(i.id))})</option>`).join('');
                 sec.innerHTML = `
                     <div class="bg-${stageColor}-50 border-2 border-${stageColor}-100 rounded-xl p-4">
@@ -1552,7 +1570,7 @@ window.openCompleteMOModal = (id) => {
                              ${mo.stage === 'OVEN_BASAH' ? `
                              <div>
                                  <label class="block text-sm font-semibold text-slate-600 mb-2">Tanggal Realisasi <span class="text-red-500">*</span></label>
-                                 <input type="date" id="mo_partial_date" class="w-full h-[52px] bg-slate-50 border-2 border-transparent rounded-2xl px-5 py-3 text-sm font-black text-slate-700 focus:bg-white focus:border-blue-500/20 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all shadow-sm cursor-pointer" value="${new Date().toISOString().split('T')[0]}">
+                                 <input type="date" id="mo_partial_date" class="w-full h-[52px] bg-slate-50 border-2 border-transparent rounded-2xl px-5 py-3 text-sm font-black text-slate-700 focus:bg-white focus:border-blue-500/20 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all shadow-sm cursor-pointer" value="">
                              </div>
                              <div class="searchable-select-container relative">
                                  <label class="block text-sm font-semibold text-slate-600 mb-2">Status Produksi <span class="text-red-500">*</span></label>
@@ -1761,11 +1779,17 @@ window.finalizeMO = async (id) => {
 
         const selectedStatus = document.getElementById('mo_partial_status')?.value || 'PARTIAL';
         const finalNotesVal = document.getElementById('mo_final_notes')?.value || '';
+        const partialDateVal = document.getElementById('mo_partial_date')?.value;
+        
+        if (!partialDateVal) {
+            showToast('Tanggal Realisasi wajib diisi!', 'error');
+            return;
+        }
 
         updates = {
             isPartial: true,
             status: selectedStatus,
-            partialDate: document.getElementById('mo_partial_date')?.value || new Date().toISOString().split('T')[0],
+            partialDate: partialDateVal,
             partialInputItems,
             partialOutputProducts,
             notes: finalNotesVal,
@@ -3539,7 +3563,25 @@ window.openBOMModal = (id = null) => {
         if (name.includes('extruder') || code.includes('extruder')) return false;
         return true;
     });
-    const rawMaterials = invItems.filter(i => (i.category === 'RAW_MATERIAL' || i.category === 'Bahan Baku') && i.status !== 'INACTIVE');
+    const rawMaterialsList = invItems.filter(i => (i.category === 'RAW_MATERIAL' || i.category === 'Bahan Baku') && i.status !== 'INACTIVE');
+    const rawMaterials = [];
+    const seenMat = new Set();
+    for (const item of rawMaterialsList) {
+        const key = item.itemName.toLowerCase().trim();
+        if (!seenMat.has(key)) {
+            seenMat.add(key);
+            rawMaterials.push(item);
+        } else {
+            const existingIdx = rawMaterials.findIndex(x => x.itemName.toLowerCase().trim() === key);
+            if (existingIdx > -1) {
+                const currentStock = db.getInventoryStock(item.id) || 0;
+                const existingStock = db.getInventoryStock(rawMaterials[existingIdx].id) || 0;
+                if (currentStock > existingStock) {
+                    rawMaterials[existingIdx] = item;
+                }
+            }
+        }
+    }
 
     // Materials data if edit
     const currentMaterials = id ? (db.read('bomMaterials') || []).filter(m => m.bomId === id) : [];
@@ -4270,7 +4312,9 @@ window.renderProductionStockMaster = () => {
     window._prodStockFilters = window._prodStockFilters || { q: '', cat: '' };
     const f = window._prodStockFilters;
 
-    let items = (db.read('inventoryItems') || []).filter(it => it.status === 'ACTIVE');
+    let allItems = (db.read('inventoryItems') || []).filter(it => it.status === 'ACTIVE');
+    window._tempProdStockItems = allItems;
+    let items = [...allItems];
     
     // Default categories for production: Only WIP (Oven Basah & Oven Kering)
     const prodCats = ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'];
@@ -4284,8 +4328,12 @@ window.renderProductionStockMaster = () => {
     }
 
     if (f.q) {
-        const q = f.q.toLowerCase();
-        items = items.filter(it => it.itemName.toLowerCase().includes(q) || (it.itemCode && it.itemCode.toLowerCase().includes(q)));
+        const q = f.q.toLowerCase().trim();
+        const searchWords = q.split(/\s+/).filter(w => w.length > 0);
+        items = items.filter(it => {
+            const targetText = `${it.itemName} ${it.itemCode || ''}`.toLowerCase();
+            return searchWords.every(word => targetText.includes(word));
+        });
     }
 
     const catLabels = {
@@ -4359,7 +4407,7 @@ window.renderProductionStockMaster = () => {
             </div>
             
             <div class="p-4 bg-slate-50/50 border-t border-slate-100 flex justify-between items-center">
-                <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Showing ${items.length} Production Items</span>
+                <span id="prod_stock_count" class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Showing ${items.length} Production Items</span>
             </div>
 
             <div id="prod_stock_empty_state" class="${items.length === 0 ? '' : 'hidden'} py-20 flex flex-col items-center justify-center text-center">
@@ -4464,12 +4512,50 @@ window.renderProductionStockRows = (items) => {
     }).join('');
 };
 
+let _prodStockFilterDebounce = null;
 window.applyProdStockFilters = () => {
-    window._prodStockFilters = {
-        q: document.getElementById('filter_prodStock_q')?.value || '',
-        cat: document.getElementById('filter_prodStock_cat')?.value || ''
-    };
-    renderProductionStockMaster();
+    if (_prodStockFilterDebounce) clearTimeout(_prodStockFilterDebounce);
+    _prodStockFilterDebounce = setTimeout(() => {
+        const qInput = document.getElementById('filter_prodStock_q');
+        const catSelect = document.getElementById('filter_prodStock_cat');
+        
+        window._prodStockFilters = {
+            q: qInput ? qInput.value : '',
+            cat: catSelect ? catSelect.value : ''
+        };
+        
+        const cached = window._tempProdStockItems;
+        if (cached) {
+            const f = window._prodStockFilters;
+            let items = [...cached];
+            const prodCats = ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'];
+            
+            if (f.cat) {
+                items = items.filter(it => it.category === f.cat);
+            } else {
+                items = items.filter(it => prodCats.includes(it.category));
+            }
+            
+            if (f.q) {
+                const q = f.q.toLowerCase().trim();
+                const searchWords = q.split(/\s+/).filter(w => w.length > 0);
+                items = items.filter(it => {
+                    const targetText = `${it.itemName} ${it.itemCode || ''}`.toLowerCase();
+                    return searchWords.every(word => targetText.includes(word));
+                });
+            }
+            
+            const tbody = document.getElementById('prod_stock_table_body');
+            const emptyState = document.getElementById('prod_stock_empty_state');
+            const countEl = document.getElementById('prod_stock_count');
+            
+            if (tbody) tbody.innerHTML = renderProductionStockRows(items);
+            if (emptyState) emptyState.classList.toggle('hidden', items.length > 0);
+            if (countEl) countEl.textContent = `Showing ${items.length} Production Items`;
+        } else {
+            renderProductionStockMaster();
+        }
+    }, 200);
 };
 
 window.resetProdStockFilters = () => {
