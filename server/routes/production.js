@@ -238,6 +238,7 @@ router.post('/orders/:id/complete', authenticateToken, requirePermission('produk
                 mo.notes = (moRecord.data.notes || '') + (updates.notes ? `\n[PARTIAL ${historyEntry.date}]: ` + updates.notes : '');
 
 
+            }
         }
 
         // --- 2. PROSES OVEN KERING ---
