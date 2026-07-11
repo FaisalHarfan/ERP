@@ -43,24 +43,39 @@ async function ensureWIPItem(productId, stageLabel, t) {
     if (existing) return existing.id;
 
     // 2. Auto-create if not found
-    // Item code generation is handled inline below
-    
-    const prefix = category === 'RAW_MATERIAL' ? 'RM' : (['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK', 'WIP'].includes(category) ? 'WIP' : 'FG');
-    const lastItem = await InventoryItem.findOne({
+    // Use same prefix mapping as inventory.js generateItemCode()
+    const prefixes = {
+        RAW_MATERIAL: 'RM',
+        FINISHED_GOODS: 'FG',
+        SPAREPART: 'SP',
+        PACKAGING: 'PK',
+        SERVICE: 'SV',
+        GAS: 'GAS',
+        ASSET: 'AKT',
+        SUPPLIES: 'SUP',
+        OVEN_BASAH_STOCK: 'OB',
+        OVEN_KERING_STOCK: 'OK',
+        BULK_STOCK: 'BK',
+        WIP: 'WIP'
+    };
+    const prefix = prefixes[category] || 'ITM';
+
+    // Find ALL items with this prefix and compute max sequence (same as inventory.js)
+    const allPrefixItems = await InventoryItem.findAll({
         where: { itemCode: { [sequelize.Sequelize.Op.like]: `${prefix}-%` } },
-        order: [['itemCode', 'DESC']],
         transaction: t
     });
-    
-    let nextSeq = 1;
-    if (lastItem && lastItem.itemCode) {
-        const parts = lastItem.itemCode.split('-');
+
+    let maxSeq = 0;
+    allPrefixItems.forEach(item => {
+        const parts = (item.itemCode || '').split('-');
         if (parts.length >= 2) {
             const seq = parseInt(parts[1]);
-            if (!isNaN(seq)) nextSeq = seq + 1;
+            if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
         }
-    }
-    const itemCode = `${prefix}-${nextSeq.toString().padStart(4, '0')}`;
+    });
+
+    const itemCode = `${prefix}-${(maxSeq + 1).toString().padStart(4, '0')}`;
 
     const newItem = await InventoryItem.create({
         id: generateId(),

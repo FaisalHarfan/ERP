@@ -301,4 +301,144 @@ router.post('/transactions', authenticateToken, requirePermission('logistik', 'e
     }
 });
 
+// ─── RENUMBER ITEM CODES ──────────────────────────────────────────
+// Re-sequence all item codes per category so they are sequential (e.g. FG-0001, FG-0002, ...)
+// Items are sorted by created_at to preserve creation order.
+// Uses 2-pass approach to avoid unique constraint conflicts.
+router.post('/renumber', authenticateToken, requirePermission('logistik', 'edit'), async (req, res) => {
+    const t = await sequelize.transaction();
+    try {
+        const prefixes = {
+            RAW_MATERIAL: 'RM',
+            FINISHED_GOODS: 'FG',
+            SPAREPART: 'SP',
+            PACKAGING: 'PK',
+            SERVICE: 'SV',
+            GAS: 'GAS',
+            ASSET: 'AKT',
+            SUPPLIES: 'SUP',
+            OVEN_BASAH_STOCK: 'OB',
+            OVEN_KERING_STOCK: 'OK',
+            BULK_STOCK: 'BK',
+            WIP: 'WIP'
+        };
+
+        const changes = []; // Track old→new for logging
+
+        // Collect all renumber plans first
+        const renumberPlans = []; // { item, oldCode, newCode }
+
+        for (const [category, prefix] of Object.entries(prefixes)) {
+            const items = await InventoryItem.findAll({
+                where: { category: category },
+                order: [['created_at', 'ASC']],
+                transaction: t
+            });
+
+            let seq = 1;
+            for (const item of items) {
+                const newCode = `${prefix}-${seq.toString().padStart(4, '0')}`;
+                const oldCode = item.itemCode || item.item_code;
+
+                if (oldCode !== newCode) {
+                    renumberPlans.push({ item, oldCode, newCode, itemName: item.itemName || item.item_name });
+                }
+                seq++;
+            }
+        }
+
+        if (renumberPlans.length === 0) {
+            await t.rollback();
+            return res.json({ success: true, message: 'Semua item code sudah berurutan', totalUpdated: 0, changes: [] });
+        }
+
+        // PASS 1: Assign temporary codes to avoid unique constraint conflicts
+        for (let i = 0; i < renumberPlans.length; i++) {
+            const plan = renumberPlans[i];
+            const tempCode = `TEMP-RENUM-${i}`;
+            await plan.item.update({ itemCode: tempCode }, { transaction: t });
+        }
+
+        // PASS 2: Assign final sequential codes and update all references
+        for (const plan of renumberPlans) {
+            const { item, oldCode, newCode, itemName } = plan;
+
+            // Update inventory_items to final code
+            await item.update({ itemCode: newCode }, { transaction: t });
+
+            // Update stock_transactions that reference this item (by item_id, not by code)
+            await StockTransaction.update(
+                { itemCode: newCode },
+                { where: { itemId: item.id }, transaction: t }
+            );
+
+            // Update JSONB items in related tables that store itemCode
+            const jsonbTables = [
+                'sales_quotations', 'sales_orders', 'sales_invoices',
+                'delivery_orders', 'purchase_orders', 'purchase_invoices'
+            ];
+            for (const table of jsonbTables) {
+                try {
+                    const [rows] = await sequelize.query(
+                        `SELECT id, items FROM ${table} WHERE items::text LIKE :pattern`,
+                        {
+                            replacements: { pattern: `%${oldCode}%` },
+                            transaction: t
+                        }
+                    );
+                    for (const row of rows) {
+                        if (!Array.isArray(row.items)) continue;
+                        let changed = false;
+                        const updatedItems = row.items.map(it => {
+                            if (it.itemCode === oldCode) {
+                                changed = true;
+                                return { ...it, itemCode: newCode };
+                            }
+                            return it;
+                        });
+                        if (changed) {
+                            await sequelize.query(
+                                `UPDATE ${table} SET items = :items WHERE id = :id`,
+                                {
+                                    replacements: { items: JSON.stringify(updatedItems), id: row.id },
+                                    transaction: t
+                                }
+                            );
+                        }
+                    }
+                } catch (tableErr) {
+                    // Table might not exist, skip silently
+                }
+            }
+
+            changes.push({ oldCode, newCode, itemName });
+        }
+
+        // Log the operation
+        await SystemLog.create({
+            user_id: req.user.userId,
+            user_email: req.user.email,
+            action: 'RENUMBER_ITEM_CODES',
+            details: `Renumber ${changes.length} item codes. Changes: ${changes.map(c => `${c.oldCode}→${c.newCode}`).join(', ')}`
+        }, { transaction: t });
+
+        await t.commit();
+        res.json({
+            success: true,
+            message: `Berhasil menomori ulang ${changes.length} item`,
+            totalUpdated: changes.length,
+            changes: changes.map(c => ({
+                itemName: c.itemName,
+                oldCode: c.oldCode,
+                newCode: c.newCode
+            }))
+        });
+    } catch (err) {
+        await t.rollback();
+        console.error('Error renumbering:', err);
+        res.status(500).json({ error: 'Gagal menomori ulang: ' + err.message });
+    }
+});
+
 module.exports = router;
+
