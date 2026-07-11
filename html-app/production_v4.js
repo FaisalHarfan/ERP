@@ -1811,7 +1811,7 @@ window.openCompleteMOModal = (id) => {
                         <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2 mb-6">
                             <i class="fas fa-info-circle text-blue-600"></i> Informasi MO
                         </h3>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div class="grid grid-cols-1 ${mo.stage === 'OVEN_BASAH' ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-6">
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Tanggal MO</label>
                                 <div class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-700">${moDate}</div>
@@ -1823,7 +1823,7 @@ window.openCompleteMOModal = (id) => {
                              ${mo.stage === 'OVEN_BASAH' ? `
                              <div>
                                  <label class="block text-sm font-semibold text-slate-600 mb-2">Tanggal Realisasi <span class="text-red-500">*</span></label>
-                                 <input type="date" id="mo_partial_date" class="w-full h-[52px] bg-slate-50 border-2 border-transparent rounded-2xl px-5 py-3 text-sm font-black text-slate-700 focus:bg-white focus:border-blue-500/20 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all shadow-sm cursor-pointer" value="">
+                                 <input type="date" id="mo_partial_date" class="w-full h-[52px] bg-slate-50 border-2 border-transparent rounded-2xl px-5 py-3 text-sm font-black text-slate-700 focus:bg-white focus:border-blue-500/20 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all shadow-sm cursor-pointer" value="${new Date().toISOString().split('T')[0]}">
                              </div>
                              <div class="searchable-select-container relative">
                                  <label class="block text-sm font-semibold text-slate-600 mb-2">Status Produksi <span class="text-red-500">*</span></label>
@@ -1855,7 +1855,12 @@ window.openCompleteMOModal = (id) => {
                                      </div>
                                  </div>
                              </div>
-                             ` : ''}
+                             ` : `
+                             <div>
+                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Tanggal Selesai <span class="text-red-500">*</span></label>
+                                 <input type="date" id="mo_completed_date" class="w-full h-[52px] bg-slate-50 border-2 border-transparent rounded-2xl px-5 py-3 text-sm font-black text-slate-700 focus:bg-white focus:border-blue-500/20 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all shadow-sm cursor-pointer" value="${new Date().toISOString().split('T')[0]}">
+                             </div>
+                             `}
                          </div>
                      </div>
  
@@ -1979,9 +1984,15 @@ window.finalizeMO = async (id) => {
     const mo = db.findById('productionOrders', id);
     if (!mo) return;
 
+    const completedDateVal = document.getElementById('mo_completed_date')?.value;
+    if (mo.stage !== 'OVEN_BASAH' && !completedDateVal) {
+        showToast('Tanggal Selesai wajib diisi!', 'error');
+        return;
+    }
+
     let updates = {
         status: 'DONE',
-        completedAt: new Date().toISOString(),
+        completedAt: completedDateVal ? new Date(completedDateVal).toISOString() : new Date().toISOString(),
         notes: (mo.notes || '') + (document.getElementById('mo_final_notes')?.value ? '\n[FINISH]: ' + document.getElementById('mo_final_notes').value : ''),
         wasteQty: (mo.stage === 'OVEN_BASAH') ? 0 : (parseFormattedNum(document.getElementById('mo_final_waste')?.value) || 0),
         qcStatus: (mo.stage === 'OVEN_BASAH') ? 'PASSED' : (document.getElementById('mo_final_qc')?.value || 'PASSED')

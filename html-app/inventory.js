@@ -4600,8 +4600,9 @@ window.openWIPHistoryModal = (itemId, location, startDateStr = null, endDateStr 
         const type = (t.type || '').toUpperCase();
         const isIn = ['IN', 'ADJUST_IN', 'PRODUCTION_IN', 'RETURN_IN'].includes(type);
         const isOut = ['OUT', 'SHRINKAGE', 'ADJUST_OUT', 'PRODUCTION_OUT', 'SALES_OUT', 'WASTE'].includes(type);
-        if (isIn) return sum + t.qty;
-        if (isOut) return sum - t.qty;
+        const q = parseFloat(t.qty) || 0;
+        if (isIn) return sum + q;
+        if (isOut) return sum - q;
         return sum;
     }, 0);
 
@@ -4615,7 +4616,7 @@ window.openWIPHistoryModal = (itemId, location, startDateStr = null, endDateStr 
         const type = (t.type || '').toUpperCase();
         const isIn = ['IN', 'ADJUST_IN', 'PRODUCTION_IN', 'RETURN_IN'].includes(type);
         const isOut = ['OUT', 'SHRINKAGE', 'ADJUST_OUT', 'PRODUCTION_OUT', 'SALES_OUT', 'WASTE'].includes(type);
-        const q = t.qty || 0;
+        const q = parseFloat(t.qty) || 0;
         
         const refUpper = (t.reference || '').toUpperCase();
         const isShrink = ['SHRINKAGE', 'ADJUST_OUT', 'WASTE', 'JUDGMENT'].includes(refUpper) || (t.notes || '').toLowerCase().includes('susut');
@@ -4777,8 +4778,9 @@ window.printWIPStockCard = (itemId, location, startDateStr, endDateStr) => {
         const type = (t.type || '').toUpperCase();
         const isIn = ['IN', 'ADJUST_IN', 'PRODUCTION_IN', 'RETURN_IN'].includes(type);
         const isOut = ['OUT', 'SHRINKAGE', 'ADJUST_OUT', 'PRODUCTION_OUT', 'SALES_OUT', 'WASTE'].includes(type);
-        if (isIn) return sum + t.qty;
-        if (isOut) return sum - t.qty;
+        const q = parseFloat(t.qty) || 0;
+        if (isIn) return sum + q;
+        if (isOut) return sum - q;
         return sum;
     }, 0);
 
@@ -4795,7 +4797,7 @@ window.printWIPStockCard = (itemId, location, startDateStr, endDateStr) => {
         const type = (t.type || '').toUpperCase();
         const isIn = ['IN', 'ADJUST_IN', 'PRODUCTION_IN', 'RETURN_IN'].includes(type);
         const isOut = ['OUT', 'SHRINKAGE', 'ADJUST_OUT', 'PRODUCTION_OUT', 'SALES_OUT', 'WASTE'].includes(type);
-        const q = t.qty || 0;
+        const q = parseFloat(t.qty) || 0;
         
         const refUpper = (t.reference || '').toUpperCase();
         const isShrink = ['SHRINKAGE', 'ADJUST_OUT', 'WASTE', 'JUDGMENT'].includes(refUpper) || (t.notes || '').toLowerCase().includes('susut');

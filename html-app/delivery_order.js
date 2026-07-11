@@ -1135,18 +1135,31 @@ window.printDeliveryOrder = function (id) {
                 .sig-line { border-top:2px solid #0f172a; width:80%; margin:0 auto 3px; }
                 .sig-name { font-size:10px; font-weight:700; color:#0f172a; }
                 .notes { margin-top:10px; padding:10px; background:#f8fafc; border:1px solid #e2e8f0; border-left:4px solid #64748b; border-radius:6px; font-size:9px; color:#475569; line-height:1.4; }
-                @page { size: 9.5in 11in; margin: 0; }
+                @page { size: portrait; margin: 0; }
                 .page { page-break-after: always; background:#fff; padding:30px; margin-bottom:30px; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 4px 20px rgba(0,0,0,0.1); }
                 .page:last-child { page-break-after: auto; margin-bottom:0; }
                 @media print {
-                    body { padding:0; background:#fff; }
+                    @page { size: portrait; margin: 0 !important; }
+                    body { padding: 0 !important; margin: 0 !important; background: #fff !important; }
                     .page {
-                        width: calc(100% - 30mm) !important;
-                        margin: 5mm auto !important;
-                        padding: 0 !important;
+                        width: 100% !important;
+                        margin: 0 !important;
+                        padding: 10mm 15mm 0 15mm !important;
                         border: none !important;
                         border-radius: 0 !important;
                         box-shadow: none !important;
+                        page-break-after: always;
+                    }
+                    .page:last-child {
+                        page-break-after: avoid !important;
+                    }
+                    /* Force everything to black color and remove backgrounds for matrix/continuous form printing */
+                    *, h1, h2, h3, h4, p, span, div, table, th, td, td.value, td.label {
+                        color: #000 !important;
+                        border-color: #000 !important;
+                        background: transparent !important;
+                        box-shadow: none !important;
+                        text-shadow: none !important;
                     }
                     .header { margin-bottom: 8px !important; padding-bottom: 5px !important; border-bottom: 2px solid #000 !important; }
                     .company-name { font-size: 16px !important; }
@@ -1156,7 +1169,13 @@ window.printDeliveryOrder = function (id) {
                     table { margin-top: 8px !important; }
                     table th { padding: 4px 6px !important; }
                     table td { padding: 4px 6px !important; }
-                    .notes { margin-top: 5px !important; padding: 6px !important; }
+                    .notes { 
+                        margin-top: 5px !important; 
+                        padding: 6px !important; 
+                        background: transparent !important;
+                        border: 1px solid #000 !important;
+                        border-left: 4px solid #000 !important;
+                    }
                     .signatures { margin-top: 8px !important; gap: 10px !important; }
                     .sig-box { border: 1px solid #000 !important; padding: 4px !important; }
                     .sig-title { margin-bottom: 24px !important; }
@@ -1193,8 +1212,8 @@ window.printDeliveryOrder = function (id) {
                 ${!isGudang ? `
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:40px; margin-bottom:20px;">
                     <table class="meta-table">
-                        <tr><td class="label">Kepada Yth</td><td class="value" style="font-size:14px;color:#2563eb">${d.recipientName || '-'}</td></tr>
-                        <tr><td class="label">Alamat</td><td class="value" style="font-weight:500;color:#475569">${d.address || '-'}</td></tr>
+                        <tr><td class="label">Kepada Yth</td><td class="value">${d.recipientName || '-'}</td></tr>
+                        <tr><td class="label">Alamat</td><td class="value" style="font-weight:500;">${d.address || '-'}</td></tr>
                         <tr><td class="label">Ref Order</td><td class="value">${d.soNumber || d.invoiceNumber || '-'}</td></tr>
                     </table>
                     <table class="meta-table">

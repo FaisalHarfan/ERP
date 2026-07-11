@@ -129,6 +129,7 @@ router.post('/orders/:id/complete', authenticateToken, requirePermission('produk
 
         const stage = mo.stage;
         const moNumber = mo.moNumber;
+        const txDate = updates.completedAt ? new Date(updates.completedAt) : (updates.partialDate ? new Date(updates.partialDate) : new Date());
 
         // --- 1. PROSES OVEN BASAH ---
         if (stage === 'OVEN_BASAH') {
@@ -236,51 +237,7 @@ router.post('/orders/:id/complete', authenticateToken, requirePermission('produk
                 
                 mo.notes = (moRecord.data.notes || '') + (updates.notes ? `\n[PARTIAL ${historyEntry.date}]: ` + updates.notes : '');
 
-            } else {
-                // Fallback / legacy complete flow
-                // Kurangi Bahan Baku (OUT)
-                if (mo.inputItems && Array.isArray(mo.inputItems)) {
-                    for (const item of mo.inputItems) {
-                        await StockTransaction.create({
-                            id: generateId(),
-                            txNo: moNumber,
-                            date: new Date(),
-                            itemId: item.inventoryItemId,
-                            itemName: item.itemName,
-                            type: 'OUT',
-                            qty: parseFloat(item.qty),
-                            reference: 'PRODUCTION_OUT',
-                            referenceId: moRecord.id,
-                            notes: `FINISH Oven Basah MO ${moNumber}: Consumed for ${mo.productName}`,
-                            createdBy: req.user.email,
-                            location: 'WHS'
-                        }, { transaction: t });
-                    }
-                }
 
-                // Tambah Hasil Produksi ke WIP Oven Basah (IN)
-                if (mo.outputProducts && Array.isArray(mo.outputProducts)) {
-                    for (const op of mo.outputProducts) {
-                        const wipItemId = await ensureWIPItem(op.itemId, 'Oven Basah', t);
-                        const targetName = op.itemName + ' (Oven Basah)';
-                        
-                        await StockTransaction.create({
-                            id: generateId(),
-                            txNo: moNumber,
-                            date: new Date(),
-                            itemId: wipItemId,
-                            itemName: targetName,
-                            type: 'IN',
-                            qty: parseFloat(op.qty),
-                            reference: 'PRODUCTION_IN',
-                            referenceId: moRecord.id,
-                            notes: `FINISH Oven Basah MO ${moNumber}: Produced ${targetName}`,
-                            createdBy: req.user.email,
-                            location: 'OVEN_BASAH'
-                        }, { transaction: t });
-                    }
-                }
-            }
         }
 
         // --- 2. PROSES OVEN KERING ---
@@ -294,7 +251,7 @@ router.post('/orders/:id/complete', authenticateToken, requirePermission('produk
                     await StockTransaction.create({
                         id: generateId(),
                         txNo: moNumber,
-                        date: new Date(),
+                        date: txDate,
                         itemId: inputWipId,
                         itemName: tp.itemName + ' (Oven Basah)',
                         type: 'OUT',
@@ -310,7 +267,7 @@ router.post('/orders/:id/complete', authenticateToken, requirePermission('produk
                     await StockTransaction.create({
                         id: generateId(),
                         txNo: moNumber,
-                        date: new Date(),
+                        date: txDate,
                         itemId: outputWipId,
                         itemName: tp.itemName + ' (Oven Kering)',
                         type: 'IN',
@@ -340,7 +297,7 @@ router.post('/orders/:id/complete', authenticateToken, requirePermission('produk
                     await StockTransaction.create({
                         id: generateId(),
                         txNo: moNumber,
-                        date: new Date(),
+                        date: txDate,
                         itemId: inputWipId,
                         itemName: tp.itemName + ' (Oven Kering)',
                         type: 'OUT',
@@ -356,7 +313,7 @@ router.post('/orders/:id/complete', authenticateToken, requirePermission('produk
                     await StockTransaction.create({
                         id: generateId(),
                         txNo: moNumber,
-                        date: new Date(),
+                        date: txDate,
                         itemId: outputItemId,
                         itemName: tp.itemName,
                         type: 'IN',
@@ -378,7 +335,7 @@ router.post('/orders/:id/complete', authenticateToken, requirePermission('produk
                 await StockTransaction.create({
                     id: generateId(),
                     txNo: moNumber,
-                    date: new Date(),
+                    date: txDate,
                     itemId: inputWipId,
                     type: 'OUT',
                     qty: inputQty,
@@ -393,7 +350,7 @@ router.post('/orders/:id/complete', authenticateToken, requirePermission('produk
                 await StockTransaction.create({
                     id: generateId(),
                     txNo: moNumber,
-                    date: new Date(),
+                    date: txDate,
                     itemId: outputItemId,
                     type: 'IN',
                     qty: inputQty,

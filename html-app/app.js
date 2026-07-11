@@ -14270,17 +14270,7 @@ window.printSalesInvoiceLandscape = function(id) {
                     padding: 0;
                     margin: 0;
                 }
-                @media print {
-                    @page {
-                        size: 9.5in 11in;
-                        margin: 0;
-                    }
-                    body {
-                        margin: 0;
-                        padding: 0;
-                        -webkit-print-color-adjust: exact;
-                    }
-                }
+                @page { size: portrait; margin: 0; }
                 .container {
                     width: calc(100% - 30mm);
                     margin: 5mm auto;
@@ -14304,6 +14294,31 @@ window.printSalesInvoiceLandscape = function(id) {
                 }
                 table.items-table td {
                     padding: 3px 2px;
+                }
+                @media print {
+                    @page {
+                        size: portrait;
+                        margin: 0 !important;
+                    }
+                    body {
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        background: #fff !important;
+                    }
+                    .container {
+                        width: 100% !important;
+                        margin: 0 !important;
+                        padding: 10mm 15mm 0 15mm !important;
+                        max-height: none !important;
+                    }
+                    /* Force everything to black color and remove backgrounds for matrix/continuous form printing */
+                    *, h1, h2, h3, h4, p, span, div, table, th, td {
+                        color: #000 !important;
+                        border-color: #000 !important;
+                        background: transparent !important;
+                        box-shadow: none !important;
+                        text-shadow: none !important;
+                    }
                 }
             </style>
         </head>
