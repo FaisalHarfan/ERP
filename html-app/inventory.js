@@ -27,7 +27,7 @@ const CATEGORY_COLORS = {
     BULK_STOCK: 'bg-indigo-100 text-indigo-800',
     FINISHED_GOODS: 'bg-green-100 text-green-800'
 };
-const REF_LABELS = { PO: 'Purchase Receipt', SO: 'Sales Delivery', PRODUCTION_IN: 'Hasil Produksi', PRODUCTION_OUT: 'Konsumsi Produksi', SHRINKAGE: 'Penyusutan/NG', MANUAL: 'Manual' };
+const REF_LABELS = { PO: 'Purchase Receipt', SO: 'Sales Delivery', PRODUCTION_IN: 'Hasil Produksi', PRODUCTION_OUT: 'Konsumsi Produksi', SHRINKAGE: 'Penyusutan/NG', MANUAL: 'Manual', CONVERSION: 'Konversi' };
 
 function invFmt(n) { 
     const val = parseFloat(n);
@@ -472,6 +472,9 @@ window.renderInventoryMaster = async () => {
                 <!-- Actions -->
                 <div class="flex gap-3 ml-auto">
                     ${canEdit ? `
+                    <button onclick="renderProductToProductConversionPage()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl transition-all text-sm font-bold shadow-lg shadow-emerald-500/20 flex items-center gap-2">
+                        <i class="fas fa-exchange-alt"></i> Konversi Produk
+                    </button>
                     <button onclick="renderInventoryItemForm()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl transition-all text-sm font-bold shadow-lg shadow-indigo-500/20 flex items-center gap-2">
                         <i class="fas fa-plus"></i> New Item
                     </button>
@@ -660,7 +663,7 @@ window.resetInventoryFilters = () => {
 window.renderInventoryItemForm = (id = null, context = null) => {
     if (window.pushCurrentToHistory) window.pushCurrentToHistory();
     const item = id ? ((window._tempInventoryItems || []).find(it => it.id === id) || db.findById('inventoryItems', id)) : null;
-    const units = ['KG', 'GR', 'Lembar', 'PCS', 'BOX', 'SAK', 'KARTON', 'LITER', 'Tabung', 'Batang'];
+    const units = ['KG', 'GR', 'GRAM', 'Lembar', 'PCS', 'BOX', 'SAK', 'KARTON', 'LITER', 'Tabung', 'Batang', 'MM', 'RIM', 'DRUM', 'LOT'];
     const unitOpts = units.map(u => `<option ${item?.unit === u ? 'selected' : ''}>${u}</option>`).join('');
     
     // Dynamic Categories based on context
@@ -1447,6 +1450,264 @@ window.saveInventoryConversion = async () => {
     } catch (err) {
         console.error('Error saving conversion:', err);
         showToast('Terjadi kesalahan saat menyimpan: ' + err.message, 'error');
+    }
+};
+
+window.renderProductToProductConversionPage = () => {
+    if (window.pushCurrentToHistory) window.pushCurrentToHistory();
+    renderBreadcrumb(['Stock', 'Master Items', 'Konversi Antar Produk']);
+    document.getElementById('pageTitle').innerText = 'Konversi Antar Produk';
+    const mc = document.getElementById('main-content');
+    const currentDate = new Date().toISOString().split('T')[0];
+
+    const p2pFromSearchHtml = `
+        <div class="relative">
+            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Pilih Produk <span class="text-red-500">*</span></label>
+            <div id="p2p_from_trigger" onclick="openAdvancedProductSearch('p2p_from')" class="w-full bg-white border border-slate-200 rounded-xl px-4 py-3.5 text-sm text-slate-400 cursor-pointer hover:bg-slate-50 transition-all flex justify-between items-center group min-h-[46px] shadow-sm">
+                <span id="p2p_from_label" class="truncate pr-2">-- Klik untuk Cari & Pilih Produk --</span>
+                <i class="fas fa-search text-[11px] text-slate-400 group-hover:text-slate-600 transition-colors"></i>
+            </div>
+            <input type="hidden" id="p2p_from_item">
+        </div>
+    `;
+
+    const p2pToSearchHtml = `
+        <div class="relative">
+            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Pilih Produk <span class="text-red-500">*</span></label>
+            <div id="p2p_to_trigger" onclick="openAdvancedProductSearch('p2p_to')" class="w-full bg-white border border-slate-200 rounded-xl px-4 py-3.5 text-sm text-slate-400 cursor-pointer hover:bg-slate-50 transition-all flex justify-between items-center group min-h-[46px] shadow-sm">
+                <span id="p2p_to_label" class="truncate pr-2">-- Klik untuk Cari & Pilih Produk --</span>
+                <i class="fas fa-search text-[11px] text-slate-400 group-hover:text-slate-600 transition-colors"></i>
+            </div>
+            <input type="hidden" id="p2p_to_item">
+        </div>
+    `;
+
+    mc.innerHTML = `
+    <div class="animate-in fade-in slide-in-from-bottom-2 duration-400 -m-4 sm:-m-6 h-[calc(100vh-64px)] flex flex-col overflow-hidden bg-white">
+        <!-- Sticky Action Bar -->
+        <div class="sticky top-0 z-40 bg-white border-b border-slate-100 px-8 py-4 flex items-center justify-between shrink-0 shadow-sm">
+            <div class="flex items-center gap-2">
+                <span class="w-2.5 h-6 bg-emerald-500 rounded-full"></span>
+                <h2 class="text-sm font-black text-slate-800 uppercase tracking-wider">Konversi Antar Produk</h2>
+            </div>
+            <div class="flex items-center gap-3">
+                <button onclick="navigateTo('inventory-master')" class="px-6 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95">Batal</button>
+                <button onclick="saveProductToProductConversion()" class="px-8 py-2.5 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg active:scale-95 flex items-center gap-2">
+                    <i class="fas fa-check-circle text-[10px]"></i> Simpan Konversi
+                </button>
+            </div>
+        </div>
+
+        <!-- Content Area -->
+        <div class="flex-1 overflow-y-auto custom-scrollbar p-8 bg-slate-50/30">
+            <div class="max-w-6xl mx-auto space-y-6">
+                <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-8">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 bg-slate-50/50 p-6 rounded-2xl border border-slate-100">
+                        <div class="space-y-2">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tanggal Konversi</label>
+                            <div class="relative">
+                                <i class="fas fa-calendar absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                                <input type="date" id="p2p_date" value="${currentDate}" class="w-full border-2 border-transparent bg-white rounded-2xl pl-12 pr-4 py-3 text-sm font-black text-slate-700 focus:border-indigo-500/20 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all shadow-sm">
+                            </div>
+                        </div>
+                        <div class="space-y-2">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">PIC Konversi</label>
+                            <div class="relative">
+                                <i class="fas fa-user absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                                <input type="text" id="p2p_pic" class="w-full border-2 border-transparent bg-white rounded-2xl pl-12 pr-4 py-3 text-sm font-black text-slate-700 focus:border-indigo-500/20 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all shadow-sm" placeholder="Nama Penanggung Jawab">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-9 gap-6 items-center">
+                        <!-- Source Product -->
+                        <div class="lg:col-span-4 space-y-4 bg-red-50/20 p-8 rounded-[2rem] border border-red-100/40 relative">
+                            <div class="absolute top-0 right-0 w-32 h-32 bg-red-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
+                            <h4 class="text-[11px] font-black text-red-600 uppercase tracking-[0.2em] border-b border-red-100/30 pb-3 relative z-10 flex items-center gap-2">
+                                <i class="fas fa-sign-out-alt"></i> Produk Sumber (Dikeluarkan)
+                            </h4>
+                            
+                            <div class="relative z-10">
+                                ${p2pFromSearchHtml}
+                            </div>
+                            
+                            <div class="flex justify-between items-center bg-white rounded-2xl p-4 border border-red-100/60 relative z-10 shadow-sm">
+                                <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Stok Saat Ini</span>
+                                <strong id="p2p_from_stock_display" class="text-base font-black text-red-600">0</strong>
+                            </div>
+                            
+                            <div class="space-y-2 relative z-10">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Qty Dikeluarkan</label>
+                                <input type="number" id="p2p_from_qty" min="0" step="any" class="w-full border-2 border-transparent bg-white rounded-2xl px-5 py-3 text-sm font-black text-slate-800 focus:border-red-500/20 focus:ring-4 focus:ring-red-500/5 outline-none transition-all shadow-sm" placeholder="0">
+                            </div>
+                        </div>
+
+                        <!-- Arrow Indicator -->
+                        <div class="flex flex-col items-center justify-center py-4 lg:py-0 lg:col-span-1">
+                            <div class="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 shadow-inner border border-slate-200/50">
+                                <i class="fas fa-random text-sm rotate-90 lg:rotate-0"></i>
+                            </div>
+                        </div>
+
+                        <!-- Destination Product -->
+                        <div class="lg:col-span-4 space-y-4 bg-green-50/20 p-8 rounded-[2rem] border border-green-100/40 relative">
+                            <div class="absolute top-0 right-0 w-32 h-32 bg-green-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
+                            <h4 class="text-[11px] font-black text-green-600 uppercase tracking-[0.2em] border-b border-green-100/30 pb-3 relative z-10 flex items-center gap-2">
+                                <i class="fas fa-sign-in-alt"></i> Produk Tujuan (Diterima)
+                            </h4>
+                            
+                            <div class="relative z-10">
+                                ${p2pToSearchHtml}
+                            </div>
+                            
+                            <div class="flex justify-between items-center bg-white rounded-2xl p-4 border border-green-100/60 relative z-10 shadow-sm">
+                                <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Stok Saat Ini</span>
+                                <strong id="p2p_to_stock_display" class="text-base font-black text-green-600">0</strong>
+                            </div>
+                            
+                            <div class="space-y-2 relative z-10">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Qty Diterima</label>
+                                <input type="number" id="p2p_to_qty" min="0" step="any" class="w-full border-2 border-transparent bg-white rounded-2xl px-5 py-3 text-sm font-black text-slate-800 focus:border-green-500/20 focus:ring-4 focus:ring-green-500/5 outline-none transition-all shadow-sm" placeholder="0">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2 mt-8">
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Keterangan Tambahan / Catatan</label>
+                        <textarea id="p2p_notes" rows="3" class="w-full border-2 border-transparent bg-slate-100/80 rounded-2xl px-5 py-4 text-sm font-medium text-slate-700 focus:bg-white focus:border-indigo-500/20 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all placeholder:text-slate-300 shadow-inner" placeholder="Contoh: Konversi dari kemasan 1x25 kg menjadi 5x5 kg..."></textarea>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>`;
+
+    // Wire change listeners on hidden inputs (autocomplete triggers change event upon select)
+    setTimeout(() => {
+        const fromEl = document.getElementById('p2p_from_item');
+        const toEl = document.getElementById('p2p_to_item');
+        if (fromEl) fromEl.addEventListener('change', updateP2PSourceStock);
+        if (toEl) toEl.addEventListener('change', updateP2PDestStock);
+
+        // Synchronize Qty Dikeluarkan and Qty Diterima
+        const fromQtyEl = document.getElementById('p2p_from_qty');
+        const toQtyEl = document.getElementById('p2p_to_qty');
+        if (fromQtyEl && toQtyEl) {
+            fromQtyEl.addEventListener('input', (e) => {
+                toQtyEl.value = e.target.value;
+            });
+            toQtyEl.addEventListener('input', (e) => {
+                fromQtyEl.value = e.target.value;
+            });
+        }
+    }, 100);
+};
+
+window.updateP2PSourceStock = () => {
+    const fromEl = document.getElementById('p2p_from_item');
+    const display = document.getElementById('p2p_from_stock_display');
+    if (!fromEl || !display) return;
+    const id = fromEl.value;
+    if (id) {
+        const item = db.findById('inventoryItems', id);
+        const stock = db.getInventoryStock(id);
+        display.textContent = `${invFmt(stock)} ${item?.unit || 'PCS'}`;
+    } else {
+        display.textContent = '0';
+    }
+};
+
+window.updateP2PDestStock = () => {
+    const toEl = document.getElementById('p2p_to_item');
+    const display = document.getElementById('p2p_to_stock_display');
+    if (!toEl || !display) return;
+    const id = toEl.value;
+    if (id) {
+        const item = db.findById('inventoryItems', id);
+        const stock = db.getInventoryStock(id);
+        display.textContent = `${invFmt(stock)} ${item?.unit || 'PCS'}`;
+    } else {
+        display.textContent = '0';
+    }
+};
+
+window.saveProductToProductConversion = async () => {
+    const fromEl = document.getElementById('p2p_from_item');
+    const toEl = document.getElementById('p2p_to_item');
+    const fromId = fromEl ? fromEl.value : '';
+    const fromQty = parseFloat(document.getElementById('p2p_from_qty')?.value) || 0;
+    const toId = toEl ? toEl.value : '';
+    const toQty = parseFloat(document.getElementById('p2p_to_qty')?.value) || 0;
+    const date = document.getElementById('p2p_date')?.value;
+    const pic = document.getElementById('p2p_pic')?.value;
+    const notes = document.getElementById('p2p_notes')?.value;
+
+    if (!fromId) { showToast('Pilih produk sumber', 'error'); return; }
+    if (fromQty <= 0) { showToast('Masukkan qty dikeluarkan yang valid', 'error'); return; }
+    if (!toId) { showToast('Pilih produk tujuan', 'error'); return; }
+    if (toQty <= 0) { showToast('Masukkan qty diterima yang valid', 'error'); return; }
+    if (fromId === toId) { showToast('Produk sumber dan tujuan tidak boleh sama', 'error'); return; }
+    if (!date) { showToast('Pilih tanggal konversi', 'error'); return; }
+    if (!pic) { showToast('Masukkan nama PIC', 'error'); return; }
+
+    const sourceStock = db.getInventoryStock(fromId);
+    if (sourceStock < fromQty) {
+        showToast('Stok produk sumber tidak mencukupi untuk melakukan konversi', 'error');
+        return;
+    }
+
+    try {
+        const fromItem = db.findById('inventoryItems', fromId);
+        const toItem = db.findById('inventoryItems', toId);
+
+        const conversionDoc = {
+            date,
+            type: 'PRODUCT_TO_PRODUCT',
+            fromItemId: fromId,
+            fromItemName: fromItem.itemName,
+            fromItemCode: fromItem.itemCode,
+            fromQty,
+            toItemId: toId,
+            toItemName: toItem.itemName,
+            toItemCode: toItem.itemCode,
+            toQty,
+            pic,
+            notes,
+            createdBy: window._session?.fullName || 'Admin',
+            createdAt: new Date().toISOString()
+        };
+        await db.insert('inventoryConversions', conversionDoc);
+
+        await db.addInventoryTransaction(
+            fromId,
+            'OUT',
+            fromQty,
+            'CONVERSION',
+            null,
+            `Konversi Antar Produk (Keluar): Konversi ke ${toItem.itemName} (${toQty} ${toItem.unit})`,
+            window._session?.fullName || 'Admin',
+            'WHS'
+        );
+
+        await db.addInventoryTransaction(
+            toId,
+            'IN',
+            toQty,
+            'CONVERSION',
+            null,
+            `Konversi Antar Produk (Masuk): Konversi dari ${fromItem.itemName} (${fromQty} ${fromItem.unit})`,
+            window._session?.fullName || 'Admin',
+            'WHS'
+        );
+
+        await db.sync('inventoryConversions');
+        await db.sync('stockTransactions');
+        await db.sync('inventoryItems');
+
+        showToast('Konversi antar produk berhasil disimpan!', 'success');
+        navigateTo('inventory-master');
+    } catch (e) {
+        console.error('Error saving product conversion:', e);
+        showToast('Gagal memproses konversi: ' + e.message, 'error');
     }
 };
 
@@ -2744,6 +3005,9 @@ function renderInventoryPOReceipt() {
         if (tab === 'pending') {
             if (canEdit) {
                 dropdownOptions.push(['receive', 'Terima Barang', 'fas fa-box-open text-blue-500']);
+                if (po.status === 'PARTIALLY RECEIVED') {
+                    dropdownOptions.push(['force_complete', 'Selesaikan Penerimaan', 'fas fa-check-double text-emerald-500']);
+                }
             }
             dropdownOptions.push(['view', 'Lihat PO', 'fas fa-eye text-slate-500']);
         } else {
@@ -2927,6 +3191,8 @@ window.handleInventoryPRAction = function(action, value) {
 
     if (action === 'receive') {
         window.receiveGoodsPO(cleanId);
+    } else if (action === 'force_complete') {
+        window.forceCompletePOReceipt(cleanId);
     } else if (action === 'view') {
         window.viewPO(cleanId, 'received-inventory');
     } else if (action === 'detail') {

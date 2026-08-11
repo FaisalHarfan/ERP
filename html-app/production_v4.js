@@ -513,7 +513,8 @@ window.renderProductionMO = async () => {
 
     const mos = db.read('productionOrders') || [];
 
-    window._prodFilters = window._prodFilters || { stage: '', search: '', start: '', end: '' };
+    const todayStr = new Date().toISOString().split('T')[0];
+    window._prodFilters = window._prodFilters || { stage: '', search: '', start: todayStr, end: todayStr };
     const f = window._prodFilters;
 
     const hasDateFilter = f.start || f.end;
@@ -533,25 +534,26 @@ window.renderProductionMO = async () => {
             const today = new Date(); today.setHours(0, 0, 0, 0);
             const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
             const isToday = moDate >= today && moDate <= todayEnd;
-            // Tampilkan MO hari ini, atau MO hari sebelumnya yang masih PROSES/PARTIAL (belum selesai) dan dibuat sejak Juni 2026
-            const isUnfinished = (m.status === 'IN_PROGRESS' || m.status === 'PARTIAL') && moDate >= new Date('2026-06-01');
-            if (!isToday && !isUnfinished) return false;
+            const isRunning = m.status !== 'DONE';
+            if (!isToday && !isRunning) return false;
         } else {
             moDate.setHours(0, 0, 0, 0);
             if (f.start) { const sd = new Date(f.start); sd.setHours(0, 0, 0, 0); if (moDate < sd) return false; }
             if (f.end) { const ed = new Date(f.end); ed.setHours(23, 59, 59, 999); if (moDate > ed) return false; }
         }
         return true;
-    }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    });
+
+    const sorted = window.applyTableSort(filtered, 'productionMO', (arr) => arr.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
 
     const stageOpts = PROD_STAGES.map(s =>
         `<option value="${s.key}" ${f.stage === s.key ? 'selected' : ''}>${s.label}</option>`).join('');
 
     let tableRows = '';
-    if (filtered.length === 0) {
+    if (sorted.length === 0) {
         tableRows = `<tr><td colspan="6" class="py-20 text-center text-slate-300 italic text-sm">Tidak ada MO ditemukan untuk ${!hasDateFilter ? 'hari ini' : 'periode yang dipilih'}.</td></tr>`;
     } else {
-        filtered.forEach(mo => {
+        sorted.forEach(mo => {
             console.log('MO Row:', mo.moNumber, 'Status:', mo.status, 'canEdit:', canEdit, 'Match:', (mo.status === 'IN_PROGRESS' || mo.status === 'PARTIAL') && canEdit);
             const moDate = new Date(mo.date || mo.createdAt).toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' });
             const tpNames = (mo.targetProducts || []).map(tp => tp.itemName || '').filter(Boolean).join(', ') || mo.productName || '-';
@@ -655,12 +657,12 @@ window.renderProductionMO = async () => {
                     <table class="w-full text-left">
                         <thead>
                             <tr class="border-b border-slate-100 bg-slate-50/50">
-                                <th class="py-3 px-5 text-[10px] font-black text-slate-400 uppercase tracking-widest">Nomor MO</th>
-                                <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tahap</th>
-                                <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tanggal</th>
-                                <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Produk</th>
-                                <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-                                <th class="py-3 px-5 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Aksi</th>
+                                ${window.sortTh('productionMO', 'moNumber', 'string', 'Nomor MO', 'renderProductionMO', 'px-5')}
+                                ${window.sortTh('productionMO', 'stage', 'string', 'Tahap', 'renderProductionMO', 'px-4')}
+                                ${window.sortTh('productionMO', 'date', 'date', 'Tanggal', 'renderProductionMO', 'px-4')}
+                                ${window.sortTh('productionMO', 'productName', 'string', 'Produk', 'renderProductionMO', 'px-4')}
+                                ${window.sortTh('productionMO', 'status', 'string', 'Status', 'renderProductionMO', 'px-4')}
+                                <th class="py-3 px-5 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest select-none">Aksi</th>
                             </tr>
                         </thead>
                         <tbody>${tableRows}</tbody>
@@ -2021,25 +2023,18 @@ window.finalizeMO = async (id) => {
 
         // --- Record Multi-Product Output ---
         const outputRows = document.querySelectorAll('.ob-output-row');
-        if (outputRows.length === 0) {
-            showToast('Tambahkan minimal 1 produk hasil Oven Basah!', 'error');
-            return;
-        }
-
         const partialOutputProducts = [];
-        const outErrors = [];
+        
         outputRows.forEach((row, i) => {
             const itemId = row.querySelector('.ob-out-item')?.value;
             const qty = parseFormattedNum(row.querySelector('.ob-out-qty')?.value);
             const itemName = db.findById('inventoryItems', itemId)?.itemName || '';
-            if (!itemId) { outErrors.push(`Baris ${i + 1}: Pilih produk`); return; }
-            if (qty <= 0) { outErrors.push(`Baris ${i + 1}: Isi Qty hasil (Kg)`); return; }
-            partialOutputProducts.push({ itemId, itemName, qty });
+            
+            // Only add output products if a valid product and quantity are provided (allowing others to be skipped/empty)
+            if (itemId && qty > 0) {
+                partialOutputProducts.push({ itemId, itemName, qty });
+            }
         });
-        if (outErrors.length > 0) {
-            showToast(outErrors.join(' | '), 'error');
-            return;
-        }
 
         const selectedStatus = document.getElementById('mo_partial_status')?.value || 'PARTIAL';
         const finalNotesVal = document.getElementById('mo_final_notes')?.value || '';
@@ -2192,9 +2187,6 @@ window.finalizeMO = async (id) => {
         } else {
             // Navigate back to MO list and keep it visible
             window._prodSearchPerformed = true;
-            const todayStr3 = new Date().toISOString().split('T')[0];
-            if (!window._prodFilters) window._prodFilters = {};
-            if (!window._prodFilters.end || window._prodFilters.end < todayStr3) window._prodFilters.end = todayStr3;
             await renderProductionMO();
         }
     } catch (err) {
@@ -4839,7 +4831,7 @@ window.openQuickAddProductModal = (rowId) => {
         defaultCat = 'FINISHED_GOODS';
     }
 
-    const units = ['KG', 'GR', 'L', 'PCS', 'BOX', 'SAK', 'KARTON', 'LITER', 'Tabung', 'Batang'];
+    const units = ['KG', 'GR', 'GRAM', 'L', 'PCS', 'BOX', 'SAK', 'KARTON', 'LITER', 'Tabung', 'Batang', 'MM', 'RIM', 'DRUM', 'LOT'];
     const unitOpts = units.map(u => `<option value="${u}" ${u === 'KG' ? 'selected' : ''}>${u}</option>`).join('');
 
     const allCats = [

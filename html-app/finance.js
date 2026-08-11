@@ -86,8 +86,8 @@ window.renderFinanceDashboard = function () {
     const allSuppPayments = db.read('supplierPayments') || [];
 
     // 1. Calculate Summary Stats (ERPNext Style)
-    const totalOutgoingBills = purchaseInvoices.reduce((sum, i) => sum + (parseFloat(i.totalAmount) || 0), 0);
-    const totalIncomingBills = salesInvoices.reduce((sum, i) => sum + (parseFloat(i.totalAmount) || 0), 0);
+    const totalOutgoingBills = purchaseInvoices.filter(i => i.status !== 'CANCELLED').reduce((sum, i) => sum + (parseFloat(i.totalAmount) || 0), 0);
+    const totalIncomingBills = salesInvoices.filter(i => i.status !== 'CANCELLED').reduce((sum, i) => sum + (parseFloat(i.totalAmount) || 0), 0);
     const totalIncomingPayment = allPayments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
     const totalOutgoingPayment = allSuppPayments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
 

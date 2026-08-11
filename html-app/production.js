@@ -4407,7 +4407,7 @@ window.openQuickAddProductModal = (rowId) => {
         defaultCat = 'FINISHED_GOODS';
     }
 
-    const units = ['KG', 'GR', 'L', 'PCS', 'BOX', 'SAK', 'KARTON', 'LITER', 'Tabung', 'Batang'];
+    const units = ['KG', 'GR', 'GRAM', 'L', 'PCS', 'BOX', 'SAK', 'KARTON', 'LITER', 'Tabung', 'Batang', 'MM', 'RIM', 'DRUM', 'LOT'];
     const unitOpts = units.map(u => `<option value="${u}" ${u === 'KG' ? 'selected' : ''}>${u}</option>`).join('');
 
     const allCats = [

@@ -262,6 +262,7 @@ const views = {
     // Inventory Module (New)
     'inventory-dashboard': window.renderInventoryDashboard,
     'inventory-master': renderInventoryMaster,
+    'inventory-conversion-p2p': () => window.renderProductToProductConversionPage(),
     'inventory-stock-in': renderInventoryStockIn,
     'inventory-stock-out': renderInventoryStockOut,
     'inventory-delivery': window.renderWarehouseDeliveryOrders,  // Focused on WH process (picking/packing/shipping)
@@ -3864,7 +3865,7 @@ function renderProductSearchResults(query, container, categoryFilter, prefix) {
                 </div>
                 <p class="text-xs text-slate-400 font-bold uppercase tracking-widest">No products found</p>
             </div>
-            ${renderAutocompleteFooter()}
+            ${renderAutocompleteFooter(prefix)}
         `;
         return;
     }
@@ -3889,18 +3890,25 @@ function renderProductSearchResults(query, container, categoryFilter, prefix) {
                 `;
             }).join('')}
         </div>
-        ${renderAutocompleteFooter()}
+        ${renderAutocompleteFooter(prefix)}
     `;
 }
 
-function renderAutocompleteFooter() {
+function renderAutocompleteFooter(prefix) {
+    let searchOnClick = `navigateTo('inventory-master')`;
+    if (prefix === 'p2p_from' || prefix === 'p2p_to') {
+        searchOnClick = `openAdvancedProductSearch('${prefix}')`;
+    }
+    const isP2P = prefix === 'p2p_from' || prefix === 'p2p_to';
     return `
         <div class="border-t border-slate-100 p-3 bg-slate-50/30">
+            ${isP2P ? '' : `
             <button type="button" onclick="renderInventoryItemForm()" class="w-full text-left px-4 py-3 rounded-2xl hover:bg-white hover:shadow-sm transition-all flex items-center gap-4 group">
                 <div class="w-10 h-10 rounded-xl bg-white border border-slate-200 text-slate-400 flex items-center justify-center group-hover:border-blue-200 group-hover:text-blue-500 transition-all shadow-sm"><i class="fas fa-plus text-xs"></i></div>
                 <span class="text-[11px] font-black text-slate-500 uppercase tracking-widest group-hover:text-slate-800 transition-colors">Create a New Product</span>
             </button>
-            <button type="button" onclick="navigateTo('inventory-master')" class="w-full text-left px-4 py-3 rounded-2xl hover:bg-white hover:shadow-sm transition-all flex items-center gap-4 group mt-1">
+            `}
+            <button type="button" onclick="${searchOnClick}" class="w-full text-left px-4 py-3 rounded-2xl hover:bg-white hover:shadow-sm transition-all flex items-center gap-4 group ${isP2P ? '' : 'mt-1'}">
                 <div class="w-10 h-10 rounded-xl bg-white border border-slate-200 text-slate-400 flex items-center justify-center group-hover:border-indigo-200 group-hover:text-indigo-500 transition-all shadow-sm"><i class="fas fa-search text-xs"></i></div>
                 <span class="text-[11px] font-black text-slate-500 uppercase tracking-widest group-hover:text-slate-800 transition-colors">Advanced Search</span>
             </button>
@@ -4317,6 +4325,12 @@ window.openPOForm = async (fromPrId = null, fromRfqId = null) => {
                                     <option value="LEMBAR">LEMBAR</option>
                                     <option value="JAM">JAM</option>
                                     <option value="HARI">HARI</option>
+                                    <option value="MM">MM</option>
+                                    <option value="RIM">RIM</option>
+                                    <option value="GRAM">GRAM</option>
+                                    <option value="BATANG">BATANG</option>
+                                    <option value="DRUM">DRUM</option>
+                                    <option value="LOT">LOT</option>
                                 </select>
                             </div>
                             <div class="col-span-2">
@@ -4818,6 +4832,42 @@ window.savePO = async () => {
         poDateISO = localDate.toISOString();
     }
 
+    let status = 'DRAFT';
+    let actualDeliveryDate = null;
+    let receipts = [];
+
+    if (window._editingPOId) {
+        const originalPO = db.findById('purchaseOrders', window._editingPOId);
+        if (originalPO) {
+            receipts = originalPO.receipts || [];
+            actualDeliveryDate = originalPO.actualDeliveryDate || null;
+            
+            // Sync receipt item prices with new PO item prices!
+            receipts.forEach(rcpt => {
+                (rcpt.items || []).forEach(rcptItem => {
+                    const poItem = window.tempPOItems[rcptItem.index];
+                    if (poItem) {
+                        rcptItem.price = parseFloat(poItem.price) || 0;
+                    }
+                });
+            });
+
+            // Check received quantity
+            let sumTargetAll = 0;
+            let sumReceivedAll = 0;
+            window.tempPOItems.forEach(item => {
+                sumTargetAll += (parseFloat(item.qty) || 0);
+                sumReceivedAll += (parseFloat(item.receivedQty) || 0);
+            });
+
+            if (sumReceivedAll > 0) {
+                status = (sumReceivedAll >= sumTargetAll) ? 'RECEIVED' : 'PARTIALLY RECEIVED';
+            } else {
+                status = 'DRAFT';
+            }
+        }
+    }
+
     const poData = {
         poNumber: poNum,
         supplierId: supId,
@@ -4826,8 +4876,8 @@ window.savePO = async () => {
         paymentTerms,
         dueDate,
         etd: (poEtdEl && poEtdEl.value) ? poEtdEl.value : null,
-        actualDeliveryDate: null,
-        status: 'DRAFT',
+        actualDeliveryDate: actualDeliveryDate,
+        status: status,
         category: category,
         dppAmount: dpp,
         taxRate: taxRateVal,
@@ -4835,7 +4885,8 @@ window.savePO = async () => {
         totalAmount: total,
         taxType: taxType,
         notes: notes,
-        items: window.tempPOItems
+        items: window.tempPOItems,
+        receipts: receipts
     };
 
     let result;
@@ -5270,8 +5321,8 @@ window.viewPO = (id, fromPage = 'po') => {
                 <p class="text-sm">Tanggal PO: ${po.date ? po.date.split('T')[0] : '-'}</p>
                 <p class="text-sm">Term Pembayaran: <strong>${po.paymentTerms || '-'}</strong></p>
                 <p class="text-sm">Jatuh Tempo: <strong>${po.dueDate ? po.dueDate.split('T')[0] : '-'}</strong></p>
+                ${po.etd ? `<p class="text-sm">ETD: <strong>${po.etd.split('T')[0]}</strong></p>` : ''}
                 <div class="no-print">
-                    ${po.etd ? `<p class="text-sm">ETD: <strong>${po.etd.split('T')[0]}</strong></p>` : ''}
                     ${po.actualDeliveryDate ? `<p class="text-sm">Tiba: <strong>${po.actualDeliveryDate.split('T')[0]}</strong></p>` : ''}
                     <p class="text-sm">Status: ${statusBadgePurch(po.status)}</p>
                 </div></div>
@@ -6179,6 +6230,69 @@ window.savePurchaseInvoice = async (val) => {
         renderPurchaseInvoices();
     } else {
         showToast('Gagal menyimpan invoice', 'error');
+    }
+};
+
+window.deletePurchaseInvoice = async (id) => {
+    const inv = db.findById('purchaseInvoices', id);
+    if (!inv) return;
+
+    const payments = db.read('supplierPayments') || [];
+    const invPayments = payments.filter(p => p.invoiceId === id);
+    if (invPayments.length > 0) {
+        showToast('Tidak dapat menghapus invoice ini karena sudah memiliki riwayat pembayaran. Hapus pembayaran terlebih dahulu.', 'error');
+        return;
+    }
+
+    if (confirm('Yakin ingin menghapus invoice supplier ini? Penerimaan barang terkait akan dapat di-invoice ulang.')) {
+        await db.delete('purchaseInvoices', id);
+        showToast('Invoice supplier berhasil dihapus', 'success');
+        renderPurchaseInvoices();
+    }
+};
+
+window.forceCompletePOReceipt = async (id) => {
+    const po = db.findById('purchaseOrders', id);
+    if (!po) return;
+
+    if (confirm('Yakin ingin menandai penerimaan PO ini selesai secara manual?\n\nKuantitas barang dipesan pada PO akan otomatis disesuaikan agar sama dengan kuantitas yang aktual diterima, dan total nominal PO akan dihitung ulang secara otomatis.')) {
+        showToast('Memproses...', 'info');
+
+        const updatedItems = (po.items || []).map(item => {
+            const received = item.receivedQty || 0;
+            return {
+                ...item,
+                qty: received,
+                subtotal: received * (item.price || 0)
+            };
+        });
+
+        const dpp = updatedItems.reduce((sum, item) => sum + (item.subtotal || 0), 0);
+        const taxPct = parseFloat(po.taxRate) || 0;
+        const taxAmount = Math.round(dpp * taxPct / 100);
+        const totalAmount = dpp + taxAmount;
+
+        const success = await db.update('purchaseOrders', id, { 
+            status: 'RECEIVED',
+            items: updatedItems,
+            dppAmount: dpp,
+            taxAmount: taxAmount,
+            totalAmount: totalAmount
+        });
+
+        if (success) {
+            showToast('Penerimaan PO selesai & kuantitas PO telah disesuaikan', 'success');
+            await db.sync('purchaseOrders');
+            if (window._porActiveTab && typeof renderInventoryPOReceipt === 'function') {
+                 renderInventoryPOReceipt();
+            } else if (window.renderPurchaseReceiving && document.getElementById('pageTitle')?.innerText.includes('Received')) {
+                 window.renderPurchaseReceiving();
+            } else if (window.renderPurchaseOrders) {
+                 renderPurchaseOrders();
+            }
+        } else {
+            showToast('Gagal memproses, silakan coba lagi', 'error');
+        }
     }
 };
 
@@ -7394,7 +7508,9 @@ function renderStockCard(activeTab = 'recap') {
                     <td class="py-3 px-4 text-sm text-right font-black ${t.type === 'IN' ? 'text-green-600' : t.type === 'NG_IN' ? 'text-orange-600' : 'text-red-600'}">
                         ${t.type === 'IN' || t.type === 'NG_IN' ? '+' : '-'}${invFmt(t.qty)} <span class="text-[10px] font-normal text-gray-400 ml-1 uppercase">${item.unit || ''}</span>
                     </td>
-                    <td class="py-3 px-4 text-xs text-gray-500 font-medium">${t.reference || '-'}</td>
+                    <td class="py-3 px-4 text-xs text-gray-500 font-medium">
+                        ${({ PO: 'Purchase Receipt', SO: 'Sales Delivery', PRODUCTION_IN: 'Hasil Produksi', PRODUCTION_OUT: 'Konsumsi Produksi', SHRINKAGE: 'Penyusutan/NG', MANUAL: 'Manual', CONVERSION: 'Konversi' }[t.reference] || t.reference || '-')}
+                    </td>
                     <td class="py-3 px-4 text-xs text-gray-400 italic">${t.notes || '-'}</td>
                 </tr>
             `;
@@ -7581,7 +7697,7 @@ function renderPurchaseOrders() {
                     <i class="fas fa-trash-alt w-4 mr-2 text-red-400 group-hover:text-red-600 transition-colors"></i> Hapus
                 </button>
             `;
-        } else if (canEdit && (po.status === 'APPROVED' || po.status === 'PARTIALLY RECEIVED')) {
+        } else if (canEdit && (po.status === 'APPROVED' || po.status === 'PARTIALLY RECEIVED' || po.status === 'RECEIVED')) {
             poOptions += `
                 <button onclick="handlePOAction('edit', '${po.id}')" class="group flex items-center w-full px-4 py-2 text-[11px] text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-all font-bold text-left" role="menuitem">
                     <i class="fas fa-edit w-4 mr-2 text-slate-400 group-hover:text-blue-500 transition-colors"></i> Edit
@@ -7593,12 +7709,13 @@ function renderPurchaseOrders() {
                     <i class="fas fa-trash-alt w-4 mr-2 text-red-400 group-hover:text-red-600 transition-colors"></i> Hapus
                 </button>
             `;
-        } else if (po.status === 'RECEIVED') {
-            poOptions += `
-                <button onclick="handlePOAction('send', '${po.id}')" class="group flex items-center w-full px-4 py-2 text-[11px] text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-all font-bold text-left" role="menuitem">
-                    <i class="fas fa-paper-plane w-4 mr-2 text-slate-400 group-hover:text-blue-500 transition-colors"></i> Kirim Ulang
-                </button>
-            `;
+            if (po.status === 'PARTIALLY RECEIVED') {
+                poOptions += `
+                    <button onclick="window.forceCompletePOReceipt('${po.id}')" class="group flex items-center w-full px-4 py-2 text-[11px] text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 transition-all font-bold text-left border-t border-slate-50" role="menuitem">
+                        <i class="fas fa-check-double w-4 mr-2 text-emerald-400 group-hover:text-emerald-600 transition-colors"></i> Selesaikan Penerimaan
+                    </button>
+                `;
+            }
         } else if (po.status === 'CANCELLED') {
             poOptions += `
                 <button onclick="handlePOAction('delete', '${po.id}')" class="group flex items-center w-full px-4 py-2 text-[11px] text-red-600 hover:bg-red-50 hover:text-red-700 transition-all font-bold text-left" role="menuitem">
@@ -7886,6 +8003,8 @@ window.handlePRAction = function(action, value) {
 
     if (action === 'receive') {
         window.receiveGoodsPO(cleanId);
+    } else if (action === 'force_complete') {
+        window.forceCompletePOReceipt(cleanId);
     } else if (action === 'view') {
         window.viewPO(cleanId, 'received');
     } else if (action === 'invoice') {
@@ -7951,6 +8070,9 @@ function renderPurchaseReceiving() {
             const dropdownOptions = [];
             if (canEdit) {
                 dropdownOptions.push(['receive', 'Terima Barang', 'fas fa-box-open text-blue-500']);
+                if (po.status === 'PARTIALLY RECEIVED') {
+                    dropdownOptions.push(['force_complete', 'Selesaikan Penerimaan', 'fas fa-check-double text-emerald-500']);
+                }
             }
             dropdownOptions.push(['view', 'Lihat PO', 'fas fa-eye text-slate-500']);
             if (po.status === 'PARTIALLY RECEIVED') {
@@ -8527,6 +8649,9 @@ function _renderPurchaseInvoicesList() {
                         </button>` : ''}
                         <button onclick="viewPurchaseInvoice('${inv.id}')" class="text-slate-400 hover:text-blue-600 transition-colors p-2 rounded-lg hover:bg-slate-50" title="Detail Tagihan">
                             <i class="fas fa-eye text-lg"></i>
+                        </button>
+                        <button onclick="window.deletePurchaseInvoice('${inv.id}')" class="text-red-400 hover:text-red-600 transition-colors p-2 rounded-lg hover:bg-red-50" title="Hapus Tagihan">
+                            <i class="fas fa-trash-alt text-lg"></i>
                         </button>
                     </div>
                 </td>
@@ -12503,6 +12628,8 @@ window.openAdvancedProductSearch = function (prefix, subId = null) {
     else if (prefix === 'po') document.getElementById('po_item_dropdown')?.classList.add('hidden');
     else if (prefix === 'so') document.getElementById('so_inv_item_dropdown')?.classList.add('hidden');
     else if (prefix === 'cust_cp') document.getElementById('cust_cp_item_dropdown')?.classList.add('hidden');
+    else if (prefix === 'p2p_from') document.getElementById('p2p_from_results_container')?.classList.add('hidden');
+    else if (prefix === 'p2p_to') document.getElementById('p2p_to_results_container')?.classList.add('hidden');
     else if (prefix === 'sj_kosong' && subId) document.getElementById(`doi_dropdown_${subId}`)?.classList.add('hidden');
 
     const allItems = db.read('inventoryItems') || [];
@@ -12626,6 +12753,32 @@ window.selectItemProduct = function (prefix, id, displayText, price, unit, stock
         document.getElementById('cust_cp_label').classList.add('text-slate-800', 'font-bold');
         document.getElementById('cust_cp_price').value = price;
         document.getElementById('cust_cp_item_dropdown').classList.add('hidden');
+    } else if (prefix === 'p2p_from') {
+        const hiddenInput = document.getElementById('p2p_from_item');
+        const label = document.getElementById('p2p_from_label');
+        if (hiddenInput) {
+            hiddenInput.value = id;
+            const event = new Event('change', { bubbles: true });
+            hiddenInput.dispatchEvent(event);
+        }
+        if (label) {
+            label.innerText = displayText;
+            label.classList.remove('text-slate-400');
+            label.classList.add('text-slate-800', 'font-black');
+        }
+    } else if (prefix === 'p2p_to') {
+        const hiddenInput = document.getElementById('p2p_to_item');
+        const label = document.getElementById('p2p_to_label');
+        if (hiddenInput) {
+            hiddenInput.value = id;
+            const event = new Event('change', { bubbles: true });
+            hiddenInput.dispatchEvent(event);
+        }
+        if (label) {
+            label.innerText = displayText;
+            label.classList.remove('text-slate-400');
+            label.classList.add('text-slate-800', 'font-black');
+        }
     } else {
         document.getElementById('so_inv_item').value = id;
         document.getElementById('so_inv_item_search').value = displayText;
@@ -13834,7 +13987,7 @@ window.filterSITable = () => {
         const isVisible = text.includes(q);
         row.style.display = isVisible ? '' : 'none';
         
-        if (isVisible) {
+        if (isVisible && row.dataset.status !== 'CANCELLED') {
             sumTagihan += parseFloat(row.dataset.amount || 0);
             sumPaid += parseFloat(row.dataset.paid || 0);
         }
@@ -14050,7 +14203,7 @@ function renderSalesInvoices() {
         else if (inv.status === 'CANCELLED') statusBadge = '<span class="px-4 py-1.5 bg-slate-50 text-slate-400 border border-slate-100 rounded-xl text-[10px] font-bold tracking-widest uppercase">Cancelled</span>';
 
         return `
-            <tr class="hover:bg-blue-50/20 transition-all group duration-300" data-amount="${inv.totalAmount}" data-paid="${totalPaid}">
+            <tr class="hover:bg-blue-50/20 transition-all group duration-300" data-amount="${inv.totalAmount}" data-paid="${totalPaid}" data-status="${inv.status}">
 
                 <td class="py-6 px-4">
                     <div class="flex flex-col">
