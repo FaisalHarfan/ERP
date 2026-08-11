@@ -41,11 +41,9 @@ window.renderSalesReturns = async function () {
     document.getElementById('pageTitle').innerText = 'Retur Penjualan';
     const mc = document.getElementById('main-content');
 
-    // Auto-sync on load to ensure data is fresh
-    if (window.api && typeof window.api.pullAll === 'function') {
-        mc.innerHTML = `<div class="p-20 text-center"><i class="fas fa-spinner fa-spin text-3xl text-blue-500 mb-4"></i><p class="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Menyinkronkan Data...</p></div>`;
-        await window.api.pullAll();
-    }
+
+    // Optimistic rendering from cache (sync occurs in background via router)
+
 
     const perm = getModulePermission('penjualan');
 
@@ -954,11 +952,9 @@ window.renderProductExchanges = async function () {
     document.getElementById('pageTitle').innerText = 'Tukar Guling';
     const mc = document.getElementById('main-content');
 
-    // Auto-sync on load
-    if (window.api && typeof window.api.pullAll === 'function') {
-        mc.innerHTML = `<div class="p-20 text-center"><i class="fas fa-spinner fa-spin text-3xl text-purple-500 mb-4"></i><p class="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Menyinkronkan Data...</p></div>`;
-        await window.api.pullAll();
-    }
+
+    // Optimistic rendering from cache (sync occurs in background via router)
+
 
     const perm = getModulePermission('penjualan');
 

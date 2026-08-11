@@ -1410,6 +1410,9 @@ function renderSalesDashboard() {
         if (startDate && d < startDate) return false;
         if (endDate && d > endDate) return false;
 
+        const isCancelled = (i.status || '').toUpperCase() === 'CANCELLED' || (i.status || '').toUpperCase() === 'CANCELED';
+        if (isCancelled) return false;
+
         let companyMatch = true;
         if (filters.company) {
             const cust = (customers || []).find(c => c.id === i.customerId);
@@ -5210,19 +5213,28 @@ window.confirmReceiveGoods = async (id) => {
         if (window.closeGRForm) window.closeGRForm();
         else closeModal();
         
-        // SYNC BEFORE RENDER
-        await db.sync('purchaseOrders');
-        await db.sync('inventoryItems');
-        await db.sync('stockTransactions');
+        const refreshFn = () => {
+            if (window._porActiveTab && typeof renderInventoryPOReceipt === 'function') {
+                 renderInventoryPOReceipt();
+            } else if (window.renderPurchaseReceiving && document.getElementById('pageTitle')?.innerText.includes('Received')) {
+                 renderPurchaseReceiving();
+            } else if (window.renderPurchaseOrders) {
+                 renderPurchaseOrders();
+            }
+        };
 
-        // Refresh the current view
-        if (window._porActiveTab && typeof renderInventoryPOReceipt === 'function') {
-             renderInventoryPOReceipt();
-        } else if (window.renderPurchaseReceiving && document.getElementById('pageTitle')?.innerText.includes('Received')) {
-             renderPurchaseReceiving();
-        } else if (window.renderPurchaseOrders) {
-             renderPurchaseOrders();
-        }
+        // Refresh immediately with current client-side state
+        refreshFn();
+
+        // Run syncs in the background in parallel
+        Promise.all([
+            db.sync('purchaseOrders'),
+            db.sync('inventoryItems'),
+            db.sync('stockTransactions')
+        ]).then(() => {
+            console.log('[DB] Background sync completed after PO receipt.');
+            refreshFn();
+        }).catch(err => console.warn('Background sync error:', err));
         // Auto-offer print NPB after save
         setTimeout(() => {
             if (confirm(`Barang berhasil diterima (${recvNpb}). Cetak NPB sekarang?`)) {
@@ -6702,12 +6714,18 @@ window.saveSupplierPayment = async () => {
             db.update('purchaseInvoices', inv.id, { status: 'PAID' });
         }
         
-        await db.sync('supplierPayments');
-        await db.sync('purchaseInvoices');
-
         showToast(result.message, 'success');
         window.currentSupPayInvoiceId = null;
-        closeModal(); renderSupplierPayments(invoiceId);
+        closeModal(); 
+        renderSupplierPayments(invoiceId);
+
+        Promise.all([
+            db.sync('supplierPayments'),
+            db.sync('purchaseInvoices')
+        ]).then(() => {
+            console.log('[DB] Background sync completed after supplier payment.');
+            renderSupplierPayments(invoiceId);
+        }).catch(err => console.warn('Background sync error:', err));
     } catch (err) {
         showToast(err.message, 'error');
     }
@@ -14628,7 +14646,7 @@ window.viewInvoice = (id) => {
     const totalPaid = invPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
 
     const printableHTML = `
-           <div class="max-w-4xl mx-auto bg-white p-6 shadow-sm rounded-xl border border-gray-100 mb-4">
+           <div class="space-y-6">
                 <!-- Header: Premium Look -->
                 <div id="print-internal-header" class="flex justify-between items-start mb-8 print:mb-4 pb-6 print:pb-2 border-b-2 border-gray-50">
                     <div>
@@ -14719,7 +14737,7 @@ window.viewInvoice = (id) => {
                             <!-- Raw Subtotal (Items) -->
                             <tr class="border-t-2 border-slate-200">
                                 <td colspan="4" class="py-3 px-4 text-right text-[10px] font-black uppercase tracking-wider text-slate-400">Subtotal:</td>
-                                <td class="py-3 px-4 text-right font-bold text-slate-700">${formatCurrency((inv.totalAmount - (inv.taxAmount || 0)) + (inv.discountAmount || 0))}</td>
+                                <td class="py-3 px-4 text-right font-bold text-slate-700">${formatCurrency((parseFloat(inv.totalAmount || 0) - parseFloat(inv.taxAmount || 0)) + parseFloat(inv.discountAmount || 0))}</td>
                             </tr>
                             
                             <!-- Discount -->
@@ -14830,7 +14848,7 @@ window.viewInvoice = (id) => {
         </div>
     `;
  
-    showModal(`Detail Invoice ${inv.invoiceNumber}`, printableHTML, footer);
+    showModal(`Detail Invoice ${inv.invoiceNumber}`, printableHTML, footer, 'lg');
 };
 
 window.printFakturPajak = (invoiceId) => {
@@ -15568,10 +15586,12 @@ window.updateSalesAnalytics = async () => {
     const getDocDate = (doc) => doc.date || doc.createdAt || doc.invoiceDate || '';
     const getDocValue = (doc) => parseFloat(doc.totalAmount || doc.grandTotal || doc.amount || 0) || 0;
 
-    // Filter documents by overall date range
+    // Filter documents by overall date range (excluding CANCELLED/CANCELED docs)
     const filterByRange = (docs) => docs.filter(doc => {
         const d = new Date(getDocDate(doc));
-        return d >= from && d <= to;
+        const statusUpper = (doc.status || '').toUpperCase();
+        const isCancelled = statusUpper === 'CANCELLED' || statusUpper === 'CANCELED';
+        return d >= from && d <= to && !isCancelled;
     });
 
     let targetDocs = [];
@@ -15823,10 +15843,12 @@ window.updateSalesInvoiceTrends = () => {
     const invoices  = db.read('salesInvoices') || [];
     const customers = db.read('customers') || [];
 
-    // Filter by year
+    // Filter by year (excluding CANCELLED/CANCELED docs)
     const yearInvs = invoices.filter(inv => {
         const d = new Date(inv.date || inv.createdAt);
-        return d.getFullYear() === year;
+        const statusUpper = (inv.status || '').toUpperCase();
+        const isCancelled = statusUpper === 'CANCELLED' || statusUpper === 'CANCELED';
+        return d.getFullYear() === year && !isCancelled;
     });
 
     // Build pivot: rowKey => { label, currency, periods: [{qty, amt}] }
@@ -15848,9 +15870,10 @@ window.updateSalesInvoiceTrends = () => {
 
         if (basedOn.includes('Item')) {
             (inv.items || []).forEach(item => {
-                const key   = item.inventoryItemId || item.productId || item.prodText || item.itemName || 'Unknown';
-                const label = item.prodText || item.itemName || '-';
-                const code  = item.inventoryItemId || item.productId || key;
+                const rawLabel = item.prodText || item.itemName || '-';
+                const label = rawLabel.split(' (')[0].trim();
+                const key = label; // Group by item name to merge OB/OK/duplicates
+                const code = item.inventoryItemId || item.productId || 'N/A';
                 if (!pivot[key]) {
                     pivot[key] = { label, code, currency, periods: Array(periods.length).fill(null).map(() => ({qty:0, amt:0})) };
                 }
@@ -16480,8 +16503,9 @@ window.updateSalesOrderTrends = () => {
 
         if (basedOn.includes('Item')) {
             (so.items || []).forEach(item => {
-                const key   = item.inventoryItemId || item.productId || item.prodText || item.itemName || 'Unknown';
-                const label = item.prodText || item.itemName || '-';
+                const rawLabel = item.prodText || item.itemName || '-';
+                const label = rawLabel.split(' (')[0].trim();
+                const key = label; // Group by item name to merge OB/OK/duplicates
                 if (!pivot[key]) {
                     pivot[key] = { label, currency, periods: Array(periods.length).fill(null).map(() => ({qty:0, amt:0})) };
                 }
@@ -16658,6 +16682,76 @@ window.exportSOTrendsCsv = () => {
     a.click();
 };
 
+function normalizeToProvince(input) {
+    if (!input) return 'Unknown';
+    let text = input.trim().toUpperCase();
+    if (text === '') return 'Unknown';
+
+    // Map cities/regions to standardized provinces
+    const cityMap = {
+        'PALEMBANG': 'Sumatera Selatan',
+        'SUMATERA SELATAN': 'Sumatera Selatan',
+        'SUMATERA': 'Sumatera Selatan',
+        'MEDAN': 'Sumatera Utara',
+        'SUMATERA UTARA': 'Sumatera Utara',
+        'TJ. PINANG': 'Kepulauan Riau',
+        'TANJUNG PINANG': 'Kepulauan Riau',
+        'TANJUNGPINANG': 'Kepulauan Riau',
+        'BATAM': 'Kepulauan Riau',
+        'BOGOR': 'Jawa Barat',
+        'BANDUNG': 'Jawa Barat',
+        'JAWA BARAT': 'Jawa Barat',
+        'BEKASI': 'Jawa Barat',
+        'DEPOK': 'Jawa Barat',
+        'TANGERANG': 'Banten',
+        'TANGGERANG': 'Banten',
+        'SERANG': 'Banten',
+        'CILEGON': 'Banten',
+        'JAKARTA': 'DKI Jakarta',
+        'DKI JAKARTA': 'DKI Jakarta',
+        'JAWA TENGAH': 'Jawa Tengah',
+        'SOLO': 'Jawa Tengah',
+        'SURAKARTA': 'Jawa Tengah',
+        'KENDAL': 'Jawa Tengah',
+        'SEMARANG': 'Jawa Tengah',
+        'KUDUS': 'Jawa Tengah',
+        'JAWA TIMUR': 'Jawa Timur',
+        'SURABAYA': 'Jawa Timur',
+        'GRESIK': 'Jawa Timur',
+        'SIDOARJO': 'Jawa Timur',
+        'MALANG': 'Jawa Timur',
+        'MAKASAR': 'Sulawesi Selatan',
+        'MAKASSAR': 'Sulawesi Selatan',
+        'SULAWESI SELATAN': 'Sulawesi Selatan',
+        'KALIMANTAN BARAT': 'Kalimantan Barat',
+        'PONTIANAK': 'Kalimantan Barat',
+        'KALIMANTAN SELATAN': 'Kalimantan Selatan',
+        'BANJARMASIN': 'Kalimantan Selatan',
+    };
+
+    if (cityMap[text]) {
+        return cityMap[text];
+    }
+
+    if (text.includes('JAWA') && text.includes('TENGAH')) return 'Jawa Tengah';
+    if (text.includes('JAWA') && text.includes('TIMUR')) return 'Jawa Timur';
+    if (text.includes('JAWA') && text.includes('BARAT')) return 'Jawa Barat';
+    if (text.includes('DKI') || text.includes('JAKARTA')) return 'DKI Jakarta';
+    if (text.includes('BANTEN') || text.includes('TANGERANG') || text.includes('TANGGERANG')) return 'Banten';
+    if (text.includes('SUMATERA') && text.includes('SELATAN')) return 'Sumatera Selatan';
+    if (text.includes('SUMATERA') && text.includes('UTARA')) return 'Sumatera Utara';
+    if (text.includes('SUMATERA') && text.includes('BARAT')) return 'Sumatera Barat';
+    if (text.includes('RIAU') || text.includes('PINANG')) return 'Kepulauan Riau';
+    if (text.includes('KALIMANTAN') && text.includes('BARAT')) return 'Kalimantan Barat';
+    if (text.includes('KALIMANTAN') && text.includes('SELATAN')) return 'Kalimantan Selatan';
+    if (text.includes('KALIMANTAN') && text.includes('TIMUR')) return 'Kalimantan Timur';
+    if (text.includes('SULAWESI') && text.includes('SELATAN')) return 'Sulawesi Selatan';
+    if (text.includes('SULAWESI') && text.includes('UTARA')) return 'Sulawesi Utara';
+
+    // Standardize to Title Case for unknown entries
+    return text.split(' ').map(w => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
+}
+
 window.renderSalesRegionTrends = () => {
     document.getElementById('pageTitle').innerText = 'Sales By Region';
     const mainContent = document.getElementById('main-content');
@@ -16763,8 +16857,9 @@ window.updateSalesRegionTrends = () => {
         else if (period === 'Yearly') pIdx = 0;
         
         const cust = customers.find(c => c.id === so.customerId);
-        let region = cust?.region || cust?.city || 'Unknown';
-        if (region.trim() === '') region = 'Unknown';
+        let rawRegion = cust?.region || cust?.city || 'Unknown';
+        if (rawRegion.trim() === '') rawRegion = 'Unknown';
+        const region = normalizeToProvince(rawRegion);
 
         if (!pivot[region]) {
             pivot[region] = { periods: Array(periods.length).fill(0) };

@@ -2178,17 +2178,31 @@ window.finalizeMO = async (id) => {
 
     try {
         await api.completeProductionOrder(id, updates);
-        await db.sync('productionOrders');
-        await db.sync('stockTransactions');
-        await db.sync('inventoryItems');
+        
+        // Show success toast and navigate back immediately (instant UI response)
         showToast(`Produksi ${mo.moNumber} selesai!`, 'success');
         if (window._completeMOReferrer === 'dashboard') {
             renderProductionDashboard();
         } else {
             // Navigate back to MO list and keep it visible
             window._prodSearchPerformed = true;
-            await renderProductionMO();
+            renderProductionMO();
         }
+
+        // Run heavy cache updates in the background in parallel
+        Promise.all([
+            db.sync('productionOrders'),
+            db.sync('stockTransactions'),
+            db.sync('inventoryItems')
+        ]).then(() => {
+            console.log('[DB] Background sync completed after MO completion.');
+            // Re-render UI to show latest data without losing state
+            if (window._completeMOReferrer === 'dashboard') {
+                renderProductionDashboard();
+            } else {
+                renderProductionMO();
+            }
+        }).catch(err => console.warn('Background sync error:', err));
     } catch (err) {
         showToast(err.message, 'error');
     }

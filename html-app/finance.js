@@ -1903,10 +1903,16 @@ window.saveReceipt = async function () {
     try {
         await api.saveReceipt({ date, amount, targetAccountId, sourceAccountId, method, description, receivedFrom });
         showToast('Penerimaan berhasil dicatat', 'success');
-        await db.sync('receipts');
-        await db.sync('journalEntries');
-        await db.sync('accounts');
         renderFinanceReceipts();
+        
+        Promise.all([
+            db.sync('receipts'),
+            db.sync('journalEntries'),
+            db.sync('accounts')
+        ]).then(() => {
+            console.log('[DB] Background sync completed after receipt save.');
+            renderFinanceReceipts();
+        }).catch(err => console.warn('Background sync error:', err));
     } catch (err) {
         showToast(err.message, 'error');
     }
@@ -2068,10 +2074,16 @@ window.saveExpense = async function () {
     try {
         await api.saveExpense({ date, amount, fromAccountId, toAccountId, departmentId, description, method, paidTo });
         showToast('Pengeluaran berhasil dicatat', 'success');
-        await db.sync('expenses');
-        await db.sync('journalEntries');
-        await db.sync('accounts');
         renderFinanceExpenses();
+        
+        Promise.all([
+            db.sync('expenses'),
+            db.sync('journalEntries'),
+            db.sync('accounts')
+        ]).then(() => {
+            console.log('[DB] Background sync completed after expense save.');
+            renderFinanceExpenses();
+        }).catch(err => console.warn('Background sync error:', err));
     } catch (err) {
         showToast(err.message, 'error');
     }

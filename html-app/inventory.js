@@ -1135,13 +1135,18 @@ window.saveStockAdjustment = async (itemId) => {
             notes: notes || 'Stock Adjustment (Manual Update)'
         });
         
-        // SYNC TABLES
-        await db.sync('stockTransactions');
-        await db.sync('inventoryItems');
-
+        // SYNC TABLES IN BACKGROUND
         showToast(`Stok berhasil disesuaikan (${type}: ${absDiff})`);
         closeModal();
         returnToMasterView();
+
+        Promise.all([
+            db.sync('stockTransactions'),
+            db.sync('inventoryItems')
+        ]).then(() => {
+            console.log('[DB] Background sync completed after adjustment.');
+            if (typeof returnToMasterView === 'function') returnToMasterView();
+        }).catch(err => console.warn('Background sync error:', err));
     } catch (err) {
         showToast(err.message, 'error');
         btn.innerHTML = oldHtml;
@@ -1699,12 +1704,19 @@ window.saveProductToProductConversion = async () => {
             'WHS'
         );
 
-        await db.sync('inventoryConversions');
-        await db.sync('stockTransactions');
-        await db.sync('inventoryItems');
-
         showToast('Konversi antar produk berhasil disimpan!', 'success');
         navigateTo('inventory-master');
+
+        Promise.all([
+            db.sync('inventoryConversions'),
+            db.sync('stockTransactions'),
+            db.sync('inventoryItems')
+        ]).then(() => {
+            console.log('[DB] Background sync completed after conversion.');
+            if (window._currentView === 'inventory-master' && typeof renderInventoryMaster === 'function') {
+                renderInventoryMaster();
+            }
+        }).catch(err => console.warn('Background sync error:', err));
     } catch (e) {
         console.error('Error saving product conversion:', e);
         showToast('Gagal memproses konversi: ' + e.message, 'error');
