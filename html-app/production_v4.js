@@ -42,15 +42,13 @@ if (typeof window.selectSearchableOption !== 'function') {
 
 const PROD_STAGES = [
     { key: 'OVEN_BASAH', label: 'Oven Basah', icon: 'fas fa-fire', color: 'bg-orange-50 text-orange-600', hasStock: true, hasShrinkage: true, inputFrom: 'RAW_MATERIAL' },
-    { key: 'OVEN_KERING', label: 'Oven Kering', icon: 'fas fa-sun', color: 'bg-yellow-50 text-yellow-600', hasStock: true, hasShrinkage: true, inputFrom: 'OVEN_BASAH' },
-    { key: 'PACKING', label: 'Gudang Jadi', icon: 'fas fa-box-open', color: 'bg-green-50 text-green-600', hasStock: true, hasShrinkage: true, inputFrom: 'OVEN_KERING' },
+    { key: 'OVEN_KERING', label: 'Oven Kering', icon: 'fas fa-sun', color: 'bg-yellow-50 text-yellow-600', hasStock: true, hasShrinkage: true, inputFrom: 'OVEN_BASAH' }
 ];
 
 const STAGE_LOCATIONS = {
     RAW_MATERIAL: 'WHS',
     OVEN_BASAH: 'OVEN_BASAH',
-    OVEN_KERING: 'OVEN_KERING',
-    PACKING: 'WHS'
+    OVEN_KERING: 'OVEN_KERING'
 };
 
 const MACHINE_CAPACITY = {
@@ -59,9 +57,8 @@ const MACHINE_CAPACITY = {
 };
 
 const STAGE_STOCK_CATEGORY = {
-    OVEN_BASAH: ['OVEN_BASAH_STOCK'],
-    OVEN_KERING: ['OVEN_KERING_STOCK'],
-    PACKING: ['FINISHED_GOODS']
+    OVEN_BASAH: ['FINISHED_GOODS'],
+    OVEN_KERING: ['FINISHED_GOODS']
 };
 
 function generateBatchId() {
@@ -508,9 +505,7 @@ window.renderProductionMO = async () => {
     document.getElementById('pageTitle').innerText = 'Manufacturing Order ( MO )';
     const mc = document.getElementById('main-content');
 
-    // Sync dari server supaya data selalu terbaru
-    try { await db.sync('productionOrders'); } catch(e) { console.warn('MO sync error:', e); }
-
+    // Sync occurs in the background via router to prevent render block
     const mos = db.read('productionOrders') || [];
 
     const todayStr = new Date().toISOString().split('T')[0];
@@ -1484,7 +1479,10 @@ window.startMO = async () => {
 
     try {
         await api.startProductionOrder(moData);
+        await db.sync('productionOrders'); // <-- Fetch data terbaru dari server!
+        closeModal(); // Tutup popup Buat MO Baru
         showToast(`MO ${moNumber} dimulai!`, 'success');
+        
         if (window._completeMOReferrer === 'dashboard') {
             renderProductionDashboard();
         } else {
@@ -2365,7 +2363,16 @@ window.filterMOProductList = (rowId, val) => {
     const stage = document.getElementById('mo_stage')?.value;
     const allowedCats = STAGE_STOCK_CATEGORY[stage] || ['FINISHED_GOODS'];
     
-    const products = allItems.filter(i => allowedCats.includes(i.category) && i.status !== 'INACTIVE');
+    const products = allItems.filter(i => {
+        if (!allowedCats.includes(i.category) || i.status === 'INACTIVE') return false;
+        // Filter khusus untuk departemen Produksi: Hanya tampilkan kemasan 25 Kg untuk Produk Jadi.
+        // Konversi ke kemasan eceran (5 Kg, dll) akan diurus oleh tim Gudang via menu Konversi Stok.
+        if (i.category === 'FINISHED_GOODS') {
+            const name = (i.itemName || i.item_name || '').toLowerCase();
+            return name.includes('25 kg') || name.includes('25kg');
+        }
+        return true;
+    });
 
     const filtered = products.filter(p => {
         const name = (p.itemName || p.item_name || '').toLowerCase();

@@ -9,6 +9,12 @@ function generateId() {
     return uuidv4();
 }
 
+function getPackSizeFromName(itemName) {
+    // Sesuai instruksi: Packaging selalu 25 Kg dari Oven Kering
+    return 25;
+}
+
+
 /**
  * Helper to ensure WIP Item exists
  * Equivalent to db.ensureWIPItem in frontend
@@ -35,7 +41,10 @@ async function ensureWIPItem(productId, stageLabel, t) {
     const existing = await InventoryItem.findOne({
         where: {
             category: category,
-            itemName: { [sequelize.Sequelize.Op.iLike]: targetName }
+            [sequelize.Sequelize.Op.or]: [
+                { itemName: { [sequelize.Sequelize.Op.iLike]: targetName } },
+                { itemName: { [sequelize.Sequelize.Op.iLike]: baseName } }
+            ]
         },
         transaction: t
     });
@@ -279,21 +288,56 @@ router.post('/orders/:id/complete', authenticateToken, requirePermission('produk
                         location: 'OVEN_BASAH'
                     }, { transaction: t });
 
-                    // IN ke Oven Kering
-                    await StockTransaction.create({
-                        id: generateId(),
-                        txNo: moNumber,
-                        date: txDate,
-                        itemId: outputWipId,
-                        itemName: tp.itemName + ' (Oven Kering)',
-                        type: 'IN',
-                        qty: parseFloat(tp.outputQty),
-                        reference: 'PRODUCTION_IN',
-                        referenceId: moRecord.id,
-                        notes: `FINISH Oven Kering MO ${moNumber}: Produced ${tp.itemName}`,
-                        createdBy: req.user.email,
-                        location: 'OVEN_KERING'
-                    }, { transaction: t });
+                    // IN ke Gudang Jadi (WHS) & Oven Kering WIP (Auto-Pack Split)
+                    const fgItem = await InventoryItem.findOne({
+                        where: {
+                            category: 'FINISHED_GOODS',
+                            itemName: { [sequelize.Sequelize.Op.iLike]: tp.itemName.trim() }
+                        },
+                        transaction: t
+                    });
+                    const fgItemId = fgItem ? fgItem.id : tp.itemId;
+                    const packSize = getPackSizeFromName(tp.itemName);
+                    const outputQty = parseFloat(tp.outputQty);
+                    const packedQty = Math.floor(outputQty / packSize) * packSize;
+                    const looseQty = outputQty % packSize;
+
+                    if (packedQty > 0) {
+                        await StockTransaction.create({
+                            id: generateId(),
+                            txNo: moNumber,
+                            date: txDate,
+                            itemId: fgItemId,
+                            itemName: tp.itemName,
+                            type: 'IN',
+                            qty: packedQty,
+                            reference: 'PRODUCTION_IN',
+                            referenceId: moRecord.id,
+                            notes: `FINISH Oven Kering MO ${moNumber}: Auto-packed to Finished Goods (${packedQty / packSize} Sacks)`,
+                            createdBy: req.user.email,
+                            location: 'WHS'
+                        }, { transaction: t });
+                    }
+
+                    if (looseQty > 0 || packedQty === 0) {
+                        const finalLooseQty = (packedQty === 0) ? outputQty : looseQty;
+                        await StockTransaction.create({
+                            id: generateId(),
+                            txNo: moNumber,
+                            date: txDate,
+                            itemId: outputWipId,
+                            itemName: tp.itemName + ' (Oven Kering)',
+                            type: 'IN',
+                            qty: finalLooseQty,
+                            reference: 'PRODUCTION_IN',
+                            referenceId: moRecord.id,
+                            notes: packedQty === 0
+                                ? `FINISH Oven Kering MO ${moNumber}: Produced Oven Kering WIP (less than ${packSize} Kg)`
+                                : `FINISH Oven Kering MO ${moNumber}: Remaining loose stock`,
+                            createdBy: req.user.email,
+                            location: 'OVEN_KERING'
+                        }, { transaction: t });
+                    }
                 }
             }
         }
@@ -420,6 +464,75 @@ router.delete('/orders/:id', authenticateToken, requirePermission('produksi', 'e
         res.json({ success: true });
     } catch (err) {
         res.status(400).json({ error: err.message });
+    }
+});
+
+router.post('/mutate-wip-to-fg', authenticateToken, requirePermission('produksi', 'edit'), async (req, res) => {
+    const t = await sequelize.transaction();
+    try {
+        const { wipItemId, fgItemId, qty, sacks, packSize, date, notes } = req.body;
+        if (!wipItemId || !fgItemId || !qty) {
+            await t.rollback();
+            return res.status(400).json({ error: 'Data mutasi tidak lengkap' });
+        }
+
+        const wipItem = await InventoryItem.findByPk(wipItemId, { transaction: t });
+        const fgItem = await InventoryItem.findByPk(fgItemId, { transaction: t });
+
+        if (!wipItem || !fgItem) {
+            await t.rollback();
+            return res.status(404).json({ error: 'Barang tidak ditemukan' });
+        }
+
+        const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const txDate = date ? new Date(date) : new Date();
+
+        // 1. OUT from Oven Kering WIP
+        await StockTransaction.create({
+            id: generateId(),
+            txNo: `MUT-OUT-${dateStr}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
+            date: txDate,
+            itemId: wipItem.id,
+            itemCode: wipItem.itemCode,
+            itemName: wipItem.itemName,
+            type: 'OUT',
+            qty: parseFloat(qty),
+            reference: 'PRODUCTION_MUTATION',
+            notes: notes || `Mutasi Oven Kering ke Gudang: ${sacks} Sak @${packSize} Kg (Total ${qty} Kg)`,
+            createdBy: req.user.email,
+            location: 'OVEN_KERING'
+        }, { transaction: t });
+
+        // 2. IN to Finished Goods
+        await StockTransaction.create({
+            id: generateId(),
+            txNo: `MUT-IN-${dateStr}-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
+            date: txDate,
+            itemId: fgItem.id,
+            itemCode: fgItem.itemCode,
+            itemName: fgItem.itemName,
+            type: 'IN',
+            qty: parseFloat(qty),
+            reference: 'PRODUCTION_MUTATION',
+            notes: notes || `Mutasi Oven Kering ke Gudang: ${sacks} Sak @${packSize} Kg (Total ${qty} Kg)`,
+            createdBy: req.user.email,
+            location: 'WHS'
+        }, { transaction: t });
+
+        // Log Aktivitas
+        await SystemLog.create({
+            user_id: req.user.userId,
+            user_email: req.user.email,
+            action: 'WIP_MUTATION',
+            details: `Mutasi WIP ${wipItem.itemName} ke FG ${fgItem.itemName} sebanyak ${qty} Kg`
+        }, { transaction: t });
+
+        await t.commit();
+        res.status(201).json({ success: true });
+    } catch (err) {
+        await t.rollback();
+        console.error('Error mutating WIP to FG:', err);
+        res.status(500).json({ error: 'Gagal melakukan mutasi stok' });
     }
 });
 

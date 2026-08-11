@@ -392,6 +392,14 @@ const api = {
         return await res.json();
     },
 
+    mutateWipToFg: async (data) => {
+        const res = await fetch(`${API_BASE}/production/mutate-wip-to-fg`, {
+            method: 'POST', headers: authHeaders(), body: JSON.stringify(data)
+        });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Gagal melakukan mutasi stok'); }
+        return await res.json();
+    },
+
     // ─── FINANCE ───
     saveAccount: async (data) => {
         const res = await fetch(`${API_BASE}/finance/accounts`, {

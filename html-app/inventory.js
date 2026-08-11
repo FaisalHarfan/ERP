@@ -4823,10 +4823,18 @@ window.runWIPMutationReport = () => {
                     <td class="py-4 px-5 text-sm text-right font-black text-red-600/80">-${invFmt(s.totalOut)}</td>
                     <td class="py-4 px-5 text-sm text-right font-black text-indigo-700">${invFmt(s.closingStock)}</td>
                     <td class="py-4 px-5 text-right">
-                        <button onclick="openWIPHistoryModal('${s.id}', '${loc}')" class="flex items-center gap-2 px-3 py-1.5 rounded-[10px] border border-slate-200 text-slate-700 bg-[#f8fafc] hover:bg-slate-100 transition-colors text-[12px] font-bold shadow-sm whitespace-nowrap ml-auto active:scale-95">
-                            <i class="fas fa-file-invoice text-[10px] text-slate-400"></i>
-                            Kartu Stok
-                        </button>
+                        <div class="flex justify-end gap-2">
+                            ${loc === 'OVEN_KERING' ? `
+                            <button onclick="window.openProductionWipMutationModal('${s.id}')" class="flex items-center gap-2 px-3 py-1.5 rounded-[10px] border border-emerald-200 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors text-[12px] font-bold shadow-sm whitespace-nowrap active:scale-95">
+                                <i class="fas fa-random text-[10px] text-emerald-500"></i>
+                                Mutasi ke Gudang
+                            </button>
+                            ` : ''}
+                            <button onclick="openWIPHistoryModal('${s.id}', '${loc}')" class="flex items-center gap-2 px-3 py-1.5 rounded-[10px] border border-slate-200 text-slate-700 bg-[#f8fafc] hover:bg-slate-100 transition-colors text-[12px] font-bold shadow-sm whitespace-nowrap active:scale-95">
+                                <i class="fas fa-file-invoice text-[10px] text-slate-400"></i>
+                                Kartu Stok
+                            </button>
+                        </div>
                     </td>
                 </tr>`;
             });
@@ -5994,5 +6002,174 @@ window.confirmInventoryReceive = async function (id, type) {
         window.renderIncomingReturns();
     } catch (err) {
         showToast(`Gagal konfirmasi: ${err.message}`, 'error');
+    }
+};
+
+// ─── WIP MUTATION TO FINISHED GOODS (AUTO-PACK MUTATION) ───
+window.openProductionWipMutationModal = (wipItemId) => {
+    const wipItem = db.findById('inventoryItems', wipItemId);
+    if (!wipItem) return;
+
+    // Cari target Finished Good yang namanya sama dengan WIP (tanpa akhiran Oven Kering)
+    const baseName = wipItem.itemName.split(' (')[0].trim().toLowerCase();
+    const fgItem = (db.read('inventoryItems') || []).find(i => 
+        i.category === 'FINISHED_GOODS' && 
+        (i.itemName || '').toLowerCase().trim() === baseName
+    );
+
+    if (!fgItem) {
+        showToast('Gagal menemukan produk jadi yang cocok untuk item setengah jadi ini.', 'error');
+        return;
+    }
+
+    const currentStock = db.getInventoryStock(wipItemId);
+    const currentDate = new Date().toISOString().split('T')[0];
+
+    // Deteksi ukuran kemasan default (Sesuai instruksi: selalu 25 Kg)
+    const defaultPackSize = 25;
+
+    const defaultSacks = Math.floor(currentStock / defaultPackSize);
+
+    const body = `
+    <div class="space-y-6">
+        <!-- Informasi Sumber & Target -->
+        <div class="grid grid-cols-2 gap-6 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+            <div>
+                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Sumber Stok (WIP)</label>
+                <div class="text-sm font-bold text-slate-800 bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm select-none">
+                    ${wipItem.itemName} <span class="text-xs text-slate-400 font-mono">(${wipItem.itemCode})</span>
+                </div>
+            </div>
+            <div>
+                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 ml-1">Target Gudang Jadi (FG)</label>
+                <div class="text-sm font-bold text-slate-800 bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-sm select-none">
+                    ${fgItem.itemName} <span class="text-xs text-slate-400 font-mono">(${fgItem.itemCode})</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stok & Parameter Mutasi -->
+        <div class="grid grid-cols-3 gap-6">
+            <div class="bg-blue-50 border border-blue-100 rounded-2xl p-5 flex flex-col justify-center">
+                <span class="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Stok Oven Kering</span>
+                <strong class="text-2xl font-black text-blue-700">${invFmt(currentStock)} Kg</strong>
+            </div>
+            <div>
+                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Ukuran Kemasan (Kg/Sak)</label>
+                <input type="number" id="wip_mut_pack_size" value="${defaultPackSize}" oninput="window.recalcWipMutationTotal()"
+                    class="w-full border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-black text-slate-800 outline-none focus:border-indigo-500/20 focus:ring-4 focus:ring-indigo-500/5 transition-all shadow-sm">
+            </div>
+            <div>
+                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Jumlah Sak (Karton/Bag)</label>
+                <input type="number" id="wip_mut_sacks" value="${defaultSacks}" oninput="window.recalcWipMutationTotal()"
+                    class="w-full border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-black text-slate-800 outline-none focus:border-indigo-500/20 focus:ring-4 focus:ring-indigo-500/5 transition-all shadow-sm">
+            </div>
+        </div>
+
+        <!-- Hasil Perhitungan -->
+        <div class="bg-indigo-50/50 border border-indigo-100/50 rounded-2xl p-6 flex justify-between items-center">
+            <div>
+                <p class="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Total Stok yang Dipindahkan</p>
+                <p class="text-xs text-slate-500 font-medium">Berdasarkan Jumlah Sak &times; Ukuran Kemasan</p>
+            </div>
+            <div class="text-right">
+                <p class="text-3xl font-black text-indigo-700" id="wip_mut_total_kg_display">0 Kg</p>
+            </div>
+        </div>
+
+        <!-- Tanggal & PIC -->
+        <div class="grid grid-cols-2 gap-6">
+            <div>
+                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Tanggal Mutasi</label>
+                <input type="date" id="wip_mut_date" value="${currentDate}" class="w-full border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-indigo-500/20 focus:ring-4 focus:ring-indigo-500/5 transition-all shadow-sm">
+            </div>
+            <div>
+                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Keterangan / Catatan</label>
+                <input type="text" id="wip_mut_notes" placeholder="Contoh: Mutasi sisa oven kering terkumpul" class="w-full border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-indigo-500/20 focus:ring-4 focus:ring-indigo-500/5 transition-all shadow-sm">
+            </div>
+        </div>
+    </div>`;
+
+    const footer = `
+    <div class="flex gap-4 w-full">
+        <button onclick="closeModal()" class="px-8 py-3 rounded-xl text-sm font-black uppercase tracking-widest text-slate-400 bg-slate-100 hover:bg-slate-200 transition-all">Batal</button>
+        <button id="btn_wip_mut_submit" onclick="window.submitProductionWipMutation('${wipItemId}', '${fgItem.id}', ${currentStock})" class="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-black uppercase tracking-widest shadow-lg shadow-emerald-500/30 transition-all active:scale-[0.98]">
+            <i class="fas fa-check-circle mr-2"></i>Kirim Mutasi ke Gudang
+        </button>
+    </div>`;
+
+    showModal('Mutasi WIP Oven Kering ke Gudang Jadi', body, footer, 'lg');
+    window.recalcWipMutationTotal();
+};
+
+window.recalcWipMutationTotal = () => {
+    const packSize = parseFloat(document.getElementById('wip_mut_pack_size')?.value) || 0;
+    const sacks = parseFloat(document.getElementById('wip_mut_sacks')?.value) || 0;
+    const totalKg = packSize * sacks;
+    const display = document.getElementById('wip_mut_total_kg_display');
+    if (display) {
+        display.innerText = invFmt(totalKg) + ' Kg';
+    }
+};
+
+window.submitProductionWipMutation = async (wipItemId, fgItemId, currentStock) => {
+    const packSize = parseFloat(document.getElementById('wip_mut_pack_size')?.value) || 0;
+    const sacks = parseFloat(document.getElementById('wip_mut_sacks')?.value) || 0;
+    const totalKg = packSize * sacks;
+    const dateVal = document.getElementById('wip_mut_date')?.value;
+    const notesVal = document.getElementById('wip_mut_notes')?.value || '';
+
+    if (totalKg <= 0) {
+        showToast('Total berat mutasi harus lebih besar dari 0 Kg', 'error');
+        return;
+    }
+
+    if (totalKg > currentStock) {
+        showToast(`Stok tidak cukup! Maksimum yang bisa dimutasi adalah ${invFmt(currentStock)} Kg`, 'error');
+        return;
+    }
+
+    const btn = document.getElementById('btn_wip_mut_submit');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin mr-2"></i>Memproses...`;
+    }
+
+    try {
+        await api.mutateWipToFg({
+            wipItemId,
+            fgItemId,
+            qty: totalKg,
+            sacks,
+            packSize,
+            date: dateVal,
+            notes: notesVal
+        });
+
+        showToast('Mutasi sisa stok ke Gudang Jadi berhasil!', 'success');
+        closeModal();
+        
+        // Re-render report table immediately
+        if (window.runWIPMutationReport) {
+            window.runWIPMutationReport();
+        }
+
+        // Run background database sync
+        Promise.all([
+            db.sync('stockTransactions'),
+            db.sync('inventoryItems')
+        ]).then(() => {
+            console.log('[DB] Background sync completed after WIP mutation.');
+            if (window.runWIPMutationReport) {
+                window.runWIPMutationReport();
+            }
+        });
+
+    } catch (err) {
+        showToast(err.message || 'Gagal melakukan mutasi stok', 'error');
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fas fa-check-circle mr-2"></i>Kirim Mutasi ke Gudang`;
+        }
     }
 };
