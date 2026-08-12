@@ -1047,6 +1047,11 @@ window.openStockAdjustmentModal = (itemId) => {
             <span>Gunakan fitur ini untuk mencocokkan stok sistem dengan stok fisik di gudang.</span>
         </div>
 
+        <div>
+            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Tanggal Penyesuaian <span class="text-red-500">*</span></label>
+            <input type="date" id="adj_date" max="${new Date().toISOString().split('T')[0]}" value="${new Date().toISOString().split('T')[0]}" class="w-full border-2 border-slate-100 rounded-2xl px-4 py-3 text-xs font-bold text-slate-700 focus:border-blue-500 outline-none transition-all bg-slate-50/50">
+        </div>
+
         <div class="grid grid-cols-2 gap-4">
             <div class="p-4 bg-slate-50/50 rounded-2xl border border-slate-100">
                 <label class="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Kode Item</label>
@@ -1077,9 +1082,14 @@ window.openStockAdjustmentModal = (itemId) => {
                     <div class="flex flex-col items-center gap-2">
                         <div class="relative group">
                             <input type="number" id="adj_physical_stock" value="${currentStock}" min="0" step="0.01" 
-                                class="w-full max-w-[200px] text-center text-4xl font-black border-b-4 border-blue-500 pb-2 text-blue-600 outline-none transition-all focus:border-blue-700 bg-transparent">
+                                class="w-full max-w-[200px] text-center text-4xl font-black border-b-4 border-blue-500 pb-2 text-blue-600 outline-none transition-all focus:border-blue-700 bg-transparent"
+                                oninput="calculateStockAdjustment(${currentStock}, '${item.unit}')">
                         </div>
                         <span class="text-xs font-black text-slate-400 uppercase tracking-widest mt-2">${item.unit}</span>
+                    </div>
+
+                    <div id="adj_judgement" class="mt-6 p-4 rounded-xl border border-slate-100 bg-slate-50 flex flex-col items-center justify-center gap-1 text-xs font-bold text-slate-500">
+                        <span class="text-slate-400">Tidak ada perubahan</span>
                     </div>
                 </div>
             </div>
@@ -1104,9 +1114,47 @@ window.openStockAdjustmentModal = (itemId) => {
     showModal('Penyesuaian Stok', body, footer, 'max-w-md');
 };
 
+window.calculateStockAdjustment = (currentStock, unit) => {
+    const input = document.getElementById('adj_physical_stock');
+    const judgement = document.getElementById('adj_judgement');
+    if (!input || !judgement) return;
+
+    const actualStock = parseFloat(input.value);
+    if (isNaN(actualStock)) {
+        judgement.innerHTML = `<span class="text-slate-400">Input tidak valid</span>`;
+        judgement.className = 'mt-6 p-4 rounded-xl border border-slate-100 bg-slate-50 flex flex-col items-center justify-center gap-1 text-xs font-bold text-slate-500';
+        return;
+    }
+
+    const diff = actualStock - currentStock;
+    if (diff === 0) {
+        judgement.innerHTML = `<span class="text-slate-400">Tidak ada perubahan</span>`;
+        judgement.className = 'mt-6 p-4 rounded-xl border border-slate-100 bg-slate-50 flex flex-col items-center justify-center gap-1 text-xs font-bold text-slate-500';
+    } else if (diff > 0) {
+        judgement.innerHTML = `
+            <span class="text-[10px] font-black text-green-600 uppercase tracking-widest mb-1">Penyesuaian Masuk (Stock In)</span>
+            <div class="flex items-baseline gap-2 text-green-600">
+                <span class="text-xl font-black">+${invFmt(diff)}</span>
+                <span class="text-[10px] uppercase">${unit}</span>
+            </div>
+        `;
+        judgement.className = 'mt-6 p-4 rounded-xl border border-green-200 bg-green-50 flex flex-col items-center justify-center transition-all animate-in zoom-in-95';
+    } else {
+        judgement.innerHTML = `
+            <span class="text-[10px] font-black text-red-600 uppercase tracking-widest mb-1">Penyesuaian Keluar (Stock Out)</span>
+            <div class="flex items-baseline gap-2 text-red-600">
+                <span class="text-xl font-black">${invFmt(diff)}</span>
+                <span class="text-[10px] uppercase">${unit}</span>
+            </div>
+        `;
+        judgement.className = 'mt-6 p-4 rounded-xl border border-red-200 bg-red-50 flex flex-col items-center justify-center transition-all animate-in zoom-in-95';
+    }
+};
+
 window.saveStockAdjustment = async (itemId) => {
     const actualStock = parseFloat(document.getElementById('adj_physical_stock').value);
     const notes = document.getElementById('adj_notes').value.trim();
+    const adjDate = document.getElementById('adj_date')?.value || new Date().toISOString().split('T')[0];
     if (isNaN(actualStock) || actualStock < 0) { showToast('Jumlah stok tidak valid', 'error'); return; }
 
     const currentStock = db.getInventoryStock(itemId);
@@ -1132,7 +1180,8 @@ window.saveStockAdjustment = async (itemId) => {
             type: type,
             qty: absDiff,
             reference: 'MANUAL',
-            notes: notes || 'Stock Adjustment (Manual Update)'
+            notes: notes || 'Stock Adjustment (Manual Update)',
+            date: adjDate
         });
         
         // SYNC TABLES IN BACKGROUND
@@ -1593,17 +1642,8 @@ window.renderProductToProductConversionPage = () => {
         if (fromEl) fromEl.addEventListener('change', updateP2PSourceStock);
         if (toEl) toEl.addEventListener('change', updateP2PDestStock);
 
-        // Synchronize Qty Dikeluarkan and Qty Diterima
-        const fromQtyEl = document.getElementById('p2p_from_qty');
-        const toQtyEl = document.getElementById('p2p_to_qty');
-        if (fromQtyEl && toQtyEl) {
-            fromQtyEl.addEventListener('input', (e) => {
-                toQtyEl.value = e.target.value;
-            });
-            toQtyEl.addEventListener('input', (e) => {
-                fromQtyEl.value = e.target.value;
-            });
-        }
+        // Qty Dikeluarkan dan Qty Diterima sekarang dapat diisi berbeda oleh user
+        // karena aktual di lapangan hasil konversi bisa berbeda (misal ada penyusutan).
     }, 100);
 };
 
@@ -4247,7 +4287,10 @@ window.viewProductStockCard = (productId, startDateStr = null, endDateStr = null
             <tr class="border-b border-gray-100 text-xs">
                 <td class="py-2 px-2 text-slate-600 font-bold">${invDate(t.date)}</td>
                 <td class="py-2 px-2 font-mono text-slate-500 font-bold">${displayTxNo}</td>
-                <td class="py-2 px-2 font-medium text-gray-700">${t.itemName || '-'}</td>
+                <td class="py-2 px-2 font-medium text-gray-700">
+                    ${t.itemName || '-'}
+                    ${t.notes ? `<br><span class="text-[9px] text-gray-400 italic font-normal">${t.notes}</span>` : ''}
+                </td>
                 <td class="py-2 px-2 text-right text-green-600 font-bold">${qtyIn > 0 ? '+' + invFmt(qtyIn) : '-'}</td>
                 <td class="py-2 px-2 text-right text-red-600 font-bold">${qtyOut > 0 ? '-' + invFmt(qtyOut) : '-'}</td>
                 <td class="py-2 px-2 text-right font-black text-gray-800">${invFmt(balance)}</td>

@@ -251,7 +251,7 @@ router.delete('/items/:id', authenticateToken, requirePermission('logistik', 'ed
 router.post('/transactions', authenticateToken, requirePermission('logistik', 'edit'), async (req, res) => {
     const t = await sequelize.transaction();
     try {
-        const { itemId, type, qty, reference, notes, location } = req.body;
+        const { itemId, type, qty, reference, notes, location, date } = req.body;
         
         if (!itemId || !type || !qty) {
             await t.rollback();
@@ -265,7 +265,8 @@ router.post('/transactions', authenticateToken, requirePermission('logistik', 'e
         }
 
         // Generate TX Number
-        const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const txDate = date ? new Date(date) : new Date();
+        const dateStr = txDate.toISOString().slice(0, 10).replace(/-/g, '');
         const count = await StockTransaction.count({ where: { type }, transaction: t });
         const prefix = type === 'IN' ? 'SI' : 'SO';
         const txNo = `${prefix}-${dateStr}-${(count + 1).toString().padStart(3, '0')}`;
@@ -273,7 +274,7 @@ router.post('/transactions', authenticateToken, requirePermission('logistik', 'e
         const newTx = await StockTransaction.create({
             id: generateId(),
             txNo: txNo,
-            date: new Date(),
+            date: txDate,
             itemId: item.id,
             itemCode: item.itemCode,
             itemName: item.itemName,

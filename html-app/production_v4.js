@@ -802,7 +802,7 @@ window.openMOModal = async (stagePreset = '') => {
                             </div>
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Tanggal Produksi <span class="text-red-400">*</span></label>
-                                <input type="date" id="mo_date" value="${todayStr}" onchange="recalcMONumber()"
+                                <input type="date" id="mo_date" value="${todayStr}" max="${todayStr}" onchange="recalcMONumber()"
                                     class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 outline-none">
                             </div>
                             <div id="mo_grp_shift" class="searchable-select-container relative">
@@ -1323,6 +1323,11 @@ window.removeRMRowMO = (btn) => {
 window.startMO = async () => {
     const stage = document.getElementById('mo_stage')?.value;
     const date = document.getElementById('mo_date')?.value;
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (date > todayStr) {
+        showToast('Tanggal MO tidak boleh melebihi tanggal hari ini', 'error');
+        return;
+    }
     const shift = document.getElementById('mo_shift')?.value;
     const moNumber = document.getElementById('mo_number_display')?.value || ('MO-' + Date.now().toString().slice(-7));
     // For OVEN_BASAH / OVEN_KERING / PACKING: productId/Name dari target product list
@@ -1823,7 +1828,7 @@ window.openCompleteMOModal = (id) => {
                              ${mo.stage === 'OVEN_BASAH' ? `
                              <div>
                                  <label class="block text-sm font-semibold text-slate-600 mb-2">Tanggal Realisasi <span class="text-red-500">*</span></label>
-                                 <input type="date" id="mo_partial_date" class="w-full h-[52px] bg-slate-50 border-2 border-transparent rounded-2xl px-5 py-3 text-sm font-black text-slate-700 focus:bg-white focus:border-blue-500/20 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all shadow-sm cursor-pointer" value="${new Date().toISOString().split('T')[0]}">
+                                 <input type="date" id="mo_partial_date" max="${new Date().toISOString().split('T')[0]}" class="w-full h-[52px] bg-slate-50 border-2 border-transparent rounded-2xl px-5 py-3 text-sm font-black text-slate-700 focus:bg-white focus:border-blue-500/20 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all shadow-sm cursor-pointer" value="${new Date().toISOString().split('T')[0]}">
                              </div>
                              <div class="searchable-select-container relative">
                                  <label class="block text-sm font-semibold text-slate-600 mb-2">Status Produksi <span class="text-red-500">*</span></label>
@@ -1858,7 +1863,7 @@ window.openCompleteMOModal = (id) => {
                              ` : `
                              <div>
                                  <label class="block text-sm font-semibold text-slate-600 mb-2">Tanggal Selesai <span class="text-red-500">*</span></label>
-                                 <input type="date" id="mo_completed_date" class="w-full h-[52px] bg-slate-50 border-2 border-transparent rounded-2xl px-5 py-3 text-sm font-black text-slate-700 focus:bg-white focus:border-blue-500/20 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all shadow-sm cursor-pointer" value="${new Date().toISOString().split('T')[0]}">
+                                 <input type="date" id="mo_completed_date" max="${new Date().toISOString().split('T')[0]}" class="w-full h-[52px] bg-slate-50 border-2 border-transparent rounded-2xl px-5 py-3 text-sm font-black text-slate-700 focus:bg-white focus:border-blue-500/20 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all shadow-sm cursor-pointer" value="${new Date().toISOString().split('T')[0]}">
                              </div>
                              `}
                          </div>
@@ -1985,9 +1990,23 @@ window.finalizeMO = async (id) => {
     if (!mo) return;
 
     const completedDateVal = document.getElementById('mo_completed_date')?.value;
-    if (mo.stage !== 'OVEN_BASAH' && !completedDateVal) {
-        showToast('Tanggal Selesai wajib diisi!', 'error');
-        return;
+    const partialDateVal = document.getElementById('mo_partial_date')?.value;
+    const todayStr = new Date().toISOString().split('T')[0];
+    
+    if (mo.stage !== 'OVEN_BASAH') {
+        if (!completedDateVal) {
+            showToast('Tanggal Selesai wajib diisi!', 'error');
+            return;
+        }
+        if (completedDateVal > todayStr) {
+            showToast('Tanggal Selesai tidak boleh melebihi tanggal hari ini', 'error');
+            return;
+        }
+    } else {
+        if (partialDateVal && partialDateVal > todayStr) {
+            showToast('Tanggal Realisasi tidak boleh melebihi tanggal hari ini', 'error');
+            return;
+        }
     }
 
     let updates = {
