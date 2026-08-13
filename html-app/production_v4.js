@@ -58,7 +58,7 @@ const MACHINE_CAPACITY = {
 
 const STAGE_STOCK_CATEGORY = {
     OVEN_BASAH: ['OVEN_BASAH_STOCK'],
-    OVEN_KERING: ['OVEN_KERING_STOCK']
+    OVEN_KERING: ['FINISHED_GOODS']
 };
 
 function generateBatchId() {
@@ -1040,7 +1040,12 @@ function buildItemSelect(category, id, items, showStock = false, nameFilter = ''
 function buildSelectHTML(filteredItems, id, showStock, nameFilter) {
     const opts = filteredItems.map(i => {
         const stock = db.getInventoryStock(i.id);
-        const name = i.itemName;
+        let name = i.itemName;
+        if (i.category === 'OVEN_BASAH_STOCK' && !name.toLowerCase().includes('(oven basah)')) {
+            name += ' (Oven Basah)';
+        } else if (i.category === 'OVEN_KERING_STOCK' && !name.toLowerCase().includes('(oven kering)')) {
+            name += ' (Oven Kering)';
+        }
         const stockText = showStock ? ` (Stok: ${prodFmt(stock)} ${i.unit || 'Kg'})` : '';
         return `<option value="${i.id}">${name}${stockText}</option>`;
     }).join('');
@@ -2408,6 +2413,12 @@ window.filterMOProductList = (rowId, val) => {
         let stockColor = isWIP ? 'text-orange-500' : 'text-blue-500';
         
         let displayItemName = p.itemName || p.item_name || 'Tanpa Nama';
+        if (p.category === 'OVEN_BASAH_STOCK' && !displayItemName.toLowerCase().includes('(oven basah)')) {
+            displayItemName += ' (Oven Basah)';
+        } else if (p.category === 'OVEN_KERING_STOCK' && !displayItemName.toLowerCase().includes('(oven kering)')) {
+            displayItemName += ' (Oven Kering)';
+        }
+
         let displayItemCode = p.itemCode || p.item_code || '-';
         
         if (stageInfo.inputFrom !== 'RAW_MATERIAL') {
@@ -2429,7 +2440,7 @@ window.filterMOProductList = (rowId, val) => {
             stockColor = displayStock > 0 ? 'text-emerald-600' : 'text-rose-500';
         }
         
-        const name = (p.itemName || p.item_name || '').replace(/'/g, "\\'");
+        const name = (displayItemName).replace(/'/g, "\\'");
         return `
             <div onclick="selectMOProduct('${rowId}', '${p.id}', '${name}')"
                 class="px-4 py-3 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors m-0.5 border border-transparent hover:border-slate-200">
@@ -2554,7 +2565,12 @@ window.loadBOMMaterialsToMO = async () => {
     const bom = db.findById('bomHeaders', bomId);
     if (bom) {
         const prod = db.findById('inventoryItems', bom.productId);
-        document.getElementById('mo_product').value = bom.productName || bom.name || (prod ? prod.itemName : 'Resep Tanpa Nama');
+        let prodName = bom.productName || bom.name || (prod ? prod.itemName : 'Resep Tanpa Nama');
+        const stage = document.getElementById('mo_stage')?.value;
+        if (stage === 'OVEN_BASAH' && !prodName.toLowerCase().includes('(oven basah)')) {
+            prodName = prodName.replace(/\s*\([^)]+\)/g, '').trim() + ' (Oven Basah)';
+        }
+        document.getElementById('mo_product').value = prodName;
     }
 
     // Auto fill materials
