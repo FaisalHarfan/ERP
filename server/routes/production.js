@@ -21,7 +21,9 @@ function getPackSizeFromName(itemName) {
  */
 async function ensureWIPItem(productId, stageLabel, t) {
     const product = await InventoryItem.findByPk(productId, { transaction: t });
-    if (!product) return null;
+    if (!product) {
+        throw new Error(`Data master produk tidak ditemukan. Mungkin produk ini sudah dihapus dari master data. Harap hapus MO ini dan buat ulang.`);
+    }
 
     const labelLower = stageLabel.toLowerCase();
     if (labelLower.includes('finish good')) {
