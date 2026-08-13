@@ -57,8 +57,8 @@ const MACHINE_CAPACITY = {
 };
 
 const STAGE_STOCK_CATEGORY = {
-    OVEN_BASAH: ['FINISHED_GOODS'],
-    OVEN_KERING: ['FINISHED_GOODS']
+    OVEN_BASAH: ['OVEN_BASAH_STOCK'],
+    OVEN_KERING: ['OVEN_KERING_STOCK']
 };
 
 function generateBatchId() {
