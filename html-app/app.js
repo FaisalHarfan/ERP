@@ -4016,6 +4016,12 @@ window.openPOForm = async (fromPrId = null, fromRfqId = null) => {
 
     // Data handling for number generation
     const poNumberStr = generatePurchaseOrderNumber(false, todayStr);
+    
+    // Check if user is admin
+    const sess = JSON.parse(sessionStorage.getItem('erp_session') || '{}');
+    const userId = (sess.userId || '').toLowerCase();
+    const roleId = (sess.roleId || '').toLowerCase();
+    const isAdmin = userId === 'user_admin' || roleId === 'role_admin';
 
     fv.innerHTML = `
         <div class="animate-in fade-in slide-in-from-bottom-2 duration-400 -m-4 sm:-m-6 h-[calc(100vh-64px)] flex flex-col overflow-hidden bg-white">
@@ -4049,7 +4055,7 @@ window.openPOForm = async (fromPrId = null, fromRfqId = null) => {
                                         <option value="B" selected>NT</option>
                                      </select>
                                      <input type="text" id="po_number" value="${poNumberStr}" 
-                                        class="w-full border-none rounded-r-xl px-4 py-3 bg-slate-50 font-bold text-slate-400 outline-none" readonly>
+                                        class="w-full border-none rounded-r-xl px-4 py-3 bg-slate-50 font-bold ${isAdmin ? 'text-slate-700' : 'text-slate-400'} outline-none" ${isAdmin ? '' : 'readonly'}>
                                 </div>
                             </div>
                             <div>

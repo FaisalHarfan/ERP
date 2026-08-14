@@ -194,6 +194,14 @@ router.post('/:table', authenticateToken, tablePermission('edit'), async (req, r
         let data = toSnakeCase(req.body);
         if (!data.id) data.id = generateId();
 
+        // Validation for unique PO Number
+        if (req.params.table === 'purchase_orders' && data.po_number) {
+            const existing = await model.findOne({ where: { po_number: data.po_number } });
+            if (existing) {
+                return res.status(400).json({ error: `Gagal: Purchase Order dengan nomor ${data.po_number} sudah ada di sistem.` });
+            }
+        }
+
         // For JSONB models (id + data only), wrap payload into `data` field
         if (isJsonbModel(model)) {
             data = wrapForJsonbModel(data);
