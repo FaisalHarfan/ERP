@@ -39,10 +39,11 @@ async function ensureWIPItem(productId, stageLabel, t) {
     const baseName = (product.itemName || '').replace(/\s*\([^)]+\)/g, '').trim();
     const targetName = `${baseName} (${stageLabel})`;
 
-    // 1. Search by name & category
+    // 1. Search by name & category (ACTIVE only)
     const existing = await InventoryItem.findOne({
         where: {
             category: category,
+            status: { [sequelize.Sequelize.Op.ne]: 'INACTIVE' },
             [sequelize.Sequelize.Op.or]: [
                 { itemName: { [sequelize.Sequelize.Op.iLike]: targetName } },
                 { itemName: { [sequelize.Sequelize.Op.iLike]: baseName } }
@@ -294,6 +295,7 @@ router.post('/orders/:id/complete', authenticateToken, requirePermission('produk
                     const fgItem = await InventoryItem.findOne({
                         where: {
                             category: 'FINISHED_GOODS',
+                            status: { [sequelize.Sequelize.Op.ne]: 'INACTIVE' },
                             itemName: { [sequelize.Sequelize.Op.iLike]: tp.itemName.trim() }
                         },
                         transaction: t
