@@ -15,9 +15,10 @@ const { v4: uuidv4 } = require('uuid');
 router.post('/orders/:id/receive', authenticateToken, requirePermission('pembelian', 'edit'), async (req, res) => {
     const t = await sequelize.transaction();
     try {
+        const poId = (req.params.id || '').replace(/___/g, '/');
         // The PO model uses JSONB `data` column OR explicit columns.
         // The generic CRUD stores entire objects, so let's handle both patterns.
-        let po = await PurchaseOrder.findByPk(req.params.id, { transaction: t });
+        let po = await PurchaseOrder.findByPk(poId, { transaction: t });
         if (!po) throw new Error('Purchase Order tidak ditemukan');
 
         // PO data can be stored in `data` JSONB or in explicit columns
@@ -274,6 +275,208 @@ router.post('/payments/:invoiceId/pay', authenticateToken, requirePermission('pe
     } catch (err) {
         await t.rollback();
         console.error('Error processing payment:', err);
+        res.status(400).json({ error: err.message });
+    }
+});
+
+/**
+ * POST /api/purchase/orders/:id(*)/adjust-receipt
+ * Penyesuaian Penerimaan (Khusus Admin)
+ */
+router.post('/orders/:id/adjust-receipt', authenticateToken, requirePermission('pembelian', 'edit'), async (req, res) => {
+    const roleId = (req.user.roleId || req.user.role_id || '').toLowerCase();
+    const userId = (req.user.userId || req.user.id || '').toLowerCase();
+    if (roleId !== 'role_admin' && userId !== 'user_admin') {
+        return res.status(403).json({ error: 'Hanya Admin yang dapat menyesuaikan penerimaan barang' });
+    }
+
+    const { items: adjustments, reason, date } = req.body;
+    const adjDate = date ? new Date(date) : new Date();
+
+    if (!adjustments || !Array.isArray(adjustments)) {
+        return res.status(400).json({ error: 'Data item tidak valid' });
+    }
+    const poId = (req.params.id || '').replace(/___/g, '/');
+    if (!reason) {
+        return res.status(400).json({ error: 'Alasan penyesuaian wajib diisi' });
+    }
+
+    const t = await sequelize.transaction();
+    try {
+        let po = await PurchaseOrder.findByPk(poId, { transaction: t });
+        if (!po) throw new Error('Purchase Order tidak ditemukan');
+
+        let poData = po.dataValues;
+        let poItems = poData.items || [];
+        if (typeof poItems === 'string') poItems = JSON.parse(poItems);
+
+        let receipts = poData.receipts || [];
+        if (typeof receipts === 'string') receipts = JSON.parse(receipts);
+
+        const adjustmentItems = [];
+        let totalAdjustmentValue = 0; // For journal entry
+
+        for (const adj of adjustments) {
+            const index = parseInt(adj.index);
+            const newQty = parseFloat(adj.newReceivedQty);
+
+            if (isNaN(index) || isNaN(newQty) || !poItems[index]) continue;
+
+            const oldQty = parseFloat(poItems[index].receivedQty || 0);
+            const diff = newQty - oldQty;
+
+            if (diff !== 0) {
+                // Update item's receivedQty
+                poItems[index].receivedQty = newQty;
+                
+                const inventoryItemId = poItems[index].inventoryItemId || poItems[index].id;
+                const prodText = poItems[index].prodText;
+                const price = parseFloat(poItems[index].price || 0);
+
+                adjustmentItems.push({
+                    index,
+                    inventoryItemId,
+                    prodText,
+                    oldQty,
+                    newQty,
+                    diff,
+                    price
+                });
+
+                // Calculate financial impact
+                totalAdjustmentValue += (diff * price);
+
+                // Create StockTransaction
+                if (inventoryItemId) {
+                    await StockTransaction.create({
+                        id: uuidv4(),
+                        txNo: poData.po_number || poData.poNumber || '',
+                        date: adjDate,
+                        itemId: inventoryItemId,
+                        type: diff > 0 ? 'IN' : 'OUT',
+                        qty: Math.abs(diff),
+                        reference: 'PO_ADJUSTMENT',
+                        referenceId: po.id,
+                        notes: `Penyesuaian PO ${poData.po_number || poData.poNumber || ''} - ${prodText || ''}. Alasan: ${reason}`,
+                        createdBy: req.user.name || req.user.full_name || 'SystemAdmin',
+                        location: 'WHS'
+                    }, { transaction: t });
+                }
+            }
+        }
+
+        if (adjustmentItems.length === 0) {
+            throw new Error('Tidak ada perubahan kuantitas untuk disesuaikan');
+        }
+
+        // Add to receipts array to maintain history
+        const adjustmentRecord = {
+            id: 'ADJ-' + uuidv4().split('-')[0].toUpperCase(),
+            date: adjDate.toISOString(),
+            items: adjustmentItems.map(a => ({
+                index: a.index,
+                inventoryItemId: a.inventoryItemId,
+                prodText: a.prodText,
+                diff: a.diff,
+                qty: Math.abs(a.diff),
+                price: a.price
+            })),
+            isAdjustment: true,
+            reason: reason,
+            user: req.user.name || req.user.full_name || 'SystemAdmin'
+        };
+        receipts.push(adjustmentRecord);
+
+        // Recalculate PO Status
+        let sumReceivedAll = 0;
+        let sumTargetAll = 0;
+        poItems.forEach(item => {
+            sumTargetAll += (item.qty || 0);
+            sumReceivedAll += (item.receivedQty || 0);
+        });
+
+        let newStatus = poData.status;
+        if (sumReceivedAll <= 0) {
+            newStatus = 'APPROVED';
+        } else if (sumReceivedAll < sumTargetAll) {
+            newStatus = 'PARTIALLY RECEIVED';
+        } else {
+            newStatus = 'RECEIVED';
+        }
+
+        // Adjust Journal Entry if there is a financial impact
+        if (totalAdjustmentValue !== 0) {
+            const entryNo = 'JRN-' + Math.floor(Math.random() * 1000000);
+            
+            let accountDebit = '';
+            let accountCredit = '';
+            let amount = Math.abs(totalAdjustmentValue);
+
+            if (totalAdjustmentValue > 0) {
+                // Increase stock: Debit Inventory, Credit AP
+                accountDebit = '113000'; // Persediaan Barang
+                accountCredit = '211000'; // Hutang Dagang
+            } else {
+                // Decrease stock: Debit AP, Credit Inventory
+                accountDebit = '211000'; // Hutang Dagang
+                accountCredit = '113000'; // Persediaan Barang
+            }
+
+            await JournalEntry.create({
+                id: uuidv4(),
+                entry_no: entryNo,
+                date: adjDate,
+                description: `Penyesuaian Penerimaan PO ${poData.po_number || poData.poNumber}: ${reason}`,
+                account_id: accountDebit,
+                type: 'DEBIT',
+                amount: amount,
+                reference_type: 'PO',
+                reference_id: po.id
+            }, { transaction: t });
+
+            await JournalEntry.create({
+                id: uuidv4(),
+                entry_no: entryNo,
+                date: adjDate,
+                description: `Penyesuaian Penerimaan PO ${poData.po_number || poData.poNumber}: ${reason}`,
+                account_id: accountCredit,
+                type: 'CREDIT',
+                amount: amount,
+                reference_type: 'PO',
+                reference_id: po.id
+            }, { transaction: t });
+        }
+
+        // System Log
+        await SystemLog.create({
+            user_id: req.user.userId || req.user.id,
+            action: 'ADJUST_PO_RECEIPT',
+            details: `Penyesuaian PO ${poData.po_number || poData.poNumber}. Alasan: ${reason}`,
+            timestamp: new Date()
+        }, { transaction: t });
+
+        // Update PO
+        await po.update({
+            status: newStatus,
+            items: poItems,
+            receipts: receipts,
+        }, { transaction: t });
+
+        try {
+            await sequelize.query(
+                `UPDATE purchase_orders SET status = :status, items = :items, receipts = :receipts WHERE id = :id`,
+                {
+                    replacements: { status: newStatus, items: JSON.stringify(poItems), receipts: JSON.stringify(receipts), id: po.id },
+                    transaction: t
+                }
+            );
+        } catch (e) { }
+
+        await t.commit();
+        res.json({ success: true, newStatus, message: 'Penyesuaian penerimaan berhasil.' });
+    } catch (err) {
+        await t.rollback();
+        console.error('Error adjusting receipt:', err);
         res.status(400).json({ error: err.message });
     }
 });

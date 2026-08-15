@@ -4018,7 +4018,7 @@ window.openPOForm = async (fromPrId = null, fromRfqId = null) => {
     const poNumberStr = generatePurchaseOrderNumber(false, todayStr);
     
     // Check if user is admin
-    const sess = JSON.parse(sessionStorage.getItem('erp_session') || '{}');
+    const sess = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
     const userId = (sess.userId || '').toLowerCase();
     const roleId = (sess.roleId || '').toLowerCase();
     const isAdmin = userId === 'user_admin' || roleId === 'role_admin';
@@ -4058,6 +4058,16 @@ window.openPOForm = async (fromPrId = null, fromRfqId = null) => {
                                         class="w-full border-none rounded-r-xl px-4 py-3 bg-slate-50 font-bold ${isAdmin ? 'text-slate-700' : 'text-slate-400'} outline-none" ${isAdmin ? '' : 'readonly'}>
                                 </div>
                             </div>
+                            ${isAdmin && !window._editingPOId ? `
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Status Awal</label>
+                                <select id="po_admin_status" class="w-full border-none rounded-xl px-4 py-3 bg-slate-50 font-bold text-slate-700 outline-none cursor-pointer">
+                                    <option value="DRAFT">Draft</option>
+                                    <option value="APPROVED">Approved</option>
+                                    <option value="RECEIVED">Received</option>
+                                </select>
+                            </div>
+                            ` : ''}
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Supplier <span class="text-red-400">*</span></label>
                                 <div class="relative" id="po_supplier_container">
@@ -4844,6 +4854,34 @@ window.savePO = async () => {
     let status = 'DRAFT';
     let actualDeliveryDate = null;
     let receipts = [];
+
+    const adminStatusEl = document.getElementById('po_admin_status');
+    if (!window._editingPOId && adminStatusEl && adminStatusEl.value !== 'DRAFT') {
+        status = adminStatusEl.value;
+        if (status === 'RECEIVED') {
+            window.tempPOItems.forEach(item => {
+                item.receivedQty = parseFloat(item.qty) || 0;
+            });
+            // Buat history penerimaan fiktif agar terbaca oleh modul Invoice
+            receipts = [{
+                id: 'rcpt_' + Date.now(),
+                date: (poEtdEl && poEtdEl.value) ? poEtdEl.value : poDateISO,
+                npbNumber: '-',
+                suratJalan: '-',
+                npb: '-',
+                notes: 'Penerimaan Langsung (Bypass)',
+                items: window.tempPOItems.map((item, idx) => ({
+                    index: idx,
+                    prodText: item.prodText || item.itemName || '-',
+                    qty: item.qty,
+                    unit: item.unit || '',
+                    inventoryItemId: item.inventoryItemId,
+                    price: item.price || 0
+                }))
+            }];
+            actualDeliveryDate = (poEtdEl && poEtdEl.value) ? poEtdEl.value : poDateISO;
+        }
+    }
 
     if (window._editingPOId) {
         const originalPO = db.findById('purchaseOrders', window._editingPOId);
@@ -8020,10 +8058,136 @@ window.sendPOEmail = (id) => {
     window.location.href = `mailto:${supplier.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(mailBody)}`;
 };
 
+window.adjustPOReceiptForm = function(poId) {
+    const po = db.findById('purchaseOrders', poId);
+    if (!po) return;
+
+    // Check if it has invoices
+    const hasInvoice = db.read('purchaseInvoices').some(inv => inv.poId === po.id);
+    if (hasInvoice) {
+        showToast('Gagal: PO ini sudah dibuat tagihan Invoicenya! Hapus Invoicenya dulu.', 'error');
+        return;
+    }
+
+    const items = typeof po.items === 'string' ? JSON.parse(po.items) : (po.items || []);
+    
+    let itemsHtml = items.map((item, idx) => {
+        return `
+            <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 flex gap-4 items-center">
+                <div class="flex-1">
+                    <div class="font-bold text-slate-800 text-sm mb-1">${item.prodText}</div>
+                    <div class="text-xs text-slate-500">Order: ${item.qty} ${item.unit || ''} | Harga: ${formatCurrency(item.price || 0)}</div>
+                </div>
+                <div class="w-32">
+                    <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Diterima</label>
+                    <input type="number" id="adj_qty_${idx}" class="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold bg-white outline-none focus:border-blue-500" value="${item.receivedQty || 0}" step="0.01" min="0">
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    const modalHtml = `
+        <div id="adjustReceiptModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <div class="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+                <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
+                    <div>
+                        <h2 class="text-lg font-black text-slate-800 tracking-tight">Penyesuaian Penerimaan</h2>
+                        <p class="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">PO: ${po.poNumber}</p>
+                    </div>
+                    <button onclick="document.getElementById('adjustReceiptModal').remove()" class="text-slate-400 hover:text-slate-600 p-2 rounded-full hover:bg-slate-100 transition-colors">
+                        <i class="fas fa-times text-xl"></i>
+                    </button>
+                </div>
+                
+                <div class="p-6 overflow-y-auto bg-slate-50 flex-1 space-y-4">
+                    <div class="space-y-3">
+                        ${itemsHtml}
+                    </div>
+
+                    <div class="pt-2 flex gap-4">
+                        <div class="flex-1">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Tanggal Mutasi</label>
+                            <input type="date" id="adj_date" class="w-full border border-slate-200 rounded-xl p-3 text-sm bg-white outline-none focus:border-blue-500" value="${new Date().toISOString().split('T')[0]}">
+                        </div>
+                        <div class="flex-[2]">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Alasan Penyesuaian (Wajib)</label>
+                            <textarea id="adj_reason" class="w-full border border-slate-200 rounded-xl p-3 text-sm bg-white outline-none focus:border-blue-500 h-12 resize-none" placeholder="Masukkan alasan..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="px-6 py-4 bg-white border-t border-slate-100 flex justify-end gap-3 shrink-0">
+                    <button onclick="document.getElementById('adjustReceiptModal').remove()" class="px-6 py-2.5 rounded-xl text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors">Batal</button>
+                    <button onclick="submitPOAdjustment('${poId}')" class="px-6 py-2.5 rounded-xl text-sm font-black text-white bg-blue-600 hover:bg-blue-700 uppercase tracking-widest shadow-md transition-all active:scale-95 flex items-center gap-2">
+                        <i class="fas fa-save"></i> Simpan Penyesuaian
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+};
+
+window.submitPOAdjustment = async function(poId) {
+    const po = db.findById('purchaseOrders', poId);
+    if (!po) return;
+
+    const reason = document.getElementById('adj_reason').value.trim();
+    const adjDate = document.getElementById('adj_date').value || new Date().toISOString().split('T')[0];
+    if (!reason) {
+        showToast('Alasan penyesuaian wajib diisi!', 'warning');
+        return;
+    }
+
+    const items = typeof po.items === 'string' ? JSON.parse(po.items) : (po.items || []);
+    const adjustments = [];
+    
+    let hasChanges = false;
+
+    items.forEach((item, idx) => {
+        const input = document.getElementById(`adj_qty_${idx}`);
+        if (input) {
+            const newQty = parseFloat(input.value) || 0;
+            const oldQty = parseFloat(item.receivedQty || 0);
+            if (newQty !== oldQty) {
+                hasChanges = true;
+            }
+            adjustments.push({
+                index: idx,
+                newReceivedQty: newQty
+            });
+        }
+    });
+
+    if (!hasChanges) {
+        showToast('Tidak ada kuantitas yang diubah. Penyesuaian dibatalkan.', 'warning');
+        return;
+    }
+
+    if (confirm('Apakah Anda yakin ingin menyimpan penyesuaian penerimaan ini? Stok gudang dan jurnal akuntansi akan otomatis diupdate.')) {
+        try {
+            showToast('Menyimpan penyesuaian...', 'info');
+            const res = await api.adjustPOReceipt(poId, { items: adjustments, reason, date: adjDate });
+            if (res.success) {
+                showToast('Penyesuaian penerimaan berhasil disimpan!', 'success');
+                document.getElementById('adjustReceiptModal')?.remove();
+                await db.sync('purchaseOrders');
+                await db.sync('inventoryItems');
+                await db.sync('systemLogs');
+                await db.sync('journalEntries');
+                renderPurchaseReceiving();
+            }
+        } catch (err) {
+            showToast(err.message || 'Gagal menyimpan penyesuaian', 'error');
+        }
+    }
+};
+
 window.handlePRAction = function(action, value) {
     const id = (value && typeof value === 'object' && value.value !== undefined) ? value.value : value;
     if (!action || !id) return;
-    const cleanId = id.includes('-') ? id.split('-').pop() : id;
+    const cleanId = id.replace(/^prhist-/, '').replace(/^pr-/, '');
 
     if (action === 'receive') {
         window.receiveGoodsPO(cleanId);
@@ -8037,6 +8201,8 @@ window.handlePRAction = function(action, value) {
         window.printNPB(cleanId);
     } else if (action === 'receipt_history') {
         window.showPOReceiptHistoryModal(cleanId);
+    } else if (action === 'adjust_receipt') {
+        window.adjustPOReceiptForm(cleanId);
     }
 };
 
@@ -8240,6 +8406,12 @@ function renderPurchaseReceiving() {
             dropdownOptions.push(['print_npb', 'Cetak NPB', 'fas fa-print text-slate-500']);
             dropdownOptions.push(['view', 'Lihat PO', 'fas fa-eye text-slate-500']);
             dropdownOptions.push(['receipt_history', 'Riwayat Penerimaan', 'fas fa-history text-indigo-500']);
+            const sess = JSON.parse(localStorage.getItem('unityerp_session') || '{}');
+            const isAdmin = (sess.userId || '').toLowerCase() === 'user_admin' || (sess.roleId || '').toLowerCase() === 'role_admin';
+            
+            if (isAdmin && !hasInvoice) {
+                dropdownOptions.push(['adjust_receipt', 'Penyesuaian Penerimaan (Admin)', 'fas fa-sliders-h text-orange-500']);
+            }
 
             const actionHtml = window.renderActionsDropdownHtml(`prhist-${po.id}`, 'handlePRAction', dropdownOptions);
 
@@ -12576,8 +12748,9 @@ window.filterItemProductList = function (prefix, val) {
         .map(p => {
             const stk = db.getInventoryStock(p.id);
             const priceDisplay = (prefix === 'rfq' || prefix === 'po') ? '' : `<div class="text-[9px] text-slate-400 font-bold">${formatCurrency(p.sellingPrice || 0)}</div>`;
+            const autoPrice = prefix === 'po' ? (p.purchasePrice || 0) : (prefix === 'rfq' ? 0 : (p.sellingPrice || 0));
             return `
-                <div onclick="selectItemProduct('${prefix}', '${p.id}', '${p.itemCode} - ${p.itemName.replace(/'/g, "\\'")}',${ prefix === 'rfq' ? 0 : (p.sellingPrice || 0)}, '${p.unit || 'PCS'}', ${stk})" 
+                <div onclick="selectItemProduct('${prefix}', '${p.id}', '${p.itemCode} - ${p.itemName.replace(/'/g, "\\'")}', ${autoPrice}, '${p.unit || 'PCS'}', ${stk})" 
                     class="px-4 py-3 text-xs font-bold text-slate-600 hover:bg-blue-50 hover:text-blue-600 rounded-xl cursor-pointer transition-colors m-0.5">
                     <div class="flex justify-between items-center">
                         <div class="flex flex-col gap-0.5">

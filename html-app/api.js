@@ -351,10 +351,17 @@ const api = {
     // ─── Purchase API (Fase 2) ────────────────────────────────
 
     receivePOGoods: async (poId, data) => {
-        const res = await fetch(`${API_BASE}/purchase/orders/${poId}/receive`, {
+        const res = await fetch(`${API_BASE}/purchase/orders/${poId.replace(/\//g, '___')}/receive`, {
             method: 'POST', headers: authHeaders(), body: JSON.stringify(data)
         });
         if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Gagal menerima barang PO'); }
+        return await res.json();
+    },
+    adjustPOReceipt: async (poId, data) => {
+        const res = await fetch(`${API_BASE}/purchase/orders/${poId.replace(/\//g, '___')}/adjust-receipt`, {
+            method: 'POST', headers: authHeaders(), body: JSON.stringify(data)
+        });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Gagal membatalkan penerimaan barang'); }
         return await res.json();
     },
 
