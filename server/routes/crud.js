@@ -1,6 +1,7 @@
 // server/routes/crud.js — Generic CRUD endpoints for all tables
 // This replaces the frontend's db.read/insert/update/delete calls
 const router = require('express').Router();
+const { Op } = require('sequelize');
 const { authenticateToken, requirePermission } = require('../middleware/auth');
 const models = require('../models');
 
@@ -199,7 +200,7 @@ router.post('/:table', authenticateToken, tablePermission('edit'), async (req, r
             const cleanPoNum = data.po_number.trim();
             const allPos = await model.findAll({
                 where: {
-                    status: { [models.Sequelize.Op.ne]: 'DELETED' }
+                    status: { [Op.ne]: 'DELETED' }
                 }
             });
 
@@ -253,8 +254,8 @@ router.put('/:table/:id', authenticateToken, tablePermission('edit'), async (req
             const cleanPoNum = updates.po_number.trim();
             const allPos = await model.findAll({
                 where: {
-                    id: { [models.Sequelize.Op.ne]: req.params.id },
-                    status: { [models.Sequelize.Op.ne]: 'DELETED' }
+                    id: { [Op.ne]: req.params.id },
+                    status: { [Op.ne]: 'DELETED' }
                 }
             });
 

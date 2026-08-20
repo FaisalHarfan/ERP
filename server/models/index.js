@@ -1,5 +1,5 @@
 // server/models/index.js — All Sequelize models
-const { DataTypes } = require('sequelize');
+const { DataTypes, Sequelize, Op } = require('sequelize');
 const sequelize = require('../config/database');
 
 // ═══════════════════════════════════════════════
@@ -548,7 +548,7 @@ const models = {
     ProductionLineBatch, ProductionOrder, BOM,
     Account, JournalEntry, Expense, Receipt, BankAccount, CreditNote, DebitNote,
     Notification, PackBreakdown, AccountType,
-    sequelize
+    sequelize, Sequelize
 };
 
 // Helper: map LocalStorage table names → Sequelize model
