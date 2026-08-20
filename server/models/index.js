@@ -548,7 +548,7 @@ const models = {
     ProductionLineBatch, ProductionOrder, BOM,
     Account, JournalEntry, Expense, Receipt, BankAccount, CreditNote, DebitNote,
     Notification, PackBreakdown, AccountType,
-    sequelize, Sequelize
+    sequelize, Sequelize, Op
 };
 
 // Helper: map LocalStorage table names → Sequelize model
