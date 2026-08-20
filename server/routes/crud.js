@@ -194,11 +194,32 @@ router.post('/:table', authenticateToken, tablePermission('edit'), async (req, r
         let data = toSnakeCase(req.body);
         if (!data.id) data.id = generateId();
 
-        // Validation for unique PO Number
-        if (req.params.table === 'purchase_orders' && data.po_number) {
-            const existing = await model.findOne({ where: { po_number: data.po_number } });
-            if (existing) {
-                return res.status(400).json({ error: `Gagal: Purchase Order dengan nomor ${data.po_number} sudah ada di sistem.` });
+        // Validation for unique PO Number (both exact and sequence number uniqueness across all active records)
+        if ((req.params.table === 'purchaseOrders' || req.params.table === 'purchase_orders') && data.po_number) {
+            const cleanPoNum = data.po_number.trim();
+            const allPos = await model.findAll({
+                where: {
+                    status: { [models.Sequelize.Op.ne]: 'DELETED' }
+                }
+            });
+
+            // 1. Check exact PO number
+            const exact = allPos.find(p => p.po_number && p.po_number.trim().toUpperCase() === cleanPoNum.toUpperCase());
+            if (exact) {
+                return res.status(400).json({ error: `Gagal: Purchase Order dengan nomor ${cleanPoNum} sudah ada di sistem.` });
+            }
+
+            // 2. Check sequence number uniqueness across any month/type
+            const match = cleanPoNum.match(/PO-[AB]-(\d+)/i);
+            const inputSeq = match ? parseInt(match[1], 10) : (/^\d+$/.test(cleanPoNum) ? parseInt(cleanPoNum, 10) : null);
+            if (inputSeq !== null && !isNaN(inputSeq)) {
+                for (const p of allPos) {
+                    if (!p.po_number) continue;
+                    const pMatch = p.po_number.match(/PO-[AB]-(\d+)/i);
+                    if (pMatch && parseInt(pMatch[1], 10) === inputSeq) {
+                        return res.status(400).json({ error: `Gagal: Nomor urut (${inputSeq}) sudah terdaftar pada ${p.po_number} (nomor urut tidak boleh sama meskipun beda bulan atau tipe).` });
+                    }
+                }
             }
         }
 
@@ -226,6 +247,36 @@ router.put('/:table/:id', authenticateToken, tablePermission('edit'), async (req
 
         let updates = toSnakeCase(req.body);
         updates.updated_at = new Date();
+
+        // Validation for unique PO Number on update
+        if ((req.params.table === 'purchaseOrders' || req.params.table === 'purchase_orders') && updates.po_number) {
+            const cleanPoNum = updates.po_number.trim();
+            const allPos = await model.findAll({
+                where: {
+                    id: { [models.Sequelize.Op.ne]: req.params.id },
+                    status: { [models.Sequelize.Op.ne]: 'DELETED' }
+                }
+            });
+
+            // 1. Check exact match
+            const exact = allPos.find(p => p.po_number && p.po_number.trim().toUpperCase() === cleanPoNum.toUpperCase());
+            if (exact) {
+                return res.status(400).json({ error: `Gagal: Purchase Order dengan nomor ${cleanPoNum} sudah ada di sistem.` });
+            }
+
+            // 2. Check sequence number uniqueness
+            const match = cleanPoNum.match(/PO-[AB]-(\d+)/i);
+            const inputSeq = match ? parseInt(match[1], 10) : (/^\d+$/.test(cleanPoNum) ? parseInt(cleanPoNum, 10) : null);
+            if (inputSeq !== null && !isNaN(inputSeq)) {
+                for (const p of allPos) {
+                    if (!p.po_number) continue;
+                    const pMatch = p.po_number.match(/PO-[AB]-(\d+)/i);
+                    if (pMatch && parseInt(pMatch[1], 10) === inputSeq) {
+                        return res.status(400).json({ error: `Gagal: Nomor urut (${inputSeq}) sudah terdaftar pada ${p.po_number} (nomor urut tidak boleh sama meskipun beda bulan atau tipe).` });
+                    }
+                }
+            }
+        }
 
         // For JSONB models, merge updates into existing data
         if (isJsonbModel(model)) {

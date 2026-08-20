@@ -3203,6 +3203,91 @@ function generatePurchaseOrderNumber(isTax = false, customDate = null) {
     return finalNumber;
 }
 
+window.formatManualPONumber = () => {
+    const el = document.getElementById('po_number');
+    if (!el) return;
+    let val = el.value.trim();
+    if (!val) return;
+    window._poNumberManuallyEdited = true;
+    
+    // If user typed raw digits e.g. "72" or "072"
+    if (/^\d+$/.test(val)) {
+        const seq = parseInt(val, 10);
+        const taxRate = document.getElementById('po_tax_rate')?.value;
+        const isTax = (document.getElementById('po_tax_type')?.value === 'A') || (taxRate && parseFloat(taxRate) > 0);
+        const type = isTax ? 'A' : 'B';
+        const dateVal = document.getElementById('po_date')?.value;
+        const d = dateVal ? new Date(dateVal) : new Date();
+        const romanMonth = toRomanPurch(d.getMonth() + 1);
+        const year = d.getFullYear();
+        el.value = `PO-${type}-${String(seq).padStart(3, '0')}/${romanMonth}/${year}`;
+    }
+};
+
+window.validatePONumberUniqueness = (inputNumber, excludeId = null) => {
+    const pos = (db.read('purchaseOrders') || []).filter(p => p.status !== 'DELETED' && p.id !== excludeId);
+    const clean = (inputNumber || '').trim().toUpperCase();
+    if (!clean) return { valid: false, message: 'Nomor PO tidak boleh kosong' };
+    
+    // 1. Check exact PO number match
+    const exact = pos.find(p => (p.poNumber || '').trim().toUpperCase() === clean);
+    if (exact) {
+        return { valid: false, message: `Nomor PO "${clean}" sudah terdaftar pada sistem.` };
+    }
+    
+    // 2. Check sequence number uniqueness across all months and tax types
+    let seqNum = null;
+    if (/^\d+$/.test(clean)) {
+        seqNum = parseInt(clean, 10);
+    } else {
+        const m = clean.match(/PO-[AB]-(\d+)/i);
+        if (m) seqNum = parseInt(m[1], 10);
+    }
+    
+    if (seqNum !== null && !isNaN(seqNum)) {
+        for (const p of pos) {
+            if (!p.poNumber) continue;
+            const pm = p.poNumber.match(/PO-[AB]-(\d+)/i);
+            if (pm && parseInt(pm[1], 10) === seqNum) {
+                return {
+                    valid: false,
+                    message: `Nomor urut "${seqNum}" sudah terdaftar pada PO "${p.poNumber}". Nomor urut PO tidak boleh sama meskipun beda bulan atau tipe pajak.`
+                };
+            }
+        }
+    }
+    
+    return { valid: true };
+};
+
+window.handlePOAutoNumberUpdate = (isTax, dateVal) => {
+    const poNumEl = document.getElementById('po_number');
+    if (!poNumEl) return;
+    
+    // If not manually edited, generate fresh number
+    if (!window._poNumberManuallyEdited) {
+        poNumEl.value = generatePurchaseOrderNumber(isTax, dateVal);
+        return;
+    }
+    
+    // If manually edited, preserve the user's sequence number and update prefix/month/year
+    let cur = poNumEl.value.trim();
+    if (/^\d+$/.test(cur)) {
+        window.formatManualPONumber();
+        return;
+    }
+    
+    const m = cur.match(/^PO-([AB])-(\d+)(?:\/([IVXLCDM]+)\/(\d{4}))?$/i);
+    if (m) {
+        const seq = m[2];
+        const type = isTax ? 'A' : 'B';
+        const d = dateVal ? new Date(dateVal) : new Date();
+        const romanMonth = toRomanPurch(d.getMonth() + 1);
+        const year = d.getFullYear();
+        poNumEl.value = `PO-${type}-${seq}/${romanMonth}/${year}`;
+    }
+};
+
 window.updatePODueDate = () => {
     const poDateVal = document.getElementById('po_date')?.value;
     const term = document.getElementById('po_payment_terms')?.value;
@@ -3687,8 +3772,8 @@ window.handleSupplierChange = (suppId, mode = 'PO') => {
             if (taxTypeEl) taxTypeEl.value = isTax ? 'A' : 'B';
             const dateVal = document.getElementById('po_date')?.value;
             const poNumEl = document.getElementById('po_number');
-            if (poNumEl && typeof generatePurchaseOrderNumber === 'function') {
-                poNumEl.value = generatePurchaseOrderNumber(isTax, dateVal);
+            if (poNumEl && typeof window.handlePOAutoNumberUpdate === 'function') {
+                window.handlePOAutoNumberUpdate(isTax, dateVal);
             }
             if (window.renderPOItemsList) renderPOItemsList();
         }
@@ -4013,6 +4098,7 @@ window.openPOForm = async (fromPrId = null, fromRfqId = null) => {
 
     const suppliers = db.read('suppliers') || [];
     const todayStr = new Date().toISOString().split('T')[0];
+    window._poNumberManuallyEdited = false;
 
     // Data handling for number generation
     const poNumberStr = generatePurchaseOrderNumber(false, todayStr);
@@ -4049,13 +4135,16 @@ window.openPOForm = async (fromPrId = null, fromRfqId = null) => {
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">No. Purchase Order <span class="text-red-400">*</span></label>
                                 <div class="flex">
-                                     <select id="po_tax_type" onchange="document.getElementById('po_number').value = generatePurchaseOrderNumber(this.value==='A', document.getElementById('po_date').value); renderPOItemsList()"
+                                     <select id="po_tax_type" onchange="window.handlePOAutoNumberUpdate(this.value==='A', document.getElementById('po_date')?.value); renderPOItemsList()"
                                         class="border-none rounded-l-xl px-3 py-3 bg-slate-100 text-xs font-black text-slate-700 outline-none cursor-pointer">
                                         <option value="A">TAX</option>
                                         <option value="B" selected>NT</option>
                                      </select>
                                      <input type="text" id="po_number" value="${poNumberStr}" 
-                                        class="w-full border-none rounded-r-xl px-4 py-3 bg-slate-50 font-bold ${isAdmin ? 'text-slate-700' : 'text-slate-400'} outline-none" ${isAdmin ? '' : 'readonly'}>
+                                        oninput="window._poNumberManuallyEdited = true;"
+                                        onblur="window.formatManualPONumber()"
+                                        placeholder="Contoh: 72 atau PO-B-072/VIII/2026"
+                                        class="w-full border-none rounded-r-xl px-4 py-3 bg-slate-50 font-bold ${isAdmin ? 'text-slate-700 focus:bg-white focus:ring-2 focus:ring-blue-500/20' : 'text-slate-400'} outline-none" ${isAdmin ? '' : 'readonly'}>
                                 </div>
                             </div>
                             ${isAdmin && !window._editingPOId ? `
@@ -4111,7 +4200,7 @@ window.openPOForm = async (fromPrId = null, fromRfqId = null) => {
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Tanggal PO <span class="text-red-400">*</span></label>
                                 <input type="date" id="po_date" value="${todayStr}" 
-                                    onchange="updatePODueDate(); if(!window._editingPOId) document.getElementById('po_number').value = generatePurchaseOrderNumber(document.getElementById('po_tax_type').value==='A', this.value)"
+                                    onchange="updatePODueDate(); if(!window._editingPOId) window.handlePOAutoNumberUpdate(document.getElementById('po_tax_type').value==='A', this.value)"
                                     class="w-full border-none rounded-xl px-4 py-3 bg-slate-100/80 font-bold text-slate-800 outline-none">
                             </div>
 
@@ -4812,13 +4901,24 @@ window.editPO = async (poId) => {
 };
 
 window.savePO = async () => {
+    if (typeof window.formatManualPONumber === 'function') window.formatManualPONumber();
     const supId = document.getElementById('po_supplier_id').value;
-    const poNum = document.getElementById('po_number').value;
+    const poNum = (document.getElementById('po_number')?.value || '').trim();
     const poDateEl = document.getElementById('po_date');
     const poEtdEl = document.getElementById('po_etd');
     const taxRateVal = document.getElementById('po_tax_rate').value;
     const taxType = document.getElementById('po_tax_type').value;
     const category = document.getElementById('po_category')?.value || '';
+
+    if (!poNum) { showToast('Nomor PO harus diisi', 'error'); return; }
+
+    // Uniqueness validation for PO number & sequence number
+    const uniqueCheck = window.validatePONumberUniqueness(poNum, window._editingPOId);
+    if (!uniqueCheck.valid) {
+        showToast(uniqueCheck.message, 'error');
+        alert(uniqueCheck.message);
+        return;
+    }
 
     if (!supId) { showToast('Pilih supplier', 'error'); return; }
     if (!category) { showToast('Pilih kategori pembelian', 'error'); return; }
@@ -4953,8 +5053,12 @@ window.savePO = async () => {
 
     if (!result) { showToast('Gagal menyimpan PO, coba lagi', 'error'); return; }
     window.tempPOItems = []; window.tempPOFromPR = null; window.tempPOFromRFQ = null;
+    window._poNumberManuallyEdited = false;
     closePOForm();
     await db.sync('purchaseOrders');
+    // Ensure all POs are visible including newly created backdated POs
+    if (!window.currentFilters.purchaseOrders) window.currentFilters.purchaseOrders = {};
+    window.currentFilters.purchaseOrders.viewAll = true;
     renderPurchaseOrders();
 };
 
@@ -7697,8 +7801,13 @@ function renderPurchaseOrders() {
     // Check if any date filter is applied
     const hasDateFilter = filters.start || filters.end;
     
-    // If no date filter, show today's data only
-    if (!hasDateFilter) {
+    // Date Filtering Logic
+    if (filters.viewAll) {
+        // View all POs without date filter
+        if (filters.supplier) { rawPos = rawPos.filter(po => po.supplierId === filters.supplier); }
+        if (filters.category) { rawPos = rawPos.filter(po => po.category === filters.category); }
+    } else if (!hasDateFilter) {
+        // If no date filter and not viewAll, show today's data only
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const todayEnd = new Date();
@@ -7708,7 +7817,7 @@ function renderPurchaseOrders() {
             return docDate >= today && docDate <= todayEnd;
         });
     } else {
-        // Filter Logic
+        // Custom Date Filter
         if (filters.start) { const d = new Date(filters.start); d.setHours(0, 0, 0, 0); rawPos = rawPos.filter(po => new Date(po.date) >= d); }
         if (filters.end) { const d = new Date(filters.end); d.setHours(23, 59, 59, 999); rawPos = rawPos.filter(po => new Date(po.date) <= d); }
         if (filters.supplier) { rawPos = rawPos.filter(po => po.supplierId === filters.supplier); }
@@ -7879,9 +7988,11 @@ function renderPurchaseOrders() {
                         <div class="relative" id="po_date_filter_container">
                             <button onclick="togglePODateDropdown()" class="flex items-center bg-slate-50 border border-slate-200 rounded-xl overflow-hidden hover:bg-slate-100 transition-all shadow-sm h-[38px] group p-0">
                                 <span class="bg-slate-100 border-r border-slate-200 px-3 h-full flex items-center text-slate-600 transition-colors">
-                                    <i class="fas fa-sort-amount-up text-[13px]"></i>
+                                    <i class="fas fa-calendar-alt text-[13px]"></i>
                                 </span>
-                                <span class="px-4 text-[14px] font-medium text-blue-600">Date</span>
+                                <span class="px-3 text-[13px] font-bold ${filters.viewAll ? 'text-emerald-600' : (hasDateFilter ? 'text-blue-600' : 'text-slate-700')}">
+                                    ${filters.viewAll ? 'Semua Periode' : (hasDateFilter ? `${filters.start || '...'} s/d ${filters.end || '...'}` : 'Hari Ini')}
+                                </span>
                                 <span class="pr-3 pl-1 text-slate-500 justify-center flex items-center">
                                     <i class="fas fa-chevron-down text-[11px]"></i>
                                 </span>
@@ -7900,9 +8011,10 @@ function renderPurchaseOrders() {
                                         <input type="date" id="po_header_end" value="${filters.end || ''}" class="w-full border border-slate-100 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 focus:bg-white focus:border-blue-500 outline-none transition-all">
                                     </div>
                                     <div class="flex gap-2 pt-2">
-                                        <button onclick="applyPOHeaderDateFilter()" class="flex-1 bg-blue-600 text-white py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-md active:scale-95">Apply</button>
-                                        <button onclick="resetPOHeaderDateFilter()" class="flex-1 bg-slate-50 text-slate-500 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all">Reset</button>
+                                        <button onclick="applyPOHeaderDateFilter()" class="flex-1 bg-blue-600 text-white py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-md active:scale-95">Terapkan</button>
+                                        <button onclick="showAllPOFilter()" class="flex-1 bg-emerald-600 text-white py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-md active:scale-95">Semua</button>
                                     </div>
+                                    <button onclick="resetPOHeaderDateFilter()" class="w-full bg-slate-100 text-slate-600 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all">Reset (Hari Ini)</button>
                                 </div>
                             </div>
                         </div>
@@ -7972,8 +8084,19 @@ window.togglePODateDropdown = () => {
 window.applyPOHeaderDateFilter = () => {
     window.currentFilters.purchaseOrders = {
         ...window.currentFilters.purchaseOrders,
+        viewAll: false,
         start: document.getElementById('po_header_start').value,
         end: document.getElementById('po_header_end').value
+    };
+    renderPurchaseOrders();
+};
+
+window.showAllPOFilter = () => {
+    window.currentFilters.purchaseOrders = {
+        ...window.currentFilters.purchaseOrders,
+        viewAll: true,
+        start: '',
+        end: ''
     };
     renderPurchaseOrders();
 };
@@ -7981,6 +8104,7 @@ window.applyPOHeaderDateFilter = () => {
 window.resetPOHeaderDateFilter = () => {
     window.currentFilters.purchaseOrders = { 
         ...window.currentFilters.purchaseOrders,
+        viewAll: false,
         start: '', end: '' 
     };
     renderPurchaseOrders();
@@ -18601,9 +18725,8 @@ window.selectPOTaxRate = (value, label) => {
     const taxTypeEl = document.getElementById('po_tax_type');
     if (taxTypeEl) taxTypeEl.value = isTax ? 'A' : 'B';
     const dateVal = document.getElementById('po_date')?.value;
-    const poNumberEl = document.getElementById('po_number');
-    if (poNumberEl && typeof generatePurchaseOrderNumber === 'function') {
-        poNumberEl.value = generatePurchaseOrderNumber(isTax, dateVal);
+    if (typeof window.handlePOAutoNumberUpdate === 'function') {
+        window.handlePOAutoNumberUpdate(isTax, dateVal);
     }
     
     // Re-render items list if function exists
