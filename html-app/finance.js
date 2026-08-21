@@ -86,8 +86,8 @@ window.renderFinanceDashboard = function () {
     const allSuppPayments = db.read('supplierPayments') || [];
 
     // 1. Calculate Summary Stats (ERPNext Style)
-    const totalOutgoingBills = purchaseInvoices.filter(i => i.status !== 'CANCELLED').reduce((sum, i) => sum + (parseFloat(i.totalAmount) || 0), 0);
-    const totalIncomingBills = salesInvoices.filter(i => i.status !== 'CANCELLED').reduce((sum, i) => sum + (parseFloat(i.totalAmount) || 0), 0);
+    const totalOutgoingBills = purchaseInvoices.filter(i => i.status !== 'CANCELLED' && i.status !== 'CANCELED').reduce((sum, i) => sum + (parseFloat(i.totalAmount) || 0), 0);
+    const totalIncomingBills = salesInvoices.filter(i => i.status !== 'CANCELLED' && i.status !== 'CANCELED').reduce((sum, i) => sum + (parseFloat(i.totalAmount) || 0), 0);
     const totalIncomingPayment = allPayments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
     const totalOutgoingPayment = allSuppPayments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
 
@@ -235,7 +235,7 @@ window.initFinanceChartsERP = function(accounts, journal, salesInvoices, purchas
             data: {
                 labels: months,
                 datasets: [{
-                    data: getMonthData(purchaseInvoices),
+                    data: getMonthData(purchaseInvoices.filter(i => i.status !== 'CANCELLED' && i.status !== 'CANCELED')),
                     borderColor: '#3b82f6',
                     borderWidth: 2,
                     pointRadius: 2,
@@ -319,6 +319,7 @@ window.initFinanceChartsERP = function(accounts, journal, salesInvoices, purchas
     // 4. AP Ageing (Bar)
     const apBuckets = { current: 0, d1_30: 0, d31_60: 0, d61_90: 0, older: 0 };
     purchaseInvoices.forEach(inv => {
+        if (inv.status === 'CANCELLED' || inv.status === 'CANCELED') return;
         const invPayments = suppPayments.filter(p => p.invoiceId === inv.id);
         const totalPaid = invPayments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
         const balance = (parseFloat(inv.totalAmount) || 0) - totalPaid;
@@ -1010,7 +1011,15 @@ window.saveManageAccountType = async function() {
 };
 
 window.deleteManageAccountType = async function(id) {
-    if (!confirm('Yakin ingin menghapus tipe akun ini?')) return;
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus Tipe Akun',
+        message: 'Yakin ingin menghapus tipe akun ini? Akun yang terhubung dengan tipe ini mungkin terpengaruh.',
+        confirmText: 'Ya, Hapus',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-trash-alt'
+    });
+    if (!confirmed) return;
 
     try {
         await db.delete('accountTypes', id);
@@ -1080,8 +1089,16 @@ window.editAccount = function(id) {
     openAccountModal(id);
 };
 
-window.deleteAccount = function(id) {
-    if (confirm('Yakin ingin menghapus akun ini?')) {
+window.deleteAccount = async function(id) {
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus Akun COA',
+        message: 'Yakin ingin menghapus akun ini dari Bagan Akun (COA)?',
+        confirmText: 'Ya, Hapus',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-trash-alt'
+    });
+    if (confirmed) {
         db.delete('accounts', id);
         showToast('Akun berhasil dihapus', 'info');
         renderFinanceAccounts();
@@ -1411,11 +1428,8 @@ window.renderFinanceExpenses = function () {
                                 </tr>
                             `).join('') || `
                                 <tr>
-                                    <td colspan="8" class="px-6 py-20 text-center text-slate-400 italic">
-                                        <div class="flex flex-col items-center justify-center space-y-3 py-6">
-                                            <i class="fas fa-file-invoice text-slate-200 text-5xl"></i>
-                                            <span class="text-sm font-bold text-slate-400 uppercase tracking-widest">TIDAK ADA DATA PENGELUARAN</span>
-                                        </div>
+                                    <td colspan="8" class="py-12 text-center text-slate-400 text-sm font-medium">
+                                        Belum ada data pengeluaran untuk ditampilkan
                                     </td>
                                 </tr>
                             `}
@@ -1452,11 +1466,8 @@ window.renderFinanceExpenses = function () {
                             </tr>
                         `).join('') || `
                             <tr>
-                                <td colspan="4" class="px-6 py-20 text-center text-slate-400 italic">
-                                    <div class="flex flex-col items-center justify-center space-y-3 py-6">
-                                        <i class="fas fa-history text-slate-200 text-5xl"></i>
-                                        <span class="text-sm font-bold text-slate-400 uppercase tracking-widest">BELUM ADA RIWAYAT PENGELUARAN</span>
-                                    </div>
+                                <td colspan="4" class="py-12 text-center text-slate-400 text-sm font-medium">
+                                    Belum ada riwayat pengeluaran untuk ditampilkan
                                 </td>
                             </tr>
                         `}
@@ -1634,11 +1645,8 @@ window.renderFinanceReceipts = function () {
                                 </tr>
                             `).join('') || `
                                 <tr>
-                                    <td colspan="7" class="px-6 py-20 text-center text-slate-400 italic">
-                                        <div class="flex flex-col items-center justify-center space-y-3 py-6">
-                                            <i class="fas fa-file-invoice-dollar text-slate-200 text-5xl"></i>
-                                            <span class="text-sm font-bold text-slate-400 uppercase tracking-widest">TIDAK ADA DATA PENERIMAAN</span>
-                                        </div>
+                                    <td colspan="7" class="py-12 text-center text-slate-400 text-sm font-medium">
+                                        Belum ada data penerimaan untuk ditampilkan
                                     </td>
                                 </tr>
                             `}
@@ -1675,11 +1683,8 @@ window.renderFinanceReceipts = function () {
                             </tr>
                         `).join('') || `
                             <tr>
-                                <td colspan="4" class="px-6 py-20 text-center text-slate-400 italic">
-                                    <div class="flex flex-col items-center justify-center space-y-3 py-6">
-                                        <i class="fas fa-history text-slate-200 text-5xl"></i>
-                                        <span class="text-sm font-bold text-slate-400 uppercase tracking-widest">BELUM ADA RIWAYAT PENERIMAAN</span>
-                                    </div>
+                                <td colspan="4" class="py-12 text-center text-slate-400 text-sm font-medium">
+                                    Belum ada riwayat penerimaan untuk ditampilkan
                                 </td>
                             </tr>
                         `}
@@ -2839,11 +2844,8 @@ window.renderFinanceAR = function () {
                             `;
                         }).join('') || `
                             <tr>
-                                <td colspan="5" class="px-6 py-20 text-center text-slate-400 italic">
-                                    <div class="flex flex-col items-center justify-center space-y-3 py-6">
-                                        <i class="fas fa-history text-slate-200 text-5xl"></i>
-                                        <span class="text-sm font-bold text-slate-400 uppercase tracking-widest">BELUM ADA RIWAYAT PENERIMAAN</span>
-                                    </div>
+                                <td colspan="5" class="py-12 text-center text-slate-400 text-sm font-medium">
+                                    Belum ada riwayat penerimaan untuk ditampilkan
                                 </td>
                             </tr>
                         `}
@@ -3429,7 +3431,7 @@ window.renderFinanceAP = function () {
 
     if (activeTab === 'unpaid') {
         const q = (window._apFilters.q || '').toLowerCase();
-        let invoices = allInvoices.filter(i => i.status === 'UNPAID' || i.status === 'PARTIAL');
+        let invoices = allInvoices.filter(i => (i.status === 'UNPAID' || i.status === 'PARTIAL') && i.status !== 'CANCELLED' && i.status !== 'CANCELED');
 
         // Apply Search
         if (q) {
@@ -3746,11 +3748,8 @@ window.renderFinanceAP = function () {
                             `;
                         }).join('') || `
                             <tr>
-                                <td colspan="5" class="px-6 py-20 text-center text-slate-400 italic">
-                                    <div class="flex flex-col items-center justify-center space-y-3 py-6">
-                                        <i class="fas fa-history text-slate-200 text-5xl"></i>
-                                        <span class="text-sm font-bold text-slate-400 uppercase tracking-widest">BELUM ADA RIWAYAT PEMBAYARAN</span>
-                                    </div>
+                                <td colspan="5" class="py-12 text-center text-slate-400 text-sm font-medium">
+                                    Belum ada riwayat pembayaran untuk ditampilkan
                                 </td>
                             </tr>
                         `}
@@ -3833,7 +3832,7 @@ window.handleAPAction = function(action, id) {
 window.openFinanceAPPaymentModal = () => {
     const mc = document.getElementById('main-content');
     window.renderBreadcrumb(['Finance', 'Data Hutang (AP)', 'Input Pembayaran']);
-    const invoices = db.read('purchaseInvoices').filter(i => i.status === 'UNPAID' || i.status === 'PARTIAL');
+    const invoices = db.read('purchaseInvoices').filter(i => (i.status === 'UNPAID' || i.status === 'PARTIAL') && i.status !== 'CANCELLED' && i.status !== 'CANCELED');
     const payments = db.read('supplierPayments');
     const suppliers = db.read('suppliers');
     const assetAccounts = db.read('accounts').filter(a => getBaseType(a.type) === 'ASSET' && a.code.startsWith('11'));
@@ -4091,7 +4090,7 @@ window.updateAPInvoicesBySupplier = () => {
         return;
     }
 
-    const invoices = db.read('purchaseInvoices').filter(inv => (inv.status === 'UNPAID' || inv.status === 'PARTIAL') && inv.supplierId === supplierId);
+    const invoices = db.read('purchaseInvoices').filter(inv => (inv.status === 'UNPAID' || inv.status === 'PARTIAL') && inv.status !== 'CANCELLED' && inv.status !== 'CANCELED' && inv.supplierId === supplierId);
     const payments = db.read('supplierPayments');
 
     if (invoices.length === 0) {
@@ -4444,8 +4443,16 @@ window.saveBankAccount = function (id) {
     renderFinanceSettings();
 };
 
-window.deleteBankAccount = function (id) {
-    if (!confirm('Hapus akun bank ini? Transaksi jurnal yang sudah ada tidak akan terhapus, namun tidak dapat memilih bank ini lagi.')) return;
+window.deleteBankAccount = async function (id) {
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus Akun Bank',
+        message: 'Hapus akun bank ini? Transaksi jurnal yang sudah ada tidak akan terhapus, namun tidak dapat memilih bank ini lagi.',
+        confirmText: 'Ya, Hapus',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-university'
+    });
+    if (!confirmed) return;
     db.delete('bankAccounts', id);
     showToast('Akun bank dihapus.');
     renderFinanceSettings();
@@ -4502,8 +4509,16 @@ window.saveDepartment = function (id) {
     renderFinanceSettings();
 };
 
-window.deleteDepartment = function (id) {
-    if (!confirm('Hapus departemen ini? Data historis yang menggunakan departemen ini mungkin tidak akan terpengaruh.')) return;
+window.deleteDepartment = async function (id) {
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus Departemen',
+        message: 'Hapus departemen ini? Data historis yang menggunakan departemen ini mungkin tidak akan terpengaruh.',
+        confirmText: 'Ya, Hapus',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-building'
+    });
+    if (!confirmed) return;
     db.delete('departments', id);
     showToast('Departemen dihapus.');
     renderFinanceSettings();
@@ -5238,7 +5253,7 @@ window.updateDNInvoiceList = function () {
     const supplierId = document.getElementById('dn_supplier').value;
     const invSelect = document.getElementById('dn_invoice');
     if (!supplierId) { invSelect.innerHTML = '<option value="">-- Pilih Supplier Dahulu --</option>'; return; }
-    const invoices = db.read('purchaseInvoices').filter(i => i.supplierId === supplierId);
+    const invoices = db.read('purchaseInvoices').filter(i => i.supplierId === supplierId && i.status !== 'CANCELLED' && i.status !== 'CANCELED');
     invSelect.innerHTML = '<option value="">-- Tidak Terkait Tagihan Spesifik --</option>' +
         invoices.map(i => `<option value="${i.id}">${i.invNumber || i.invoiceNumber || '-'} (Total: ${formatCurrency(i.totalAmount)})</option>`).join('');
 };
@@ -6152,7 +6167,7 @@ window.renderFinanceAPAging = function () {
     document.getElementById('pageTitle').innerText = 'Laporan Umur Utang (AP Aging)';
     const mc = document.getElementById('main-content');
     
-    const invoices = db.read('purchaseInvoices');
+    const invoices = (db.read('purchaseInvoices') || []).filter(i => i.status !== 'CANCELLED' && i.status !== 'CANCELED');
     const payments = db.read('supplierPayments');
     const suppliers = db.read('suppliers');
     const today = new Date();

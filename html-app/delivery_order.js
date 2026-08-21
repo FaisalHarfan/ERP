@@ -107,13 +107,8 @@ window.renderSalesDeliveryOrders = function () {
             <!-- Header Section: Title & Actions -->
             <div class="bg-white border-b border-slate-200 z-40 shadow-sm relative shrink-0">
                 <div class="flex flex-wrap md:flex-nowrap justify-between items-center px-8 py-5 gap-4">
-                    <div class="flex items-center gap-5">
-                        <div class="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 shadow-sm">
-                            <i class="fas fa-truck-loading text-xl"></i>
-                        </div>
-                        <div>
-                            <p class="text-xl font-black text-slate-800 tracking-tight">Pengiriman Pesanan</p>
-                        </div>
+                    <div class="flex items-center">
+                        <p class="text-xl font-black text-slate-800 tracking-tight">Pengiriman Pesanan</p>
                     </div>
                     
                     <div class="flex items-center gap-3">
@@ -208,7 +203,7 @@ window.renderSalesDeliveryOrders = function () {
                             </tr>
                         </thead>
                         <tbody id="mc_do_table_body" class="text-sm divide-y divide-slate-50">
-                            ${filteredDOs.length === 0 ? '<tr><td colspan="5" class="px-6 py-20 text-center text-slate-200 font-bold uppercase tracking-widest italic">Data tidak ditemukan.</td></tr>' :
+                            ${filteredDOs.length === 0 ? '<tr><td colspan="5" class="py-12 text-center text-slate-400 text-sm font-medium">Belum ada data delivery order untuk ditampilkan</td></tr>' :
             filteredDOs.map(d => {
                 const dropdownOptions = [['print', 'Cetak SJ', 'fas fa-print']];
                 if (d.status !== 'SHIPPED' && d.status !== 'CANCELLED') {
@@ -284,7 +279,15 @@ window.cancelDeliveryOrder = async function(id) {
         return;
     }
 
-    if (!confirm(`Apakah Anda yakin ingin membatalkan Surat Jalan ${d.doNumber}?`)) return;
+    const confirmed = await window.showConfirmDialog({
+        title: 'Batalkan Surat Jalan',
+        message: `Apakah Anda yakin ingin membatalkan Surat Jalan <strong>${d.doNumber}</strong>?`,
+        confirmText: 'Ya, Batalkan',
+        cancelText: 'Kembali',
+        type: 'warning',
+        icon: 'fa-ban'
+    });
+    if (!confirmed) return;
 
     try {
         console.log(`[DO] Membatalkan SJ ID: ${id}...`);

@@ -169,7 +169,7 @@ window.renderSalesReturns = async function () {
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-50">
-                            ${rows || `<tr><td colspan="5" class="py-40 text-center text-slate-300 font-bold uppercase tracking-widest">Data tidak ditemukan.</td></tr>`}
+                            ${rows || `<tr><td colspan="5" class="py-12 text-center text-slate-400 text-sm font-medium">Belum ada data retur penjualan untuk ditampilkan</td></tr>`}
                         </tbody>
                     </table>
                 </div>
@@ -196,7 +196,15 @@ window.handleSRAction = async function (actionOrSelect, id) {
     if (action === 'print') {
         window.printSalesReturn(cleanId);
     } else if (action === 'cancel') {
-        if (confirm('Yakin ingin membatalkan retur ini? Status di Inventory akan otomatis di-cancel.')) {
+        const confirmed = await window.showConfirmDialog({
+            title: 'Batalkan Retur Penjualan',
+            message: 'Yakin ingin membatalkan retur ini? Status di Inventory akan otomatis di-cancel.',
+            confirmText: 'Ya, Batalkan',
+            cancelText: 'Kembali',
+            type: 'warning',
+            icon: 'fa-ban'
+        });
+        if (confirmed) {
             try {
                 await api.update('salesReturns', cleanId, { status: 'CANCELED' });
                 if (window.api && typeof window.api.pullAll === 'function') await window.api.pullAll();
@@ -207,7 +215,15 @@ window.handleSRAction = async function (actionOrSelect, id) {
             }
         }
     } else if (action === 'delete') {
-        if (confirm('Yakin ingin menghapus retur ini?')) {
+        const confirmed = await window.showConfirmDialog({
+            title: 'Hapus Retur Penjualan',
+            message: 'Yakin ingin menghapus retur ini? Data yang dihapus tidak dapat dikembalikan.',
+            confirmText: 'Ya, Hapus',
+            cancelText: 'Batal',
+            type: 'danger',
+            icon: 'fa-trash-alt'
+        });
+        if (confirmed) {
             try {
                 await db.delete('salesReturns', cleanId);
                 if (window.api && typeof window.api.pullAll === 'function') await window.api.pullAll();
@@ -904,13 +920,21 @@ window.confirmReceiveReturn = async function (id) {
 
 
 
-window.processReturnRefund = function (id) {
+window.processReturnRefund = async function (id) {
     const ret = db.findById('salesReturns', id);
     if (!ret) return;
     const method = ret.refundMethod;
     const amount = ret.totalRefund;
 
-    if (!confirm(`Proses refund sebesar ${srFmt(amount)} dengan metode "${method}"?\nJurnal akuntansi akan dibuat secara otomatis.`)) return;
+    const confirmed = await window.showConfirmDialog({
+        title: 'Konfirmasi Refund',
+        message: `Proses refund sebesar ${srFmt(amount)} dengan metode "${method}"?<br><span class="text-xs text-slate-500">Jurnal akuntansi akan dibuat secara otomatis.</span>`,
+        confirmText: 'Proses Refund',
+        cancelText: 'Batal',
+        type: 'primary',
+        icon: 'fa-money-bill-wave'
+    });
+    if (!confirmed) return;
 
     if (method === 'StoreCredit') {
         // Create Credit Note automatically
@@ -1086,7 +1110,7 @@ window.renderProductExchanges = async function () {
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-50">
-                            ${rows || `<tr><td colspan="5" class="py-40 text-center text-slate-300 font-bold uppercase tracking-widest">Data tidak ditemukan.</td></tr>`}
+                            ${rows || `<tr><td colspan="5" class="py-12 text-center text-slate-400 text-sm font-medium">Belum ada data tukar guling untuk ditampilkan</td></tr>`}
                         </tbody>
                     </table>
                 </div>
@@ -1113,7 +1137,15 @@ window.handleEXAction = async function (actionOrSelect, id) {
     if (action === 'print') {
         window.printProductExchange(cleanId);
     } else if (action === 'cancel') {
-        if (confirm('Yakin ingin membatalkan exchange ini? Status di Inventory akan otomatis di-cancel.')) {
+        const confirmed = await window.showConfirmDialog({
+            title: 'Batalkan Tukar Guling',
+            message: 'Yakin ingin membatalkan exchange ini? Status di Inventory akan otomatis di-cancel.',
+            confirmText: 'Ya, Batalkan',
+            cancelText: 'Kembali',
+            type: 'warning',
+            icon: 'fa-ban'
+        });
+        if (confirmed) {
             try {
                 await api.update('productExchanges', cleanId, { status: 'CANCELED' });
                 if (window.api && typeof window.api.pullAll === 'function') await window.api.pullAll();
@@ -1124,7 +1156,15 @@ window.handleEXAction = async function (actionOrSelect, id) {
             }
         }
     } else if (action === 'delete') {
-        if (confirm('Yakin ingin menghapus tukar guling ini?')) {
+        const confirmed = await window.showConfirmDialog({
+            title: 'Hapus Tukar Guling',
+            message: 'Yakin ingin menghapus tukar guling ini? Data yang dihapus tidak dapat dikembalikan.',
+            confirmText: 'Ya, Hapus',
+            cancelText: 'Batal',
+            type: 'danger',
+            icon: 'fa-trash-alt'
+        });
+        if (confirmed) {
             try {
                 await db.delete('productExchanges', cleanId);
                 if (window.api && typeof window.api.pullAll === 'function') await window.api.pullAll();

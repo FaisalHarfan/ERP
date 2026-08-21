@@ -86,12 +86,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // Reset button logic
     const resetBtn = document.getElementById('resetDataBtn');
     if (resetBtn) {
-        resetBtn.addEventListener('click', () => {
-            if (confirm("Anda yakin ingin mereset seluruh database? Semua transaksi akan hilang!")) {
+        resetBtn.addEventListener('click', async () => {
+            const confirmed = await window.showConfirmDialog({
+                title: 'Reset Seluruh Database',
+                message: 'Anda yakin ingin mereset seluruh database? Semua data dan transaksi akan hilang dan dikembalikan ke awal.',
+                confirmText: 'Ya, Reset Database',
+                cancelText: 'Batal',
+                type: 'danger',
+                icon: 'fa-trash-restore'
+            });
+            if (confirmed) {
                 db.resetAll();
                 seedData(); // re-seed
-                alert("Database berhasil direset ke state awal.");
-                window.location.reload();
+                showToast("Database berhasil direset ke state awal.", "success");
+                setTimeout(() => window.location.reload(), 1000);
             }
         });
     }

@@ -578,3 +578,129 @@ if (!window._globalDropdownListenerAdded) {
     });
     window._globalDropdownListenerAdded = true;
 }
+
+// ─── Universal Custom Modern Confirmation Dialog ──────────────────
+window.showConfirmDialog = function(options = {}) {
+    let title = options.title || 'Konfirmasi Tindakan';
+    let message = options.message || 'Apakah Anda yakin ingin melanjutkan?';
+    let confirmText = options.confirmText || 'Ya, Lanjutkan';
+    let cancelText = options.cancelText || 'Batal';
+    let type = options.type || 'danger'; // 'danger' | 'warning' | 'primary' | 'info'
+    let icon = options.icon;
+
+    if (!icon) {
+        if (type === 'danger') icon = 'fa-trash-alt';
+        else if (type === 'warning') icon = 'fa-exclamation-triangle';
+        else if (type === 'primary') icon = 'fa-check-circle';
+        else icon = 'fa-info-circle';
+    }
+
+    const typeClasses = {
+        danger: {
+            iconBg: 'bg-rose-50 border-rose-100 text-rose-600',
+            confirmBtn: 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-600/20',
+        },
+        warning: {
+            iconBg: 'bg-amber-50 border-amber-100 text-amber-600',
+            confirmBtn: 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-500/20',
+        },
+        primary: {
+            iconBg: 'bg-blue-50 border-blue-100 text-blue-600',
+            confirmBtn: 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/20',
+        },
+        info: {
+            iconBg: 'bg-indigo-50 border-indigo-100 text-indigo-600',
+            confirmBtn: 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20',
+        }
+    };
+
+    const cfg = typeClasses[type] || typeClasses.danger;
+
+    return new Promise((resolve) => {
+        // Remove existing modal if any
+        const existing = document.getElementById('custom-confirm-modal');
+        if (existing) existing.remove();
+
+        const dialogContainer = document.createElement('div');
+        dialogContainer.id = 'custom-confirm-modal';
+        dialogContainer.className = 'fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200 select-none';
+        
+        dialogContainer.innerHTML = `
+            <div class="bg-white rounded-3xl shadow-2xl border border-slate-100 max-w-md w-full p-6 sm:p-7 transform transition-all animate-in zoom-in-95 duration-200">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-2xl ${cfg.iconBg} border flex items-center justify-center shrink-0 shadow-sm">
+                        <i class="fas ${icon} text-lg"></i>
+                    </div>
+                    <div class="flex-1 min-w-0 pt-0.5">
+                        <h3 class="text-base font-black text-slate-800 tracking-tight leading-snug">${title}</h3>
+                        <p class="text-xs font-medium text-slate-500 mt-2 leading-relaxed whitespace-pre-line">${message}</p>
+                    </div>
+                </div>
+                <div class="mt-6 pt-4 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                    <button id="custom-confirm-cancel-btn" type="button" 
+                        class="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold text-xs transition-all active:scale-95 cursor-pointer">
+                        ${cancelText}
+                    </button>
+                    <button id="custom-confirm-ok-btn" type="button" 
+                        class="px-4 py-2 rounded-xl ${cfg.confirmBtn} font-bold text-xs shadow-lg transition-all active:scale-95 flex items-center gap-2 cursor-pointer">
+                        ${confirmText}
+                    </button>
+                </div>
+            </div>
+        `;
+
+        const cleanup = (result) => {
+            document.removeEventListener('keydown', handleKeyDown);
+            dialogContainer.classList.remove('fade-in');
+            dialogContainer.classList.add('fade-out');
+            setTimeout(() => {
+                if (dialogContainer.parentNode) dialogContainer.parentNode.removeChild(dialogContainer);
+            }, 120);
+            resolve(result);
+        };
+
+        dialogContainer.querySelector('#custom-confirm-cancel-btn').onclick = () => cleanup(false);
+        dialogContainer.querySelector('#custom-confirm-ok-btn').onclick = () => cleanup(true);
+
+        dialogContainer.onclick = (e) => {
+            if (e.target === dialogContainer) cleanup(false);
+        };
+
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                cleanup(false);
+            } else if (e.key === 'Enter') {
+                cleanup(true);
+            }
+        };
+        document.addEventListener('keydown', handleKeyDown);
+
+        document.body.appendChild(dialogContainer);
+        const okBtn = dialogContainer.querySelector('#custom-confirm-ok-btn');
+        if (okBtn) okBtn.focus();
+    });
+};
+
+window.customConfirm = async (messageOrOptions, fallbackTitle) => {
+    if (typeof messageOrOptions === 'object') {
+        return window.showConfirmDialog(messageOrOptions);
+    }
+    const msg = String(messageOrOptions || '');
+    const isDelete = /hapus|delete|remove|hilang/i.test(msg);
+    const isCancel = /batal|cancel/i.test(msg);
+    const isWarn = /peringatan|warning|perhatian/i.test(msg);
+    
+    let type = 'danger';
+    let title = fallbackTitle || (isDelete ? 'Konfirmasi Hapus' : (isCancel ? 'Konfirmasi Pembatalan' : (isWarn ? 'Peringatan Penting' : 'Konfirmasi Tindakan')));
+    let confirmText = isDelete ? 'Hapus' : (isCancel ? 'Batalkan' : 'Ya, Lanjutkan');
+    let icon = isDelete ? 'fa-trash-alt' : (isCancel ? 'fa-ban' : 'fa-exclamation-triangle');
+
+    return window.showConfirmDialog({
+        title,
+        message: msg,
+        type: isWarn ? 'warning' : type,
+        confirmText,
+        cancelText: 'Kembali',
+        icon
+    });
+};

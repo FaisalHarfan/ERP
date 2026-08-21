@@ -140,9 +140,14 @@ tbody tr:hover {
 
 /* Navigation Active State */
 .nav-btn.active {
-    background-color: #f8fafc !important;
-    /* slate-50 */
+    background-color: #eff6ff !important; /* soft blue-50 */
     color: var(--primary) !important;
+    font-weight: 700 !important;
+}
+
+.nav-btn.active .sidebar-label {
+    color: var(--primary) !important;
+    font-weight: 700 !important;
 }
 
 .nav-btn.active i {

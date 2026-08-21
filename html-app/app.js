@@ -200,22 +200,22 @@ window.renderBreadcrumb = (pathItems = [], badge = null) => {
     const container = document.getElementById('breadcrumb');
     if (!container) return;
 
+    if (!pathItems || pathItems.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+
     let html = `<i class="fas fa-home text-slate-400 hover:text-primary cursor-pointer transition-colors text-base" onclick="navigateTo('launcher')" title="Home"></i>`;
     
-    if (pathItems.length > 0) {
-        pathItems.forEach((item, idx) => {
-            html += `<span class="mx-1.5 text-slate-300 font-light text-sm">/</span>`;
-            const isLast = idx === pathItems.length - 1;
-            if (isLast) {
-                html += `<span id="pageTitle" class="text-slate-800 font-bold text-base tracking-tight">${item}</span>`;
-            } else {
-                html += `<span class="text-slate-500 hover:text-slate-800 transition-colors cursor-default text-base">${item}</span>`;
-            }
-        });
-    } else {
+    pathItems.forEach((item, idx) => {
         html += `<span class="mx-1.5 text-slate-300 font-light text-sm">/</span>`;
-        html += `<span id="pageTitle" class="text-slate-800 font-bold text-base tracking-tight">Apps</span>`;
-    }
+        const isLast = idx === pathItems.length - 1;
+        if (isLast) {
+            html += `<span id="pageTitle" class="text-slate-800 font-bold text-base tracking-tight">${item}</span>`;
+        } else {
+            html += `<span class="text-slate-500 hover:text-slate-800 transition-colors cursor-default text-base">${item}</span>`;
+        }
+    });
 
     if (badge) {
         html += `<span class="ml-3 px-2 py-0.5 bg-orange-50 text-orange-600 text-[10px] font-bold rounded-full border border-orange-100 uppercase tracking-tighter shadow-sm animate-pulse">${badge}</span>`;
@@ -654,13 +654,13 @@ async function navigateTo(viewId, isBack = false) {
 
     // Update active nav link
     document.querySelectorAll('.nav-btn').forEach(btn => {
-        btn.classList.remove('active', 'text-white', 'bg-blue-600', 'text-primary');
-        btn.classList.add('text-slate-600');
+        btn.classList.remove('active', 'text-white', 'bg-blue-600', 'text-primary', 'font-bold');
+        btn.classList.add('text-slate-600', 'font-medium');
 
         if (btn.dataset.view === viewId) {
-            btn.classList.add('active');
-            btn.classList.remove('text-slate-600');
-            btn.classList.add('text-slate-900');
+            btn.classList.add('active', 'font-bold');
+            btn.classList.remove('text-slate-600', 'font-medium');
+            btn.classList.add('text-primary');
 
             // Auto-expand parent group
             const parentGroup = btn.closest('.nav-group');
@@ -868,8 +868,12 @@ async function navigateTo(viewId, isBack = false) {
     mainContent2.innerHTML = ''; // clear
 
     // Set Breadcrumb
-    const path = BREADCRUMB_MAP[viewId] || [viewId.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())];
-    renderBreadcrumb(path);
+    if (viewId === 'launcher') {
+        renderBreadcrumb([]);
+    } else {
+        const path = BREADCRUMB_MAP[viewId] || [viewId.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())];
+        renderBreadcrumb(path);
+    }
 
     if (views[viewId]) {
         views[viewId]();
@@ -877,17 +881,6 @@ async function navigateTo(viewId, isBack = false) {
         mainContent.innerHTML = `<div class="p-8 text-center text-gray-500">View not found</div>`;
     }
 
-    // Update Back Button Visibility & Icon
-    const backBtn = document.getElementById('sidebarToggleBtn');
-    if (backBtn) {
-        if (viewId === 'launcher') {
-            backBtn.innerHTML = '<i class="fas fa-bars text-xl"></i>';
-            backBtn.title = "Toggle Sidebar";
-        } else {
-            backBtn.innerHTML = '<i class="fas fa-chevron-left text-xl"></i>';
-            backBtn.title = "Go Back";
-        }
-    }
 
     // Update sidebar/launcher whenever we navigate to ensure it's in sync
     // MUST be called after render so elements are in DOM
@@ -909,7 +902,9 @@ function toggleNavGroup(groupId) {
 
 
 function renderLauncher() {
-    document.getElementById('pageTitle').innerText = 'Select Department';
+    renderBreadcrumb([]);
+    const pageTitleEl = document.getElementById('pageTitle');
+    if (pageTitleEl) pageTitleEl.innerText = '';
     const mainContent = document.getElementById('main-content');
 
     mainContent.innerHTML = `
@@ -1076,6 +1071,132 @@ function showToast(message, type = 'success') {
     container.appendChild(toast);
     setTimeout(() => toast.remove(), 4000);
 }
+
+// --- Custom Modern Confirmation Dialog ---
+window.showConfirmDialog = function(options = {}) {
+    let title = options.title || 'Konfirmasi Tindakan';
+    let message = options.message || 'Apakah Anda yakin ingin melanjutkan?';
+    let confirmText = options.confirmText || 'Ya, Lanjutkan';
+    let cancelText = options.cancelText || 'Batal';
+    let type = options.type || 'danger'; // 'danger' | 'warning' | 'primary' | 'info'
+    let icon = options.icon;
+
+    if (!icon) {
+        if (type === 'danger') icon = 'fa-trash-alt';
+        else if (type === 'warning') icon = 'fa-exclamation-triangle';
+        else if (type === 'primary') icon = 'fa-check-circle';
+        else icon = 'fa-info-circle';
+    }
+
+    const typeClasses = {
+        danger: {
+            iconBg: 'bg-rose-50 border-rose-100 text-rose-600',
+            confirmBtn: 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-600/20',
+        },
+        warning: {
+            iconBg: 'bg-amber-50 border-amber-100 text-amber-600',
+            confirmBtn: 'bg-amber-500 hover:bg-amber-600 text-white shadow-amber-500/20',
+        },
+        primary: {
+            iconBg: 'bg-blue-50 border-blue-100 text-blue-600',
+            confirmBtn: 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/20',
+        },
+        info: {
+            iconBg: 'bg-indigo-50 border-indigo-100 text-indigo-600',
+            confirmBtn: 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20',
+        }
+    };
+
+    const cfg = typeClasses[type] || typeClasses.danger;
+
+    return new Promise((resolve) => {
+        // Remove existing modal if any
+        const existing = document.getElementById('custom-confirm-modal');
+        if (existing) existing.remove();
+
+        const dialogContainer = document.createElement('div');
+        dialogContainer.id = 'custom-confirm-modal';
+        dialogContainer.className = 'fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200 select-none';
+        
+        dialogContainer.innerHTML = `
+            <div class="bg-white rounded-3xl shadow-2xl border border-slate-100 max-w-md w-full p-6 sm:p-7 transform transition-all animate-in zoom-in-95 duration-200">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-2xl ${cfg.iconBg} border flex items-center justify-center shrink-0 shadow-sm">
+                        <i class="fas ${icon} text-lg"></i>
+                    </div>
+                    <div class="flex-1 min-w-0 pt-0.5">
+                        <h3 class="text-base font-black text-slate-800 tracking-tight leading-snug">${title}</h3>
+                        <p class="text-xs font-medium text-slate-500 mt-2 leading-relaxed whitespace-pre-line">${message}</p>
+                    </div>
+                </div>
+                <div class="mt-6 pt-4 border-t border-slate-100 flex items-center justify-end gap-2.5">
+                    <button id="custom-confirm-cancel-btn" type="button" 
+                        class="px-4 py-2 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold text-xs transition-all active:scale-95 cursor-pointer">
+                        ${cancelText}
+                    </button>
+                    <button id="custom-confirm-ok-btn" type="button" 
+                        class="px-4 py-2 rounded-xl ${cfg.confirmBtn} font-bold text-xs shadow-lg transition-all active:scale-95 flex items-center gap-2 cursor-pointer">
+                        ${confirmText}
+                    </button>
+                </div>
+            </div>
+        `;
+
+        const cleanup = (result) => {
+            document.removeEventListener('keydown', handleKeyDown);
+            dialogContainer.classList.remove('fade-in');
+            dialogContainer.classList.add('fade-out');
+            setTimeout(() => {
+                if (dialogContainer.parentNode) dialogContainer.parentNode.removeChild(dialogContainer);
+            }, 120);
+            resolve(result);
+        };
+
+        dialogContainer.querySelector('#custom-confirm-cancel-btn').onclick = () => cleanup(false);
+        dialogContainer.querySelector('#custom-confirm-ok-btn').onclick = () => cleanup(true);
+
+        dialogContainer.onclick = (e) => {
+            if (e.target === dialogContainer) cleanup(false);
+        };
+
+        const handleKeyDown = (e) => {
+            if (e.key === 'Escape') {
+                cleanup(false);
+            } else if (e.key === 'Enter') {
+                cleanup(true);
+            }
+        };
+        document.addEventListener('keydown', handleKeyDown);
+
+        document.body.appendChild(dialogContainer);
+        const okBtn = dialogContainer.querySelector('#custom-confirm-ok-btn');
+        if (okBtn) okBtn.focus();
+    });
+};
+
+window.customConfirm = async (messageOrOptions, fallbackTitle) => {
+    if (typeof messageOrOptions === 'object') {
+        return window.showConfirmDialog(messageOrOptions);
+    }
+    const msg = String(messageOrOptions || '');
+    const isDelete = /hapus|delete|remove|hilang/i.test(msg);
+    const isCancel = /batal|cancel/i.test(msg);
+    const isWarn = /peringatan|warning|perhatian/i.test(msg);
+    
+    let type = 'danger';
+    let title = fallbackTitle || (isDelete ? 'Konfirmasi Hapus' : (isCancel ? 'Konfirmasi Pembatalan' : (isWarn ? 'Peringatan Penting' : 'Konfirmasi Tindakan')));
+    let confirmText = isDelete ? 'Hapus' : (isCancel ? 'Batalkan' : 'Ya, Lanjutkan');
+    let icon = isDelete ? 'fa-trash-alt' : (isCancel ? 'fa-ban' : 'fa-exclamation-triangle');
+
+    return window.showConfirmDialog({
+        title,
+        message: msg,
+        type: isWarn ? 'warning' : type,
+        confirmText,
+        cancelText: 'Kembali',
+        icon
+    });
+};
 
 // --- Formatting Helpers ---
 window.formatCurrency = (amount) => {
@@ -2117,6 +2238,7 @@ function renderPurchaseDashboard() {
 
     // Apply filters to Invoices
     let filteredInvs = (invs || []).filter(i => {
+        if (i.status === 'CANCELLED' || i.status === 'CANCELED') return false;
         const d = new Date(i.date || i.createdAt);
         if (startDate && d < startDate) return false;
         if (endDate && d > endDate) return false;
@@ -3129,9 +3251,18 @@ window.viewCustomerHistory = (customerId) => {
 };
 
 window.deleteCustomer = async (id) => {
-    if (confirm('Yakin ingin menghapus customer ini?')) {
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus Pelanggan',
+        message: 'Apakah Anda yakin ingin menghapus pelanggan ini dari master data?',
+        confirmText: 'Ya, Hapus',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-trash-alt'
+    });
+    if (confirmed) {
         await db.delete('customers', id);
         await db.sync('customers');
+        showToast('Pelanggan berhasil dihapus', 'success');
         renderCustomerData();
     }
 };
@@ -3148,7 +3279,8 @@ function statusBadgePurch(status) {
         'DRAFT': 'bg-gray-100 text-gray-700',
         'APPROVED': 'bg-blue-100 text-blue-700',
         'RECEIVED': 'bg-green-100 text-green-700',
-        'CANCELLED': 'bg-red-100 text-red-700',
+        'CANCELLED': 'bg-rose-100 text-rose-700',
+        'CANCELED': 'bg-rose-100 text-rose-700',
         'UNPAID': 'bg-orange-100 text-orange-700',
         'PAID': 'bg-green-100 text-green-700',
     };
@@ -4027,9 +4159,18 @@ window.selectProductResult = (prefix, id, name, unit) => {
 };
 
 window.deleteSupplier = async (id) => {
-    if (confirm('Hapus supplier ini?')) { 
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus Supplier',
+        message: 'Apakah Anda yakin ingin menghapus supplier ini dari master data?',
+        confirmText: 'Ya, Hapus',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-trash-alt'
+    });
+    if (confirmed) { 
         await db.delete('suppliers', id); 
         await db.sync('suppliers');
+        showToast('Supplier berhasil dihapus', 'success');
         renderMasterSuppliers(); 
     }
 };
@@ -5063,7 +5204,15 @@ window.savePO = async () => {
 };
 
 window.approvePO = async (id) => {
-    if (confirm('Approve PO ini?')) { 
+    const confirmed = await window.showConfirmDialog({
+        title: 'Approve Purchase Order',
+        message: 'Apakah Anda yakin ingin menyetujui (Approve) PO ini?',
+        confirmText: 'Ya, Approve',
+        cancelText: 'Batal',
+        type: 'primary',
+        icon: 'fa-check-circle'
+    });
+    if (confirmed) { 
         showToast('Memproses approval...', 'info');
         const success = await db.update('purchaseOrders', id, { status: 'APPROVED' }); 
         if (success) {
@@ -5077,8 +5226,16 @@ window.approvePO = async (id) => {
         }
     }
 };
-window.cancelPO = (id) => {
-    if (confirm('Batalkan PO ini?')) { db.update('purchaseOrders', id, { status: 'CANCELLED' }); showToast('PO dibatalkan'); renderPurchaseOrders(); }
+window.cancelPO = async (id) => {
+    const confirmed = await window.showConfirmDialog({
+        title: 'Batalkan Purchase Order',
+        message: 'Apakah Anda yakin ingin membatalkan PO ini?',
+        confirmText: 'Ya, Batalkan PO',
+        cancelText: 'Kembali',
+        type: 'warning',
+        icon: 'fa-ban'
+    });
+    if (confirmed) { db.update('purchaseOrders', id, { status: 'CANCELLED' }); showToast('PO dibatalkan'); renderPurchaseOrders(); }
 };
 
 window.generateNPBNumber = () => {
@@ -5384,8 +5541,16 @@ window.confirmReceiveGoods = async (id) => {
             refreshFn();
         }).catch(err => console.warn('Background sync error:', err));
         // Auto-offer print NPB after save
-        setTimeout(() => {
-            if (confirm(`Barang berhasil diterima (${recvNpb}). Cetak NPB sekarang?`)) {
+        setTimeout(async () => {
+            const confirmed = await window.showConfirmDialog({
+                title: 'Penerimaan Berhasil',
+                message: `Barang berhasil diterima (<strong>${recvNpb}</strong>). Cetak NPB sekarang?`,
+                confirmText: 'Cetak NPB',
+                cancelText: 'Nanti',
+                type: 'primary',
+                icon: 'fa-print'
+            });
+            if (confirmed) {
                 printNPB(id);
             }
         }, 400);
@@ -5864,8 +6029,8 @@ window.openPurchaseOrderSelectionForInvoice = () => {
     const pos = db.read('purchaseOrders').filter(po =>
         (po.status === 'RECEIVED' || po.status === 'PARTIALLY RECEIVED')
     );
-    const invoices = db.read('purchaseInvoices');
-    const eligiblePOs = pos.filter(po => !invoices.some(inv => inv.purchaseOrderId === po.id));
+    const invoices = db.read('purchaseInvoices') || [];
+    const eligiblePOs = pos.filter(po => !invoices.some(inv => inv.purchaseOrderId === po.id && inv.status !== 'CANCELLED' && inv.status !== 'CANCELED'));
     const suppliers = db.read('suppliers');
 
     if (!eligiblePOs.length) {
@@ -5919,7 +6084,7 @@ window.openPurchaseInvoiceForm = (poId = null, receiptId = null) => {
     window.tempUninvoicedReceipts = [];
     allPOs.forEach(po => {
         (po.receipts || []).forEach((rcpt, idx) => {
-            const isInv = invoices.some(inv => inv.purchaseOrderId === po.id && inv.receiptId === rcpt.id);
+            const isInv = invoices.some(inv => inv.purchaseOrderId === po.id && inv.receiptId === rcpt.id && inv.status !== 'CANCELLED' && inv.status !== 'CANCELED');
             if (!isInv) {
                 const supplierName = (suppliers.find(s => s.id === po.supplierId) || { name: '-' }).name;
                 window.tempUninvoicedReceipts.push({
@@ -6404,10 +6569,80 @@ window.deletePurchaseInvoice = async (id) => {
         return;
     }
 
-    if (confirm('Yakin ingin menghapus invoice supplier ini? Penerimaan barang terkait akan dapat di-invoice ulang.')) {
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus Tagihan Supplier',
+        message: 'Yakin ingin menghapus invoice supplier ini? Penerimaan barang terkait akan dapat di-invoice ulang.',
+        confirmText: 'Ya, Hapus Tagihan',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-trash-alt'
+    });
+
+    if (confirmed) {
         await db.delete('purchaseInvoices', id);
         showToast('Invoice supplier berhasil dihapus', 'success');
         renderPurchaseInvoices();
+    }
+};
+
+window.cancelPurchaseInvoice = async (id) => {
+    const inv = db.findById('purchaseInvoices', id);
+    if (!inv) return;
+
+    if (inv.status === 'CANCELLED' || inv.status === 'CANCELED') {
+        showToast('Invoice ini sudah dalam status dibatalkan (CANCELLED).', 'info');
+        return;
+    }
+
+    const payments = db.read('supplierPayments') || [];
+    const invPayments = payments.filter(p => p.invoiceId === id);
+    if (invPayments.length > 0) {
+        showToast('Invoice tidak dapat dibatalkan karena sudah memiliki riwayat pembayaran. Hapus pembayaran terlebih dahulu.', 'error');
+        return;
+    }
+
+    const invNum = inv.invNumber || inv.invoiceNumber || id;
+    const confirmed = await window.showConfirmDialog({
+        title: 'Batalkan Purchase Invoice',
+        message: `Apakah Anda yakin ingin membatalkan Purchase Invoice "${invNum}"?\n\nInvoice yang dibatalkan akan berstatus CANCELLED dan nominal tagihannya otomatis tidak akan dihitung di Finance / Antrean Hutang (AP).`,
+        confirmText: 'Ya, Batalkan Invoice',
+        cancelText: 'Kembali',
+        type: 'danger',
+        icon: 'fa-ban'
+    });
+
+    if (confirmed) {
+        await db.update('purchaseInvoices', id, { status: 'CANCELLED', cancelledAt: new Date().toISOString() });
+        await db.sync('purchaseInvoices');
+        showToast(`Purchase Invoice ${invNum} berhasil dibatalkan`, 'success');
+        renderPurchaseInvoices();
+    }
+};
+
+window.handlePurchaseInvoiceAction = (actionOrSelectEl, id) => {
+    let act;
+    if (typeof actionOrSelectEl === 'string') {
+        act = actionOrSelectEl;
+    } else {
+        act = actionOrSelectEl.value;
+        actionOrSelectEl.value = "";
+    }
+    if (!act) return;
+
+    const cleanId = typeof id === 'string' ? id.replace(/^pi-/, '') : id;
+
+    if (act === 'view') {
+        window.viewPurchaseInvoice(cleanId);
+    } else if (act === 'cancel') {
+        window.cancelPurchaseInvoice(cleanId);
+    } else if (act === 'delete') {
+        window.deletePurchaseInvoice(cleanId);
+    } else if (act === 'upload_attachment') {
+        window.triggerInvoiceUpload(cleanId);
+    } else if (act === 'remove_attachment') {
+        window.removeInvoiceAttachment(cleanId);
+    } else if (act === 'view_attachment') {
+        window.viewPurchaseInvoice(cleanId);
     }
 };
 
@@ -6415,7 +6650,15 @@ window.forceCompletePOReceipt = async (id) => {
     const po = db.findById('purchaseOrders', id);
     if (!po) return;
 
-    if (confirm('Yakin ingin menandai penerimaan PO ini selesai secara manual?\n\nKuantitas barang dipesan pada PO akan otomatis disesuaikan agar sama dengan kuantitas yang aktual diterima, dan total nominal PO akan dihitung ulang secara otomatis.')) {
+    const confirmed = await window.showConfirmDialog({
+        title: 'Selesaikan Penerimaan PO',
+        message: 'Yakin ingin menandai penerimaan PO ini selesai secara manual?<br><br><span class="text-xs text-slate-500">Kuantitas barang dipesan pada PO akan otomatis disesuaikan agar sama dengan kuantitas yang aktual diterima, dan total nominal PO akan dihitung ulang secara otomatis.</span>',
+        confirmText: 'Ya, Tandai Selesai',
+        cancelText: 'Batal',
+        type: 'warning',
+        icon: 'fa-check-double'
+    });
+    if (confirmed) {
         showToast('Memproses...', 'info');
 
         const updatedItems = (po.items || []).map(item => {
@@ -6463,12 +6706,23 @@ window.viewPurchaseInvoice = (id) => {
     const sup = suppliers.find(s => s.id === inv.supplierId) || { name: '-' };
     const supPayments = db.read('supplierPayments').filter(p => p.invoiceId === id);
     const paid = supPayments.reduce((s, p) => s + parseFloat(p.amount), 0);
+    const isCancelled = inv.status === 'CANCELLED' || inv.status === 'CANCELED';
+
     const payRows = supPayments.length ? supPayments.map(p => `
         <tr class="border-b text-sm"><td class="py-2">${formatDate(p.date).slice(0, 11)}</td>
         <td class="py-2">${p.method}</td><td class="py-2">${p.referenceNote || '-'}</td>
         <td class="py-2 text-right text-green-600 font-medium">${formatCurrency(p.amount)}</td></tr>`).join('')
         : `<tr><td colspan="4" class="py-2 text-gray-500 italic text-sm">Belum ada pembayaran.</td></tr>`;
     const body = `<div class="space-y-4 text-sm">
+        ${isCancelled ? `
+        <div class="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-xl flex items-center gap-3">
+            <i class="fas fa-ban text-rose-500 text-xl"></i>
+            <div>
+                <p class="font-black text-xs uppercase tracking-wider">Invoice Dibatalkan (CANCELLED)</p>
+                <p class="text-xs text-rose-600">Tagihan ini tidak dicatat sebagai hutang aktif atau pengeluaran di Laporan Keuangan Finance.</p>
+            </div>
+        </div>
+        ` : ''}
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-2 bg-gray-50 p-3 rounded">
             <div><p class="text-gray-500">Invoice No.</p><p class="font-bold">${inv.invNumber || inv.invoiceNumber || '-'}</p></div>
             <div><p class="text-gray-500">Invoice Date</p><p class="font-medium">${formatDate(inv.date).slice(0, 11)}</p></div>
@@ -6498,7 +6752,7 @@ window.viewPurchaseInvoice = (id) => {
         <div class="bg-blue-50 p-3 rounded border border-blue-100">
             <div class="flex justify-between"><span class="text-gray-600">Total Tagihan:</span><span class="font-bold">${formatCurrency(inv.totalAmount)}</span></div>
             <div class="flex justify-between"><span class="text-gray-600">Total Terbayar:</span><span class="text-green-600 font-bold">${formatCurrency(paid)}</span></div>
-            <div class="flex justify-between border-t border-blue-200 pt-1 mt-1"><span class="font-bold">Sisa Hutang:</span><span class="text-red-600 font-bold text-lg">${formatCurrency(inv.totalAmount - paid)}</span></div>
+            <div class="flex justify-between border-t border-blue-200 pt-1 mt-1"><span class="font-bold">Sisa Hutang:</span><span class="text-red-600 font-bold text-lg">${isCancelled ? 'Rp 0 (CANCELED)' : formatCurrency(inv.totalAmount - paid)}</span></div>
         </div>
         ${inv.attachment ? `
         <div class="mt-4">
@@ -6510,7 +6764,21 @@ window.viewPurchaseInvoice = (id) => {
             </div>
         </div>` : ''}
     </div>`;
-    showModal(`Detail Invoice - ${inv.invNumber || inv.invoiceNumber || '-'}`, body, `<button onclick="closeModal()" class="w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 px-4 py-2 bg-white text-gray-700 text-sm font-medium">Tutup</button>`);
+
+    const cancelBtn = (!isCancelled && paid === 0) ? `
+        <button onclick="closeModal(); window.cancelPurchaseInvoice('${inv.id}')" class="w-full sm:w-auto inline-flex items-center gap-1.5 justify-center rounded-md border border-rose-300 px-4 py-2 bg-rose-50 text-rose-700 text-sm font-semibold hover:bg-rose-100 transition-colors">
+            <i class="fas fa-ban"></i> Batalkan Invoice
+        </button>
+    ` : '';
+
+    const modalFooter = `
+        <div class="flex flex-wrap items-center justify-between w-full gap-2">
+            <div>${cancelBtn}</div>
+            <button onclick="closeModal()" class="w-full sm:w-auto inline-flex justify-center rounded-md border border-gray-300 px-4 py-2 bg-white text-gray-700 text-sm font-medium hover:bg-gray-50">Tutup</button>
+        </div>
+    `;
+
+    showModal(`Detail Invoice - ${inv.invNumber || inv.invoiceNumber || '-'}`, body, modalFooter);
 };
 
 // --- Purchase Invoice Attachment Helpers ---
@@ -6540,8 +6808,16 @@ window.handleInvoiceFile = (e, id) => {
     reader.readAsDataURL(file);
 };
 
-window.removeInvoiceAttachment = (id) => {
-    if (confirm('Hapus lampiran ini?')) {
+window.removeInvoiceAttachment = async (id) => {
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus Lampiran',
+        message: 'Hapus lampiran faktur ini?',
+        confirmText: 'Ya, Hapus',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-trash-alt'
+    });
+    if (confirmed) {
         db.update('purchaseInvoices', id, { attachment: null });
         db.sync('purchaseInvoices');
         showToast('Lampiran dihapus');
@@ -7280,8 +7556,16 @@ function renderMasterProducts() {
     };
 
     window.editProduct = (id) => openProductModal(id);
-    window.deleteProduct = (id) => {
-        if (confirm('Yakin ingin menghapus produk ini?')) {
+    window.deleteProduct = async (id) => {
+        const confirmed = await window.showConfirmDialog({
+            title: 'Hapus Produk',
+            message: 'Yakin ingin menghapus produk ini?',
+            confirmText: 'Ya, Hapus',
+            cancelText: 'Batal',
+            type: 'danger',
+            icon: 'fa-trash-alt'
+        });
+        if (confirmed) {
             db.delete('products', id);
             showToast('Produk terhapus');
             renderMasterProducts();
@@ -7589,8 +7873,16 @@ window.openAddPurchaseMasterItem = () => {
     renderInventoryItemForm(null, 'purchase');
 };
 
-window.deletePurchaseMasterItem = (id) => {
-    if (confirm('Yakin ingin menghapus item ini?')) {
+window.deletePurchaseMasterItem = async (id) => {
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus Item Pembelian',
+        message: 'Yakin ingin menghapus item ini?',
+        confirmText: 'Ya, Hapus',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-trash-alt'
+    });
+    if (confirmed) {
         db.delete('inventoryItems', id);
         showToast('Item berhasil dihapus');
         renderPurchaseMasterItems();
@@ -7963,13 +8255,7 @@ function renderPurchaseOrders() {
     }).join('');
 
     if (pos.length === 0) {
-        rows = `<tr><td colspan="7" class="py-24 text-center">
-            <div class="flex flex-col items-center justify-center">
-                <i class="fas fa-file-invoice text-6xl text-slate-200 mb-4"></i>
-                <p class="text-slate-400 font-bold uppercase tracking-widest text-sm">Tidak ada Purchase Order ditemukan</p>
-                <p class="text-slate-300 text-xs mt-2">Untuk ${!hasDateFilter ? 'hari ini' : 'periode yang dipilih'}</p>
-            </div>
-        </td></tr>`;
+        rows = `<tr><td colspan="7" class="py-12 text-center text-slate-400 text-sm font-medium">Belum ada data purchase order untuk ditampilkan</td></tr>`;
     }
 
     mainContent.innerHTML = `
@@ -8289,7 +8575,15 @@ window.submitPOAdjustment = async function(poId) {
         return;
     }
 
-    if (confirm('Apakah Anda yakin ingin menyimpan penyesuaian penerimaan ini? Stok gudang dan jurnal akuntansi akan otomatis diupdate.')) {
+    const confirmed = await window.showConfirmDialog({
+        title: 'Simpan Penyesuaian Penerimaan',
+        message: 'Apakah Anda yakin ingin menyimpan penyesuaian penerimaan ini?<br><span class="text-xs text-slate-500">Stok gudang dan jurnal akuntansi akan otomatis diupdate.</span>',
+        confirmText: 'Ya, Simpan Penyesuaian',
+        cancelText: 'Batal',
+        type: 'warning',
+        icon: 'fa-clipboard-check'
+    });
+    if (confirmed) {
         try {
             showToast('Menyimpan penyesuaian...', 'info');
             const res = await api.adjustPOReceipt(poId, { items: adjustments, reason, date: adjDate });
@@ -8421,7 +8715,7 @@ function renderPurchaseReceiving() {
                 </tr>`;
         }).join('');
 
-        if (pos.length === 0) rows = `<tr><td colspan="6" class="py-32 text-center text-slate-300 font-black uppercase tracking-widest opacity-40 italic"><i class="fas fa-truck-loading text-5xl mb-4"></i><br>Tidak ada antrian penerimaan barang</td></tr>`;
+        if (pos.length === 0) rows = `<tr><td colspan="6" class="py-12 text-center text-slate-400 text-sm font-medium">Belum ada antrean penerimaan barang</td></tr>`;
 
         mainContent.innerHTML = `
             <div id="pgr-pending-list-view" class="animate-in fade-in duration-300 h-[calc(100vh-64px)] flex flex-col bg-slate-50 -m-4 sm:-m-6">
@@ -8563,7 +8857,7 @@ function renderPurchaseReceiving() {
                 </tr>`;
         }).join('');
 
-        if (pos.length === 0) rows = `<tr><td colspan="6" class="py-32 text-center text-slate-300 font-black uppercase tracking-widest opacity-40"><i class="fas fa-history text-5xl mb-4"></i><br>Belum ada riwayat penerimaan barang</td></tr>`;
+        if (pos.length === 0) rows = `<tr><td colspan="6" class="py-12 text-center text-slate-400 text-sm font-medium">Belum ada riwayat penerimaan barang</td></tr>`;
 
         mainContent.innerHTML = `
             <div id="pgr-history-list-view" class="animate-in fade-in duration-300 h-[calc(100vh-64px)] flex flex-col bg-slate-50 -m-4 sm:-m-6">
@@ -8719,7 +9013,15 @@ window.resetPGRHistoryHeaderDateFilter = () => {
 
 // --- Purchase Orders Helper Functions ---
 window.deletePO = async (id) => {
-    if (confirm('Yakin ingin menghapus Purchase Order ini?')) {
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus Purchase Order',
+        message: 'Apakah Anda yakin ingin memindahkan Purchase Order ini ke arsip terhapus?',
+        confirmText: 'Ya, Hapus PO',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-trash-alt'
+    });
+    if (confirmed) {
         showToast('Menghapus PO...', 'info');
         const success = await db.update('purchaseOrders', id, { status: 'DELETED' });
         if (success) {
@@ -8769,12 +9071,7 @@ window.renderDeletedPOHistory = () => {
     }).join('');
 
     if (pos.length === 0) {
-        rows = `<tr><td colspan="5" class="py-24 text-center">
-            <div class="flex flex-col items-center justify-center">
-                <i class="fas fa-archive text-6xl text-slate-250 mb-4 opacity-30"></i>
-                <p class="text-slate-400 font-bold uppercase tracking-widest text-sm">Tidak ada Purchase Order di dalam arsip terhapus</p>
-            </div>
-        </td></tr>`;
+        rows = `<tr><td colspan="5" class="py-12 text-center text-slate-400 text-sm font-medium">Tidak ada purchase order di dalam arsip</td></tr>`;
     }
 
     mainContent.innerHTML = `
@@ -8815,7 +9112,15 @@ window.renderDeletedPOHistory = () => {
 };
 
 window.restorePO = async (id) => {
-    if (confirm('Pulihkan Purchase Order ini ke status DRAFT?')) {
+    const confirmed = await window.showConfirmDialog({
+        title: 'Pulihkan Purchase Order',
+        message: 'Pulihkan Purchase Order ini ke status DRAFT?',
+        confirmText: 'Ya, Pulihkan',
+        cancelText: 'Batal',
+        type: 'primary',
+        icon: 'fa-undo'
+    });
+    if (confirmed) {
         showToast('Memulihkan PO...', 'info');
         const success = await db.update('purchaseOrders', id, { status: 'DRAFT' });
         if (success) {
@@ -8947,6 +9252,23 @@ function _renderPurchaseInvoicesList() {
         else if (inv.status === 'PARTIAL' || inv.status === 'PARTIALLY PAID') statusColor = 'bg-blue-50 text-blue-600 border-blue-100';
         else if (inv.status === 'UNPAID') statusColor = 'bg-red-50 text-red-600 border-red-100';
         else if (inv.status === 'PENDING') statusColor = 'bg-orange-50 text-orange-600 border-orange-100';
+        else if (inv.status === 'CANCELLED' || inv.status === 'CANCELED') statusColor = 'bg-rose-50 text-rose-600 border-rose-200 line-through';
+
+        const dropdownOptions = [
+            ['view', 'Lihat Detail', 'fas fa-eye']
+        ];
+        if (inv.status !== 'CANCELLED' && inv.status !== 'CANCELED') {
+            dropdownOptions.push(['cancel', 'Batalkan Invoice', 'fas fa-ban text-rose-500', 'text-rose-600 hover:bg-rose-50 hover:text-rose-700']);
+        }
+        if (inv.attachment) {
+            dropdownOptions.push(['view_attachment', 'Lihat Lampiran', 'fas fa-paperclip text-blue-500']);
+            dropdownOptions.push(['remove_attachment', 'Hapus Lampiran', 'fas fa-trash-alt text-amber-500']);
+        } else {
+            dropdownOptions.push(['upload_attachment', 'Upload Lampiran', 'fas fa-upload text-blue-500']);
+        }
+        dropdownOptions.push(['delete', 'Hapus Tagihan', 'fas fa-trash-alt text-red-500', 'text-red-600 hover:bg-red-50 hover:text-red-700 border-t border-slate-100']);
+
+        const actionHtml = window.renderActionsDropdownHtml(`pi-${inv.id}`, 'window.handlePurchaseInvoiceAction', dropdownOptions);
 
         return `
             <tr class="border-b border-gray-100 hover:bg-slate-50 transition-colors group">
@@ -8961,29 +9283,16 @@ function _renderPurchaseInvoicesList() {
                 <td class="py-4 px-6 text-center">
                     <span class="px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest border shadow-sm ${statusColor}">${inv.status}</span>
                 </td>
-                <td class="py-4 px-6 text-right whitespace-nowrap">
-                    <div class="flex items-center justify-end gap-1">
-                        ${inv.attachment ? `
-                        <button onclick="viewPurchaseInvoice('${inv.id}')" class="text-blue-500 hover:text-blue-700 p-2 rounded-lg hover:bg-blue-50 transition-colors" title="Lihat Lampiran">
-                            <i class="fas fa-paperclip"></i>
-                        </button>` : ''}
-                        <button onclick="viewPurchaseInvoice('${inv.id}')" class="text-slate-400 hover:text-blue-600 transition-colors p-2 rounded-lg hover:bg-slate-50" title="Detail Tagihan">
-                            <i class="fas fa-eye text-lg"></i>
-                        </button>
-                        <button onclick="window.deletePurchaseInvoice('${inv.id}')" class="text-red-400 hover:text-red-600 transition-colors p-2 rounded-lg hover:bg-red-50" title="Hapus Tagihan">
-                            <i class="fas fa-trash-alt text-lg"></i>
-                        </button>
+                <td class="py-4 px-6 text-right whitespace-nowrap overflow-visible">
+                    <div class="flex items-center justify-end overflow-visible">
+                        ${actionHtml}
                     </div>
                 </td>
             </tr>
         `;
     }).join('');
 
-    if (invs.length === 0) rows = `<tr><td colspan="6" class="py-32 text-center text-slate-300 font-black uppercase tracking-widest opacity-40 italic">
-        <div class="flex flex-col items-center justify-center">
-            <i class="fas fa-file-invoice-dollar text-5xl mb-4"></i><br>Tidak ada tagihan supplier ditemukan untuk ${!hasDateFilter ? 'hari ini' : 'periode yang dipilih'}
-        </div>
-    </td></tr>`;
+    if (invs.length === 0) rows = `<tr><td colspan="6" class="py-12 text-center text-slate-400 text-sm font-medium">Belum ada data purchase invoice untuk ditampilkan</td></tr>`;
 
     mainContent.innerHTML = `
         <div id="pinv-list-view" class="animate-in fade-in duration-300 h-[calc(100vh-64px)] flex flex-col bg-slate-50 -m-4 sm:-m-6">
@@ -9220,13 +9529,7 @@ function renderSalesQuotations() {
     }).join('');
 
     if (qts.length === 0) {
-        rows = `<tr><td colspan="6" class="py-24 text-center">
-            <div class="flex flex-col items-center justify-center">
-                <i class="fas fa-file-alt text-6xl text-slate-200 mb-4"></i>
-                <p class="text-slate-400 font-bold uppercase tracking-widest text-sm">Tidak ada Quotation ditemukan</p>
-                <p class="text-slate-300 text-xs mt-2">Untuk ${!hasDateFilter ? 'hari ini' : 'periode yang dipilih'}</p>
-            </div>
-        </td></tr>`;
+        rows = `<tr><td colspan="6" class="py-12 text-center text-slate-400 text-sm font-medium">Belum ada data quotation untuk ditampilkan</td></tr>`;
     }
 
     mainContent.innerHTML = `
@@ -9756,8 +10059,16 @@ window.editQTItemRow = (itemId) => {
     document.getElementById('qt_item_qty').select();
 };
 
-window.removeQTItemRow = (itemId) => {
-    if(!confirm('Hapus item ini dari daftar?')) return;
+window.removeQTItemRow = async (itemId) => {
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus Item',
+        message: 'Hapus item ini dari daftar penawaran?',
+        confirmText: 'Ya, Hapus',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-trash-alt'
+    });
+    if(!confirmed) return;
     window.tempQTItems = window.tempQTItems.filter(i => i.id !== itemId);
     refreshQTItemsTable();
 };
@@ -10014,11 +10325,7 @@ function renderPurchaseRFQs() {
         `;
     }).join('');
 
-    if (rfqs.length === 0) rows = `<tr><td colspan="6" class="py-24 text-center text-gray-400 font-bold uppercase tracking-widest">
-        <div class="flex flex-col items-center justify-center opacity-30 select-none">
-            <i class="fas fa-search-minus text-4xl mb-3 opacity-20"></i><br>Tidak ada RFQ ditemukan untuk ${!hasDateFilter ? 'hari ini' : 'periode yang dipilih'}
-        </div>
-    </td></tr>`;
+    if (rfqs.length === 0) rows = `<tr><td colspan="6" class="py-12 text-center text-slate-400 text-sm font-medium">Belum ada data RFQ untuk ditampilkan</td></tr>`;
 
     mainContent.innerHTML = `
         <div id="rfq-list-view" class="animate-in fade-in duration-300 h-[calc(100vh-64px)] flex flex-col bg-slate-50 -m-4 sm:-m-6">
@@ -10543,12 +10850,7 @@ window.refreshPurchaseRFQItemsTable = () => {
     const tbody = document.getElementById('rfq_items_list');
     if (!tbody) return;
     if (window.tempRFQItems.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="5" class="py-16 text-center">
-            <div class="flex flex-col items-center gap-3 text-slate-300">
-                <i class="fas fa-box-open text-4xl"></i>
-                <span class="text-sm font-black uppercase tracking-widest">Belum ada item</span>
-            </div>
-        </td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" class="py-10 text-center text-slate-400 text-sm font-medium">Belum ada item ditambahkan</td></tr>`;
         return;
     }
     tbody.innerHTML = window.tempRFQItems.map((item, idx) => `
@@ -10631,7 +10933,15 @@ window.updatePurchaseRFQStatus = async (id, newStatus) => {
 };
 
 window.deletePurchaseRFQ = async (id) => {
-    if (confirm('Yakin hapus RFQ ini?')) {
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus RFQ',
+        message: 'Yakin ingin menghapus RFQ ini?',
+        confirmText: 'Ya, Hapus',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-trash-alt'
+    });
+    if (confirmed) {
         await db.delete('purchaseRFQs', id);
         await db.sync('purchaseRFQs');
         renderPurchaseRFQs();
@@ -10883,8 +11193,16 @@ window.sendPurchaseRFQEmail = (id) => {
 
 
 
-window.deleteQT = (id) => {
-    if (confirm('Yakin hapus QT ini?')) {
+window.deleteQT = async (id) => {
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus Quotation',
+        message: 'Yakin ingin menghapus Quotation (QT) ini?',
+        confirmText: 'Ya, Hapus',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-trash-alt'
+    });
+    if (confirmed) {
         db.delete('salesQuotations', id);
         renderSalesQuotations();
     }
@@ -11517,13 +11835,7 @@ function renderSalesOrders() {
     }).join('');
 
     if (sos.length === 0) {
-        rows = `<tr><td colspan="7" class="py-24 text-center">
-            <div class="flex flex-col items-center justify-center">
-                <i class="fas fa-receipt text-6xl text-slate-200 mb-4"></i>
-                <p class="text-slate-400 font-bold uppercase tracking-widest text-sm">Tidak ada Sales Order ditemukan</p>
-                <p class="text-slate-300 text-xs mt-2">Untuk ${!hasDateFilter ? 'hari ini' : 'periode yang dipilih'}</p>
-            </div>
-        </td></tr>`;
+        rows = `<tr><td colspan="7" class="py-12 text-center text-slate-400 text-sm font-medium">Belum ada data sales order untuk ditampilkan</td></tr>`;
     }
 
     mainContent.innerHTML = `
@@ -13173,8 +13485,16 @@ window.editSOItemRow = (itemId) => {
     document.getElementById('so_item_qty').select();
 };
 
-window.removeSOItemRow = (itemId) => {
-    if(!confirm('Hapus item ini dari daftar?')) return;
+window.removeSOItemRow = async (itemId) => {
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus Item',
+        message: 'Hapus item ini dari daftar pesanan?',
+        confirmText: 'Ya, Hapus',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-trash-alt'
+    });
+    if(!confirmed) return;
     window.tempSOItems = window.tempSOItems.filter(i => i.id !== itemId);
     refreshSOItemsTable();
 };
@@ -13403,7 +13723,15 @@ window.updateSOStatus = async (id, newStatus) => {
 // Fungsi pengiriman SO dihapus dari Sales. Dialihkan ke Inventory (Surat Jalan/Pengiriman).
 
 window.deleteSO = async (id) => {
-    if (confirm('Yakin hapus SO ini?')) {
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus Sales Order',
+        message: 'Yakin ingin menghapus SO ini?',
+        confirmText: 'Ya, Hapus',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-trash-alt'
+    });
+    if (confirmed) {
         await db.delete('salesOrders', id);
         await db.sync('salesOrders');
         renderSalesOrders();
@@ -13653,7 +13981,7 @@ window.openInvoiceModal = (soId = null, customerId = null) => {
     const defaultTaxRate = isSOTaxed ? 11 : 0;
     const initialInvNumber = generateInvoiceNumber(isSOTaxed);
 
-    let itemsPreview = '<tr><td colspan="5" class="py-16 text-center text-slate-400 italic bg-white flex flex-col items-center justify-center border-2 border-dashed border-slate-100 rounded-3xl m-8"><div class="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4"><i class="fas fa-file-invoice text-2xl"></i></div><p class="font-bold uppercase tracking-widest text-[10px]">Silakan pilih Customer & Sales Order terlebih dahulu...</p></td></tr>';
+    let itemsPreview = '<tr><td colspan="5" class="py-12 text-center text-slate-400 text-sm font-medium">Silakan pilih Customer & Sales Order terlebih dahulu...</td></tr>';
     if (so) {
         itemsPreview = (so.items || []).map(item => {
             const doItem = relatedDO ? relatedDO.items.find(di => di.inventoryItemId === item.inventoryItemId) : null;
@@ -14491,14 +14819,8 @@ function renderSalesInvoices() {
     if (invoices.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="7" class="py-40 text-center">
-                    <div class="flex flex-col items-center justify-center opacity-30 select-none">
-                        <div class="w-24 h-24 bg-slate-100 rounded-full flex items-center justify-center mb-6">
-                            <i class="fas fa-file-invoice text-4xl text-slate-400"></i>
-                        </div>
-                        <h3 class="text-lg font-black text-slate-600 uppercase tracking-[0.2em] mb-1">Data Tidak Ditemukan</h3>
-                        <p class="text-xs font-bold text-slate-400 uppercase tracking-widest">Belum ada faktur yang tercatat untuk ${!hasDateFilter ? 'hari ini' : 'periode yang dipilih'}</p>
-                    </div>
+                <td colspan="7" class="py-12 text-center text-slate-400 text-sm font-medium">
+                    Belum ada data sales invoice untuk ditampilkan
                 </td>
             </tr>
         `;
@@ -14612,8 +14934,16 @@ window.openInvoiceFromSOSelectorModal = () => {
     showModal('Pilih Sales Order untuk Invoice', body, footer);
 };
 
-window.cancelInvoice = (id) => {
-    if (confirm('Yakin ingin membatalkan invoice ini?')) {
+window.cancelInvoice = async (id) => {
+    const confirmed = await window.showConfirmDialog({
+        title: 'Batalkan Sales Invoice',
+        message: 'Yakin ingin membatalkan invoice penjualan ini?',
+        confirmText: 'Ya, Batalkan Invoice',
+        cancelText: 'Kembali',
+        type: 'warning',
+        icon: 'fa-ban'
+    });
+    if (confirmed) {
         db.update('salesInvoices', id, { status: 'CANCELLED' });
         showToast('Invoice dibatalkan');
         renderSalesInvoices();
@@ -15359,7 +15689,7 @@ function renderSalesPayments(prefillInvoiceId = null) {
         `;
     }).join('');
 
-    if (filteredPayments.length === 0) rows = `<tr><td colspan="7" class="py-12 text-center text-gray-400 italic font-bold uppercase tracking-widest"><i class="fas fa-receipt text-3xl mb-2 opacity-10"></i><br>Belum ada data pembayaran ${prefillInvoiceId ? 'untuk invoice ini' : ''}</td></tr>`;
+    if (filteredPayments.length === 0) rows = `<tr><td colspan="7" class="py-12 text-center text-slate-400 text-sm font-medium">Belum ada data pembayaran ${prefillInvoiceId ? 'untuk invoice ini' : ''}</td></tr>`;
 
     let filterHtml = '';
     if (!prefillInvoiceId) {
@@ -17653,7 +17983,7 @@ window.refreshBOMItemsTable = () => {
         `).join('');
 };
 
-window.saveNewBOM = () => {
+window.saveNewBOM = async () => {
     if (window.tempBOMItems.length === 0) { showToast('BOM harus memiliki minimal 1 bahan baku', 'error'); return; }
 
     const bomNumber = document.getElementById('bom_number').value;
@@ -17663,7 +17993,15 @@ window.saveNewBOM = () => {
     // Ensure BOM for this product doesn't already exist (for simple validation)
     const existing = db.read('boms').find(b => b.productId === productId);
     if (existing) {
-        if (!confirm('BOM untuk produk ini sudah ada. Lanjutkan untuk membuat versi baru?')) return;
+        const confirmed = await window.showConfirmDialog({
+            title: 'BOM Sudah Ada',
+            message: 'BOM untuk produk ini sudah ada. Lanjutkan untuk membuat versi baru?',
+            confirmText: 'Lanjutkan',
+            cancelText: 'Batal',
+            type: 'warning',
+            icon: 'fa-layer-group'
+        });
+        if (!confirmed) return;
     }
 
     db.insert('boms', {
@@ -17678,8 +18016,16 @@ window.saveNewBOM = () => {
     renderBOM();
 };
 
-window.deleteLegacyBOM = (id) => {
-    if (confirm('Yakin hapus BOM ini?')) {
+window.deleteLegacyBOM = async (id) => {
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus BOM',
+        message: 'Yakin ingin menghapus BOM ini?',
+        confirmText: 'Ya, Hapus',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-trash-alt'
+    });
+    if (confirmed) {
         db.delete('boms', id);
         renderBOM();
     }
@@ -17882,7 +18228,7 @@ window.saveNewProduction = () => {
 };
 
 // Very Important: Validates RAW MATERIAL stock BEFORE starting production
-window.startProduction = (id) => {
+window.startProduction = async (id) => {
     const prod = db.findById('productionOrders', id);
     if (!prod) return;
 
@@ -17907,7 +18253,15 @@ window.startProduction = (id) => {
         return;
     }
 
-    if (confirm('Mulai produksi? Bahan baku akan di-reserve.')) {
+    const confirmedStart = await window.showConfirmDialog({
+        title: 'Mulai Produksi',
+        message: 'Mulai proses produksi? Bahan baku akan di-reserve.',
+        confirmText: 'Mulai Produksi',
+        cancelText: 'Batal',
+        type: 'primary',
+        icon: 'fa-play'
+    });
+    if (confirmedStart) {
         db.update('productionOrders', id, { status: 'IN_PROGRESS' });
         showToast('Produksi dimulai!', 'success');
         renderProductionOrders();
@@ -17965,7 +18319,7 @@ window.openCompleteProductionModal = (id) => {
     showModal('Laporan Selesai Produksi', body, footer);
 };
 
-window.completeProduction = (id) => {
+window.completeProduction = async (id) => {
     const prod = db.findById('productionOrders', id);
     const bom = db.findById('boms', prod.bomId);
 
@@ -17993,7 +18347,15 @@ window.completeProduction = (id) => {
 
     if (validationFailed) return;
 
-    if (!confirm('Data final? Stok bahan baku akan dipotong dan stok barang jadi akan ditambah.')) return;
+    const confirmedPost = await window.showConfirmDialog({
+        title: 'Posting Hasil Produksi',
+        message: 'Pastikan data sudah final.<br><br><span class="text-xs text-slate-500">Stok bahan baku akan dipotong dan stok barang jadi akan ditambahkan ke sistem.</span>',
+        confirmText: 'Ya, Posting Hasil',
+        cancelText: 'Periksa Kembali',
+        type: 'primary',
+        icon: 'fa-boxes'
+    });
+    if (!confirmedPost) return;
 
     // 1. Deduct RM Stock
     actualUsages.forEach(usage => {
@@ -18056,8 +18418,16 @@ window.completeProduction = (id) => {
     renderProductionOrders();
 };
 
-window.deleteProduction = (id) => {
-    if (confirm('Yakin hapus rencana produksi ini?')) {
+window.deleteProduction = async (id) => {
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus Rencana Produksi',
+        message: 'Yakin ingin menghapus rencana produksi ini?',
+        confirmText: 'Ya, Hapus',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-trash-alt'
+    });
+    if (confirmed) {
         db.delete('productionOrders', id);
         renderProductionOrders();
     }

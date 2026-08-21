@@ -372,7 +372,15 @@ window.saveRole = async () => {
 };
 
 window.deleteRole = async (roleId) => {
-    if (!confirm('Yakin hapus peran ini?')) return;
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus Peran',
+        message: 'Yakin ingin menghapus peran ini? Pengguna dengan peran ini mungkin kehilangan akses tertentu.',
+        confirmText: 'Ya, Hapus',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-user-shield'
+    });
+    if (!confirmed) return;
     try {
         await api.deleteRole(roleId);
         showToast('Peran berhasil dihapus', 'success');
@@ -706,11 +714,22 @@ window.exportSystemDatabase = () => {
     showToast('Database berhasil diekspor');
 };
 
-window.importSystemDatabase = (event) => {
+window.importSystemDatabase = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
 
-    if (!confirm('PERINGATAN: Mengimpor database akan menghapus semua data saat ini! Lanjutkan?')) return;
+    const confirmed = await window.showConfirmDialog({
+        title: 'Peringatan Impor Database',
+        message: 'PERINGATAN: Mengimpor database akan menimpa dan <strong>menghapus semua data saat ini</strong>! Apakah Anda yakin ingin melanjutkan?',
+        confirmText: 'Lanjutkan Impor',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-exclamation-triangle'
+    });
+    if (!confirmed) {
+        event.target.value = '';
+        return;
+    }
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -756,7 +775,15 @@ window.toggleMaintenanceMode = () => {
 };
 
 window.clearSystemLogs = async () => {
-    if (!confirm('Hapus semua log aktivitas? Tindakan ini tidak dapat dibatalkan.')) return;
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus Log Aktivitas',
+        message: 'Hapus semua log aktivitas sistem? Tindakan ini bersifat permanen dan tidak dapat dibatalkan.',
+        confirmText: 'Ya, Bersihkan Log',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-trash-alt'
+    });
+    if (!confirmed) return;
     try {
         // Hapus semua log via API — ambil dulu semua ID lalu delete satu per satu
         const logs = await api.read('systemLogs');

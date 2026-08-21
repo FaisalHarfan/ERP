@@ -939,7 +939,15 @@ window.deleteInventoryItem = async (id) => {
     const item = (window._tempInventoryItems || []).find(it => it.id === id) || db.findById('inventoryItems', id);
     if (!item) return;
 
-    if (!confirm(`⚠️ HAPUS PERMANEN: ${item.itemName} (${item.itemCode})?\n\nSemua transaksi (Masuk/Keluar), history di Stock Card, item di SO/PO/RFQ, serta BOM yang menggunakan item ini di SELURUH departemen akan ikut TERHAPUS.\n\nLanjutkan?`)) return;
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus Item Permanen',
+        message: `⚠️ <strong>HAPUS PERMANEN:</strong> ${item.itemName} (${item.itemCode})?<br><br><span class="text-xs text-slate-500">Semua transaksi (Masuk/Keluar), riwayat Stock Card, item di SO/PO/RFQ, serta BOM yang menggunakan item ini di SELURUH departemen akan ikut TERHAPUS.</span>`,
+        confirmText: 'Ya, Hapus Permanen',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-exclamation-triangle'
+    });
+    if (!confirmed) return;
 
     try {
         await api.deleteInventoryItem(id);
@@ -3095,7 +3103,7 @@ function renderInventoryPOReceipt() {
             </tr>`;
     }).join('');
 
-    if (pos.length === 0) rows = `<tr><td colspan="6" class="py-32 text-center text-slate-300 font-black uppercase tracking-widest opacity-40 italic"><i class="fas fa-truck-loading text-5xl mb-4"></i><br>${tab === 'pending' ? 'Tidak ada antrian penerimaan barang' : 'Belum ada riwayat penerimaan'}</td></tr>`;
+    if (pos.length === 0) rows = `<tr><td colspan="6" class="py-12 text-center text-slate-400 text-sm font-medium">${tab === 'pending' ? 'Belum ada antrean penerimaan barang' : 'Belum ada riwayat penerimaan barang'}</td></tr>`;
 
     mainContent.innerHTML = `
         <div id="por-list-view" class="animate-in fade-in duration-300 h-[calc(100vh-64px)] flex flex-col bg-slate-50 -m-4 sm:-m-6">
@@ -5650,7 +5658,15 @@ window.printWIPReport = () => {
 window.deleteInventoryReturn = async function(id, type) {
     const tableName = type === 'return' ? 'salesReturns' : 'productExchanges';
     const label = type === 'return' ? 'Retur Penjualan' : 'Tukar Guling';
-    if (!confirm(`Yakin ingin menghapus dokumen ${label} ini?`)) return;
+    const confirmed = await window.showConfirmDialog({
+        title: `Hapus ${label}`,
+        message: `Yakin ingin menghapus dokumen <strong>${label}</strong> ini?`,
+        confirmText: 'Ya, Hapus',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-trash-alt'
+    });
+    if (!confirmed) return;
     
     try {
         await db.delete(tableName, id);

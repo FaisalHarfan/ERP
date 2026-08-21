@@ -144,7 +144,7 @@ window.updatePurchaseAnalytics = () => {
     switch (valueField) {
         case 'rfq': targetDocs = filterByRange(purchaseRFQs); break;
         case 'purchase_order': targetDocs = filterByRange(purchaseOrders); break;
-        case 'purchase_invoice': targetDocs = filterByRange(purchaseInvoices); break;
+        case 'purchase_invoice': targetDocs = filterByRange(purchaseInvoices.filter(i => i.status !== 'CANCELLED' && i.status !== 'CANCELED')); break;
         default: targetDocs = filterByRange(purchaseOrders);
     }
 
@@ -314,7 +314,8 @@ window.updatePurchaseInvoiceTrends = () => {
     else if (period === 'Half-Yearly') periods = ['H1', 'H2'];
     else if (period === 'Yearly') periods = [year.toString()];
     
-    const invoices = db.read('purchaseInvoices').filter(inv => {
+    const invoices = (db.read('purchaseInvoices') || []).filter(inv => {
+        if (inv.status === 'CANCELLED' || inv.status === 'CANCELED') return false;
         const d = new Date(inv.date || inv.createdAt);
         return d.getFullYear() === year;
     });

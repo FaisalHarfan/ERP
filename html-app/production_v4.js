@@ -2823,7 +2823,15 @@ window.viewMOHistoryModal = (id) => {
 window.deleteMO = async (id) => {
     const mo = db.findById('productionOrders', id);
     if (!mo) return;
-    if (!confirm(`Hapus MO ${mo.moNumber}? Catatan: Stok bahan yang sudah dikurangi saat Start TIDAK akan otomatis dikembalikan. Lakukan penyusuaian stok manual jika perlu.`)) return;
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus Manufacturing Order',
+        message: `Hapus MO <strong>${mo.moNumber}</strong>?<br><br><span class="text-xs text-slate-500">Catatan: Stok bahan yang sudah dikurangi saat Start TIDAK akan otomatis dikembalikan.</span>`,
+        confirmText: 'Ya, Hapus MO',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-trash-alt'
+    });
+    if (!confirmed) return;
     
     try {
         await db.delete('productionOrders', id);
@@ -3409,8 +3417,16 @@ window.saveFinishProduction = (id) => {
     renderDailyProduction();
 };
 
-window.deleteDailyLog = (id) => {
-    if (!confirm('Hapus catatan produksi ini? Catatan: Stok tidak akan dikembalikan otomatis.')) return;
+window.deleteDailyLog = async (id) => {
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus Catatan Produksi',
+        message: 'Hapus catatan produksi ini?<br><span class="text-xs text-slate-500">Catatan: Stok tidak akan dikembalikan otomatis.</span>',
+        confirmText: 'Ya, Hapus',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-trash-alt'
+    });
+    if (!confirmed) return;
     db.delete('dailyProductionLogs', id);
     renderDailyProduction();
 };
@@ -3657,8 +3673,16 @@ window.saveRepacking = () => {
     renderProductionFinalization();
 };
 
-window.deleteRepackingLog = (id) => {
-    if (!confirm('Hapus log repacking ini? Catatan: Stok tidak dikembalikan otomatis.')) return;
+window.deleteRepackingLog = async (id) => {
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus Log Repacking',
+        message: 'Hapus log repacking ini?<br><span class="text-xs text-slate-500">Catatan: Stok tidak dikembalikan otomatis.</span>',
+        confirmText: 'Ya, Hapus',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-trash-alt'
+    });
+    if (!confirmed) return;
     db.delete('repackingLogs', id);
     renderProductionFinalization();
 };
@@ -4146,7 +4170,15 @@ window.saveBOM = async (id = '') => {
 };
 
 window.deleteBOM = async (id) => {
-    if (!confirm('Hapus resep ini?')) return;
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus Resep BOM',
+        message: 'Yakin ingin menghapus resep (Bill of Materials) ini?',
+        confirmText: 'Ya, Hapus',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-trash-alt'
+    });
+    if (!confirmed) return;
     await db.delete('bomHeaders', id);
     await db.sync('bomHeaders');
     await db.sync('bomMaterials');
@@ -4594,8 +4626,16 @@ window.saveMachine = (id = null) => {
     renderMachineMaster();
 };
 
-window.deleteMachine = (id) => {
-    if (!confirm('Yakin ingin menghapus data mesin ini?')) return;
+window.deleteMachine = async (id) => {
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus Data Mesin',
+        message: 'Yakin ingin menghapus data mesin ini dari master mesin?',
+        confirmText: 'Ya, Hapus',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-trash-alt'
+    });
+    if (!confirmed) return;
     db.delete('machines', id);
     showToast('Mesin berhasil dihapus', 'success');
     renderMachineMaster();
