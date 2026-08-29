@@ -1561,9 +1561,9 @@ window.renderProductToProductConversionPage = () => {
         </div>
 
         <!-- Content Area -->
-        <div class="flex-1 overflow-y-auto custom-scrollbar p-8 bg-slate-50/30">
-            <div class="max-w-6xl mx-auto space-y-6">
-                <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-8">
+        <div class="flex-1 overflow-y-auto custom-scrollbar p-6 bg-slate-50/30">
+            <div class="w-full space-y-6">
+                <div class="bg-white rounded-3xl border border-slate-100 shadow-sm p-6">
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 bg-slate-50/50 p-6 rounded-2xl border border-slate-100">
                         <div class="space-y-2">
                             <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tanggal Konversi</label>
@@ -3059,23 +3059,24 @@ function renderInventoryPOReceipt() {
 
     const defaultPORSort = (arr) => [...arr].sort((a, b) => new Date(b.date) - new Date(a.date));
     let pos = window.applyTableSort(rawPos, `inv_por_${tab}`, defaultPORSort);
+    const paginated = window.paginateTable(pos, `inv_por_${tab}`, 25);
 
-    let rows = pos.map(po => {
-        const dropdownOptions = [];
+    let rows = paginated.items.map(po => {
+        let actionHtml = '';
         if (tab === 'pending') {
-            if (canEdit) {
-                dropdownOptions.push(['receive', 'Terima Barang', 'fas fa-box-open text-blue-500']);
-                if (po.status === 'PARTIALLY RECEIVED') {
-                    dropdownOptions.push(['force_complete', 'Selesaikan Penerimaan', 'fas fa-check-double text-emerald-500']);
-                }
-            }
-            dropdownOptions.push(['view', 'Lihat PO', 'fas fa-eye text-slate-500']);
+            actionHtml = canEdit ? `
+                <button onclick="handleInventoryPRAction('receive', '${po.id}')" 
+                    class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-sm inline-flex items-center gap-1.5 active:scale-95 cursor-pointer">
+                    <i class="fas fa-box-open text-[11px]"></i> Terima Barang
+                </button>
+            ` : '<span class="text-xs text-slate-300 font-medium px-2">-</span>';
         } else {
-            dropdownOptions.push(['print_npb', 'Cetak NPB', 'fas fa-print text-slate-500']);
-            dropdownOptions.push(['detail', 'Detail Penerimaan', 'fas fa-eye text-slate-500']);
+            const dropdownOptions = [
+                ['print_npb', 'Cetak NPB', 'fas fa-print text-slate-500'],
+                ['detail', 'Detail Penerimaan', 'fas fa-eye text-slate-500']
+            ];
+            actionHtml = window.renderActionsDropdownHtml(`por-${tab}-${po.id}`, 'handleInventoryPRAction', dropdownOptions);
         }
-
-        const actionHtml = window.renderActionsDropdownHtml(`por-${tab}-${po.id}`, 'handleInventoryPRAction', dropdownOptions);
 
         return `
             <tr class="border-b border-slate-50 hover:bg-slate-50/50 transition-colors group">
@@ -3130,9 +3131,16 @@ function renderInventoryPOReceipt() {
                             </button>
                             
                             <!-- Dropdown Content -->
-                            <div id="por_date_dropdown" class="absolute left-0 mt-2 w-72 bg-white border border-slate-100 rounded-2xl shadow-xl z-[200] hidden p-5 animate-in fade-in zoom-in-95 duration-200">
-                                <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Filter Berdasarkan Tanggal</h4>
-                                <div class="space-y-4">
+                            <div id="por_date_dropdown" class="absolute left-0 mt-2 w-80 bg-white border border-slate-100 rounded-2xl shadow-xl z-[200] hidden p-5 animate-in fade-in zoom-in-95 duration-200">
+                                <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Pilihan Cepat</h4>
+                                <div class="grid grid-cols-2 gap-1.5 mb-4">
+                                    <button type="button" onclick="setQuickDatePreset('por_header_start','por_header_end','today','applyPORHeaderFilter')" class="py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-[10px] font-bold text-slate-600 transition-colors text-center border border-slate-100">Hari Ini</button>
+                                    <button type="button" onclick="setQuickDatePreset('por_header_start','por_header_end','this_month','applyPORHeaderFilter')" class="py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-[10px] font-bold text-slate-600 transition-colors text-center border border-slate-100">Bulan Ini</button>
+                                    <button type="button" onclick="setQuickDatePreset('por_header_start','por_header_end','last_30_days','applyPORHeaderFilter')" class="py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-[10px] font-bold text-slate-600 transition-colors text-center border border-slate-100">30 Hari Terakhir</button>
+                                    <button type="button" onclick="setQuickDatePreset('por_header_start','por_header_end','this_year','applyPORHeaderFilter')" class="py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-[10px] font-bold text-slate-600 transition-colors text-center border border-slate-100">Tahun Ini</button>
+                                </div>
+                                <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Rentang Manual</h4>
+                                <div class="space-y-3">
                                     <div>
                                         <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Dari Tanggal</label>
                                         <input type="date" id="por_header_start" value="${filters.start || ''}" class="w-full border border-slate-100 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 focus:bg-white focus:border-blue-500 outline-none transition-all">
@@ -3202,9 +3210,7 @@ function renderInventoryPOReceipt() {
                 </table>
             </div>
             
-            <div class="bg-slate-50 border-t border-slate-200 p-2 text-center text-[10px] font-black text-slate-400 tracking-widest uppercase shrink-0">
-                TOTAL: ${pos.length} DOKUMEN MENUNGGU
-            </div>
+            ${window.renderPaginationBar(`inv_por_${tab}`, paginated, 'renderInventoryPOReceipt')}
         </div>
         <div id="gr-form-view" class="hidden"></div>
     `;
@@ -3363,8 +3369,8 @@ window.openPOReceiptModal = (id) => {
             </div>
             
             <div class="flex-1 overflow-y-auto custom-scrollbar pb-32">
-                <div class="w-full px-8 py-8 max-w-7xl mx-auto space-y-8">
-                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm">
+                <div class="w-full p-6 space-y-6">
+                    <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
                         <h3 class="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-6 flex items-center gap-2">
                             <i class="fas fa-info-circle"></i> INFORMASI PENERIMAAN
                         </h3>
@@ -5945,10 +5951,10 @@ window.openReceiveReturnForm = async function (id, type) {
 
             <!-- Content Area -->
             <div class="flex-1 overflow-y-auto custom-scrollbar">
-                <div class="max-w-7xl mx-auto px-8 py-10 space-y-8">
+                <div class="w-full p-6 space-y-6">
                     
                     <!-- 1. INFORMASI PENERIMAAN -->
-                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm">
+                    <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm">
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div class="space-y-2">
                                 <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tanggal Terima</label>

@@ -743,7 +743,7 @@ window.openMOModal = async (stagePreset = '') => {
         <div class="animate-in fade-in slide-in-from-bottom-2 duration-400 -m-4 sm:-m-6 h-[calc(100vh-64px)] flex flex-col overflow-hidden bg-white">
 
             <!-- Sticky Action Bar -->
-            <div class="sticky top-0 z-40 bg-white border-b border-slate-100 px-8 py-4 flex items-center justify-between shrink-0 shadow-sm">
+            <div class="sticky top-0 z-40 bg-white border-b border-slate-100 px-6 py-3.5 flex items-center justify-between shrink-0 shadow-sm">
                 <div></div>
                 <div class="flex items-center gap-3">
                     <button type="button" onclick="renderProductionMO()"
@@ -759,7 +759,7 @@ window.openMOModal = async (stagePreset = '') => {
 
             <!-- Scrollable Content -->
             <div class="flex-1 overflow-y-auto bg-slate-50/50 pb-32">
-                <div class="w-full p-8 space-y-6">
+                <div class="w-full p-6 space-y-6">
 
 
 
@@ -1798,7 +1798,7 @@ window.openCompleteMOModal = (id) => {
         <div class="animate-in fade-in slide-in-from-bottom-2 duration-400 -m-4 sm:-m-6 h-[calc(100vh-64px)] flex flex-col overflow-hidden bg-white">
 
             <!-- Sticky Action Bar -->
-            <div class="sticky top-0 z-40 bg-white border-b border-slate-100 px-8 py-4 flex items-center justify-between shrink-0 shadow-sm">
+            <div class="sticky top-0 z-40 bg-white border-b border-slate-100 px-6 py-3.5 flex items-center justify-between shrink-0 shadow-sm">
                 <div></div>
                 <div class="flex items-center gap-3">
                     <button type="button" onclick="window._completeMOReferrer === 'dashboard' ? renderProductionDashboard() : renderProductionMO()"
@@ -1814,7 +1814,7 @@ window.openCompleteMOModal = (id) => {
 
             <!-- Scrollable Content -->
             <div class="flex-1 overflow-y-auto bg-slate-50/50 pb-32">
-                <div class="w-full p-8 space-y-6">
+                <div class="w-full p-6 space-y-6">
 
                     <!-- Section 1: Info MO -->
                     <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm">

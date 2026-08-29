@@ -475,7 +475,14 @@ window.renderFinanceAccounts = function () {
         filteredAccounts = accounts.filter(a => finalIds.has(a.id));
         
         // Auto-expand all when searching
-        filteredAccounts.forEach(a => { if (a.isGroup) window._coaExpandedNodes[a.id] = true; });
+        accountTypes.forEach(t => {
+            window._coaExpandedNodes[t.id] = true;
+            window._coaExpandedNodes[`type_${t.id}`] = true;
+        });
+        window._coaExpandedNodes['type_unknown'] = true;
+        filteredAccounts.forEach(a => {
+            window._coaExpandedNodes[a.id] = true;
+        });
     }
 
     const getCalculatedBalance = (node) => {
@@ -626,7 +633,7 @@ window.renderFinanceAccounts = function () {
     };
 
     mc.innerHTML = `
-        <div class="max-w-5xl mx-auto space-y-6 pb-20 animate-in fade-in duration-500">
+        <div class="w-full space-y-6 pb-20 animate-in fade-in duration-500">
             <!-- Modern Search Bar Filter -->
             <div class="flex flex-col md:flex-row items-center justify-between gap-4">
                 <div class="relative w-full md:w-96 group">
@@ -719,9 +726,18 @@ window.toggleCOANode = function(id, event) {
 };
 
 window.expandAllCOA = function() {
+    window._coaExpandedNodes = window._coaExpandedNodes || {};
+    const accountTypes = db.read('accountTypes') || [];
+    accountTypes.forEach(t => {
+        window._coaExpandedNodes[t.id] = true;
+        window._coaExpandedNodes[`type_${t.id}`] = true;
+    });
+    window._coaExpandedNodes['type_unknown'] = true;
     const accounts = db.read('accounts') || [];
     accounts.forEach(a => {
-        if (a.isGroup) window._coaExpandedNodes[a.id] = true;
+        if (a.isGroup || a.parentId || a.children) {
+            window._coaExpandedNodes[a.id] = true;
+        }
     });
     renderFinanceAccounts();
 };
@@ -1387,7 +1403,7 @@ window.renderFinanceExpenses = function () {
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
-                        <thead class="bg-slate-50/50 sticky top-0">
+                        <thead class="bg-slate-50 border-b border-slate-200">
                             <tr>
                                 ${window.sortTh('fin_exp','paidTo','string','Pengeluaran Kepada','renderFinanceExpenses')}
                                 ${window.sortTh('fin_exp','description','string','Kebutuhan / Deskripsi','renderFinanceExpenses')}
@@ -1604,7 +1620,7 @@ window.renderFinanceReceipts = function () {
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
-                        <thead class="bg-slate-50/50 sticky top-0">
+                        <thead class="bg-slate-50 border-b border-slate-200">
                             <tr>
                                 ${window.sortTh('fin_rec','receivedFrom','string','Penerimaan Dari','renderFinanceReceipts')}
                                 ${window.sortTh('fin_rec','description','string','Keterangan','renderFinanceReceipts')}
@@ -2471,7 +2487,7 @@ window.renderFinancePartnerLedger = function () {
             </button>
         </div>
 
-        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden printable-area p-8 font-sans max-w-6xl mx-auto">
+        <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden printable-area p-6 font-sans w-full">
             <div class="flex justify-between items-start mb-12">
                 <div class="text-xs text-gray-500 leading-relaxed text-slate-400">
                     <h2 class="text-sm font-bold text-gray-800 mb-1">PT Tana Subur Nusantara</h2>
@@ -2646,7 +2662,7 @@ window.renderFinanceAR = function () {
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
-                        <thead class="bg-slate-50/50 sticky top-0">
+                        <thead class="bg-slate-50 border-b border-slate-200">
                             <tr>
                                 ${window.sortTh('fin_ar','customerName','string','Customer Name','renderFinanceAR')}
                                 ${window.sortTh('fin_ar','status','string','Status','renderFinanceAR','text-center')}
@@ -2815,8 +2831,8 @@ window.renderFinanceAR = function () {
         tableHtml = `
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="bg-slate-50/50">
+                    <thead class="bg-slate-50 border-b border-slate-200">
+                        <tr>
                             <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Tanggal</th>
                             <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Metode & Catatan</th>
                             <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Faktur</th>
@@ -3164,11 +3180,21 @@ window.openFinanceARPaymentModal = () => {
                                         }).join('')}
                                     </div>
                                     <!-- Footer Actions -->
-                                    <div class="border-t border-slate-100 py-1">
-                                        <div onclick="navigateTo('customers-new')" class="px-4 py-3 flex items-center gap-3 text-sm font-semibold text-slate-500 hover:bg-slate-50 cursor-pointer transition-colors">
-                                            <span class="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 text-xs"><i class="fas fa-plus"></i></span>
+                                    <div class="border-t border-slate-100 p-2 bg-white space-y-1">
+                                        <button type="button" onclick="openCustomerModal(null, 'AR'); toggleFinanceDropdown('ar_customer_dropdown')"
+                                            class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
+                                            <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shrink-0">
+                                                <i class="fas fa-plus text-xs"></i>
+                                            </div>
                                             Buat Customer Baru
-                                        </div>
+                                        </button>
+                                        <button type="button" onclick="openAdvancedCustomerSearch('AR')"
+                                            class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
+                                            <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shrink-0">
+                                                <i class="fas fa-search text-xs"></i>
+                                            </div>
+                                            Search Customer (Advanced Search)
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -3543,7 +3569,7 @@ window.renderFinanceAP = function () {
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left border-collapse">
-                        <thead class="bg-slate-50/50 sticky top-0">
+                        <thead class="bg-slate-50 border-b border-slate-200">
                             <tr>
                                 ${window.sortTh('fin_ap','supplierName','string','Supplier Name','renderFinanceAP')}
                                 ${window.sortTh('fin_ap','status','string','Status','renderFinanceAP','text-center')}
@@ -3721,8 +3747,8 @@ window.renderFinanceAP = function () {
 
             <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                 <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="bg-slate-50/50">
+                    <thead class="bg-slate-50 border-b border-slate-200">
+                        <tr>
                             <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Tanggal</th>
                             <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Metode & Catatan</th>
                             <th class="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Tagihan</th>
@@ -3971,11 +3997,21 @@ window.openFinanceAPPaymentModal = () => {
                                         }).join('')}
                                     </div>
                                     <!-- Footer Actions -->
-                                    <div class="border-t border-slate-100 py-1">
-                                        <div onclick="navigateTo('suppliers-new')" class="px-4 py-3 flex items-center gap-3 text-sm font-semibold text-slate-500 hover:bg-slate-50 cursor-pointer transition-colors">
-                                            <span class="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 text-xs"><i class="fas fa-plus"></i></span>
+                                    <div class="border-t border-slate-100 p-2 bg-white space-y-1">
+                                        <button type="button" onclick="navigateTo('suppliers-new')"
+                                            class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
+                                            <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shrink-0">
+                                                <i class="fas fa-plus text-xs"></i>
+                                            </div>
                                             Buat Supplier Baru
-                                        </div>
+                                        </button>
+                                        <button type="button" onclick="openAdvancedSupplierSearch('AP')"
+                                            class="flex items-center gap-3 w-full px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors rounded-xl font-bold text-left group whitespace-nowrap">
+                                            <div class="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-500 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors shrink-0">
+                                                <i class="fas fa-search text-xs"></i>
+                                            </div>
+                                            Search Supplier (Advanced Search)
+                                        </button>
                                     </div>
                                 </div>
                             </div>

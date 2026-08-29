@@ -288,7 +288,7 @@ window.openSalesReturnForm = function (soId = null) {
         <div id="sr-form-view" class="animate-in slide-in-from-bottom-10 duration-500 pb-20 bg-slate-50/30 min-h-screen">
             <!-- Compact Header -->
             <div class="bg-white border-b border-slate-100 mb-6">
-                <div class="max-w-7xl mx-auto px-8 py-6 flex justify-between items-center">
+                <div class="w-full px-6 py-4 flex justify-between items-center">
                     <div>
                         <h2 class="text-xl font-black text-slate-800 tracking-tight">BUAT SALES RETURN BARU</h2>
                         <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1 flex items-center gap-1.5">
@@ -304,7 +304,7 @@ window.openSalesReturnForm = function (soId = null) {
                 </div>
             </div>
 
-            <div class="max-w-7xl mx-auto px-8 mt-10 space-y-8">
+            <div class="w-full px-6 mt-4 space-y-6">
                 <!-- 1. Header Info -->
                 <div class="bg-white rounded-3xl p-10 border border-slate-100 shadow-sm space-y-8">
                     <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
@@ -1246,7 +1246,7 @@ window.openExchangeForm = function (soId = null) {
         <div id="ex-form-view" class="animate-in slide-in-from-bottom-10 duration-500 pb-20 bg-slate-50/30 min-h-screen">
             <!-- Compact Header -->
             <div class="bg-white border-b border-slate-100 mb-6">
-                <div class="max-w-7xl mx-auto px-8 py-6 flex justify-between items-center">
+                <div class="w-full px-6 py-4 flex justify-between items-center">
                     <div>
                         <h2 class="text-xl font-black text-slate-800 tracking-tight">BUAT TUKAR GULING BARU</h2>
                         <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1 flex items-center gap-1.5">
@@ -1262,7 +1262,7 @@ window.openExchangeForm = function (soId = null) {
                 </div>
             </div>
 
-            <div class="max-w-7xl mx-auto px-8 mt-10 space-y-8">
+            <div class="w-full px-6 mt-4 space-y-6">
                 <!-- 1. INFORMASI DASAR -->
                 <div class="bg-white rounded-3xl p-10 border border-slate-100 shadow-sm space-y-8">
                     <h3 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">

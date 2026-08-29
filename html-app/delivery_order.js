@@ -439,9 +439,9 @@ window.openBlankDeliveryModal = function () {
             </div>
 
             <!-- Scrollable Content -->
-            <div class="flex-1 overflow-y-auto bg-slate-50/30 p-8 custom-scrollbar pb-32">
-                <div class="max-w-6xl mx-auto space-y-8">
-                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-8">
+            <div class="flex-1 overflow-y-auto bg-slate-50/30 p-6 custom-scrollbar pb-32">
+                <div class="w-full space-y-6">
+                    <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm space-y-6">
                         ${body}
                     </div>
                     
@@ -810,9 +810,9 @@ window.openDeliveryFromSOModal = function (soId = null) {
             </div>
 
             <!-- Scrollable Content -->
-            <div class="flex-1 overflow-y-auto bg-slate-50/30 p-8 custom-scrollbar pb-32">
-                <div class="max-w-6xl mx-auto space-y-8">
-                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-8">
+            <div class="flex-1 overflow-y-auto bg-slate-50/30 p-6 custom-scrollbar pb-32">
+                <div class="w-full space-y-6">
+                    <div class="bg-white rounded-3xl p-6 border border-slate-100 shadow-sm space-y-6">
                         ${body}
                     </div>
                     
@@ -1570,7 +1570,7 @@ window.openConfirmShipmentModal = function(id) {
 
                 <!-- Scrollable Content -->
                 <div class="flex-1 overflow-y-auto custom-scrollbar bg-white/30 pb-32">
-                    <div class="w-full px-10 py-10 max-w-7xl mx-auto">
+                    <div class="w-full p-6 space-y-6">
                         ${body}
                     </div>
                 </div>

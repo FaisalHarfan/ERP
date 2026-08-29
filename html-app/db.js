@@ -599,51 +599,2094 @@ const db = {
             ]);
         }
 
-        // Seed Default Accounts (COA)
-        if (db.read('accounts').length === 0) {
+        // Seed Default Account Types & Accounts (COA 2026)
+        if (!db.read('accountTypes') || db.read('accountTypes').length === 0) {
+            db.save('accountTypes', [
+    {
+        "id": "type_asset",
+        "name": "Aset / Aktiva",
+        "base_type": "ASSET",
+        "baseType": "ASSET"
+    },
+    {
+        "id": "type_liability",
+        "name": "Liabilitas / Hutang",
+        "base_type": "LIABILITY",
+        "baseType": "LIABILITY"
+    },
+    {
+        "id": "type_equity",
+        "name": "Ekuitas / Modal",
+        "base_type": "EQUITY",
+        "baseType": "EQUITY"
+    },
+    {
+        "id": "type_income",
+        "name": "Pendapatan",
+        "base_type": "INCOME",
+        "baseType": "INCOME"
+    },
+    {
+        "id": "type_cogs",
+        "name": "Harga Pokok Penjualan",
+        "base_type": "EXPENSE",
+        "baseType": "EXPENSE"
+    },
+    {
+        "id": "type_expense",
+        "name": "Beban / Biaya Operasional",
+        "base_type": "EXPENSE",
+        "baseType": "EXPENSE"
+    },
+    {
+        "id": "type_other_income",
+        "name": "Pendapatan Lainnya",
+        "base_type": "INCOME",
+        "baseType": "INCOME"
+    },
+    {
+        "id": "type_other_expense",
+        "name": "Beban Lainnya",
+        "base_type": "EXPENSE",
+        "baseType": "EXPENSE"
+    }
+]);
+        }
+        if (!db.read('accounts') || db.read('accounts').length === 0) {
             db.save('accounts', [
-                // Assets (1000)
-                { id: 'acc_cash', code: '1101', name: '', type: 'ASSET', description: 'Kas tunai perusahaan', status: 'ACTIVE' },
-                { id: 'acc_bank', code: '1102', name: '', type: 'ASSET', description: 'Rekening Bank BCA', status: 'ACTIVE' },
-                { id: 'acc_ar', code: '1201', name: '', type: 'ASSET', description: 'Tagihan ke pelanggan', status: 'ACTIVE' },
-                { id: 'acc_inv_rm', code: '1301', name: '', type: 'ASSET', description: 'Stok Bahan Baku', status: 'ACTIVE' },
-                { id: 'acc_inv_wip', code: '1303', name: '', type: 'ASSET', description: 'Stok WIP (Cancel)', status: 'ACTIVE' },
-                { id: 'acc_inv_fg', code: '1302', name: '', type: 'ASSET', description: 'Stok Gudang Jadi', status: 'ACTIVE' },
-
-                // Liabilities (2000)
-                { id: 'acc_ap', code: '2101', name: '', type: 'LIABILITY', description: 'Hutang ke supplier', status: 'ACTIVE' },
-                { id: 'acc_tax_payable', code: '2102', name: '', type: 'LIABILITY', description: 'Hutang Pajak Penjualan/Pembelian', status: 'ACTIVE' },
-
-                // Equity (3000)
-                { id: 'acc_equity', code: '3101', name: '', type: 'EQUITY', description: 'Modal awal', status: 'ACTIVE' },
-
-                // Income (4000)
-                { id: 'acc_sales', code: '4101', name: '', type: 'INCOME', description: 'Hasil penjualan produk', status: 'ACTIVE' },
-                { id: 'acc_sales_return', code: '4102', name: '', type: 'INCOME', description: 'Pengurang pendapatan (Retur)', status: 'ACTIVE' },
-
-                // Expense (5000)
-                { id: 'acc_cogs', code: '5101', name: '', type: 'EXPENSE', description: 'Cost of Goods Sold', status: 'ACTIVE' },
-                { id: 'acc_purchase_return', code: '5102', name: '', type: 'EXPENSE', description: 'Pengurang beban (Retur)', status: 'ACTIVE' },
-                { id: 'acc_exp_prod', code: '5201', name: '', type: 'EXPENSE', description: 'Biaya operasional produksi', status: 'ACTIVE' },
-                { id: 'acc_exp_op', code: '5301', name: '', type: 'EXPENSE', description: 'Listrik, Air, Wifi, dll', status: 'ACTIVE' },
-                { id: 'acc_exp_mkt', code: '5302', name: '', type: 'EXPENSE', description: 'Iklan dan promosi', status: 'ACTIVE' }
-            ]);
+    {
+        "id": "acc_grp_11",
+        "code": "11",
+        "name": "KAS & BANK",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_1101",
+        "code": "1101",
+        "name": "KAS",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_11",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1101_01",
+        "code": "1101.01",
+        "name": "KAS",
+        "type": "type_asset",
+        "accountType": "Kas/Bank",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1101",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_1102",
+        "code": "1102",
+        "name": "BANK",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_11",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1102_01",
+        "code": "1102.01",
+        "name": "BANK BCA TSN IDR_1188",
+        "type": "type_asset",
+        "accountType": "Kas/Bank",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1102",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1102_07",
+        "code": "1102.07",
+        "name": "BANK BCA PTC IDR_2130",
+        "type": "type_asset",
+        "accountType": "Kas/Bank",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1102",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1102_08",
+        "code": "1102.08",
+        "name": "BANK BRI PTC IDR_6505",
+        "type": "type_asset",
+        "accountType": "Kas/Bank",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1102",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_1103",
+        "code": "1103",
+        "name": "AYAT SILANG",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_11",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1103_01",
+        "code": "1103.01",
+        "name": "AYAT SILANG KAS - BANK",
+        "type": "type_asset",
+        "accountType": "Kas/Bank",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1103",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_1201",
+        "code": "1201",
+        "name": "PIUTANG USAHA",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_11",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1201_01",
+        "code": "1201.01",
+        "name": "PIUTANG USAHA",
+        "type": "type_asset",
+        "accountType": "Piutang Usaha",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1201",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1201_02",
+        "code": "1201.02",
+        "name": "PIUTANG USAHA RAGU-2",
+        "type": "type_asset",
+        "accountType": "Piutang Usaha",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1201",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_1202",
+        "code": "1202",
+        "name": "PIUTANG KARYAWAN",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_11",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1202_01",
+        "code": "1202.01",
+        "name": "PIUTANG KARYAWAN TETAP",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1202",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1202_02",
+        "code": "1202.02",
+        "name": "PIUTANG KARYAWAN LAINNYA",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1202",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1202_07",
+        "code": "1202.07",
+        "name": "PIUTANG DIREKSI",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1202",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1202_08",
+        "code": "1202.08",
+        "name": "PIUTANG PEMEGANG SAHAM",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1202",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_13",
+        "code": "13",
+        "name": "PERSEDIAAN",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1301_01",
+        "code": "1301.01",
+        "name": "PERSEDIAAN BAHAN BAKU",
+        "type": "type_asset",
+        "accountType": "Persediaan",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_13",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1301_02",
+        "code": "1301.02",
+        "name": "PERSEDIAAN BAHAN PEMBANTU",
+        "type": "type_asset",
+        "accountType": "Persediaan",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_13",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1301_03",
+        "code": "1301.03",
+        "name": "PERSEDIAAN BAHAN DALAM PROSES",
+        "type": "type_asset",
+        "accountType": "Persediaan",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_13",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1301_04",
+        "code": "1301.04",
+        "name": "PERSEDIAAN BARANG JADI",
+        "type": "type_asset",
+        "accountType": "Persediaan",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_13",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1302_01",
+        "code": "1302.01",
+        "name": "PERSEDIAAN SPARE PARTS - MESIN EXTRUDER",
+        "type": "type_asset",
+        "accountType": "Persediaan",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_13",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1302_02",
+        "code": "1302.02",
+        "name": "PERSEDIAAN SPARE PARTS - MESIN LAINNYA",
+        "type": "type_asset",
+        "accountType": "Persediaan",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_13",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1303_01",
+        "code": "1303.01",
+        "name": "PERSEDIAAN ELPIJI",
+        "type": "type_asset",
+        "accountType": "Persediaan",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_13",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1303_02",
+        "code": "1303.02",
+        "name": "PERSEDIAAN BAHAN BAKAR & PELUMAS",
+        "type": "type_asset",
+        "accountType": "Persediaan",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_13",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_14",
+        "code": "14",
+        "name": "PEMBAYARAN DIMUKA",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_1401",
+        "code": "1401",
+        "name": "UANG MUKA PEMBELIAN",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_14",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1401_01",
+        "code": "1401.01",
+        "name": "UM PEMBELIAN AKTIVA TETAP",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1401",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1401_02",
+        "code": "1401.02",
+        "name": "UM PEMBELIAN PERSEDIAAN",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1401",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_1402",
+        "code": "1402",
+        "name": "PAJAK DIBAYAR DIMUKA",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_14",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1402_01",
+        "code": "1402.01",
+        "name": "UM PPh Psl 21 / 26",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1402",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1402_02",
+        "code": "1402.02",
+        "name": "UM PPh Psl 22",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1402",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1402_03",
+        "code": "1402.03",
+        "name": "UM PPh Psl 23",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1402",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1402_04",
+        "code": "1402.04",
+        "name": "UM PPh Psl 25 / 29",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1402",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1402_05",
+        "code": "1402.05",
+        "name": "UM PPh Psl 4 (2)",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1402",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_1403",
+        "code": "1403",
+        "name": "BIAYA DIBAYAR DIMUKA",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_14",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1403_01",
+        "code": "1403.01",
+        "name": "BDD - BIAYA SEWA",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1403",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_1409",
+        "code": "1409",
+        "name": "PIUTANG LAIN-2",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_14",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1409_01",
+        "code": "1409.01",
+        "name": "BPJS KETENAGAKERJAAN",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1409",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1409_02",
+        "code": "1409.02",
+        "name": "BPJS KESEHATAN",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1409",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_1410",
+        "code": "1410",
+        "name": "BIAYA DITANGGUHKAN",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_14",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1410_01",
+        "code": "1410.01",
+        "name": "Biaya Ditangguhkan",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1410",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1410_02",
+        "code": "1410.02",
+        "name": "Proyek Dalam Pengerjaan",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1410",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_15",
+        "code": "15",
+        "name": "AKTIVA TETAP",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1501_01",
+        "code": "1501.01",
+        "name": "TANAH",
+        "type": "type_asset",
+        "accountType": "Aktiva Tetap",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_15",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1501_02",
+        "code": "1501.02",
+        "name": "BANGUNAN",
+        "type": "type_asset",
+        "accountType": "Aktiva Tetap",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_15",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1501_03",
+        "code": "1501.03",
+        "name": "MESIN-MESIN",
+        "type": "type_asset",
+        "accountType": "Aktiva Tetap",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_15",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1501_04",
+        "code": "1501.04",
+        "name": "KENDARAAN",
+        "type": "type_asset",
+        "accountType": "Aktiva Tetap",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_15",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1501_05",
+        "code": "1501.05",
+        "name": "PERLENGKAPAN KANTOR",
+        "type": "type_asset",
+        "accountType": "Aktiva Tetap",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_15",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1502_01",
+        "code": "1502.01",
+        "name": "AKUMULASI PENYUSUTAN BANGUNAN",
+        "type": "type_asset",
+        "accountType": "Aktiva Tetap",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_15",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1502_02",
+        "code": "1502.02",
+        "name": "AKUMULASI PENYUSUTAN MESIN-MESIN",
+        "type": "type_asset",
+        "accountType": "Aktiva Tetap",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_15",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1502_03",
+        "code": "1502.03",
+        "name": "AKUMULASI PENYUSUTAN KENDARAAN",
+        "type": "type_asset",
+        "accountType": "Aktiva Tetap",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_15",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1502_04",
+        "code": "1502.04",
+        "name": "AKUMULASI PENYUSUTAN PERLENGKAPAN KANTOR",
+        "type": "type_asset",
+        "accountType": "Aktiva Tetap",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_15",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_21",
+        "code": "21",
+        "name": "HUTANG LANCAR",
+        "type": "type_liability",
+        "baseType": "LIABILITY",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_2101",
+        "code": "2101",
+        "name": "HUTANG USAHA",
+        "type": "type_liability",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_21",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2101_01",
+        "code": "2101.01",
+        "name": "HUTANG USAHA IDR",
+        "type": "type_liability",
+        "accountType": "Hutang Usaha",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_2101",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_22",
+        "code": "22",
+        "name": "HUTANG BANK",
+        "type": "type_liability",
+        "baseType": "LIABILITY",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2201_01",
+        "code": "2201.01",
+        "name": "HUTANG PINJAMAN BPR",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_22",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_23",
+        "code": "23",
+        "name": "HUTANG PAJAK",
+        "type": "type_liability",
+        "baseType": "LIABILITY",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_2301",
+        "code": "2301",
+        "name": "PAJAK PERTAMBAHAN NILAI (PPN)",
+        "type": "type_liability",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_23",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2301_01",
+        "code": "2301.01",
+        "name": "PPN MASUKAN",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_2301",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2301_02",
+        "code": "2301.02",
+        "name": "PPN KELUARAN",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_2301",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2301_03",
+        "code": "2301.03",
+        "name": "HUTANG PPN YMH DIBAYAR",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_2301",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2302_01",
+        "code": "2302.01",
+        "name": "PPh pasal 21 / 26",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_23",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2303_01",
+        "code": "2303.01",
+        "name": "PPh pasal 25 / 29",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_23",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2304_01",
+        "code": "2304.01",
+        "name": "PPh pasal 4 (2)",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_23",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2305_01",
+        "code": "2305.01",
+        "name": "PPh pasal 22",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_23",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2306_01",
+        "code": "2306.01",
+        "name": "PPh pasal 23",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_23",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_24",
+        "code": "24",
+        "name": "HUTANG BIAYA OPERASIONAL YANG MASIH HARUS DIBAYAR (YADIB)",
+        "type": "type_liability",
+        "baseType": "LIABILITY",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2401_01",
+        "code": "2401.01",
+        "name": "YADIB - BIAYA PABRIKASI",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_24",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2402_01",
+        "code": "2402.01",
+        "name": "YADIB - BIAYA PENJUALAN",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_24",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2403_01",
+        "code": "2403.01",
+        "name": "YADIB - BIAYA ADM & UMUM",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_24",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2404_01",
+        "code": "2404.01",
+        "name": "YADIB - BIAYA LAIN-2",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_24",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_25",
+        "code": "25",
+        "name": "PENDAPATAN DITERIMA DIMUKA",
+        "type": "type_liability",
+        "baseType": "LIABILITY",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_26",
+        "code": "26",
+        "name": "HUTANG LEASING",
+        "type": "type_liability",
+        "baseType": "LIABILITY",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_27",
+        "code": "27",
+        "name": "HUTANG LAIN-LAIN",
+        "type": "type_liability",
+        "baseType": "LIABILITY",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2701_01",
+        "code": "2701.01",
+        "name": "BPJS KETENAGAKERJAAN",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_27",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2701_02",
+        "code": "2701.02",
+        "name": "BPJS KESEHATAN",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_27",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_29",
+        "code": "29",
+        "name": "HUTANG JANGKA PANJANG",
+        "type": "type_liability",
+        "baseType": "LIABILITY",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2901_01",
+        "code": "2901.01",
+        "name": "HUTANG KEPADA PEMEGANG SAHAM",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_29",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2902_01",
+        "code": "2902.01",
+        "name": "HUTANG DEVIDEN",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_29",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_30",
+        "code": "30",
+        "name": "MODAL & EKUITAS",
+        "type": "type_equity",
+        "baseType": "EQUITY",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_3101_01",
+        "code": "3101.01",
+        "name": "MODAL SAHAM",
+        "type": "type_equity",
+        "accountType": "Modal & Ekuitas",
+        "baseType": "EQUITY",
+        "parentId": "acc_grp_30",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_3201_01",
+        "code": "3201.01",
+        "name": "LABA RUGI DITAHAN",
+        "type": "type_equity",
+        "accountType": "Modal & Ekuitas",
+        "baseType": "EQUITY",
+        "parentId": "acc_grp_30",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_3201_02",
+        "code": "3201.02",
+        "name": "LABA RUGI TAHUN BERJALAN",
+        "type": "type_equity",
+        "accountType": "Modal & Ekuitas",
+        "baseType": "EQUITY",
+        "parentId": "acc_grp_30",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_40",
+        "code": "40",
+        "name": "PENDAPATAN",
+        "type": "type_income",
+        "baseType": "INCOME",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_4101",
+        "code": "4101",
+        "name": "PENJUALAN SNACK",
+        "type": "type_income",
+        "baseType": "INCOME",
+        "parentId": "acc_grp_40",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_4201",
+        "code": "4201",
+        "name": "RETUR PENJUALAN SNACK",
+        "type": "type_income",
+        "baseType": "INCOME",
+        "parentId": "acc_grp_40",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_4301",
+        "code": "4301",
+        "name": "POTONGAN PENJUALAN",
+        "type": "type_income",
+        "baseType": "INCOME",
+        "parentId": "acc_grp_40",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_4701",
+        "code": "4701",
+        "name": "PENJUALAN LAINNYA",
+        "type": "type_income",
+        "baseType": "INCOME",
+        "parentId": "acc_grp_40",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_4701_01",
+        "code": "4701.01",
+        "name": "PENJUALAN BAHAN BAKU",
+        "type": "type_income",
+        "accountType": "INCOME",
+        "baseType": "INCOME",
+        "parentId": "acc_grp_4701",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_4701_02",
+        "code": "4701.02",
+        "name": "PENJUALAN BAHAN PENOLONG",
+        "type": "type_income",
+        "accountType": "INCOME",
+        "baseType": "INCOME",
+        "parentId": "acc_grp_4701",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_4701_03",
+        "code": "4701.03",
+        "name": "PENJUALAN BUMBU JADI",
+        "type": "type_income",
+        "accountType": "INCOME",
+        "baseType": "INCOME",
+        "parentId": "acc_grp_4701",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_50",
+        "code": "50",
+        "name": "HARGA POKOK PENJUALAN",
+        "type": "type_cogs",
+        "baseType": "EXPENSE",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_5101",
+        "code": "5101",
+        "name": "HARGA POKOK PENJUALAN",
+        "type": "type_cogs",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_5201",
+        "code": "5201",
+        "name": "HARGA POKOK PENJUALAN LAINNYA",
+        "type": "type_cogs",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_5301",
+        "code": "5301",
+        "name": "RETUR HPP",
+        "type": "type_cogs",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_5401",
+        "code": "5401",
+        "name": "BARANG DALAM PROSES",
+        "type": "type_cogs",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5401_01",
+        "code": "5401.01",
+        "name": "BDP AWAL",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_5401",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5401_02",
+        "code": "5401.02",
+        "name": "BDP AKHIR",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_5401",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_5501",
+        "code": "5501",
+        "name": "BARANG JADI",
+        "type": "type_cogs",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5501_01",
+        "code": "5501.01",
+        "name": "BARANG JADI AWAL",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_5501",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5501_02",
+        "code": "5501.02",
+        "name": "BARANG JADI AKHIR",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_5501",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_5701",
+        "code": "5701",
+        "name": "BIAYA PRODUKSI / PABRIKASI",
+        "type": "type_cogs",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5701_01",
+        "code": "5701.01",
+        "name": "BIAYA GAJI TK LANGSUNG",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_5701",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5701_02",
+        "code": "5701.02",
+        "name": "THR / BONUS TK LANGSUNG",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_5701",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5701_03",
+        "code": "5701.03",
+        "name": "BPJS TK LANGSUNG",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_5701",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5701_04",
+        "code": "5701.04",
+        "name": "PENGOBATAN TK LANGSUNG",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_5701",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5702_01",
+        "code": "5702.01",
+        "name": "PEMAKAIAN ELPIJI",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5703_01",
+        "code": "5703.01",
+        "name": "PLN",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5704_01",
+        "code": "5704.01",
+        "name": "PEMAKAIAN SPARE PARTS",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5705_01",
+        "code": "5705.01",
+        "name": "PEMELIHARAAN MESIN-2 PRODUKSI",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5706_01",
+        "code": "5706.01",
+        "name": "BEBAN PRODUKSI LAINNYA",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5707_01",
+        "code": "5707.01",
+        "name": "ONGKOS ANGKUT PEMBELIAN BAHAN",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5708_01",
+        "code": "5708.01",
+        "name": "PENYUSUTAN MESIN-2 PRODUKSI",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_60",
+        "code": "60",
+        "name": "BIAYA PENJUALAN & PEMASARAN",
+        "type": "type_expense",
+        "baseType": "EXPENSE",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6101_01",
+        "code": "6101.01",
+        "name": "BIAYA GAJI",
+        "type": "type_expense",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_60",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6101_02",
+        "code": "6101.02",
+        "name": "THR",
+        "type": "type_expense",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_60",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_6102",
+        "code": "6102",
+        "name": "BIAYA KOMISI & INSENTIF",
+        "type": "type_expense",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_60",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6102_01",
+        "code": "6102.01",
+        "name": "Akun 6102.01",
+        "type": "type_expense",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_6102",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6102_02",
+        "code": "6102.02",
+        "name": "Akun 6102.02",
+        "type": "type_expense",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_6102",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_6103",
+        "code": "6103",
+        "name": "BIAYA ANGKUT",
+        "type": "type_expense",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_60",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_6104",
+        "code": "6104",
+        "name": "BIAYA OPERASIONAL",
+        "type": "type_expense",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_60",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6104_01",
+        "code": "6104.01",
+        "name": "BIOPS TEAM SALES",
+        "type": "type_expense",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_6104",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6104_02",
+        "code": "6104.02",
+        "name": "Akun 6104.02",
+        "type": "type_expense",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_6104",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_6105",
+        "code": "6105",
+        "name": "BIAYA PERJALANAN DINAS (LUAR KOTA)",
+        "type": "type_expense",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_60",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_6106",
+        "code": "6106",
+        "name": "BIAYA PROMOSI & IKLAN",
+        "type": "type_expense",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_60",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_6107",
+        "code": "6107",
+        "name": "BIAYA TELEPON / PULSA HP (SALES)",
+        "type": "type_expense",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_60",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_6108",
+        "code": "6108",
+        "name": "Grup 6108",
+        "type": "type_expense",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_60",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_70",
+        "code": "70",
+        "name": "BIAYA ADMINISTRASI & UMUM",
+        "type": "type_expense",
+        "baseType": "EXPENSE",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_7101_01",
+        "code": "7101.01",
+        "name": "BIAYA GAJI (OFFICE)",
+        "type": "type_expense",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_7101_02",
+        "code": "7101.02",
+        "name": "THR (OFFICE)",
+        "type": "type_expense",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5100_01",
+        "code": "5100.01",
+        "name": "Barang Jadi & Penolong",
+        "type": "type_cogs",
+        "accountType": "Harga Pokok Penjualan",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5101_01",
+        "code": "5101.01",
+        "name": "Harga Pokok Penjualan",
+        "type": "type_cogs",
+        "accountType": "Harga Pokok Penjualan",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5102_01",
+        "code": "5102.01",
+        "name": "Biaya Angkut / Logistik",
+        "type": "type_cogs",
+        "accountType": "Harga Pokok Penjualan",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5102_02",
+        "code": "5102.02",
+        "name": "Upah Tenaga Kerja Langsung",
+        "type": "type_cogs",
+        "accountType": "Harga Pokok Penjualan",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5102_03",
+        "code": "5102.03",
+        "name": "Biaya Sewa",
+        "type": "type_cogs",
+        "accountType": "Harga Pokok Penjualan",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5102_04",
+        "code": "5102.04",
+        "name": "Biaya Listrik / Air",
+        "type": "type_cogs",
+        "accountType": "Harga Pokok Penjualan",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5102_05",
+        "code": "5102.05",
+        "name": "Bahan Bakar",
+        "type": "type_cogs",
+        "accountType": "Harga Pokok Penjualan",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6200_01",
+        "code": "6200.01",
+        "name": "Gaji",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6200_02",
+        "code": "6200.02",
+        "name": "Uang Makan",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6200_03",
+        "code": "6200.03",
+        "name": "Lembur",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6200_04",
+        "code": "6200.04",
+        "name": "THR",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6200_05",
+        "code": "6200.05",
+        "name": "Bonus",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6200_06",
+        "code": "6200.06",
+        "name": "Iuran BPJS Kesehataan",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6200_07",
+        "code": "6200.07",
+        "name": "Iuran BPJS Ketenagakerjaan",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6200_08",
+        "code": "6200.08",
+        "name": "PPh psl 21",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6200_09",
+        "code": "6200.09",
+        "name": "Tunjangan Pengobatan",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6200_10",
+        "code": "6200.10",
+        "name": "Tunjangan Lain-lain",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6300_01",
+        "code": "6300.01",
+        "name": "Biaya Sales & Marketing",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6300_02",
+        "code": "6300.02",
+        "name": "Biaya Sumbangan",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6300_03",
+        "code": "6300.03",
+        "name": "Biaya Pameran Promosi & Iklan",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6300_04",
+        "code": "6300.04",
+        "name": "Biaya Fee & Komisi",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6300_05",
+        "code": "6300.05",
+        "name": "Biaya Sample Barang",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_01",
+        "code": "6400.01",
+        "name": "Biaya Bahan Bakar /Toll/ Parkir",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_02",
+        "code": "6400.02",
+        "name": "Biaya Ticket & Airport Tax",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_03",
+        "code": "6400.03",
+        "name": "Biaya Visa/Paspor",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_04",
+        "code": "6400.04",
+        "name": "Biaya Hotel",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_05",
+        "code": "6400.05",
+        "name": "Biaya Transpor Lokal",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_06",
+        "code": "6400.06",
+        "name": "Biaya Makan & Minum",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_07",
+        "code": "6400.07",
+        "name": "Biaya Surat/Pajak Kendaraan",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_08",
+        "code": "6400.08",
+        "name": "Biaya Pemeliharaan/Perbaikan Kendaraan",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_09",
+        "code": "6400.09",
+        "name": "Biaya Listrik / Air",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_10",
+        "code": "6400.10",
+        "name": "Biaya Telepon & Internet",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_11",
+        "code": "6400.11",
+        "name": "Biaya Kebersihan & Keamanan Kantor",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_12",
+        "code": "6400.12",
+        "name": "Biaya Alat Tulis Kantor",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_13",
+        "code": "6400.13",
+        "name": "Biaya Pos/Kurir",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_14",
+        "code": "6400.14",
+        "name": "Biaya Photocopy, Cetak, Laminating",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_15",
+        "code": "6400.15",
+        "name": "Biaya Perlengkapan Kantor",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_16",
+        "code": "6400.16",
+        "name": "Perlengkapan Produksi",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_17",
+        "code": "6400.17",
+        "name": "Biaya Perbaikan dan Pemeliharaan Kantor",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_18",
+        "code": "6400.18",
+        "name": "Biaya Kurir/Pos",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6500_01",
+        "code": "6500.01",
+        "name": "Biaya Perizinan",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6500_02",
+        "code": "6500.02",
+        "name": "Biaya Pajak Bumi Bangunan Kantor",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6500_03",
+        "code": "6500.03",
+        "name": "Biaya Sanksi/Denda pajak",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6500_04",
+        "code": "6500.04",
+        "name": "Biaya Notaris/ Konsultan",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_7100_01",
+        "code": "7100.01",
+        "name": "Biaya Penyusutan Tanah & Bangunan",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_7100_02",
+        "code": "7100.02",
+        "name": "Biaya Penyusutan Kendaraan",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_7100_03",
+        "code": "7100.03",
+        "name": "Biaya Penyusutan Mesin",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_7100_04",
+        "code": "7100.04",
+        "name": "Biaya Penyusutan Peralatan Kantor",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_7100_05",
+        "code": "7100.05",
+        "name": "Biaya Penyusutan Furniture",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_7200_01",
+        "code": "7200.01",
+        "name": "Biaya Bunga Bank",
+        "type": "type_expense",
+        "accountType": "Beban Lainnya",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_7200_02",
+        "code": "7200.02",
+        "name": "Biaya Administrasi Bank",
+        "type": "type_expense",
+        "accountType": "Beban Lainnya",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_7200_03",
+        "code": "7200.03",
+        "name": "Pajak Bunga",
+        "type": "type_expense",
+        "accountType": "Beban Lainnya",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_7200_04",
+        "code": "7200.04",
+        "name": "Biaya Lain-lain",
+        "type": "type_expense",
+        "accountType": "Beban Lainnya",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_8100_01",
+        "code": "8100.01",
+        "name": "Pendapat Bunga",
+        "type": "type_other_income",
+        "accountType": "Pendapatan Lainnya",
+        "baseType": "INCOME",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_8100_02",
+        "code": "8100.02",
+        "name": "Laba / Rugi Penjualan Aktiva Tetap",
+        "type": "type_other_income",
+        "accountType": "Pendapatan Lainnya",
+        "baseType": "INCOME",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_8100_03",
+        "code": "8100.03",
+        "name": "Pendapatan Lain-lain",
+        "type": "type_other_income",
+        "accountType": "Pendapatan Lainnya",
+        "baseType": "INCOME",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
         }
-
-        // Seed Bank Accounts
-        if (db.read('bankAccounts').length === 0) {
-            db.save('bankAccounts', [
-                { id: 'bank_cash', name: 'Kas Tunai', accountNumber: '-', bankName: 'Cash', accountId: 'acc_cash' }
-            ]);
-        }
-
-        // Seed Machines
-        if (db.read('machines').length === 0) {
-            db.save('machines', [
-                { id: 'mch_01', code: 'MCH-001', name: 'Mesin 01', type: 'GENERAL', status: 'ACTIVE', createdAt: new Date().toISOString() },
-                { id: 'mch_02', code: 'MCH-002', name: 'Mesin 02', type: 'GENERAL', status: 'ACTIVE', createdAt: new Date().toISOString() },
-                { id: 'mch_03', code: 'OVN-001', name: 'Oven 01', type: 'OVEN', status: 'ACTIVE', createdAt: new Date().toISOString() },
-                { id: 'mch_04', code: 'OVN-002', name: 'Oven 02', type: 'OVEN', status: 'ACTIVE', createdAt: new Date().toISOString() }
             ]);
         }
     },
@@ -715,5 +2758,2102 @@ if (mchChanged) db.save('machines', mchs);
             status: 'ACTIVE'
         });
         db.save('accounts', accounts);
+    }
+})();
+
+// ─── COA 2026 MIGRATION ─────────────────────────────────────────
+(function migrateToCOA2026() {
+    const MIGRATION_KEY = 'unityerp_coa_2026_applied_v1';
+    if (!localStorage.getItem(MIGRATION_KEY)) {
+        console.log('[DB] Applying COA 2026 Structure...');
+        const newAccountTypes = [
+    {
+        "id": "type_asset",
+        "name": "Aset / Aktiva",
+        "base_type": "ASSET",
+        "baseType": "ASSET"
+    },
+    {
+        "id": "type_liability",
+        "name": "Liabilitas / Hutang",
+        "base_type": "LIABILITY",
+        "baseType": "LIABILITY"
+    },
+    {
+        "id": "type_equity",
+        "name": "Ekuitas / Modal",
+        "base_type": "EQUITY",
+        "baseType": "EQUITY"
+    },
+    {
+        "id": "type_income",
+        "name": "Pendapatan",
+        "base_type": "INCOME",
+        "baseType": "INCOME"
+    },
+    {
+        "id": "type_cogs",
+        "name": "Harga Pokok Penjualan",
+        "base_type": "EXPENSE",
+        "baseType": "EXPENSE"
+    },
+    {
+        "id": "type_expense",
+        "name": "Beban / Biaya Operasional",
+        "base_type": "EXPENSE",
+        "baseType": "EXPENSE"
+    },
+    {
+        "id": "type_other_income",
+        "name": "Pendapatan Lainnya",
+        "base_type": "INCOME",
+        "baseType": "INCOME"
+    },
+    {
+        "id": "type_other_expense",
+        "name": "Beban Lainnya",
+        "base_type": "EXPENSE",
+        "baseType": "EXPENSE"
+    }
+];
+        const newAccounts = [
+    {
+        "id": "acc_grp_11",
+        "code": "11",
+        "name": "KAS & BANK",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_1101",
+        "code": "1101",
+        "name": "KAS",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_11",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1101_01",
+        "code": "1101.01",
+        "name": "KAS",
+        "type": "type_asset",
+        "accountType": "Kas/Bank",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1101",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_1102",
+        "code": "1102",
+        "name": "BANK",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_11",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1102_01",
+        "code": "1102.01",
+        "name": "BANK BCA TSN IDR_1188",
+        "type": "type_asset",
+        "accountType": "Kas/Bank",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1102",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1102_07",
+        "code": "1102.07",
+        "name": "BANK BCA PTC IDR_2130",
+        "type": "type_asset",
+        "accountType": "Kas/Bank",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1102",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1102_08",
+        "code": "1102.08",
+        "name": "BANK BRI PTC IDR_6505",
+        "type": "type_asset",
+        "accountType": "Kas/Bank",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1102",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_1103",
+        "code": "1103",
+        "name": "AYAT SILANG",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_11",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1103_01",
+        "code": "1103.01",
+        "name": "AYAT SILANG KAS - BANK",
+        "type": "type_asset",
+        "accountType": "Kas/Bank",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1103",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_1201",
+        "code": "1201",
+        "name": "PIUTANG USAHA",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_11",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1201_01",
+        "code": "1201.01",
+        "name": "PIUTANG USAHA",
+        "type": "type_asset",
+        "accountType": "Piutang Usaha",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1201",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1201_02",
+        "code": "1201.02",
+        "name": "PIUTANG USAHA RAGU-2",
+        "type": "type_asset",
+        "accountType": "Piutang Usaha",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1201",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_1202",
+        "code": "1202",
+        "name": "PIUTANG KARYAWAN",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_11",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1202_01",
+        "code": "1202.01",
+        "name": "PIUTANG KARYAWAN TETAP",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1202",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1202_02",
+        "code": "1202.02",
+        "name": "PIUTANG KARYAWAN LAINNYA",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1202",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1202_07",
+        "code": "1202.07",
+        "name": "PIUTANG DIREKSI",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1202",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1202_08",
+        "code": "1202.08",
+        "name": "PIUTANG PEMEGANG SAHAM",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1202",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_13",
+        "code": "13",
+        "name": "PERSEDIAAN",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1301_01",
+        "code": "1301.01",
+        "name": "PERSEDIAAN BAHAN BAKU",
+        "type": "type_asset",
+        "accountType": "Persediaan",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_13",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1301_02",
+        "code": "1301.02",
+        "name": "PERSEDIAAN BAHAN PEMBANTU",
+        "type": "type_asset",
+        "accountType": "Persediaan",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_13",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1301_03",
+        "code": "1301.03",
+        "name": "PERSEDIAAN BAHAN DALAM PROSES",
+        "type": "type_asset",
+        "accountType": "Persediaan",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_13",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1301_04",
+        "code": "1301.04",
+        "name": "PERSEDIAAN BARANG JADI",
+        "type": "type_asset",
+        "accountType": "Persediaan",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_13",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1302_01",
+        "code": "1302.01",
+        "name": "PERSEDIAAN SPARE PARTS - MESIN EXTRUDER",
+        "type": "type_asset",
+        "accountType": "Persediaan",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_13",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1302_02",
+        "code": "1302.02",
+        "name": "PERSEDIAAN SPARE PARTS - MESIN LAINNYA",
+        "type": "type_asset",
+        "accountType": "Persediaan",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_13",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1303_01",
+        "code": "1303.01",
+        "name": "PERSEDIAAN ELPIJI",
+        "type": "type_asset",
+        "accountType": "Persediaan",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_13",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1303_02",
+        "code": "1303.02",
+        "name": "PERSEDIAAN BAHAN BAKAR & PELUMAS",
+        "type": "type_asset",
+        "accountType": "Persediaan",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_13",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_14",
+        "code": "14",
+        "name": "PEMBAYARAN DIMUKA",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_1401",
+        "code": "1401",
+        "name": "UANG MUKA PEMBELIAN",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_14",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1401_01",
+        "code": "1401.01",
+        "name": "UM PEMBELIAN AKTIVA TETAP",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1401",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1401_02",
+        "code": "1401.02",
+        "name": "UM PEMBELIAN PERSEDIAAN",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1401",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_1402",
+        "code": "1402",
+        "name": "PAJAK DIBAYAR DIMUKA",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_14",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1402_01",
+        "code": "1402.01",
+        "name": "UM PPh Psl 21 / 26",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1402",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1402_02",
+        "code": "1402.02",
+        "name": "UM PPh Psl 22",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1402",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1402_03",
+        "code": "1402.03",
+        "name": "UM PPh Psl 23",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1402",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1402_04",
+        "code": "1402.04",
+        "name": "UM PPh Psl 25 / 29",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1402",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1402_05",
+        "code": "1402.05",
+        "name": "UM PPh Psl 4 (2)",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1402",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_1403",
+        "code": "1403",
+        "name": "BIAYA DIBAYAR DIMUKA",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_14",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1403_01",
+        "code": "1403.01",
+        "name": "BDD - BIAYA SEWA",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1403",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_1409",
+        "code": "1409",
+        "name": "PIUTANG LAIN-2",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_14",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1409_01",
+        "code": "1409.01",
+        "name": "BPJS KETENAGAKERJAAN",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1409",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1409_02",
+        "code": "1409.02",
+        "name": "BPJS KESEHATAN",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1409",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_1410",
+        "code": "1410",
+        "name": "BIAYA DITANGGUHKAN",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_14",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1410_01",
+        "code": "1410.01",
+        "name": "Biaya Ditangguhkan",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1410",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1410_02",
+        "code": "1410.02",
+        "name": "Proyek Dalam Pengerjaan",
+        "type": "type_asset",
+        "accountType": "Aktiva Lancar Lainnya",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_1410",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_15",
+        "code": "15",
+        "name": "AKTIVA TETAP",
+        "type": "type_asset",
+        "baseType": "ASSET",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1501_01",
+        "code": "1501.01",
+        "name": "TANAH",
+        "type": "type_asset",
+        "accountType": "Aktiva Tetap",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_15",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1501_02",
+        "code": "1501.02",
+        "name": "BANGUNAN",
+        "type": "type_asset",
+        "accountType": "Aktiva Tetap",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_15",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1501_03",
+        "code": "1501.03",
+        "name": "MESIN-MESIN",
+        "type": "type_asset",
+        "accountType": "Aktiva Tetap",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_15",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1501_04",
+        "code": "1501.04",
+        "name": "KENDARAAN",
+        "type": "type_asset",
+        "accountType": "Aktiva Tetap",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_15",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1501_05",
+        "code": "1501.05",
+        "name": "PERLENGKAPAN KANTOR",
+        "type": "type_asset",
+        "accountType": "Aktiva Tetap",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_15",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1502_01",
+        "code": "1502.01",
+        "name": "AKUMULASI PENYUSUTAN BANGUNAN",
+        "type": "type_asset",
+        "accountType": "Aktiva Tetap",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_15",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1502_02",
+        "code": "1502.02",
+        "name": "AKUMULASI PENYUSUTAN MESIN-MESIN",
+        "type": "type_asset",
+        "accountType": "Aktiva Tetap",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_15",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1502_03",
+        "code": "1502.03",
+        "name": "AKUMULASI PENYUSUTAN KENDARAAN",
+        "type": "type_asset",
+        "accountType": "Aktiva Tetap",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_15",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_1502_04",
+        "code": "1502.04",
+        "name": "AKUMULASI PENYUSUTAN PERLENGKAPAN KANTOR",
+        "type": "type_asset",
+        "accountType": "Aktiva Tetap",
+        "baseType": "ASSET",
+        "parentId": "acc_grp_15",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_21",
+        "code": "21",
+        "name": "HUTANG LANCAR",
+        "type": "type_liability",
+        "baseType": "LIABILITY",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_2101",
+        "code": "2101",
+        "name": "HUTANG USAHA",
+        "type": "type_liability",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_21",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2101_01",
+        "code": "2101.01",
+        "name": "HUTANG USAHA IDR",
+        "type": "type_liability",
+        "accountType": "Hutang Usaha",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_2101",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_22",
+        "code": "22",
+        "name": "HUTANG BANK",
+        "type": "type_liability",
+        "baseType": "LIABILITY",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2201_01",
+        "code": "2201.01",
+        "name": "HUTANG PINJAMAN BPR",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_22",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_23",
+        "code": "23",
+        "name": "HUTANG PAJAK",
+        "type": "type_liability",
+        "baseType": "LIABILITY",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_2301",
+        "code": "2301",
+        "name": "PAJAK PERTAMBAHAN NILAI (PPN)",
+        "type": "type_liability",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_23",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2301_01",
+        "code": "2301.01",
+        "name": "PPN MASUKAN",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_2301",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2301_02",
+        "code": "2301.02",
+        "name": "PPN KELUARAN",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_2301",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2301_03",
+        "code": "2301.03",
+        "name": "HUTANG PPN YMH DIBAYAR",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_2301",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2302_01",
+        "code": "2302.01",
+        "name": "PPh pasal 21 / 26",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_23",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2303_01",
+        "code": "2303.01",
+        "name": "PPh pasal 25 / 29",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_23",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2304_01",
+        "code": "2304.01",
+        "name": "PPh pasal 4 (2)",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_23",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2305_01",
+        "code": "2305.01",
+        "name": "PPh pasal 22",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_23",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2306_01",
+        "code": "2306.01",
+        "name": "PPh pasal 23",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_23",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_24",
+        "code": "24",
+        "name": "HUTANG BIAYA OPERASIONAL YANG MASIH HARUS DIBAYAR (YADIB)",
+        "type": "type_liability",
+        "baseType": "LIABILITY",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2401_01",
+        "code": "2401.01",
+        "name": "YADIB - BIAYA PABRIKASI",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_24",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2402_01",
+        "code": "2402.01",
+        "name": "YADIB - BIAYA PENJUALAN",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_24",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2403_01",
+        "code": "2403.01",
+        "name": "YADIB - BIAYA ADM & UMUM",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_24",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2404_01",
+        "code": "2404.01",
+        "name": "YADIB - BIAYA LAIN-2",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_24",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_25",
+        "code": "25",
+        "name": "PENDAPATAN DITERIMA DIMUKA",
+        "type": "type_liability",
+        "baseType": "LIABILITY",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_26",
+        "code": "26",
+        "name": "HUTANG LEASING",
+        "type": "type_liability",
+        "baseType": "LIABILITY",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_27",
+        "code": "27",
+        "name": "HUTANG LAIN-LAIN",
+        "type": "type_liability",
+        "baseType": "LIABILITY",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2701_01",
+        "code": "2701.01",
+        "name": "BPJS KETENAGAKERJAAN",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_27",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2701_02",
+        "code": "2701.02",
+        "name": "BPJS KESEHATAN",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_27",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_29",
+        "code": "29",
+        "name": "HUTANG JANGKA PANJANG",
+        "type": "type_liability",
+        "baseType": "LIABILITY",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2901_01",
+        "code": "2901.01",
+        "name": "HUTANG KEPADA PEMEGANG SAHAM",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_29",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_2902_01",
+        "code": "2902.01",
+        "name": "HUTANG DEVIDEN",
+        "type": "type_liability",
+        "accountType": "Hutang Lancar Lainnya",
+        "baseType": "LIABILITY",
+        "parentId": "acc_grp_29",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_30",
+        "code": "30",
+        "name": "MODAL & EKUITAS",
+        "type": "type_equity",
+        "baseType": "EQUITY",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_3101_01",
+        "code": "3101.01",
+        "name": "MODAL SAHAM",
+        "type": "type_equity",
+        "accountType": "Modal & Ekuitas",
+        "baseType": "EQUITY",
+        "parentId": "acc_grp_30",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_3201_01",
+        "code": "3201.01",
+        "name": "LABA RUGI DITAHAN",
+        "type": "type_equity",
+        "accountType": "Modal & Ekuitas",
+        "baseType": "EQUITY",
+        "parentId": "acc_grp_30",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_3201_02",
+        "code": "3201.02",
+        "name": "LABA RUGI TAHUN BERJALAN",
+        "type": "type_equity",
+        "accountType": "Modal & Ekuitas",
+        "baseType": "EQUITY",
+        "parentId": "acc_grp_30",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_40",
+        "code": "40",
+        "name": "PENDAPATAN",
+        "type": "type_income",
+        "baseType": "INCOME",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_4101",
+        "code": "4101",
+        "name": "PENJUALAN SNACK",
+        "type": "type_income",
+        "baseType": "INCOME",
+        "parentId": "acc_grp_40",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_4201",
+        "code": "4201",
+        "name": "RETUR PENJUALAN SNACK",
+        "type": "type_income",
+        "baseType": "INCOME",
+        "parentId": "acc_grp_40",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_4301",
+        "code": "4301",
+        "name": "POTONGAN PENJUALAN",
+        "type": "type_income",
+        "baseType": "INCOME",
+        "parentId": "acc_grp_40",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_4701",
+        "code": "4701",
+        "name": "PENJUALAN LAINNYA",
+        "type": "type_income",
+        "baseType": "INCOME",
+        "parentId": "acc_grp_40",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_4701_01",
+        "code": "4701.01",
+        "name": "PENJUALAN BAHAN BAKU",
+        "type": "type_income",
+        "accountType": "INCOME",
+        "baseType": "INCOME",
+        "parentId": "acc_grp_4701",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_4701_02",
+        "code": "4701.02",
+        "name": "PENJUALAN BAHAN PENOLONG",
+        "type": "type_income",
+        "accountType": "INCOME",
+        "baseType": "INCOME",
+        "parentId": "acc_grp_4701",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_4701_03",
+        "code": "4701.03",
+        "name": "PENJUALAN BUMBU JADI",
+        "type": "type_income",
+        "accountType": "INCOME",
+        "baseType": "INCOME",
+        "parentId": "acc_grp_4701",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_50",
+        "code": "50",
+        "name": "HARGA POKOK PENJUALAN",
+        "type": "type_cogs",
+        "baseType": "EXPENSE",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_5101",
+        "code": "5101",
+        "name": "HARGA POKOK PENJUALAN",
+        "type": "type_cogs",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_5201",
+        "code": "5201",
+        "name": "HARGA POKOK PENJUALAN LAINNYA",
+        "type": "type_cogs",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_5301",
+        "code": "5301",
+        "name": "RETUR HPP",
+        "type": "type_cogs",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_5401",
+        "code": "5401",
+        "name": "BARANG DALAM PROSES",
+        "type": "type_cogs",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5401_01",
+        "code": "5401.01",
+        "name": "BDP AWAL",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_5401",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5401_02",
+        "code": "5401.02",
+        "name": "BDP AKHIR",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_5401",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_5501",
+        "code": "5501",
+        "name": "BARANG JADI",
+        "type": "type_cogs",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5501_01",
+        "code": "5501.01",
+        "name": "BARANG JADI AWAL",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_5501",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5501_02",
+        "code": "5501.02",
+        "name": "BARANG JADI AKHIR",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_5501",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_5701",
+        "code": "5701",
+        "name": "BIAYA PRODUKSI / PABRIKASI",
+        "type": "type_cogs",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5701_01",
+        "code": "5701.01",
+        "name": "BIAYA GAJI TK LANGSUNG",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_5701",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5701_02",
+        "code": "5701.02",
+        "name": "THR / BONUS TK LANGSUNG",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_5701",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5701_03",
+        "code": "5701.03",
+        "name": "BPJS TK LANGSUNG",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_5701",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5701_04",
+        "code": "5701.04",
+        "name": "PENGOBATAN TK LANGSUNG",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_5701",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5702_01",
+        "code": "5702.01",
+        "name": "PEMAKAIAN ELPIJI",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5703_01",
+        "code": "5703.01",
+        "name": "PLN",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5704_01",
+        "code": "5704.01",
+        "name": "PEMAKAIAN SPARE PARTS",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5705_01",
+        "code": "5705.01",
+        "name": "PEMELIHARAAN MESIN-2 PRODUKSI",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5706_01",
+        "code": "5706.01",
+        "name": "BEBAN PRODUKSI LAINNYA",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5707_01",
+        "code": "5707.01",
+        "name": "ONGKOS ANGKUT PEMBELIAN BAHAN",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5708_01",
+        "code": "5708.01",
+        "name": "PENYUSUTAN MESIN-2 PRODUKSI",
+        "type": "type_cogs",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_50",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_60",
+        "code": "60",
+        "name": "BIAYA PENJUALAN & PEMASARAN",
+        "type": "type_expense",
+        "baseType": "EXPENSE",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6101_01",
+        "code": "6101.01",
+        "name": "BIAYA GAJI",
+        "type": "type_expense",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_60",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6101_02",
+        "code": "6101.02",
+        "name": "THR",
+        "type": "type_expense",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_60",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_6102",
+        "code": "6102",
+        "name": "BIAYA KOMISI & INSENTIF",
+        "type": "type_expense",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_60",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6102_01",
+        "code": "6102.01",
+        "name": "Akun 6102.01",
+        "type": "type_expense",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_6102",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6102_02",
+        "code": "6102.02",
+        "name": "Akun 6102.02",
+        "type": "type_expense",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_6102",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_6103",
+        "code": "6103",
+        "name": "BIAYA ANGKUT",
+        "type": "type_expense",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_60",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_6104",
+        "code": "6104",
+        "name": "BIAYA OPERASIONAL",
+        "type": "type_expense",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_60",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6104_01",
+        "code": "6104.01",
+        "name": "BIOPS TEAM SALES",
+        "type": "type_expense",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_6104",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6104_02",
+        "code": "6104.02",
+        "name": "Akun 6104.02",
+        "type": "type_expense",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_6104",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_6105",
+        "code": "6105",
+        "name": "BIAYA PERJALANAN DINAS (LUAR KOTA)",
+        "type": "type_expense",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_60",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_6106",
+        "code": "6106",
+        "name": "BIAYA PROMOSI & IKLAN",
+        "type": "type_expense",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_60",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_6107",
+        "code": "6107",
+        "name": "BIAYA TELEPON / PULSA HP (SALES)",
+        "type": "type_expense",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_60",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_6108",
+        "code": "6108",
+        "name": "Grup 6108",
+        "type": "type_expense",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_60",
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_grp_70",
+        "code": "70",
+        "name": "BIAYA ADMINISTRASI & UMUM",
+        "type": "type_expense",
+        "baseType": "EXPENSE",
+        "parentId": null,
+        "isGroup": true,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_7101_01",
+        "code": "7101.01",
+        "name": "BIAYA GAJI (OFFICE)",
+        "type": "type_expense",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_7101_02",
+        "code": "7101.02",
+        "name": "THR (OFFICE)",
+        "type": "type_expense",
+        "accountType": "EXPENSE",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5100_01",
+        "code": "5100.01",
+        "name": "Barang Jadi & Penolong",
+        "type": "type_cogs",
+        "accountType": "Harga Pokok Penjualan",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5101_01",
+        "code": "5101.01",
+        "name": "Harga Pokok Penjualan",
+        "type": "type_cogs",
+        "accountType": "Harga Pokok Penjualan",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5102_01",
+        "code": "5102.01",
+        "name": "Biaya Angkut / Logistik",
+        "type": "type_cogs",
+        "accountType": "Harga Pokok Penjualan",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5102_02",
+        "code": "5102.02",
+        "name": "Upah Tenaga Kerja Langsung",
+        "type": "type_cogs",
+        "accountType": "Harga Pokok Penjualan",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5102_03",
+        "code": "5102.03",
+        "name": "Biaya Sewa",
+        "type": "type_cogs",
+        "accountType": "Harga Pokok Penjualan",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5102_04",
+        "code": "5102.04",
+        "name": "Biaya Listrik / Air",
+        "type": "type_cogs",
+        "accountType": "Harga Pokok Penjualan",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_5102_05",
+        "code": "5102.05",
+        "name": "Bahan Bakar",
+        "type": "type_cogs",
+        "accountType": "Harga Pokok Penjualan",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6200_01",
+        "code": "6200.01",
+        "name": "Gaji",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6200_02",
+        "code": "6200.02",
+        "name": "Uang Makan",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6200_03",
+        "code": "6200.03",
+        "name": "Lembur",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6200_04",
+        "code": "6200.04",
+        "name": "THR",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6200_05",
+        "code": "6200.05",
+        "name": "Bonus",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6200_06",
+        "code": "6200.06",
+        "name": "Iuran BPJS Kesehataan",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6200_07",
+        "code": "6200.07",
+        "name": "Iuran BPJS Ketenagakerjaan",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6200_08",
+        "code": "6200.08",
+        "name": "PPh psl 21",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6200_09",
+        "code": "6200.09",
+        "name": "Tunjangan Pengobatan",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6200_10",
+        "code": "6200.10",
+        "name": "Tunjangan Lain-lain",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6300_01",
+        "code": "6300.01",
+        "name": "Biaya Sales & Marketing",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6300_02",
+        "code": "6300.02",
+        "name": "Biaya Sumbangan",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6300_03",
+        "code": "6300.03",
+        "name": "Biaya Pameran Promosi & Iklan",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6300_04",
+        "code": "6300.04",
+        "name": "Biaya Fee & Komisi",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6300_05",
+        "code": "6300.05",
+        "name": "Biaya Sample Barang",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_01",
+        "code": "6400.01",
+        "name": "Biaya Bahan Bakar /Toll/ Parkir",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_02",
+        "code": "6400.02",
+        "name": "Biaya Ticket & Airport Tax",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_03",
+        "code": "6400.03",
+        "name": "Biaya Visa/Paspor",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_04",
+        "code": "6400.04",
+        "name": "Biaya Hotel",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_05",
+        "code": "6400.05",
+        "name": "Biaya Transpor Lokal",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_06",
+        "code": "6400.06",
+        "name": "Biaya Makan & Minum",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_07",
+        "code": "6400.07",
+        "name": "Biaya Surat/Pajak Kendaraan",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_08",
+        "code": "6400.08",
+        "name": "Biaya Pemeliharaan/Perbaikan Kendaraan",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_09",
+        "code": "6400.09",
+        "name": "Biaya Listrik / Air",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_10",
+        "code": "6400.10",
+        "name": "Biaya Telepon & Internet",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_11",
+        "code": "6400.11",
+        "name": "Biaya Kebersihan & Keamanan Kantor",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_12",
+        "code": "6400.12",
+        "name": "Biaya Alat Tulis Kantor",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_13",
+        "code": "6400.13",
+        "name": "Biaya Pos/Kurir",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_14",
+        "code": "6400.14",
+        "name": "Biaya Photocopy, Cetak, Laminating",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_15",
+        "code": "6400.15",
+        "name": "Biaya Perlengkapan Kantor",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_16",
+        "code": "6400.16",
+        "name": "Perlengkapan Produksi",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_17",
+        "code": "6400.17",
+        "name": "Biaya Perbaikan dan Pemeliharaan Kantor",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6400_18",
+        "code": "6400.18",
+        "name": "Biaya Kurir/Pos",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6500_01",
+        "code": "6500.01",
+        "name": "Biaya Perizinan",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6500_02",
+        "code": "6500.02",
+        "name": "Biaya Pajak Bumi Bangunan Kantor",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6500_03",
+        "code": "6500.03",
+        "name": "Biaya Sanksi/Denda pajak",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_6500_04",
+        "code": "6500.04",
+        "name": "Biaya Notaris/ Konsultan",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_7100_01",
+        "code": "7100.01",
+        "name": "Biaya Penyusutan Tanah & Bangunan",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_7100_02",
+        "code": "7100.02",
+        "name": "Biaya Penyusutan Kendaraan",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_7100_03",
+        "code": "7100.03",
+        "name": "Biaya Penyusutan Mesin",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_7100_04",
+        "code": "7100.04",
+        "name": "Biaya Penyusutan Peralatan Kantor",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_7100_05",
+        "code": "7100.05",
+        "name": "Biaya Penyusutan Furniture",
+        "type": "type_expense",
+        "accountType": "Beban",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_7200_01",
+        "code": "7200.01",
+        "name": "Biaya Bunga Bank",
+        "type": "type_expense",
+        "accountType": "Beban Lainnya",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_7200_02",
+        "code": "7200.02",
+        "name": "Biaya Administrasi Bank",
+        "type": "type_expense",
+        "accountType": "Beban Lainnya",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_7200_03",
+        "code": "7200.03",
+        "name": "Pajak Bunga",
+        "type": "type_expense",
+        "accountType": "Beban Lainnya",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_7200_04",
+        "code": "7200.04",
+        "name": "Biaya Lain-lain",
+        "type": "type_expense",
+        "accountType": "Beban Lainnya",
+        "baseType": "EXPENSE",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_8100_01",
+        "code": "8100.01",
+        "name": "Pendapat Bunga",
+        "type": "type_other_income",
+        "accountType": "Pendapatan Lainnya",
+        "baseType": "INCOME",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_8100_02",
+        "code": "8100.02",
+        "name": "Laba / Rugi Penjualan Aktiva Tetap",
+        "type": "type_other_income",
+        "accountType": "Pendapatan Lainnya",
+        "baseType": "INCOME",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    },
+    {
+        "id": "acc_8100_03",
+        "code": "8100.03",
+        "name": "Pendapatan Lain-lain",
+        "type": "type_other_income",
+        "accountType": "Pendapatan Lainnya",
+        "baseType": "INCOME",
+        "parentId": "acc_grp_70",
+        "isGroup": false,
+        "status": "ACTIVE"
+    }
+];
+        db.save('accountTypes', newAccountTypes);
+        db.save('accounts', newAccounts);
+        localStorage.setItem(MIGRATION_KEY, 'true');
+        console.log('[DB] COA 2026 applied successfully! Total accounts & groups:', newAccounts.length);
     }
 })();

@@ -241,8 +241,12 @@ tbody tr:hover {
     transition: all 0.2s ease;
 }
 
+body {
+    font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+}
+
 .breadcrumb-sep {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
     font-weight: 300;
 }
 

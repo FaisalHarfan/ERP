@@ -451,7 +451,7 @@ Account.beforeCreate((account, options) => {
         '5301': 'acc_exp_op',
         '5302': 'acc_exp_mkt'
     };
-    if (account.code && SYSTEM_CODE_TO_ID[account.code]) {
+    if (!account.id && account.code && SYSTEM_CODE_TO_ID[account.code]) {
         account.id = SYSTEM_CODE_TO_ID[account.code];
     }
 });
