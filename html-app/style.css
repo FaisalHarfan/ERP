@@ -241,9 +241,12 @@ tbody tr:hover {
     transition: all 0.2s ease;
 }
 
+html {
+    font-size: 13.5px;
+}
+
 body {
     font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
-    zoom: 85%;
 }
 
 .breadcrumb-sep {
@@ -253,8 +256,8 @@ body {
 
 /* Print utility */
 @media print {
-    body {
-        zoom: 100% !important;
+    html {
+        font-size: 16px !important;
     }
 
     #sidebar,
