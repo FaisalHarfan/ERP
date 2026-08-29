@@ -243,6 +243,7 @@ tbody tr:hover {
 
 body {
     font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+    zoom: 85%;
 }
 
 .breadcrumb-sep {
@@ -252,6 +253,9 @@ body {
 
 /* Print utility */
 @media print {
+    body {
+        zoom: 100% !important;
+    }
 
     #sidebar,
     header,
