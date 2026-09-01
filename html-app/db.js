@@ -412,33 +412,56 @@ const db = {
 
     // ─── PRODUCTION LINE (STREAMLINED) HELPERS ────────────────
     ensureWIPItem: (productId, stageLabel, autoCreate = false) => {
-        const items = db.read('inventoryItems');
+        const items = db.read('inventoryItems') || [];
 
         const product = db.findById('inventoryItems', productId);
         if (!product) return null;
 
         // If stageLabel is Finish Good, we return the Product ID directly
-        const labelLower = stageLabel.toLowerCase();
+        const labelLower = (stageLabel || '').toLowerCase();
         if (labelLower.includes('finish good')) {
             return product.id;
         }
 
         // Determine target category
         let category = 'WIP';
-        if (labelLower.includes('oven basah')) category = 'OVEN_BASAH_STOCK';
+        if (labelLower.includes('oven basah') || labelLower.includes('ekstrusi') || labelLower.includes('extrusi')) category = 'OVEN_BASAH_STOCK';
         if (labelLower.includes('oven kering')) category = 'OVEN_KERING_STOCK';
 
-        // Target Name: Sanitize by removing any existing stage suffix first
-        const baseName = (product.itemName || '').replace(/\s*\([^)]+\)/g, '').trim();
+        // 0. If product itself is already in this category, return it
+        if (product.category === category) {
+            return product.id;
+        }
+
+        // 0b. Check BOM for specified WIP input item
+        const boms = db.read('boms') || db.read('bomHeaders') || [];
+        const productBom = boms.find(b => b.productId === productId || b.product_id === productId || b.id === product.bomId);
+        if (productBom) {
+            const bomItems = productBom.items || productBom.components || [];
+            const bomWip = bomItems.find(bi => {
+                const bItemId = bi.itemId || bi.inventoryItemId || bi.item_id || bi.id;
+                const bItem = items.find(it => it.id === bItemId);
+                return bItem && bItem.category === category;
+            });
+            if (bomWip) {
+                const matchedId = bomWip.itemId || bomWip.inventoryItemId || bomWip.item_id || bomWip.id;
+                if (matchedId) return matchedId;
+            }
+        }
+
+        // Target Name & Sanitization (keep exact dimensions/specs, only strip existing stage tags)
+        const baseName = (product.itemName || product.item_name || '').replace(/\s*\([^)]+\)/g, '').trim();
         const targetName = `${baseName} (${stageLabel})`;
 
-        // 1. SEARCH BY NAME & CATEGORY (Matches manual items created by user)
+        // 1. EXACT BASE NAME MATCH (Preserving dimensions like 5.5 cm, 7 cm, etc.)
         const existingByName = items.find(i => {
             if (i.category !== category) return false;
             const iName = (i.itemName || i.item_name || '').toLowerCase().trim();
             const tName = targetName.toLowerCase().trim();
             const altName = `${baseName.toLowerCase()} (${labelLower})`;
-            return iName === tName || iName === altName || iName.includes(baseName.toLowerCase());
+            const cleanIName = iName.replace(/\s*\([^)]+\)/g, '').trim();
+            const cleanBase = baseName.toLowerCase();
+            return iName === tName || iName === altName || cleanIName === cleanBase;
         });
         if (existingByName) return existingByName.id;
 

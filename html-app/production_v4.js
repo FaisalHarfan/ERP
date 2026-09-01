@@ -2427,10 +2427,9 @@ window.filterMOProductList = (rowId, val) => {
             if (inputItemId) {
                 const wipItem = db.findById('inventoryItems', inputItemId);
                 if (wipItem) {
-                    // Keep original displayItemName (the product being produced)
-                    // But we use the stock and label from the input WIP item
                     displayStock = db.getInventoryStock(inputItemId);
                     stockLabel = `Stok WIP (${inputStageLabel})`;
+                    displayItemCode = wipItem.itemCode || p.itemCode || p.item_code || '-';
                 }
             } else {
                 displayStock = 0;
