@@ -9572,6 +9572,7 @@ window.handlePOAction = (actionOrSelectEl, poId) => {
     if (action === 'approve') return updatePOStatus(cleanId, 'APPROVED');
     if (action === 'delete')  return deletePO(cleanId);
     if (action === 'receipt_history') return window.showPOReceiptHistoryModal(cleanId);
+    if (action === 'force_complete')  return window.forceCompletePOReceipt(cleanId);
 };
 
 window.togglePOActionsDropdown = (id) => {
