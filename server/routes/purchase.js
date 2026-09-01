@@ -481,4 +481,136 @@ router.post('/orders/:id/adjust-receipt', authenticateToken, requirePermission('
     }
 });
 
+/**
+ * DELETE /api/purchase/orders/:id/receipts/:receiptId
+ * Hapus Penerimaan Barang (NPB) tertentu (Khusus Admin)
+ */
+router.delete('/orders/:id/receipts/:receiptId', authenticateToken, requirePermission('pembelian', 'edit'), async (req, res) => {
+    const roleId = (req.user.roleId || req.user.role_id || '').toLowerCase();
+    const userId = (req.user.userId || req.user.id || '').toLowerCase();
+    if (roleId !== 'role_admin' && userId !== 'user_admin') {
+        return res.status(403).json({ error: 'Hanya Admin yang dapat menghapus penerimaan barang' });
+    }
+
+    const poId = (req.params.id || '').replace(/___/g, '/');
+    const receiptId = req.params.receiptId;
+
+    const t = await sequelize.transaction();
+    try {
+        let po = await PurchaseOrder.findByPk(poId, { transaction: t });
+        if (!po) throw new Error('Purchase Order tidak ditemukan');
+
+        let poData = po.dataValues;
+        let poItems = poData.items || [];
+        if (typeof poItems === 'string') poItems = JSON.parse(poItems);
+
+        let receipts = poData.receipts || [];
+        if (typeof receipts === 'string') receipts = JSON.parse(receipts);
+
+        const targetIndex = receipts.findIndex(r => r.id === receiptId || r.npbNumber === receiptId || r.npb === receiptId);
+        if (targetIndex === -1) {
+            throw new Error('Penerimaan (NPB) tidak ditemukan dalam riwayat PO ini');
+        }
+
+        const targetReceipt = receipts[targetIndex];
+        const rItems = targetReceipt.items || [];
+
+        // Reduce receivedQty from PO items & create reverse stock transaction
+        for (const rItem of rItems) {
+            const itemQty = parseFloat(rItem.qty || rItem.receivedQty || 0);
+            if (itemQty <= 0) continue;
+
+            // Find matching item in PO
+            let matchedIndex = -1;
+            if (rItem.index !== undefined && poItems[rItem.index]) {
+                matchedIndex = rItem.index;
+            } else {
+                matchedIndex = poItems.findIndex(pi => 
+                    (rItem.inventoryItemId && (pi.inventoryItemId === rItem.inventoryItemId || pi.id === rItem.inventoryItemId)) ||
+                    (pi.prodText && rItem.prodText && pi.prodText.toLowerCase() === rItem.prodText.toLowerCase()) ||
+                    (pi.itemName && rItem.prodText && pi.itemName.toLowerCase() === rItem.prodText.toLowerCase())
+                );
+            }
+
+            if (matchedIndex > -1 && poItems[matchedIndex]) {
+                poItems[matchedIndex].receivedQty = Math.max(0, (parseFloat(poItems[matchedIndex].receivedQty || 0) - itemQty));
+            }
+
+            // Create Stock Transaction OUT to revert
+            const invItemId = rItem.inventoryItemId || (matchedIndex > -1 ? (poItems[matchedIndex].inventoryItemId || poItems[matchedIndex].id) : null);
+            if (invItemId) {
+                await StockTransaction.create({
+                    id: uuidv4(),
+                    txNo: poData.po_number || poData.poNumber || '',
+                    date: new Date(),
+                    itemId: invItemId,
+                    type: 'OUT',
+                    qty: itemQty,
+                    reference: 'PO_RECEIPT_DELETE',
+                    referenceId: po.id,
+                    notes: `Pembatalan/Hapus Penerimaan ${targetReceipt.npbNumber || targetReceipt.npb || ''} PO ${poData.po_number || poData.poNumber || ''}`,
+                    createdBy: req.user.name || req.user.full_name || 'SystemAdmin',
+                    location: 'WHS'
+                }, { transaction: t });
+            }
+        }
+
+        // Remove the receipt from receipts array
+        receipts.splice(targetIndex, 1);
+
+        // Recalculate status
+        let sumReceivedAll = 0;
+        let sumTargetAll = 0;
+        poItems.forEach(item => {
+            sumTargetAll += parseFloat(item.qty || 0);
+            sumReceivedAll += parseFloat(item.receivedQty || 0);
+        });
+
+        let newStatus = 'APPROVED';
+        if (sumReceivedAll >= sumTargetAll && sumTargetAll > 0) {
+            newStatus = 'RECEIVED';
+        } else if (sumReceivedAll > 0) {
+            newStatus = 'PARTIALLY RECEIVED';
+        } else {
+            newStatus = 'APPROVED';
+        }
+
+        await po.update({
+            status: newStatus,
+            items: poItems,
+            receipts: receipts
+        }, { transaction: t });
+
+        try {
+            await sequelize.query(
+                `UPDATE purchase_orders SET status = :status, items = :items, receipts = :receipts WHERE id = :id`,
+                {
+                    replacements: { status: newStatus, items: JSON.stringify(poItems), receipts: JSON.stringify(receipts), id: po.id },
+                    transaction: t
+                }
+            );
+        } catch (e) { }
+
+        // System Log
+        await SystemLog.create({
+            user_id: req.user.userId || req.user.id,
+            action: 'DELETE_PO_RECEIPT',
+            details: `Menghapus penerimaan ${targetReceipt.npbNumber || targetReceipt.npb || ''} dari PO ${poData.po_number || poData.poNumber || ''}`,
+            timestamp: new Date()
+        }, { transaction: t });
+
+        await t.commit();
+        res.json({
+            success: true,
+            newStatus,
+            message: `Penerimaan ${targetReceipt.npbNumber || targetReceipt.npb || ''} berhasil dihapus.`
+        });
+    } catch (err) {
+        await t.rollback();
+        console.error('Error deleting receipt:', err);
+        res.status(400).json({ error: err.message });
+    }
+});
+
 module.exports = router;
+

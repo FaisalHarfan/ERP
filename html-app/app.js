@@ -5942,6 +5942,8 @@ window.showPOReceiptHistoryModal = (poId) => {
         }
     }
 
+    const isAdmin = typeof isCurrentUserAdmin === 'function' ? isCurrentUserAdmin() : false;
+
     let bodyHtml = '';
     if (receipts && receipts.length > 0) {
         const cards = receipts.map((receipt, idx) => {
@@ -5970,10 +5972,19 @@ window.showPOReceiptHistoryModal = (poId) => {
                                 ${npbStr}
                             </span>
                         </div>
-                        <button onclick="printNPB('${po.id}', '${receipt.id}')"
-                            class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 active:scale-95 shadow-md shadow-emerald-500/10 hover:shadow-emerald-500/20">
-                            <i class="fas fa-print text-[10px]"></i> Cetak NPB
-                        </button>
+                        <div class="flex items-center gap-2">
+                            <button onclick="printNPB('${po.id}', '${receipt.id}')"
+                                class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 active:scale-95 shadow-md shadow-emerald-500/10 hover:shadow-emerald-500/20">
+                                <i class="fas fa-print text-[10px]"></i> Cetak NPB
+                            </button>
+                            ${isAdmin ? `
+                            <button onclick="window.deletePOReceipt('${po.id}', '${receipt.id}', '${npbStr}')"
+                                class="px-4 py-2.5 bg-rose-50 hover:bg-rose-600 text-rose-600 hover:text-white border border-rose-200 hover:border-rose-600 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-1.5 active:scale-95 shadow-sm cursor-pointer"
+                                title="Hapus / Batalkan Penerimaan Ini (Khusus Administrator)">
+                                <i class="fas fa-trash-alt text-[10px]"></i> Hapus NPB
+                            </button>
+                            ` : ''}
+                        </div>
                     </div>
                     
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4 bg-slate-50/50 p-4 rounded-2xl border border-slate-100/50">
@@ -6030,6 +6041,140 @@ window.showPOReceiptHistoryModal = (poId) => {
     showModal(`Riwayat Penerimaan - ${po.poNumber}`, bodyHtml, `
         <button onclick="closeModal()" class="px-6 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-200 transition-all">TUTUP</button>
     `, 'lg');
+};
+
+window.deletePOReceipt = async function(poId, receiptId, npbNumber) {
+    const isAdmin = typeof isCurrentUserAdmin === 'function' ? isCurrentUserAdmin() : false;
+    if (!isAdmin) {
+        showToast('Akses ditolak: Hanya Administrator yang dapat menghapus penerimaan barang.', 'error');
+        return;
+    }
+
+    const confirmed = await window.showConfirmDialog({
+        title: 'Hapus Penerimaan Barang (NPB)',
+        message: `Apakah Anda yakin ingin menghapus penerimaan <strong>${npbNumber || 'ini'}</strong> dari PO?<br><br>
+                  <span class="text-xs text-rose-600 font-bold block mb-1">Dampak Penghapusan:</span>
+                  <ul class="text-xs text-slate-500 list-disc list-inside space-y-1">
+                    <li>NPB akan dihapus permanen dari riwayat penerimaan PO.</li>
+                    <li>Kuantitas barang yang diterima pada item PO akan dikurangi kembali.</li>
+                    <li>Status PO akan dihitung ulang secara otomatis.</li>
+                    <li>Antrean tagihan di menu Purchase Invoice (Belum Dibuat Invoice) akan diperbarui.</li>
+                  </ul>`,
+        confirmText: 'Ya, Hapus Penerimaan',
+        cancelText: 'Batal',
+        type: 'danger',
+        icon: 'fa-trash-alt'
+    });
+    if (!confirmed) return;
+
+    try {
+        showToast('Menghapus penerimaan barang...', 'info');
+        let res = null;
+
+        // Try dedicated backend API if available
+        if (window.api && typeof window.api.deletePOReceipt === 'function') {
+            try {
+                res = await window.api.deletePOReceipt(poId, receiptId);
+            } catch (apiErr) {
+                console.warn('API deletePOReceipt failed, falling back to local db update:', apiErr);
+            }
+        }
+
+        // Optimistic and fallback client update
+        const po = db.findById('purchaseOrders', poId);
+        if (po) {
+            let receipts = po.receipts || [];
+            if (typeof receipts === 'string') {
+                try { receipts = JSON.parse(receipts); } catch (e) { receipts = []; }
+            }
+            let poItems = po.items || [];
+            if (typeof poItems === 'string') {
+                try { poItems = JSON.parse(poItems); } catch (e) { poItems = []; }
+            }
+
+            const targetIdx = receipts.findIndex(r => r.id === receiptId || r.npbNumber === receiptId || r.npb === receiptId || (npbNumber && (r.npbNumber === npbNumber || r.npb === npbNumber)));
+            if (targetIdx > -1) {
+                const targetReceipt = receipts[targetIdx];
+                const rItems = targetReceipt.items || [];
+
+                rItems.forEach(rItem => {
+                    const itemQty = parseFloat(rItem.qty || rItem.receivedQty || 0);
+                    if (itemQty <= 0) return;
+
+                    let matched = null;
+                    if (rItem.index !== undefined && poItems[rItem.index]) {
+                        matched = poItems[rItem.index];
+                    } else {
+                        matched = poItems.find(pi => 
+                            (rItem.inventoryItemId && (pi.inventoryItemId === rItem.inventoryItemId || pi.id === rItem.inventoryItemId)) ||
+                            (pi.prodText && rItem.prodText && pi.prodText.toLowerCase() === rItem.prodText.toLowerCase()) ||
+                            (pi.itemName && rItem.prodText && pi.itemName.toLowerCase() === rItem.prodText.toLowerCase())
+                        );
+                    }
+
+                    if (matched) {
+                        matched.receivedQty = Math.max(0, (parseFloat(matched.receivedQty || 0) - itemQty));
+                    }
+                });
+
+                receipts.splice(targetIdx, 1);
+
+                let sumReceivedAll = 0;
+                let sumTargetAll = 0;
+                poItems.forEach(item => {
+                    sumTargetAll += parseFloat(item.qty || 0);
+                    sumReceivedAll += parseFloat(item.receivedQty || 0);
+                });
+
+                let newStatus = 'APPROVED';
+                if (sumReceivedAll >= sumTargetAll && sumTargetAll > 0) {
+                    newStatus = 'RECEIVED';
+                } else if (sumReceivedAll > 0) {
+                    newStatus = 'PARTIALLY RECEIVED';
+                } else {
+                    newStatus = 'APPROVED';
+                }
+
+                await db.update('purchaseOrders', po.id, {
+                    items: poItems,
+                    receipts: receipts,
+                    status: newStatus
+                });
+            }
+        }
+
+        // Sync local cache with backend
+        await Promise.all([
+            db.sync('purchaseOrders'),
+            db.sync('inventoryItems'),
+            db.sync('stockTransactions')
+        ]);
+
+        showToast(res?.message || `Penerimaan ${npbNumber || ''} berhasil dihapus!`, 'success');
+
+        // Re-render modal if still open
+        const updatedPO = db.findById('purchaseOrders', poId);
+        let updatedReceipts = updatedPO?.receipts || [];
+        if (typeof updatedReceipts === 'string') {
+            try { updatedReceipts = JSON.parse(updatedReceipts); } catch (e) { updatedReceipts = []; }
+        }
+        if (updatedReceipts && updatedReceipts.length > 0) {
+            window.showPOReceiptHistoryModal(poId);
+        } else {
+            closeModal();
+        }
+
+        // Refresh views
+        if (typeof renderPurchaseReceiving === 'function' && document.getElementById('pageTitle')?.innerText.includes('Received')) {
+            renderPurchaseReceiving();
+        } else if (typeof _renderPurchaseInvoicesList === 'function' && document.getElementById('pageTitle')?.innerText.includes('Invoice')) {
+            _renderPurchaseInvoicesList();
+        } else if (typeof renderPurchaseOrders === 'function') {
+            renderPurchaseOrders();
+        }
+    } catch (err) {
+        showToast(err.message || 'Gagal menghapus penerimaan', 'error');
+    }
 };
 
 // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ PURCHASE INVOICES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

@@ -364,6 +364,13 @@ const api = {
         if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Gagal membatalkan penerimaan barang'); }
         return await res.json();
     },
+    deletePOReceipt: async (poId, receiptId) => {
+        const res = await fetch(`${API_BASE}/purchase/orders/${poId.replace(/\//g, '___')}/receipts/${receiptId}`, {
+            method: 'DELETE', headers: authHeaders()
+        });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.error || 'Gagal menghapus penerimaan barang'); }
+        return await res.json();
+    },
 
     paySupplierInvoice: async (invoiceId, data) => {
         const res = await fetch(`${API_BASE}/purchase/payments/${invoiceId}/pay`, {
