@@ -6092,6 +6092,8 @@ window.deletePOReceipt = async function(poId, receiptId, npbNumber) {
                 try { poItems = JSON.parse(poItems); } catch (e) { poItems = []; }
             }
 
+            const targetIdx = receipts.findIndex(r => r.id === receiptId || r.npbNumber === receiptId || r.npb === receiptId || (npbNumber && (r.npbNumber === npbNumber || r.npb === npbNumber)));
+            if (targetIdx > -1) {
                 // Remove the receipt from receipts array
                 receipts.splice(targetIdx, 1);
 
