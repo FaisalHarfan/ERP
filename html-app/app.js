@@ -6092,32 +6092,40 @@ window.deletePOReceipt = async function(poId, receiptId, npbNumber) {
                 try { poItems = JSON.parse(poItems); } catch (e) { poItems = []; }
             }
 
-            const targetIdx = receipts.findIndex(r => r.id === receiptId || r.npbNumber === receiptId || r.npb === receiptId || (npbNumber && (r.npbNumber === npbNumber || r.npb === npbNumber)));
-            if (targetIdx > -1) {
-                const targetReceipt = receipts[targetIdx];
-                const rItems = targetReceipt.items || [];
-
-                rItems.forEach(rItem => {
-                    const itemQty = parseFloat(rItem.qty || rItem.receivedQty || 0);
-                    if (itemQty <= 0) return;
-
-                    let matched = null;
-                    if (rItem.index !== undefined && poItems[rItem.index]) {
-                        matched = poItems[rItem.index];
-                    } else {
-                        matched = poItems.find(pi => 
-                            (rItem.inventoryItemId && (pi.inventoryItemId === rItem.inventoryItemId || pi.id === rItem.inventoryItemId)) ||
-                            (pi.prodText && rItem.prodText && pi.prodText.toLowerCase() === rItem.prodText.toLowerCase()) ||
-                            (pi.itemName && rItem.prodText && pi.itemName.toLowerCase() === rItem.prodText.toLowerCase())
-                        );
-                    }
-
-                    if (matched) {
-                        matched.receivedQty = Math.max(0, (parseFloat(matched.receivedQty || 0) - itemQty));
-                    }
-                });
-
+                // Remove the receipt from receipts array
                 receipts.splice(targetIdx, 1);
+
+                // Recalculate receivedQty for all PO items from the remaining receipts
+                poItems.forEach(item => { item.receivedQty = 0; });
+                receipts.forEach(rcpt => {
+                    (rcpt.items || []).forEach(rItem => {
+                        const itemQty = parseFloat(rItem.qty || rItem.receivedQty || 0);
+                        if (itemQty <= 0) return;
+
+                        let matched = null;
+                        if (rItem.index !== undefined && poItems[rItem.index] && (
+                            !rItem.prodText || 
+                            poItems[rItem.index].prodText === rItem.prodText ||
+                            poItems[rItem.index].itemName === rItem.prodText
+                        )) {
+                            matched = poItems[rItem.index];
+                        } else {
+                            matched = poItems.find(pi => 
+                                (rItem.inventoryItemId && (pi.inventoryItemId === rItem.inventoryItemId || pi.id === rItem.inventoryItemId)) ||
+                                (pi.prodText && rItem.prodText && pi.prodText.toLowerCase().replace(/\s+/g, '') === rItem.prodText.toLowerCase().replace(/\s+/g, '')) ||
+                                (pi.itemName && rItem.prodText && pi.itemName.toLowerCase().replace(/\s+/g, '') === rItem.prodText.toLowerCase().replace(/\s+/g, ''))
+                            );
+                        }
+
+                        if (!matched && poItems.length === 1) {
+                            matched = poItems[0];
+                        }
+
+                        if (matched) {
+                            matched.receivedQty = (parseFloat(matched.receivedQty || 0) + itemQty);
+                        }
+                    });
+                });
 
                 let sumReceivedAll = 0;
                 let sumTargetAll = 0;
@@ -6399,18 +6407,39 @@ window.openPurchaseOrderSelectionForInvoice = () => {
 };
 
 window.openPurchaseInvoiceForm = (poId = null, receiptId = null) => {
-    const allPOs = db.read('purchaseOrders').filter(po => po.receipts && po.receipts.length > 0);
+    const rawPOs = db.read('purchaseOrders') || [];
     const invoices = db.read('purchaseInvoices') || [];
-    const suppliers = db.read('suppliers');
+    const suppliers = db.read('suppliers') || [];
     
     window.tempUninvoicedReceipts = [];
-    allPOs.forEach(po => {
-        (po.receipts || []).forEach((rcpt, idx) => {
-            const isInv = invoices.some(inv => inv.purchaseOrderId === po.id && inv.receiptId === rcpt.id && inv.status !== 'CANCELLED' && inv.status !== 'CANCELED');
+    rawPOs.forEach(po => {
+        let receipts = po.receipts || [];
+        if (typeof receipts === 'string') {
+            try { receipts = JSON.parse(receipts); } catch (e) { receipts = []; }
+        }
+        let poItems = po.items || [];
+        if (typeof poItems === 'string') {
+            try { poItems = JSON.parse(poItems); } catch (e) { poItems = []; }
+        }
+
+        (receipts || []).forEach((rcpt, idx) => {
+            if (rcpt.status === 'CANCELLED' || rcpt.cancelledBilling || rcpt.billingStatus === 'CANCELLED') return;
+
+            const isInv = invoices.some(inv => {
+                if (inv.status === 'CANCELLED' || inv.status === 'CANCELED') return false;
+                const poMatches = (inv.purchaseOrderId === po.id || inv.poId === po.id);
+                if (!poMatches) return false;
+
+                if (inv.receiptId && rcpt.id && String(inv.receiptId) === String(rcpt.id)) return true;
+                if (inv.npbNumber && (rcpt.npbNumber || rcpt.npb) && (inv.npbNumber === rcpt.npbNumber || inv.npbNumber === rcpt.npb)) return true;
+                if (inv.receiptNpb && (rcpt.npbNumber || rcpt.npb) && (inv.receiptNpb === rcpt.npbNumber || inv.receiptNpb === rcpt.npb)) return true;
+
+                return false;
+            });
             if (!isInv) {
                 const supplierName = (suppliers.find(s => s.id === po.supplierId) || { name: '-' }).name;
                 window.tempUninvoicedReceipts.push({
-                    po: po,
+                    po: { ...po, receipts, items: poItems },
                     receipt: rcpt,
                     idx: idx + 1,
                     supplierId: po.supplierId,
@@ -6739,10 +6768,14 @@ window.updatePurchaseInvoiceDetails = (val) => {
     const po = db.findById('purchaseOrders', poId);
     if (!po) return;
     
-    const receipt = (po.receipts || []).find(r => r.id === receiptId);
+    let receipts = po.receipts || [];
+    if (typeof receipts === 'string') {
+        try { receipts = JSON.parse(receipts); } catch (e) { receipts = []; }
+    }
+    const receipt = receipts.find(r => String(r.id) === String(receiptId) || r.npbNumber === receiptId || r.npb === receiptId) || receipts[0];
     if (!receipt) return;
 
-    const receiptDpp = receipt.items.reduce((sum, item) => sum + (item.qty * (item.price || 0)), 0);
+    const receiptDpp = (receipt.items || []).reduce((sum, item) => sum + ((parseFloat(item.qty || item.receivedQty) || 0) * (parseFloat(item.price) || 0)), 0);
     const taxPct = parseFloat(po.taxRate) || 0;
     const receiptTax = Math.round(receiptDpp * taxPct / 100);
     const receiptTotal = receiptDpp + receiptTax;
@@ -8924,6 +8957,53 @@ function renderPurchaseReceiving() {
 
     document.getElementById('pageTitle').innerText = 'Purchase Received';
 
+    // Auto-sync receivedQty and status for all POs from their actual receipts
+    const allDbPOs = db.read('purchaseOrders') || [];
+    allDbPOs.forEach(po => {
+        let receipts = po.receipts || [];
+        if (typeof receipts === 'string') {
+            try { receipts = JSON.parse(receipts); } catch (e) { receipts = []; }
+        }
+        let items = po.items || [];
+        if (typeof items === 'string') {
+            try { items = JSON.parse(items); } catch (e) { items = []; }
+        }
+
+        if (receipts && receipts.length > 0) {
+            let totalOrder = 0;
+            let totalRecv = 0;
+            items.forEach((it, idx) => {
+                totalOrder += parseFloat(it.qty || 0);
+                let sumItemRecv = 0;
+                receipts.forEach(rcpt => {
+                    (rcpt.items || []).forEach(rIt => {
+                        if (rIt.index === idx || 
+                            (rIt.inventoryItemId && (it.inventoryItemId === rIt.inventoryItemId || it.id === rIt.inventoryItemId)) ||
+                            (it.prodText && rIt.prodText && it.prodText.toLowerCase().replace(/\s+/g, '') === rIt.prodText.toLowerCase().replace(/\s+/g, '')) ||
+                            (it.itemName && rIt.prodText && it.itemName.toLowerCase().replace(/\s+/g, '') === rIt.prodText.toLowerCase().replace(/\s+/g, ''))
+                        ) {
+                            sumItemRecv += parseFloat(rIt.qty || rIt.receivedQty || 0);
+                        }
+                    });
+                });
+                it.receivedQty = sumItemRecv;
+                totalRecv += sumItemRecv;
+            });
+
+            if (items.length === 1 && totalRecv === 0 && receipts[0] && receipts[0].items && receipts[0].items.length > 0) {
+                totalRecv = parseFloat(receipts[0].items[0].qty || receipts[0].items[0].receivedQty || 0);
+                items[0].receivedQty = totalRecv;
+            }
+
+            const shouldBeReceived = totalRecv >= totalOrder && totalOrder > 0;
+            const targetStatus = shouldBeReceived ? 'RECEIVED' : (totalRecv > 0 ? 'PARTIALLY RECEIVED' : 'APPROVED');
+            if (po.status !== targetStatus) {
+                po.status = targetStatus;
+                db.update('purchaseOrders', po.id, { status: targetStatus, items: items });
+            }
+        }
+    });
+
     // --- TAB NAVIGATION UI ---
     let tabsHtml = `
         <div class="flex items-center gap-1 bg-slate-100 p-1.5 rounded-2xl w-fit border border-slate-200/60 shadow-inner overflow-hidden">
@@ -9500,7 +9580,7 @@ function _renderPurchaseInvoicesList() {
     const mainContent = document.getElementById('main-content');
     if (!mainContent) return;
 
-    const allPOs = db.read('purchaseOrders') || [];
+    const rawPOs = db.read('purchaseOrders') || [];
     const rawInvoices = db.read('purchaseInvoices') || [];
     const activeInvoices = rawInvoices.filter(inv => inv.status !== 'CANCELLED' && inv.status !== 'CANCELED');
     const suppliers = db.read('suppliers') || [];
@@ -9509,19 +9589,36 @@ function _renderPurchaseInvoicesList() {
 
     // 1. Calculate Uninvoiced Receipts (Belum Dibuat Invoice)
     let uninvoicedList = [];
-    allPOs.forEach(po => {
-        (po.receipts || []).forEach((rcpt, idx) => {
+    rawPOs.forEach(po => {
+        let receipts = po.receipts || [];
+        if (typeof receipts === 'string') {
+            try { receipts = JSON.parse(receipts); } catch (e) { receipts = []; }
+        }
+        let poItems = po.items || [];
+        if (typeof poItems === 'string') {
+            try { poItems = JSON.parse(poItems); } catch (e) { poItems = []; }
+        }
+
+        (receipts || []).forEach((rcpt, idx) => {
             // Ignore if billing is explicitly cancelled
             if (rcpt.status === 'CANCELLED' || rcpt.cancelledBilling || rcpt.billingStatus === 'CANCELLED') return;
 
-            const isBilled = activeInvoices.some(inv => 
-                inv.purchaseOrderId === po.id && (inv.receiptId === rcpt.id || (!inv.receiptId && (po.receipts || []).length === 1))
-            );
+            const isBilled = activeInvoices.some(inv => {
+                if (inv.status === 'CANCELLED' || inv.status === 'CANCELED') return false;
+                const poMatches = (inv.purchaseOrderId === po.id || inv.poId === po.id);
+                if (!poMatches) return false;
+
+                if (inv.receiptId && rcpt.id && String(inv.receiptId) === String(rcpt.id)) return true;
+                if (inv.npbNumber && (rcpt.npbNumber || rcpt.npb) && (inv.npbNumber === rcpt.npbNumber || inv.npbNumber === rcpt.npb)) return true;
+                if (inv.receiptNpb && (rcpt.npbNumber || rcpt.npb) && (inv.receiptNpb === rcpt.npbNumber || inv.receiptNpb === rcpt.npb)) return true;
+
+                return false;
+            });
             if (!isBilled) {
                 let rcptDpp = 0;
                 if (rcpt.items && rcpt.items.length > 0) {
                     rcpt.items.forEach(rItem => {
-                        const poItem = (po.items || []).find(pi => pi.itemId === rItem.itemId || pi.id === rItem.poItemId || pi.name === (rItem.prodText || rItem.itemName));
+                        const poItem = (poItems || []).find(pi => pi.itemId === rItem.itemId || pi.id === rItem.poItemId || pi.name === (rItem.prodText || rItem.itemName) || (pi.prodText && rItem.prodText && pi.prodText.toLowerCase() === rItem.prodText.toLowerCase()));
                         const unitPrice = rItem.price || (poItem ? (poItem.unitPrice || poItem.price || 0) : 0);
                         rcptDpp += (rItem.qty || rItem.receivedQty || 0) * unitPrice;
                     });
@@ -9530,7 +9627,7 @@ function _renderPurchaseInvoicesList() {
                 const rcptTax = Math.round(rcptDpp * taxPct / 100);
                 let rcptTotal = rcptDpp + rcptTax;
 
-                if (rcptTotal === 0 && po.totalAmount && (po.receipts || []).length === 1) {
+                if (rcptTotal === 0 && po.totalAmount && (receipts || []).length === 1) {
                     rcptTotal = po.totalAmount;
                 }
 
