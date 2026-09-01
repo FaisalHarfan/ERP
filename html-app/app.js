@@ -6425,7 +6425,7 @@ window.openPurchaseInvoiceForm = (poId = null, receiptId = null) => {
         }
 
         let effectiveReceipts = (receipts && receipts.length > 0) ? receipts : (
-            (po.status === 'RECEIVED' || po.status === 'PARTIALLY RECEIVED' || (poId && po.id === poId)) ? [{
+            (po.status !== 'CANCELLED' && po.status !== 'DRAFT' && po.status !== 'DELETED') ? [{
                 id: `${po.id}_rcpt_1`,
                 npbNumber: po.npbNumber || (po.poNumber ? `NPB-${po.poNumber.replace(/[^0-9]/g, '').slice(-3) || '016'}` : 'NPB-016'),
                 date: po.actualDeliveryDate || po.date,
@@ -9617,7 +9617,7 @@ function _renderPurchaseInvoicesList() {
         }
 
         let effectiveReceipts = (receipts && receipts.length > 0) ? receipts : (
-            (po.status === 'RECEIVED' || po.status === 'PARTIALLY RECEIVED') ? [{
+            (po.status !== 'CANCELLED' && po.status !== 'DRAFT' && po.status !== 'DELETED') ? [{
                 id: `${po.id}_rcpt_1`,
                 npbNumber: po.npbNumber || (po.poNumber ? `NPB-${po.poNumber.replace(/[^0-9]/g, '').slice(-3) || '016'}` : 'NPB-016'),
                 date: po.actualDeliveryDate || po.date,
