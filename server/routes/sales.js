@@ -55,7 +55,8 @@ router.post('/delivery/:id/ship', authenticateToken, requirePermission('penjuala
         const { driverName, vehicleNo } = req.body;
         const items = doData.items || [];
         const doNumber = doData.doNumber || doRaw.doNumber || '';
-        const salesOrderId = doData.salesOrderId || doRaw.salesOrderId || '';
+        const doDate = doData.deliveryDate || doData.doDate || doData.date || doRaw.deliveryDate || doRaw.date || new Date();
+        const txDate = new Date(doDate);
         let totalCogs = 0;
 
         for (const item of items) {
@@ -65,7 +66,7 @@ router.post('/delivery/:id/ship', authenticateToken, requirePermission('penjuala
                     await StockTransaction.create({
                         id: uuidv4(), 
                         txNo: doNumber,
-                        date: new Date(), 
+                        date: txDate, 
                         itemId: item.inventoryItemId,
                         type: 'OUT', qty: item.qty, reference: 'SALES_OUT', referenceId: doRecord.id,
                         notes: `Delivery Order ${doNumber}`,
@@ -79,7 +80,7 @@ router.post('/delivery/:id/ship', authenticateToken, requirePermission('penjuala
 
         if (totalCogs > 0) {
             await JournalEntry.create({
-                id: uuidv4(), date: new Date(), description: `HPP Pengiriman SJ ${doNumber}`,
+                id: uuidv4(), date: txDate, description: `HPP Pengiriman SJ ${doNumber}`,
                 reference_type: 'DO', reference_id: doRecord.id,
                 items: [{ accountId: 'acc_cogs', debit: totalCogs, credit: 0 }, { accountId: 'acc_inv_fg', debit: 0, credit: totalCogs }],
                 total_debit: totalCogs, total_credit: totalCogs

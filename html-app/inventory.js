@@ -4038,6 +4038,24 @@ window.renderMonthlyStockReport = () => {
     setTimeout(() => runMonthlyStockReport(), 50);
 };
 
+window.getEffectiveStockTxDate = function(t) {
+    if (!t) return new Date();
+    const refUpper = (t.reference || '').toUpperCase();
+    if (refUpper === 'SALES_OUT' || refUpper === 'DELIVERY_ORDER') {
+        const doRec = (db.read('deliveryOrders') || []).find(d => d.id === t.referenceId || (d.data && d.data.id === t.referenceId));
+        if (doRec) {
+            const d = doRec.deliveryDate || doRec.doDate || doRec.date || doRec.data?.deliveryDate || doRec.data?.doDate || doRec.data?.date;
+            if (d) return new Date(d);
+        }
+    } else if (refUpper === 'PO') {
+        const po = (db.read('purchaseOrders') || []).find(p => p.id === t.referenceId);
+        if (po && (po.actualDeliveryDate || po.deliveryDate || po.date)) {
+            return new Date(po.actualDeliveryDate || po.deliveryDate || po.date);
+        }
+    }
+    return new Date(t.date);
+};
+
 window.runMonthlyStockReport = () => {
     const monthVal = document.getElementById('msr_month')?.value;
     const output = document.getElementById('monthly_stock_report_output');
@@ -4048,7 +4066,7 @@ window.runMonthlyStockReport = () => {
     const endDate = new Date(year, month, 0, 23, 59, 59);
 
     const items = db.read('inventoryItems').filter(it => it.status !== 'INACTIVE');
-    const allTxs = db.read('stockTransactions');
+    const allTxs = (db.read('stockTransactions') || []).map(t => ({ ...t, date: window.getEffectiveStockTxDate(t).toISOString() }));
 
     const catSelect = document.getElementById('msr_category');
     if (catSelect) window.currentMonthlyReportCategory = catSelect.value;
@@ -4240,7 +4258,7 @@ window.viewProductStockCard = (productId, startDateStr = null, endDateStr = null
         endDateStr = endDate.toISOString().split('T')[0];
     }
 
-    const allTxs = db.read('stockTransactions');
+    const allTxs = (db.read('stockTransactions') || []).map(t => ({ ...t, date: window.getEffectiveStockTxDate(t).toISOString() }));
     const openingTxs = allTxs.filter(t => t.itemId === productId && new Date(t.date) < startDate);
     // Helper: classify transaction type as IN (+) or OUT (-)
     const isInType = tp => ['IN', 'ADJUST_IN', 'PRODUCTION_IN', 'RETURN_IN'].includes((tp || '').toUpperCase());
@@ -4488,7 +4506,7 @@ window.printProductStockCard = (productId, startDateStr, endDateStr) => {
     const startDate = new Date(startDateStr + 'T00:00:00');
     const endDate = new Date(endDateStr + 'T23:59:59');
 
-    const allTxs = db.read('stockTransactions');
+    const allTxs = (db.read('stockTransactions') || []).map(t => ({ ...t, date: window.getEffectiveStockTxDate(t).toISOString() }));
     const openingTxs = allTxs.filter(t => t.itemId === productId && new Date(t.date) < startDate);
     const openingStock = openingTxs.reduce((sum, t) => sum + (t.type === 'IN' ? t.qty : -t.qty), 0);
 
@@ -4787,7 +4805,7 @@ window.runWIPMutationReport = () => {
         const endDate = new Date(year, month, 0, 23, 59, 59);
 
         const items = (db.read('inventoryItems') || []).filter(it => it.status !== 'INACTIVE');
-        const allTxs = db.read('stockTransactions') || [];
+        const allTxs = (db.read('stockTransactions') || []).map(t => ({ ...t, date: window.getEffectiveStockTxDate(t).toISOString() }));
 
         const reportData = items.filter(it => {
             // Filter by category
@@ -4923,7 +4941,7 @@ window.openWIPHistoryModal = (itemId, location, startDateStr = null, endDateStr 
     startDateStr = startDate.toISOString().split('T')[0];
     endDateStr = endDate.toISOString().split('T')[0];
 
-    const allTxs = db.read('stockTransactions') || [];
+    const allTxs = (db.read('stockTransactions') || []).map(t => ({ ...t, date: window.getEffectiveStockTxDate(t).toISOString() }));
     const _getTxLoc = (t) => {
         let l = t.location;
         if (l === 'WHS' || !l) {
@@ -5105,7 +5123,7 @@ window.printWIPStockCard = (itemId, location, startDateStr, endDateStr) => {
     const startDate = new Date(startDateStr + 'T00:00:00');
     const endDate = new Date(endDateStr + 'T23:59:59');
 
-    const allTxs = db.read('stockTransactions') || [];
+    const allTxs = (db.read('stockTransactions') || []).map(t => ({ ...t, date: window.getEffectiveStockTxDate(t).toISOString() }));
     const _getTxLoc = (t) => {
         let l = t.location;
         if (l === 'WHS' || !l) {

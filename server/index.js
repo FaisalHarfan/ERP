@@ -117,6 +117,25 @@ async function start() {
         await sequelize.sync({ alter: !isProd });
         console.log(`✅ Database tables synced (alter: ${!isProd})`);
 
+        // Auto-sync stock transactions dates for Delivery Orders to match their actual DO document date
+        try {
+            await sequelize.query(`
+                UPDATE stock_transactions st
+                SET date = COALESCE(
+                    (do.data->>'deliveryDate')::timestamptz,
+                    (do.data->>'doDate')::timestamptz,
+                    (do.data->>'date')::timestamptz,
+                    do.created_at
+                )
+                FROM delivery_orders do
+                WHERE (st.reference_id = do.id OR st.reference_id = do.data->>'id')
+                  AND (st.reference = 'SALES_OUT' OR st.reference = 'DELIVERY_ORDER')
+                  AND (do.data->>'deliveryDate' IS NOT NULL OR do.data->>'doDate' IS NOT NULL OR do.data->>'date' IS NOT NULL);
+            `);
+        } catch (syncErr) {
+            console.warn('DO stock transactions date sync notice:', syncErr.message);
+        }
+
         await seedDefaults();
 
         app.listen(PORT, () => {
