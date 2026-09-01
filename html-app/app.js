@@ -6424,7 +6424,22 @@ window.openPurchaseInvoiceForm = (poId = null, receiptId = null) => {
             try { poItems = JSON.parse(poItems); } catch (e) { poItems = []; }
         }
 
-        (receipts || []).forEach((rcpt, idx) => {
+        let effectiveReceipts = (receipts && receipts.length > 0) ? receipts : (
+            (po.status === 'RECEIVED' || po.status === 'PARTIALLY RECEIVED' || (poId && po.id === poId)) ? [{
+                id: `${po.id}_rcpt_1`,
+                npbNumber: po.npbNumber || (po.poNumber ? `NPB-${po.poNumber.replace(/[^0-9]/g, '').slice(-3) || '016'}` : 'NPB-016'),
+                date: po.actualDeliveryDate || po.date,
+                items: poItems.map((pi, idx) => ({
+                    index: idx,
+                    prodText: pi.prodText || pi.itemName || 'Item',
+                    qty: parseFloat(pi.qty || pi.receivedQty || 0),
+                    price: parseFloat(pi.price || pi.unitPrice || 0),
+                    unit: pi.unit || ''
+                }))
+            }] : []
+        );
+
+        effectiveReceipts.forEach((rcpt, idx) => {
             if (rcpt.status === 'CANCELLED' || rcpt.cancelledBilling || rcpt.billingStatus === 'CANCELLED') return;
 
             const isInv = invoices.some(inv => {
@@ -6441,7 +6456,7 @@ window.openPurchaseInvoiceForm = (poId = null, receiptId = null) => {
             if (!isInv) {
                 const supplierName = (suppliers.find(s => s.id === po.supplierId) || { name: '-' }).name;
                 window.tempUninvoicedReceipts.push({
-                    po: { ...po, receipts, items: poItems },
+                    po: { ...po, receipts: effectiveReceipts, items: poItems },
                     receipt: rcpt,
                     idx: idx + 1,
                     supplierId: po.supplierId,
@@ -9601,7 +9616,22 @@ function _renderPurchaseInvoicesList() {
             try { poItems = JSON.parse(poItems); } catch (e) { poItems = []; }
         }
 
-        (receipts || []).forEach((rcpt, idx) => {
+        let effectiveReceipts = (receipts && receipts.length > 0) ? receipts : (
+            (po.status === 'RECEIVED' || po.status === 'PARTIALLY RECEIVED') ? [{
+                id: `${po.id}_rcpt_1`,
+                npbNumber: po.npbNumber || (po.poNumber ? `NPB-${po.poNumber.replace(/[^0-9]/g, '').slice(-3) || '016'}` : 'NPB-016'),
+                date: po.actualDeliveryDate || po.date,
+                items: poItems.map((pi, idx) => ({
+                    index: idx,
+                    prodText: pi.prodText || pi.itemName || 'Item',
+                    qty: parseFloat(pi.qty || pi.receivedQty || 0),
+                    price: parseFloat(pi.price || pi.unitPrice || 0),
+                    unit: pi.unit || ''
+                }))
+            }] : []
+        );
+
+        effectiveReceipts.forEach((rcpt, idx) => {
             // Ignore if billing is explicitly cancelled
             if (rcpt.status === 'CANCELLED' || rcpt.cancelledBilling || rcpt.billingStatus === 'CANCELLED') return;
 
