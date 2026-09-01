@@ -6030,10 +6030,18 @@ window.showPOReceiptHistoryModal = (poId) => {
             </div>
         `;
     } else {
+        const isAdmin = typeof isCurrentUserAdmin === 'function' ? isCurrentUserAdmin() : false;
         bodyHtml = `
-            <div class="p-8 text-center text-slate-400 font-bold uppercase tracking-wider">
-                <i class="fas fa-info-circle text-3xl mb-3 text-slate-300"></i>
+            <div class="p-8 text-center text-slate-400 font-bold uppercase tracking-wider space-y-3">
+                <i class="fas fa-info-circle text-3xl mb-1 text-slate-300"></i>
                 <p class="text-xs">Belum ada riwayat penerimaan barang untuk PO ${po.poNumber}</p>
+                ${isAdmin && po.status === 'RECEIVED' ? `
+                    <div>
+                        <button onclick="reopenPOForReceiving('${po.id}')" class="mt-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-md transition-all active:scale-95 inline-flex items-center gap-2">
+                            <i class="fas fa-truck-loading"></i> Pindahkan ke Antrian Gudang (Terima Ulang)
+                        </button>
+                    </div>
+                ` : ''}
             </div>
         `;
     }
@@ -6041,6 +6049,48 @@ window.showPOReceiptHistoryModal = (poId) => {
     showModal(`Riwayat Penerimaan - ${po.poNumber}`, bodyHtml, `
         <button onclick="closeModal()" class="px-6 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-200 transition-all">TUTUP</button>
     `, 'lg');
+};
+
+window.reopenPOForReceiving = async function(poId) {
+    const isAdmin = typeof isCurrentUserAdmin === 'function' ? isCurrentUserAdmin() : false;
+    if (!isAdmin) {
+        showToast('Akses ditolak: Hanya Administrator yang dapat membuka ulang penerimaan.', 'error');
+        return;
+    }
+
+    const po = db.findById('purchaseOrders', poId);
+    if (!po) return;
+
+    const confirmed = await window.showConfirmDialog({
+        title: 'Buka Penerimaan Ulang (Antrian Gudang)',
+        message: `Pindahkan <strong>${po.poNumber}</strong> kembali ke <strong>Antrian Gudang</strong> untuk dilakukan penerimaan barang ulang?<br><br>
+                  <span class="text-xs text-slate-500">Status PO akan diubah ke <strong>APPROVED</strong> agar tim gudang dapat memproses tombol Terima Barang.</span>`,
+        confirmText: 'Ya, Pindahkan ke Antrian Gudang',
+        cancelText: 'Batal',
+        type: 'warning',
+        icon: 'fa-truck-loading'
+    });
+    if (!confirmed) return;
+
+    let items = po.items || [];
+    if (typeof items === 'string') {
+        try { items = JSON.parse(items); } catch (e) { items = []; }
+    }
+    items.forEach(i => { i.receivedQty = 0; });
+
+    await db.update('purchaseOrders', poId, {
+        status: 'APPROVED',
+        items: items,
+        receipts: []
+    });
+
+    await db.sync('purchaseOrders');
+    if (typeof closeModal === 'function') closeModal();
+    showToast(`PO ${po.poNumber} berhasil dipindahkan ke Antrian Gudang!`, 'success');
+    window.activeGRTab = 'pending';
+    if (typeof renderPurchaseReceiving === 'function') {
+        renderPurchaseReceiving();
+    }
 };
 
 window.deletePOReceipt = async function(poId, receiptId, npbNumber) {
@@ -8949,6 +8999,8 @@ window.handlePRAction = function(action, value) {
         window.showPOReceiptHistoryModal(cleanId);
     } else if (action === 'adjust_receipt') {
         window.adjustPOReceiptForm(cleanId);
+    } else if (action === 'reopen_receiving') {
+        window.reopenPOForReceiving(cleanId);
     }
 };
 
@@ -9196,6 +9248,7 @@ function renderPurchaseReceiving() {
             const isAdmin = (sess.userId || '').toLowerCase() === 'user_admin' || (sess.roleId || '').toLowerCase() === 'role_admin';
             
             if (isAdmin && !hasInvoice) {
+                dropdownOptions.push(['reopen_receiving', 'Buka Penerimaan Ulang (Admin)', 'fas fa-undo-alt text-amber-500']);
                 dropdownOptions.push(['adjust_receipt', 'Penyesuaian Penerimaan (Admin)', 'fas fa-sliders-h text-orange-500']);
             }
 
