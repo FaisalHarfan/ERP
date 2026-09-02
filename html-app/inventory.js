@@ -1728,17 +1728,19 @@ window.saveProductToProductConversion = async () => {
             createdBy: window._session?.fullName || 'Admin',
             createdAt: new Date().toISOString()
         };
-        await db.insert('inventoryConversions', conversionDoc);
+        const savedConv = await db.insert('inventoryConversions', conversionDoc);
+        const convId = savedConv?.id || null;
 
         await db.addInventoryTransaction(
             fromId,
             'OUT',
             fromQty,
             'CONVERSION',
-            null,
+            convId,
             `Konversi Antar Produk (Keluar): Konversi ke ${toItem.itemName} (${toQty} ${toItem.unit})`,
             window._session?.fullName || 'Admin',
-            'WHS'
+            'WHS',
+            date
         );
 
         await db.addInventoryTransaction(
@@ -1746,10 +1748,11 @@ window.saveProductToProductConversion = async () => {
             'IN',
             toQty,
             'CONVERSION',
-            null,
+            convId,
             `Konversi Antar Produk (Masuk): Konversi dari ${fromItem.itemName} (${fromQty} ${fromItem.unit})`,
             window._session?.fullName || 'Admin',
-            'WHS'
+            'WHS',
+            date
         );
 
         showToast('Konversi antar produk berhasil disimpan!', 'success');
@@ -1936,9 +1939,10 @@ window.saveStockIn = async () => {
     const qty = parseFloat(document.getElementById('si_qty').value);
     const reference = document.getElementById('si_ref').value;
     const notes = document.getElementById('si_notes').value.trim();
+    const date = document.getElementById('si_date')?.value;
     if (!itemId) { showToast('Pilih item terlebih dahulu', 'error'); return; }
     if (!qty || qty <= 0) { showToast('Qty harus lebih dari 0', 'error'); return; }
-    await db.addInventoryTransaction(itemId, 'IN', qty, reference, null, notes);
+    await db.addInventoryTransaction(itemId, 'IN', qty, reference, null, notes, window._session?.fullName || 'Admin', null, date);
     await db.sync('stockTransactions');
     showToast('Stock In berhasil disimpan', 'success');
     closeModal();
@@ -2108,12 +2112,13 @@ window.saveStockOut = async () => {
     const qty = parseFloat(document.getElementById('so_qty').value);
     const reference = document.getElementById('so_ref').value;
     const notes = document.getElementById('so_notes').value.trim();
+    const date = document.getElementById('so_date')?.value;
     if (!itemId) { showToast('Pilih item terlebih dahulu', 'error'); return; }
     if (!qty || qty <= 0) { showToast('Qty harus lebih dari 0', 'error'); return; }
     if (!db.validateInventoryStock(itemId, qty)) {
         showToast('Stok tidak mencukupi untuk transaksi ini!', 'error'); return;
     }
-    await db.addInventoryTransaction(itemId, 'OUT', qty, reference, null, notes);
+    await db.addInventoryTransaction(itemId, 'OUT', qty, reference, null, notes, window._session?.fullName || 'Admin', null, date);
     await db.sync('stockTransactions');
     showToast('Stock Out berhasil disimpan', 'success');
     closeModal();
@@ -3965,7 +3970,7 @@ window.saveManualShrinkage = async () => {
         showToast('Stok tidak mencukupi untuk dipotong!', 'error'); return;
     }
 
-    await db.addInventoryTransaction(itemId, 'OUT', qty, 'SHRINKAGE', null, notes, date);
+    await db.addInventoryTransaction(itemId, 'OUT', qty, 'SHRINKAGE', null, notes, window._session?.fullName || 'Admin', 'WHS', date);
     await db.sync('stockTransactions');
     showToast('Penyusutan berhasil dicatat dan stok dipotong', 'success');
     closeModal();
@@ -4051,6 +4056,24 @@ window.getEffectiveStockTxDate = function(t) {
         const po = (db.read('purchaseOrders') || []).find(p => p.id === t.referenceId);
         if (po && (po.actualDeliveryDate || po.deliveryDate || po.date)) {
             return new Date(po.actualDeliveryDate || po.deliveryDate || po.date);
+        }
+    } else if (refUpper === 'CONVERSION') {
+        const conversions = db.read('inventoryConversions') || [];
+        let conv = conversions.find(c => c.id === t.referenceId || (c.data && c.data.id === t.referenceId));
+        if (!conv) {
+            conv = conversions.find(c => {
+                const cFrom = c.fromItemId || c.data?.fromItemId || c.from_item_id || c.data?.from_item_id;
+                const cTo = c.toItemId || c.data?.toItemId || c.to_item_id || c.data?.to_item_id;
+                const matchItem = (cFrom === t.itemId || cTo === t.itemId);
+                if (!matchItem) return false;
+                const tCreated = new Date(t.createdAt || t.created_at || t.date).getTime();
+                const cCreated = new Date(c.createdAt || c.created_at || c.date).getTime();
+                return Math.abs(tCreated - cCreated) < 600000;
+            });
+        }
+        if (conv) {
+            const d = conv.date || conv.data?.date;
+            if (d) return new Date(d);
         }
     }
     return new Date(t.date);

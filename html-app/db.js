@@ -219,9 +219,17 @@ const db = {
     },
 
     // Auto-generate Transaction Number
-    generateTxNo: (type) => {
+    generateTxNo: (type, targetDate = null) => {
         const prefix = type === 'IN' ? 'SI' : 'SO';
-        const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        let d = new Date();
+        if (targetDate) {
+            const parsed = new Date(targetDate);
+            if (!isNaN(parsed.getTime())) d = parsed;
+        }
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const dateStr = `${y}${m}${day}`;
         const transactions = db.read('stockTransactions');
         const searchPrefix = `${prefix}-${dateStr}-`;
         
@@ -276,10 +284,23 @@ const db = {
         }, 0);
     },
 
-    addInventoryTransaction: (itemId, type, qty, reference, referenceId, notes, createdBy = 'Admin', location = null) => {
+    addInventoryTransaction: (itemId, type, qty, reference, referenceId, notes, createdBy = 'Admin', location = null, customDate = null) => {
         const item = db.findById('inventoryItems', itemId);
         if (!item) return null;
-        const txNo = db.generateTxNo(type);
+
+        let txDate = new Date().toISOString();
+        if (customDate) {
+            if (typeof customDate === 'string' && customDate.includes('T')) {
+                txDate = customDate;
+            } else if (typeof customDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(customDate)) {
+                txDate = `${customDate}T12:00:00.000Z`;
+            } else {
+                const parsed = new Date(customDate);
+                if (!isNaN(parsed.getTime())) txDate = parsed.toISOString();
+            }
+        }
+
+        const txNo = db.generateTxNo(type, txDate);
 
         let finalLoc = location;
         if (!finalLoc || finalLoc === 'WHS') {
@@ -290,13 +311,13 @@ const db = {
 
         const tx = db.insert('stockTransactions', {
             txNo,
-            date: new Date().toISOString(),
+            date: txDate,
             itemId,
             itemCode: item.itemCode,
             itemName: item.itemName,
             type,
             qty: parseFloat(qty),
-            reference,      // 'PO', 'SO', 'PRODUCTION_IN', 'PRODUCTION_OUT', 'MANUAL', 'SALES_OUT', 'STAGE_TRANSFER'
+            reference,      // 'PO', 'SO', 'PRODUCTION_IN', 'PRODUCTION_OUT', 'MANUAL', 'SALES_OUT', 'STAGE_TRANSFER', 'CONVERSION'
             referenceId,
             notes,
             createdBy,

@@ -121,19 +121,36 @@ async function start() {
         try {
             await sequelize.query(`
                 UPDATE stock_transactions st
-                SET date = COALESCE(
-                    (do.data->>'deliveryDate')::timestamptz,
-                    (do.data->>'doDate')::timestamptz,
-                    (do.data->>'date')::timestamptz,
-                    do.created_at
-                )
-                FROM delivery_orders do
-                WHERE (st.reference_id = do.id OR st.reference_id = do.data->>'id')
+                SET date = COALESCE(del_ord.date, del_ord.created_at)
+                FROM delivery_orders del_ord
+                WHERE (st.reference_id = del_ord.id)
                   AND (st.reference = 'SALES_OUT' OR st.reference = 'DELIVERY_ORDER')
-                  AND (do.data->>'deliveryDate' IS NOT NULL OR do.data->>'doDate' IS NOT NULL OR do.data->>'date' IS NOT NULL);
+                  AND del_ord.date IS NOT NULL;
             `);
         } catch (syncErr) {
             console.warn('DO stock transactions date sync notice:', syncErr.message);
+        }
+
+        // Auto-sync stock transactions dates for Conversions to match their actual Conversion document date
+        try {
+            await sequelize.query(`
+                UPDATE stock_transactions st
+                SET date = COALESCE((ic.data->>'date')::timestamptz, ic.created_at),
+                    reference_id = COALESCE(st.reference_id, ic.id)
+                FROM inventory_conversions ic
+                WHERE (
+                    st.reference_id = ic.id 
+                    OR st.reference_id = ic.data->>'id'
+                    OR (
+                        st.reference = 'CONVERSION'
+                        AND (st.item_id = ic.data->>'fromItemId' OR st.item_id = ic.data->>'toItemId')
+                        AND ABS(EXTRACT(EPOCH FROM (st.created_at - ic.created_at))) < 600
+                    )
+                )
+                AND ic.data->>'date' IS NOT NULL;
+            `);
+        } catch (syncErr) {
+            console.warn('Conversion stock transactions date sync notice:', syncErr.message);
         }
 
         await seedDefaults();

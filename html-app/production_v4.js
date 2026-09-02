@@ -3653,10 +3653,10 @@ window.saveRepacking = () => {
 
     // Deduct Source (From WHS for FG, from PRODUCTION for WIP)
     const srcLoc = srcType === 'FG' ? 'WHS' : 'OVEN_KERING';
-    db.addInventoryTransaction(srcId, 'OUT', inputVal, 'PRODUCTION_OUT', null, `Konversi Kemasan (Out): Dari ${srcItem.itemName}`, 'Admin', srcLoc);
+    db.addInventoryTransaction(srcId, 'OUT', inputVal, 'PRODUCTION_OUT', null, `Konversi Kemasan (Out): Dari ${srcItem.itemName}`, 'Admin', srcLoc, date);
 
     // Add Target (Always to WHS as Finish Good)
-    db.addInventoryTransaction(destId, 'IN', units, 'PRODUCTION_IN', null, `Konversi Kemasan (In): Ke ${destItem.itemName}`, 'Admin', 'WHS');
+    db.addInventoryTransaction(destId, 'IN', units, 'PRODUCTION_IN', null, `Konversi Kemasan (In): Ke ${destItem.itemName}`, 'Admin', 'WHS', date);
 
     const logId = Date.now().toString();
     db.insert('repackingLogs', {
