@@ -5815,8 +5815,10 @@ window.viewPO = (id, fromPage = 'po') => {
                 <div class="grid grid-cols-2 gap-2 text-xs">
                     <div><span class="text-slate-400 font-medium">Tanggal PO:</span> <strong class="text-slate-700 block">${po.date ? po.date.split('T')[0] : '-'}</strong></div>
                     <div><span class="text-slate-400 font-medium">Term Bayar:</span> <strong class="text-slate-700 block">${po.paymentTerms || '-'}</strong></div>
+                    <div><span class="text-slate-400 font-medium">Tgl Kirim (ETD):</span> <strong class="text-slate-800 block">${po.etd ? po.etd.split('T')[0] : (po.deliveryDate ? po.deliveryDate.split('T')[0] : '-')}</strong></div>
                     <div><span class="text-slate-400 font-medium">Jatuh Tempo:</span> <strong class="text-orange-600 block">${po.dueDate ? po.dueDate.split('T')[0] : '-'}</strong></div>
                     <div><span class="text-slate-400 font-medium">Status:</span> <span class="block">${statusBadgePurch(po.status)}</span></div>
+                    ${po.actualDeliveryDate ? `<div><span class="text-slate-400 font-medium">Tgl Diterima:</span> <strong class="text-green-700 block">${po.actualDeliveryDate.split('T')[0]}</strong></div>` : ''}
                 </div>
             </div>
         </div>
@@ -8828,8 +8830,9 @@ window.sendPOWhatsApp = (id) => {
     let phone = supplier.phone.replace(/[^0-9]/g, '');
     if (phone.startsWith('0')) phone = '62' + phone.substring(1);
 
+    const etdStr = po.etd ? po.etd.split('T')[0] : (po.deliveryDate ? po.deliveryDate.split('T')[0] : '-');
     const itemsStr = (po.items || []).map(i => `• *${i.prodText}*: ${formatNumber(i.qty)} ${i.unit || ''}`).join('%0A');
-    const message = `Halo ${supplier.name},%0A%0AKami mengirimkan *Purchase Order (PO)* nomor *${po.poNumber}*:%0A%0A${itemsStr}%0A%0ATotal: *${formatCurrency(po.totalAmount)}*%0ATerm: *${po.paymentTerms || '-'}*%0AJatuh Tempo: *${po.dueDate || '-'}*%0A%0AMohon segera diproses. Terima kasih!%0A*${CONFIG.companyName}*`;
+    const message = `Halo ${supplier.name},%0A%0AKami mengirimkan *Purchase Order (PO)* nomor *${po.poNumber}*:%0A%0A${itemsStr}%0A%0ATotal: *${formatCurrency(po.totalAmount)}*%0ATgl Kirim (ETD): *${etdStr}*%0ATerm: *${po.paymentTerms || '-'}*%0AJatuh Tempo: *${po.dueDate || '-'}*%0A%0AMohon segera diproses. Terima kasih!%0A*${CONFIG.companyName}*`;
 
     window.open(`https://wa.me/${phone}?text=${message}`, '_blank');
 };
@@ -8839,9 +8842,10 @@ window.sendPOEmail = (id) => {
     const supplier = db.findById('suppliers', po.supplierId);
     if (!supplier?.email) { showToast('Email supplier tidak ditemukan', 'error'); return; }
 
+    const etdStr = po.etd ? po.etd.split('T')[0] : (po.deliveryDate ? po.deliveryDate.split('T')[0] : '-');
     const itemsStr = (po.items || []).map(i => `- ${i.prodText}: ${formatNumber(i.qty)} ${i.unit || ''}`).join('\n');
     const subject = `Purchase Order ${po.poNumber} - ${CONFIG.companyName}`;
-    const mailBody = `Halo ${supplier.name},\n\nTerlampir detil Purchase Order nomor ${po.poNumber}:\n\n${itemsStr}\n\nTotal: ${formatCurrency(po.totalAmount)}\nTerm: ${po.paymentTerms || '-'}\nJatuh Tempo: ${po.dueDate || '-'}\n\nMohon untuk segera diproses dan dikonfirmasi.\n\nTerima kasih,\n${CONFIG.companyName}`;
+    const mailBody = `Halo ${supplier.name},\n\nTerlampir detil Purchase Order nomor ${po.poNumber}:\n\n${itemsStr}\n\nTotal: ${formatCurrency(po.totalAmount)}\nTgl Kirim (ETD): ${etdStr}\nTerm: ${po.paymentTerms || '-'}\nJatuh Tempo: ${po.dueDate || '-'}\n\nMohon untuk segera diproses dan dikonfirmasi.\n\nTerima kasih,\n${CONFIG.companyName}`;
 
     window.location.href = `mailto:${supplier.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(mailBody)}`;
 };
