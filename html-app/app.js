@@ -8532,7 +8532,8 @@ function renderPurchaseOrders() {
         .filter(po => po.status !== 'DELETED')
         .map(po => ({
             ...po,
-            supplierName: (suppliers.find(s => s.id === po.supplierId) || { name: '' }).name
+            poNumber: po.poNumber || '',
+            supplierName: (suppliers.find(s => s.id === po.supplierId) || { name: 'Unknown' }).name
         }));
 
     // Check if any date filter is applied
@@ -8543,6 +8544,19 @@ function renderPurchaseOrders() {
     if (filters.end) { const d = new Date(filters.end); d.setHours(23, 59, 59, 999); rawPos = rawPos.filter(po => new Date(po.date) <= d); }
     if (filters.supplier) { rawPos = rawPos.filter(po => po.supplierId === filters.supplier); }
     if (filters.category) { rawPos = rawPos.filter(po => po.category === filters.category); }
+
+    // Search Query Filtering across ALL pages / records
+    const searchQuery = (filters.q || '').toLowerCase().trim();
+    if (searchQuery) {
+        rawPos = rawPos.filter(po => {
+            const poNum = (po.poNumber || '').toLowerCase();
+            const supName = (po.supplierName || '').toLowerCase();
+            const cat = (po.category || '').toLowerCase();
+            const status = (po.status || '').toLowerCase();
+            const dateStr = po.date ? formatDate(po.date).toLowerCase() : '';
+            return poNum.includes(searchQuery) || supName.includes(searchQuery) || cat.includes(searchQuery) || status.includes(searchQuery) || dateStr.includes(searchQuery);
+        });
+    }
 
     // Apply user sort or default sort
     let pos = window.applyTableSort(rawPos, 'po', defaultPOSort);
@@ -8642,7 +8656,7 @@ function renderPurchaseOrders() {
                     <div class="flex items-center gap-3 flex-1">
                         <div class="flex-1 max-w-md relative">
                             <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm cursor-text pointer-events-none"></i>
-                            <input type="text" id="po_global_search" onkeyup="filterPOTable()" placeholder="Search Purchase Orders..." 
+                            <input type="text" id="po_global_search" value="${filters.q || ''}" oninput="filterPOTable()" placeholder="Cari No. PO, Supplier, Kategori..." 
                                 class="w-full pl-11 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:bg-white outline-none transition-all">
                         </div>
                         
@@ -8725,21 +8739,30 @@ function renderPurchaseOrders() {
     `;
 }
 
+let _poSearchTimeout = null;
 window.filterPOTable = () => {
     const input = document.getElementById('po_global_search');
-    if(!input) return;
-    const filter = input.value.toLowerCase();
-    const table = document.getElementById('po_table');
-    const tr = table.getElementsByTagName('tr');
+    if (!input) return;
+    const q = input.value;
+    if (!window.currentFilters) window.currentFilters = {};
+    if (!window.currentFilters.purchaseOrders) window.currentFilters.purchaseOrders = {};
+    window.currentFilters.purchaseOrders.q = q;
 
-    for (let i = 1; i < tr.length; i++) {
-        let textContent = tr[i].textContent || tr[i].innerText;
-        if (textContent.toLowerCase().indexOf(filter) > -1) {
-            tr[i].style.display = '';
-        } else {
-            tr[i].style.display = 'none';
+    clearTimeout(_poSearchTimeout);
+    _poSearchTimeout = setTimeout(() => {
+        if (window.tablePagination && window.tablePagination['po']) {
+            window.tablePagination['po'].page = 1;
         }
-    }
+        const cursorPos = input.selectionStart;
+        renderPurchaseOrders();
+        const newInput = document.getElementById('po_global_search');
+        if (newInput) {
+            newInput.focus();
+            if (cursorPos !== null) {
+                newInput.setSelectionRange(cursorPos, cursorPos);
+            }
+        }
+    }, 150);
 };
 
 window.togglePODateDropdown = () => {
@@ -8748,31 +8771,50 @@ window.togglePODateDropdown = () => {
 };
 
 window.applyPOHeaderDateFilter = () => {
+    if (!window.currentFilters) window.currentFilters = {};
     window.currentFilters.purchaseOrders = {
-        ...window.currentFilters.purchaseOrders,
+        ...(window.currentFilters.purchaseOrders || {}),
         viewAll: false,
-        start: document.getElementById('po_header_start').value,
-        end: document.getElementById('po_header_end').value
+        start: document.getElementById('po_header_start')?.value || '',
+        end: document.getElementById('po_header_end')?.value || ''
     };
+    if (window.tablePagination && window.tablePagination['po']) {
+        window.tablePagination['po'].page = 1;
+    }
+    const el = document.getElementById('po_date_dropdown');
+    if (el) el.classList.add('hidden');
     renderPurchaseOrders();
 };
 
 window.showAllPOFilter = () => {
+    if (!window.currentFilters) window.currentFilters = {};
     window.currentFilters.purchaseOrders = {
-        ...window.currentFilters.purchaseOrders,
+        ...(window.currentFilters.purchaseOrders || {}),
         viewAll: true,
         start: '',
         end: ''
     };
+    if (window.tablePagination && window.tablePagination['po']) {
+        window.tablePagination['po'].page = 1;
+    }
+    const el = document.getElementById('po_date_dropdown');
+    if (el) el.classList.add('hidden');
     renderPurchaseOrders();
 };
 
 window.resetPOHeaderDateFilter = () => {
+    if (!window.currentFilters) window.currentFilters = {};
     window.currentFilters.purchaseOrders = { 
-        ...window.currentFilters.purchaseOrders,
+        ...(window.currentFilters.purchaseOrders || {}),
         viewAll: false,
-        start: '', end: '' 
+        start: '', 
+        end: '' 
     };
+    if (window.tablePagination && window.tablePagination['po']) {
+        window.tablePagination['po'].page = 1;
+    }
+    const el = document.getElementById('po_date_dropdown');
+    if (el) el.classList.add('hidden');
     renderPurchaseOrders();
 };
 
