@@ -8658,18 +8658,18 @@ function renderPurchaseOrders() {
 
         return `
             <tr class="border-b border-gray-100 hover:bg-slate-50 transition-colors group">
-                <td class="py-4 px-6 whitespace-nowrap">
-                    <button onclick="handlePOAction('view', '${po.id}')" class="text-blue-700 hover:text-blue-800 font-mono text-sm font-bold transition-colors cursor-pointer outline-none bg-blue-50/80 px-3.5 py-1.5 rounded-lg border border-blue-200 shadow-sm">
+                <td class="py-2.5 px-4 whitespace-nowrap">
+                    <button onclick="handlePOAction('view', '${po.id}')" class="text-blue-700 hover:text-blue-800 font-mono text-xs font-bold transition-colors cursor-pointer outline-none bg-blue-50/80 px-2.5 py-1 rounded-lg border border-blue-200 shadow-sm">
                         ${po.poNumber}
                     </button>
                 </td>
-                <td class="py-4 px-6 text-sm text-slate-500 font-medium">${formatDate(po.date).split(' ')[0]}</td>
-                <td class="py-4 px-6 text-sm text-slate-900 font-bold tracking-tight">${supplier.name}</td>
-                <td class="py-4 px-6">${catBadge}</td>
-                <td class="py-4 px-6 text-sm text-slate-800 font-bold text-right">${formatCurrency(po.totalAmount)}</td>
-                <td class="py-4 px-6 text-center">${statusBadge}</td>
-                <td class="py-4 px-6 text-right whitespace-nowrap">
-                    <div class="flex items-center justify-end gap-2 px-1">
+                <td class="py-2.5 px-4 text-xs text-slate-500 font-medium">${formatDate(po.date).split(' ')[0]}</td>
+                <td class="py-2.5 px-4 text-xs text-slate-900 font-bold tracking-tight">${supplier.name}</td>
+                <td class="py-2.5 px-4">${catBadge}</td>
+                <td class="py-2.5 px-4 text-xs text-slate-800 font-bold text-right">${formatCurrency(po.totalAmount)}</td>
+                <td class="py-2.5 px-4 text-center">${statusBadge}</td>
+                <td class="py-2.5 px-4 text-right whitespace-nowrap">
+                    <div class="flex items-center justify-end gap-1.5 px-1">
                         ${actionHtml}
                     </div>
                 </td>
@@ -8678,32 +8678,32 @@ function renderPurchaseOrders() {
     }).join('');
 
     if (pos.length === 0) {
-        rows = `<tr><td colspan="7" class="py-12 text-center text-slate-400 text-sm font-medium">Belum ada data purchase order untuk ditampilkan</td></tr>`;
+        rows = `<tr><td colspan="7" class="py-10 text-center text-slate-400 text-xs font-medium">Belum ada data purchase order untuk ditampilkan</td></tr>`;
     }
 
     mainContent.innerHTML = `
         <div id="po-list-view" class="animate-in fade-in duration-300 h-[calc(100vh-64px)] flex flex-col bg-slate-50 -m-4 sm:-m-6">
-            <!-- Full Width Fixed Filter Bar -->
+            <!-- Full Width Fixed Filter Bar (Compact) -->
             <div class="bg-white border-b border-gray-200 shrink-0 z-40 shadow-sm relative">
-                <div class="flex flex-wrap md:flex-nowrap justify-between items-center px-6 py-4 gap-4">
+                <div class="flex flex-wrap md:flex-nowrap justify-between items-center px-6 py-2.5 gap-3">
                     <div class="flex items-center gap-3 flex-1">
                         <div class="flex-1 max-w-md relative">
-                            <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm cursor-text pointer-events-none"></i>
+                            <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs cursor-text pointer-events-none"></i>
                             <input type="text" id="po_global_search" value="${filters.q || ''}" oninput="filterPOTable()" placeholder="Cari No. PO, Supplier, Kategori..." 
-                                class="w-full pl-11 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:bg-white outline-none transition-all">
+                                class="w-full pl-10 pr-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:bg-white outline-none transition-all">
                         </div>
                         
                         <!-- Date Filter Dropdown Trigger -->
                         <div class="relative" id="po_date_filter_container">
-                            <button onclick="togglePODateDropdown()" class="flex items-center bg-slate-50 border border-slate-200 rounded-xl overflow-hidden hover:bg-slate-100 transition-all shadow-sm h-[38px] group p-0">
-                                <span class="bg-slate-100 border-r border-slate-200 px-3 h-full flex items-center text-slate-600 transition-colors">
-                                    <i class="fas fa-calendar-alt text-[13px]"></i>
+                            <button onclick="togglePODateDropdown()" class="flex items-center bg-slate-50 border border-slate-200 rounded-lg overflow-hidden hover:bg-slate-100 transition-all shadow-sm h-[32px] group p-0">
+                                <span class="bg-slate-100 border-r border-slate-200 px-2.5 h-full flex items-center text-slate-600 transition-colors">
+                                    <i class="fas fa-calendar-alt text-xs"></i>
                                 </span>
-                                <span class="px-3 text-[13px] font-bold ${hasDateFilter ? 'text-blue-600' : 'text-slate-700'}">
+                                <span class="px-2.5 text-xs font-bold ${hasDateFilter ? 'text-blue-600' : 'text-slate-700'}">
                                     ${hasDateFilter ? `${filters.start || '...'} s/d ${filters.end || '...'}` : 'Date'}
                                 </span>
-                                <span class="pr-3 pl-1 text-slate-500 justify-center flex items-center">
-                                    <i class="fas fa-chevron-down text-[11px]"></i>
+                                <span class="pr-2 pl-0.5 text-slate-500 justify-center flex items-center">
+                                    <i class="fas fa-chevron-down text-[10px]"></i>
                                 </span>
                             </button>
                             
@@ -8736,11 +8736,11 @@ function renderPurchaseOrders() {
                     </div>
 
                     <div class="flex items-center gap-2">
-                        <button onclick="renderDeletedPOHistory()" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 px-4 py-2 rounded-lg transition-all text-sm font-semibold shadow-sm flex items-center gap-2 active:scale-95">
-                            <i class="fas fa-archive text-amber-500"></i> Arsip PO Terhapus
+                        <button onclick="renderDeletedPOHistory()" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 px-3.5 py-1.5 rounded-lg transition-all text-xs font-semibold shadow-sm flex items-center gap-1.5 active:scale-95">
+                            <i class="fas fa-archive text-amber-500 text-xs"></i> Arsip PO Terhapus
                         </button>
-                        <button onclick="openPOForm()" class="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded-lg transition-all text-sm font-medium shadow-sm flex items-center gap-2 active:scale-95">
-                            <i class="fas fa-plus"></i> Buat PO Baru
+                        <button onclick="openPOForm()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg transition-all text-xs font-medium shadow-sm flex items-center gap-1.5 active:scale-95">
+                            <i class="fas fa-plus text-xs"></i> Buat PO Baru
                         </button>
                     </div>
                 </div>
@@ -8751,38 +8751,38 @@ function renderPurchaseOrders() {
                 <table class="w-full text-left border-collapse" id="po_table">
                     <thead class="bg-slate-50 sticky top-0 z-30 shadow-[0_1px_0_#e2e8f0]">
                         <tr class="bg-gray-50/50">
-                            ${window.sortTh('po','poNumber','string','No. PO','renderPurchaseOrders')}
-                            ${window.sortTh('po','date','date','Tanggal','renderPurchaseOrders')}
-                            ${window.sortTh('po','supplierName','string','Supplier','renderPurchaseOrders')}
-                            ${window.sortTh('po','category','string','Kategori','renderPurchaseOrders')}
-                            ${window.sortTh('po','totalAmount','number','Total','renderPurchaseOrders','text-right')}
-                            ${window.sortTh('po','status','string','Status','renderPurchaseOrders')}
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">Aksi</th>
+                            ${window.sortTh('po','poNumber','string','No. PO','renderPurchaseOrders','py-2.5 px-4 text-xs')}
+                            ${window.sortTh('po','date','date','Tanggal','renderPurchaseOrders','py-2.5 px-4 text-xs')}
+                            ${window.sortTh('po','supplierName','string','Supplier','renderPurchaseOrders','py-2.5 px-4 text-xs')}
+                            ${window.sortTh('po','category','string','Kategori','renderPurchaseOrders','py-2.5 px-4 text-xs')}
+                            ${window.sortTh('po','totalAmount','number','Total','renderPurchaseOrders','py-2.5 px-4 text-xs text-right')}
+                            ${window.sortTh('po','status','string','Status','renderPurchaseOrders','py-2.5 px-4 text-xs text-center')}
+                            <th class="py-2.5 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">Aksi</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100 bg-white">${rows}</tbody>
                 </table>
             </div>
             
-            <!-- Totals Summary Bar (Minimalist - Sales Invoices Style) -->
-            <div class="px-8 py-4 flex flex-wrap items-center justify-between border-t border-slate-200 bg-white shrink-0 shadow-sm gap-4">
-                <div>
-                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 opacity-70">Total Nilai PO</p>
-                    <p class="text-2xl font-black font-mono tracking-tighter text-slate-800" id="po_footer_grand_total">${formatCurrency(totalNominalPO)}</p>
+            <!-- Compact Totals Summary Bar -->
+            <div class="px-6 py-2.5 flex flex-wrap items-center justify-between border-t border-slate-200 bg-white shrink-0 shadow-sm gap-3">
+                <div class="flex items-center gap-3">
+                    <span class="text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">Total Nilai PO</span>
+                    <span class="text-base font-black font-mono tracking-tight text-slate-800" id="po_footer_grand_total">${formatCurrency(totalNominalPO)}</span>
                 </div>
                 
-                <div class="flex gap-8 md:gap-12 text-right items-center">
-                    <div class="flex flex-col">
-                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Sudah Diterima</span>
-                        <span class="text-sm font-bold font-mono text-emerald-600" id="po_footer_total_received">${formatCurrency(totalReceivedPO)}</span>
+                <div class="flex gap-6 md:gap-8 text-right items-center">
+                    <div class="flex items-center gap-2">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-wider">Sudah Diterima:</span>
+                        <span class="text-xs font-bold font-mono text-emerald-600" id="po_footer_total_received">${formatCurrency(totalReceivedPO)}</span>
                     </div>
-                    <div class="flex flex-col">
-                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Menunggu Penerimaan</span>
-                        <span class="text-sm font-bold font-mono text-blue-600" id="po_footer_total_pending">${formatCurrency(totalPendingPO)}</span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-wider">Menunggu:</span>
+                        <span class="text-xs font-bold font-mono text-blue-600" id="po_footer_total_pending">${formatCurrency(totalPendingPO)}</span>
                     </div>
-                    <div class="flex flex-col">
-                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Jumlah Dokumen</span>
-                        <span class="text-sm font-bold font-mono text-slate-600" id="po_footer_total_docs">${activeCount} PO</span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-wider">Total:</span>
+                        <span class="text-xs font-bold font-mono text-slate-600" id="po_footer_total_docs">${activeCount} PO</span>
                     </div>
                 </div>
             </div>
