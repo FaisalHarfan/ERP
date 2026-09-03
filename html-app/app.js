@@ -1701,14 +1701,14 @@ function renderSalesDashboard() {
         return companyMatch;
     });
 
-    // Calculate Stats based on filtered data
-    const totalSales = filteredOrders.reduce((sum, o) => sum + parseFloat(o.totalAmount || 0), 0);
-    const soToDeliver = filteredOrders.filter(o => o.status === 'CONFIRMED').length;
-    const soToBill = filteredInvoices.filter(i => i.status === 'UNPAID').length;
-    const activeCustomers = filters.company ? (filteredOrders.length > 0 ? 1 : 0) : new Set(filteredOrders.map(o => o.customerId)).size;
+    // Calculate Stats based on filtered data from Sales Invoices
+    const totalSales = filteredInvoices.reduce((sum, i) => sum + parseFloat(i.totalAmount || 0), 0);
+    const soToDeliver = filteredOrders.filter(o => o.status === 'CONFIRMED' || o.status === 'DRAFT').length;
+    const soToBill = filteredInvoices.filter(i => i.status === 'UNPAID' || i.status === 'PARTIAL').length;
+    const activeCustomers = filters.company ? (filteredInvoices.length > 0 ? 1 : 0) : new Set(filteredInvoices.map(i => i.customerId)).size;
 
     // Add Demo Data Trigger for empty state
-    if (orders.length === 0) {
+    if (orders.length === 0 && invoices.length === 0) {
         mc.innerHTML = `
             <div class="flex flex-col items-center justify-center h-[60vh] text-center space-y-6 animate-fade-in">
                 <div class="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center text-blue-500 shadow-inner">
@@ -1716,10 +1716,10 @@ function renderSalesDashboard() {
                 </div>
                 <div>
                     <h2 class="text-2xl font-bold text-gray-800">Dashboard Masih Kosong</h2>
-                    <p class="text-gray-500 max-w-md mx-auto mt-2">Belum ada transaksi Sales Order yang tercatat. Anda bisa membuat SO baru atau gunakan tombol di bawah untuk mengisi data sampel demi keperluan demo.</p>
+                    <p class="text-gray-500 max-w-md mx-auto mt-2">Belum ada transaksi Penjualan yang tercatat. Anda bisa membuat Invoice baru atau gunakan tombol di bawah untuk mengisi data sampel demi keperluan demo.</p>
                 </div>
                 <div class="flex gap-4">
-                    <button onclick="navigateTo('sales-orders')" class="px-6 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl font-bold hover:bg-gray-50 transition-all">Buat Sales Order</button>
+                    <button onclick="navigateTo('sales-invoices')" class="px-6 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl font-bold hover:bg-gray-50 transition-all">Buat Sales Invoice</button>
                     <button onclick="generateSampleSalesData()" class="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-500/30 transition-all flex items-center gap-2">
                         <i class="fas fa-magic"></i> Isi Data Demo
                     </button>
@@ -1887,7 +1887,7 @@ function renderSalesDashboard() {
     // Ensure the DOM is updated before drawing
     requestAnimationFrame(() => {
         setTimeout(() => {
-            if(window.initSalesCharts) window.initSalesCharts(filteredOrders, customers);
+            if(window.initSalesCharts) window.initSalesCharts(filteredInvoices, customers);
         }, 120);
     });
 }
@@ -2210,7 +2210,7 @@ window.generateSampleSalesData = () => {
     renderSalesDashboard();
 };
 
-window.initSalesCharts = function(orders, customers) {
+window.initSalesCharts = function(invoices, customers) {
     if (typeof Chart === 'undefined') {
         console.warn('Chart.js not loaded yet');
         return;
@@ -2226,7 +2226,7 @@ window.initSalesCharts = function(orders, customers) {
         if (existing) existing.destroy();
     });
 
-    // 1. Sales Order Trends (Responds to Period)
+    // 1. Sales Invoices Trends (Responds to Period)
     const ctxTrends = document.getElementById('chartSOTrends');
     if (ctxTrends) {
         let labels = [];
@@ -2235,8 +2235,8 @@ window.initSalesCharts = function(orders, customers) {
         if (filters.period === 'Quarterly') {
             labels = ['Q1', 'Q2', 'Q3', 'Q4'];
             data = [0, 0, 0, 0];
-            (orders || []).forEach(o => {
-                const dStr = o.date || o.createdAt;
+            (invoices || []).forEach(inv => {
+                const dStr = inv.date || inv.createdAt;
                 if(!dStr) return;
                 const m = new Date(dStr).getMonth();
                 const q = Math.floor(m / 3);
@@ -2245,8 +2245,8 @@ window.initSalesCharts = function(orders, customers) {
         } else if (filters.period === 'Weekly') {
             labels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
             data = [0, 0, 0, 0];
-            (orders || []).forEach(o => {
-                const dStr = o.date || o.createdAt;
+            (invoices || []).forEach(inv => {
+                const dStr = inv.date || inv.createdAt;
                 if(!dStr) return;
                 const d = new Date(dStr).getDate();
                 const w = Math.min(3, Math.floor((d - 1) / 7));
@@ -2256,8 +2256,8 @@ window.initSalesCharts = function(orders, customers) {
             // Default Monthly
             labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
             data = new Array(12).fill(0);
-            (orders || []).forEach(o => {
-                const dStr = o.date || o.createdAt;
+            (invoices || []).forEach(inv => {
+                const dStr = inv.date || inv.createdAt;
                 if(!dStr) return;
                 const m = new Date(dStr).getMonth();
                 data[m]++;
@@ -2269,7 +2269,7 @@ window.initSalesCharts = function(orders, customers) {
             data: {
                 labels: labels,
                 datasets: [{
-                    label: 'Sales Orders',
+                    label: 'Sales Invoices',
                     data: data,
                     borderColor: '#f9a8d4',
                     borderWidth: 2,
@@ -2300,12 +2300,12 @@ window.initSalesCharts = function(orders, customers) {
         });
     }
 
-    // 2. Top Customers
+    // 2. Top Customers based on Invoices
     const ctxTop = document.getElementById('chartTopCustomers');
     if (ctxTop) {
         const custTotals = {};
-        (orders || []).forEach(o => {
-            custTotals[o.customerId] = (custTotals[o.customerId] || 0) + parseFloat(o.totalAmount || 0);
+        (invoices || []).forEach(inv => {
+            custTotals[inv.customerId] = (custTotals[inv.customerId] || 0) + parseFloat(inv.totalAmount || 0);
         });
         const sortedCust = Object.entries(custTotals).sort((a,b) => b[1] - a[1]).slice(0,5);
         const labels = sortedCust.map(x => {
