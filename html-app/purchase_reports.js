@@ -126,7 +126,14 @@ window.updatePurchaseAnalytics = () => {
     const purchaseRFQs = db.read('purchaseRFQs') || [];
     const suppliers = db.read('suppliers') || [];
 
-    const getDocDate  = (doc) => doc.date || doc.createdAt || '';
+    const getDocDate  = (doc) => {
+        if (doc && (doc.poNumber || doc.supplierId)) {
+            if (typeof window.getPOEffectiveDate === 'function') return window.getPOEffectiveDate(doc);
+            if (doc.actualDeliveryDate) return new Date(doc.actualDeliveryDate);
+            if (doc.receivedAt) return new Date(doc.receivedAt);
+        }
+        return doc.date || doc.createdAt || '';
+    };
     const getDocQty   = (doc) => (doc.items || []).reduce((sum, it) => sum + parseFloat(it.qty || it.receivedQty || 0), 0);
     const getDocAmt   = (doc) => parseFloat(doc.totalAmount || doc.grandTotal || 0);
     const isSupplier  = basedOn === 'Supplier';
@@ -628,15 +635,14 @@ window.updatePurchaseOrderTrends = () => {
     const basedOn = document.getElementById('pot_based_on')?.value || 'Item';
     const period = document.getElementById('pot_period')?.value || 'Monthly';
     
-    let periods = (period === 'Monthly') ? ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] : (period === 'Quarterly' ? ['Q1','Q2','Q3','Q4'] : [year.toString()]);
-    
-    const pos = db.read('purchaseOrders').filter(p => new Date(p.date || p.createdAt).getFullYear() === year);
+    const getPODate = (p) => (typeof window.getPOEffectiveDate === 'function') ? window.getPOEffectiveDate(p) : new Date(p.actualDeliveryDate || p.date || p.createdAt || Date.now());
+    const pos = db.read('purchaseOrders').filter(p => p.status !== 'CANCELLED' && p.status !== 'DELETED' && getPODate(p).getFullYear() === year);
     const isSupplier = basedOn === 'Supplier';
     const chartData = Array(periods.length).fill(0);
     const pivot = {};
 
     pos.forEach(p => {
-        const d = new Date(p.date || p.createdAt);
+        const d = getPODate(p);
         const pIdx = period === 'Monthly' ? d.getMonth() : (period === 'Quarterly' ? Math.floor(d.getMonth()/3) : 0);
         
         const poQty = (p.items || []).reduce((s, it) => s + parseFloat(it.qty || 0), 0);

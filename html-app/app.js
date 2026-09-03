@@ -2345,7 +2345,33 @@ window.initSalesCharts = function(orders, customers) {
     }
 }
 
-// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ PURCHASE DASHBOARD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Helper to get effective date of PO (Uses Actual Received Date if goods have been received)
+window.getPOEffectiveDate = (p) => {
+    if (!p) return new Date();
+    // 1. If receipts array exists with dates, use the latest receipt date
+    let receipts = p.receipts;
+    if (typeof receipts === 'string') {
+        try { receipts = JSON.parse(receipts); } catch (e) { receipts = []; }
+    }
+    if (Array.isArray(receipts) && receipts.length > 0) {
+        const validRcpt = receipts.slice().reverse().find(r => r && (r.date || r.receivedDate || r.createdAt));
+        if (validRcpt) {
+            return new Date(validRcpt.date || validRcpt.receivedDate || validRcpt.createdAt);
+        }
+    }
+    // 2. Check actualDeliveryDate (recorded on goods receipt completion)
+    if (p.actualDeliveryDate) {
+        return new Date(p.actualDeliveryDate);
+    }
+    // 3. Check receivedAt
+    if (p.receivedAt) {
+        return new Date(p.receivedAt);
+    }
+    // 4. Fallback to order date / creation date
+    return new Date(p.date || p.createdAt || Date.now());
+};
+
+// ─── PURCHASE DASHBOARD ─────────────────────────────────────────
 function renderPurchaseDashboard() {
     document.getElementById('pageTitle').innerText = 'Dashboard Pembelian';
     const mc = document.getElementById('main-content');
@@ -2377,13 +2403,13 @@ function renderPurchaseDashboard() {
         }
     }
 
-    // Apply filters to POs
+    // Apply filters to POs (uses actual received date if goods received, otherwise PO date)
     let filteredPos = pos.filter(p => {
-        const d = new Date(p.date || p.createdAt);
+        if (p.status === 'CANCELLED' || p.status === 'DELETED') return false;
+
+        const d = window.getPOEffectiveDate(p);
         if (startDate && d < startDate) return false;
         if (endDate && d > endDate) return false;
-
-        const statusMatch = p.status !== 'CANCELLED';
         
         let supplierMatch = true;
         if (filters.supplier) {
@@ -2392,7 +2418,7 @@ function renderPurchaseDashboard() {
             supplierMatch = nm.toLowerCase().includes(filters.supplier.toLowerCase());
         }
         
-        return statusMatch && supplierMatch;
+        return supplierMatch;
     });
 
     // Apply filters to Invoices
@@ -2605,8 +2631,8 @@ function renderPurchaseDashboard() {
             // Apply filters
             const fyYear = poFilters.fiscalYear || currentYear;
             let filtered = pos.filter(p => {
-                if (!poFilters.includeCancelled && p.status === 'CANCELLED') return false;
-                const d = new Date(p.date || p.createdAt || Date.now());
+                if (!poFilters.includeCancelled && (p.status === 'CANCELLED' || p.status === 'DELETED')) return false;
+                const d = window.getPOEffectiveDate(p);
                 if (d.getFullYear() !== fyYear) return false;
                 if (poFilters.supplier) {
                     const sid = p.supplierId || '';
@@ -2621,15 +2647,15 @@ function renderPurchaseDashboard() {
             if (poFilters.period === 'Quarterly') {
                 labels = ['Q1', 'Q2', 'Q3', 'Q4'];
                 data = [0, 0, 0, 0];
-                filtered.forEach(p => { const m = new Date(p.date || p.createdAt).getMonth(); data[Math.floor(m/3)]++; });
+                filtered.forEach(p => { const m = window.getPOEffectiveDate(p).getMonth(); data[Math.floor(m/3)]++; });
             } else if (poFilters.period === 'Weekly') {
                 labels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
                 data = [0, 0, 0, 0];
-                filtered.forEach(p => { const day = new Date(p.date || p.createdAt).getDate(); data[Math.min(3, Math.floor((day-1)/7))]++; });
+                filtered.forEach(p => { const day = window.getPOEffectiveDate(p).getDate(); data[Math.min(3, Math.floor((day-1)/7))]++; });
             } else {
                 labels = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
                 data = new Array(12).fill(0);
-                filtered.forEach(p => { const m = new Date(p.date || p.createdAt || Date.now()).getMonth(); data[m]++; });
+                filtered.forEach(p => { const m = window.getPOEffectiveDate(p).getMonth(); data[m]++; });
             }
 
             new Chart(ctxTrends, {
