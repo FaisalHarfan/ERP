@@ -15469,8 +15469,568 @@ window.handleSIAction = (actionOrSelectEl, id) => {
     const cleanId = typeof id === 'string' ? id.replace(/^[a-z]+-/, '') : id;
     
     if (act === 'view') viewInvoice(cleanId);
+    else if (act === 'edit') window.openEditInvoiceModal(cleanId);
     else if (act === 'print') window.printSalesInvoiceLandscape(cleanId);
     else if (act === 'cancel') cancelInvoice(cleanId);
+};
+
+// --- Edit Invoice Logic (Khusus Administrator) ---
+window.openEditInvoiceModal = (invoiceId) => {
+    if (typeof isCurrentUserAdmin === 'function' && !isCurrentUserAdmin()) {
+        showToast('Akses ditolak: Hanya Administrator yang berhak mengedit invoice.', 'error');
+        return;
+    }
+
+    const inv = db.findById('salesInvoices', invoiceId);
+    if (!inv) {
+        showToast('Data invoice tidak ditemukan.', 'error');
+        return;
+    }
+
+    renderBreadcrumb(['Sales', 'Sales Invoices', `Edit ${inv.invoiceNumber}`]);
+
+    const mainContent = document.getElementById('main-content');
+    mainContent.innerHTML = `<div id="si-list-view" class="hidden"></div><div id="si-form-view" class="w-full"></div>`;
+    const formView = document.getElementById('si-form-view');
+
+    const customer = db.findById('customers', inv.customerId) || { name: 'Customer' };
+    const so = inv.salesOrderId ? db.findById('salesOrders', inv.salesOrderId) : null;
+
+    const EXCLUDED_BANK_IDS = ['bank_cash', 'bank_bca', 'bank_bri_non_pajak'];
+    const bankAccounts = (db.read('bankAccounts') || []).filter(ba => !EXCLUDED_BANK_IDS.includes(ba.id));
+
+    const isTax = inv.isTax || (parseFloat(inv.taxAmount) || 0) > 0 || (parseFloat(inv.taxRate) || 0) > 0 || inv.taxType === 'Pajak';
+    const taxRate = parseFloat(inv.taxRate) !== undefined && !isNaN(parseFloat(inv.taxRate)) ? parseFloat(inv.taxRate) : (isTax ? 11 : 0);
+    const discType = inv.discountType || '';
+    const discValue = inv.discountValue || '';
+    const subsidyDesc = inv.subsidyDescription || '';
+    const subsidyAmt = parseFloat(inv.subsidyAmount) || 0;
+
+    const items = (inv.items && inv.items.length > 0) ? inv.items : [
+        { prodCode: '', prodText: 'Item Produk', kemasan: '-', colly: '1', qty: 1, prodUnit: 'KG', price: 0, subtotal: 0 }
+    ];
+
+    const invDateIso = inv.date ? new Date(inv.date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
+    const dueDateIso = inv.dueDate ? new Date(inv.dueDate).toISOString().split('T')[0] : '';
+
+    const itemsHtml = items.map((item, idx) => `
+        <tr class="inv-edit-item-row border-b border-slate-100 hover:bg-slate-50/50 transition-colors" data-index="${idx}" data-item-id="${item.inventoryItemId || item.id || ''}">
+            <td class="px-4 py-3">
+                <input type="text" class="inv-item-prod-text w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:bg-white focus:border-blue-500 outline-none" value="${(item.prodText || item.name || '').replace(/"/g, '&quot;')}" placeholder="Nama Produk / Deskripsi Item">
+                <input type="hidden" class="inv-item-prod-code" value="${(item.prodCode || item.code || '').replace(/"/g, '&quot;')}">
+            </td>
+            <td class="px-3 py-3">
+                <input type="text" class="inv-item-kemasan w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:bg-white focus:border-blue-500 outline-none text-center" value="${(item.kemasan || '-').replace(/"/g, '&quot;')}" placeholder="Kemasan">
+            </td>
+            <td class="px-3 py-3">
+                <input type="text" class="inv-item-colly w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black text-blue-600 focus:bg-white focus:border-blue-500 outline-none text-center" value="${(item.colly || '-').replace(/"/g, '&quot;')}" placeholder="Colly">
+            </td>
+            <td class="px-3 py-3">
+                <div class="flex items-center gap-1.5">
+                    <input type="number" step="any" min="0" oninput="refreshEditInvoiceCalculation()" class="inv-item-qty w-20 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:bg-white focus:border-blue-500 outline-none text-right" value="${item.qty || 0}">
+                    <input type="text" class="inv-item-prod-unit w-14 px-2 py-2 bg-slate-100 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-500 text-center uppercase outline-none" value="${(item.prodUnit || item.unit || 'KG').replace(/"/g, '&quot;')}">
+                </div>
+            </td>
+            <td class="px-3 py-3">
+                <input type="number" step="any" min="0" oninput="refreshEditInvoiceCalculation()" class="inv-item-price w-28 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-800 focus:bg-white focus:border-blue-500 outline-none text-right" value="${item.price || 0}">
+            </td>
+            <td class="px-4 py-3 text-right">
+                <span class="inv-item-subtotal-display font-mono font-black text-xs text-slate-900 bg-slate-100/80 px-2.5 py-1.5 rounded-lg inline-block">${formatCurrency(item.subtotal || 0)}</span>
+            </td>
+            <td class="px-2 py-3 text-center">
+                <button type="button" onclick="removeEditInvoiceItemRow(this)" class="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer" title="Hapus baris">
+                    <i class="fas fa-trash-alt text-xs"></i>
+                </button>
+            </td>
+        </tr>
+    `).join('');
+
+    formView.innerHTML = `
+        <div class="animate-in fade-in duration-300 flex flex-col bg-white" style="min-height: calc(100vh - 64px);">
+            <!-- Top Action Bar -->
+            <div class="border-b border-slate-200 px-8 py-5 flex items-center justify-between shrink-0 bg-white sticky top-0 z-30 shadow-[0_1px_3px_rgba(0,0,0,0.05)]">
+                <div class="flex items-center gap-4">
+                    <button onclick="renderSalesInvoices()" class="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-all active:scale-95" title="Kembali ke Daftar">
+                        <i class="fas fa-arrow-left text-sm"></i>
+                    </button>
+                    <div>
+                        <h2 class="text-xl font-black text-slate-800 tracking-tight">${inv.invoiceNumber}</h2>
+                        <p class="text-xs text-slate-400 font-medium mt-0.5">Customer: <strong class="text-slate-700">${customer.name}</strong> ${so ? `• Referensi SO: <strong class="text-blue-600">${so.soNumber}</strong>` : ''}</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-center gap-3">
+                    <button onclick="renderSalesInvoices()" class="px-6 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95">
+                        Batal
+                    </button>
+                    <button onclick="saveEditedInvoice('${inv.id}')" class="px-8 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-blue-500/20 active:scale-95 flex items-center gap-2">
+                        <i class="fas fa-save text-xs"></i> Simpan Perubahan Invoice
+                    </button>
+                </div>
+            </div>
+
+            <!-- Form Content -->
+            <div class="flex-1 bg-slate-50/40 p-8 space-y-6">
+                <!-- Section 1: Metadata & Dates -->
+                <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-6">
+                    <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2 border-b border-slate-100 pb-3">
+                        <i class="fas fa-info-circle text-blue-600"></i> Informasi Faktur & Rekening
+                    </h3>
+
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
+                        <div class="space-y-2">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-wider">Nomor Faktur</label>
+                            <input type="text" id="inv_edit_number" value="${inv.invoiceNumber}" class="w-full px-4 py-3 bg-slate-100 border border-slate-200 rounded-xl font-mono font-bold text-xs text-slate-700 outline-none" readonly>
+                        </div>
+
+                        <div class="space-y-2">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-wider">Tanggal Faktur <span class="text-red-500">*</span></label>
+                            <input type="date" id="inv_edit_date" value="${invDateIso}" onchange="updateEditInvDueDate()" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs text-slate-800 focus:bg-white focus:border-blue-500 outline-none transition-all cursor-pointer">
+                        </div>
+
+                        <div class="space-y-2">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-wider">Jatuh Tempo <span class="text-red-500">*</span></label>
+                            <input type="date" id="inv_edit_due_date" value="${dueDateIso}" class="w-full px-4 py-3 bg-red-50/50 border border-red-200 rounded-xl font-bold text-xs text-red-700 focus:bg-white focus:border-red-500 outline-none transition-all cursor-pointer">
+                        </div>
+
+                        <div class="space-y-2">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-wider">Rekening Tujuan Pembayaran</label>
+                            <select id="inv_edit_bank_account_id" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs text-slate-800 focus:bg-white focus:border-blue-500 outline-none cursor-pointer">
+                                <option value="">-- Tanpa Rekening Spesifik --</option>
+                                ${bankAccounts.map(ba => `
+                                    <option value="${ba.id}" ${inv.bankAccountId === ba.id ? 'selected' : ''}>
+                                        ${ba.bankName || 'BANK'} - ${ba.accountNumber} (a/n ${ba.accountHolder || '-'})
+                                    </option>
+                                `).join('')}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                        <div class="space-y-2">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-wider">Pajak (PPN%)</label>
+                            <select id="inv_edit_tax_rate" onchange="refreshEditInvoiceCalculation()" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-black text-xs text-slate-800 focus:bg-white focus:border-blue-500 outline-none cursor-pointer">
+                                <option value="0" ${taxRate === 0 ? 'selected' : ''}>Non PPN (0%)</option>
+                                <option value="11" ${taxRate > 0 ? 'selected' : ''}>PPN Luar (11%)</option>
+                            </select>
+                        </div>
+
+                        <div class="space-y-2" id="inv_edit_nsfp_container" style="display: ${taxRate > 0 ? 'block' : 'none'};">
+                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-wider">Nomor Seri Faktur Pajak (NSFP)</label>
+                            <input type="text" id="inv_edit_nsfp" value="${inv.nsfp || ''}" placeholder="000.000-00.00000000" class="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-xs text-slate-800 focus:bg-white focus:border-blue-500 outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 2: Items Table -->
+                <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden flex flex-col">
+                    <div class="px-8 py-5 bg-slate-50/60 border-b border-slate-100 flex items-center justify-between">
+                        <h4 class="text-xs font-black text-slate-600 uppercase tracking-wider flex items-center gap-2">
+                            <i class="fas fa-boxes text-blue-600"></i> Manifest Barang & Harga (Invoice Items)
+                        </h4>
+                        <button type="button" onclick="addEditInvoiceItemRow()" class="px-4 py-2 bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer">
+                            <i class="fas fa-plus text-xs"></i> Tambah Item
+                        </button>
+                    </div>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse" id="inv_edit_items_table">
+                            <thead>
+                                <tr class="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                                    <th class="px-4 py-3.5 min-w-[260px]">Nama Produk / Deskripsi Item</th>
+                                    <th class="px-3 py-3.5 text-center w-36">Kemasan</th>
+                                    <th class="px-3 py-3.5 text-center w-28">Colly</th>
+                                    <th class="px-3 py-3.5 text-right w-44">Qty / Unit</th>
+                                    <th class="px-3 py-3.5 text-right w-36">Satuan Harga (Rp)</th>
+                                    <th class="px-4 py-3.5 text-right w-40">Subtotal (Rp)</th>
+                                    <th class="px-2 py-3.5 text-center w-12"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="inv_edit_items_tbody" class="divide-y divide-slate-50">
+                                ${itemsHtml}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Section 3: Notes & Totals -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+                    <!-- Notes -->
+                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-4">
+                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Keterangan / Internal Payment Notes</label>
+                        <textarea id="inv_edit_notes" class="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-slate-700 h-44 focus:bg-white focus:border-blue-500 outline-none transition-all resize-none font-medium text-sm" placeholder="Tambahkan instruksi pembayaran, catatan invoice, atau keterangan lainnya...">${(inv.notes || '').replace(/</g, '&lt;')}</textarea>
+                    </div>
+
+                    <!-- Totals Card -->
+                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-xl space-y-6">
+                        <div class="flex justify-between items-center px-2">
+                            <span class="text-xs font-black text-slate-400 uppercase tracking-wider">Total DPP (Subtotal Item):</span>
+                            <span id="inv_edit_base_subtotal_display" class="font-black text-slate-800 text-lg font-mono">Rp 0</span>
+                        </div>
+
+                        <div class="bg-slate-50 rounded-2xl p-6 border border-slate-100 space-y-4">
+                            <!-- Subsidi -->
+                            <div class="flex justify-between items-center gap-3">
+                                <div class="flex-1">
+                                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1">Subsidi / Potongan:</span>
+                                    <input type="text" id="inv_edit_subsidy_desc" value="${subsidyDesc.replace(/"/g, '&quot;')}" placeholder="Keterangan subsidi" class="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none" oninput="refreshEditInvoiceCalculation()">
+                                </div>
+                                <div class="w-36">
+                                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1 text-right">Nilai Subsidi (Rp):</span>
+                                    <input type="number" step="any" min="0" id="inv_edit_subsidy_amount" value="${subsidyAmt}" placeholder="0" oninput="refreshEditInvoiceCalculation()" class="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 text-right font-mono outline-none">
+                                </div>
+                            </div>
+
+                            <div class="flex justify-between items-center text-orange-600 font-black text-xs px-1" id="inv_edit_subsidy_row" style="display:none">
+                                <span id="inv_edit_subsidy_label">Subsidi:</span>
+                                <span id="inv_edit_subsidy_display" class="font-mono">- Rp 0</span>
+                            </div>
+
+                            <div class="border-t border-slate-200/60 my-2"></div>
+
+                            <!-- Discount -->
+                            <div class="flex justify-between items-center gap-3">
+                                <div class="flex-1">
+                                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1">Adjustment Discount:</span>
+                                    <select id="inv_edit_discount_type" onchange="refreshEditInvoiceCalculation()" class="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-black text-slate-700 outline-none cursor-pointer">
+                                        <option value="" ${!discType ? 'selected' : ''}>Tanpa Diskon</option>
+                                        <option value="cash" ${discType === 'cash' ? 'selected' : ''}>Persentase (%)</option>
+                                        <option value="cash_flat" ${discType === 'cash_flat' ? 'selected' : ''}>Flat Amount (Rp)</option>
+                                    </select>
+                                </div>
+                                <div class="w-36" id="inv_edit_discount_val_container">
+                                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-1 text-right">Nilai Diskon:</span>
+                                    <input type="text" id="inv_edit_discount_value" value="${discValue}" placeholder="0" oninput="refreshEditInvoiceCalculation()" class="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 text-right font-mono outline-none">
+                                </div>
+                            </div>
+
+                            <div class="flex justify-between items-center text-emerald-600 font-black text-xs px-1" id="inv_edit_discount_row" style="display:none">
+                                <span id="inv_edit_discount_label">Diskon:</span>
+                                <span id="inv_edit_discount_display" class="font-mono">- Rp 0</span>
+                            </div>
+
+                            <div class="border-t border-slate-200/60 my-2"></div>
+
+                            <!-- Tax -->
+                            <div class="flex justify-between items-center text-slate-700 font-black text-xs px-1" id="inv_edit_tax_row">
+                                <span id="inv_edit_tax_label" class="text-slate-500">PPN (11%):</span>
+                                <span id="inv_edit_tax_display" class="font-mono text-orange-600">+ Rp 0</span>
+                            </div>
+                        </div>
+
+                        <div class="pt-4 border-t border-slate-100 flex justify-between items-center px-2">
+                            <span class="text-slate-800 font-black text-lg uppercase tracking-tight">TOTAL TAGIHAN:</span>
+                            <span id="inv_edit_total_display" class="font-black text-blue-700 text-3xl font-mono tracking-tight drop-shadow-sm">Rp 0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    setTimeout(() => {
+        refreshEditInvoiceCalculation();
+    }, 50);
+};
+
+window.addEditInvoiceItemRow = () => {
+    const tbody = document.getElementById('inv_edit_items_tbody');
+    if (!tbody) return;
+
+    const tr = document.createElement('tr');
+    tr.className = 'inv-edit-item-row border-b border-slate-100 hover:bg-slate-50/50 transition-colors animate-in fade-in duration-200';
+    tr.innerHTML = `
+        <td class="px-4 py-3">
+            <input type="text" class="inv-item-prod-text w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:bg-white focus:border-blue-500 outline-none" value="" placeholder="Nama Produk / Deskripsi Item">
+            <input type="hidden" class="inv-item-prod-code" value="">
+        </td>
+        <td class="px-3 py-3">
+            <input type="text" class="inv-item-kemasan w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:bg-white focus:border-blue-500 outline-none text-center" value="-" placeholder="Kemasan">
+        </td>
+        <td class="px-3 py-3">
+            <input type="text" class="inv-item-colly w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black text-blue-600 focus:bg-white focus:border-blue-500 outline-none text-center" value="1" placeholder="Colly">
+        </td>
+        <td class="px-3 py-3">
+            <div class="flex items-center gap-1.5">
+                <input type="number" step="any" min="0" oninput="refreshEditInvoiceCalculation()" class="inv-item-qty w-20 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:bg-white focus:border-blue-500 outline-none text-right" value="1">
+                <input type="text" class="inv-item-prod-unit w-14 px-2 py-2 bg-slate-100 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-500 text-center uppercase outline-none" value="KG">
+            </div>
+        </td>
+        <td class="px-3 py-3">
+            <input type="number" step="any" min="0" oninput="refreshEditInvoiceCalculation()" class="inv-item-price w-28 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono font-bold text-slate-800 focus:bg-white focus:border-blue-500 outline-none text-right" value="0">
+        </td>
+        <td class="px-4 py-3 text-right">
+            <span class="inv-item-subtotal-display font-mono font-black text-xs text-slate-900 bg-slate-100/80 px-2.5 py-1.5 rounded-lg inline-block">Rp 0</span>
+        </td>
+        <td class="px-2 py-3 text-center">
+            <button type="button" onclick="removeEditInvoiceItemRow(this)" class="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer" title="Hapus baris">
+                <i class="fas fa-trash-alt text-xs"></i>
+            </button>
+        </td>
+    `;
+    tbody.appendChild(tr);
+    refreshEditInvoiceCalculation();
+};
+
+window.removeEditInvoiceItemRow = (btn) => {
+    const rows = document.querySelectorAll('.inv-edit-item-row');
+    if (rows.length <= 1) {
+        showToast('Invoice harus memiliki minimal 1 item', 'warning');
+        return;
+    }
+    const tr = btn.closest('tr');
+    if (tr) {
+        tr.remove();
+        refreshEditInvoiceCalculation();
+    }
+};
+
+window.updateEditInvDueDate = () => {
+    // Preserves custom due date or updates as needed
+};
+
+window.refreshEditInvoiceCalculation = () => {
+    const rows = document.querySelectorAll('.inv-edit-item-row');
+    let baseSubtotal = 0;
+
+    rows.forEach(row => {
+        const qty = parseFloat(row.querySelector('.inv-item-qty')?.value) || 0;
+        const price = parseFloat(row.querySelector('.inv-item-price')?.value) || 0;
+        const subtotal = Math.round(qty * price);
+        const subDisplay = row.querySelector('.inv-item-subtotal-display');
+        if (subDisplay) subDisplay.innerText = formatCurrency(subtotal);
+        baseSubtotal += subtotal;
+    });
+
+    const baseSubtotalDisplay = document.getElementById('inv_edit_base_subtotal_display');
+    if (baseSubtotalDisplay) baseSubtotalDisplay.innerText = formatCurrency(baseSubtotal);
+
+    // Subsidi
+    const subsidyDesc = document.getElementById('inv_edit_subsidy_desc')?.value.trim() || 'Subsidi';
+    const subsidyAmt = parseFloat(document.getElementById('inv_edit_subsidy_amount')?.value) || 0;
+    const subtotalAfterSubsidy = Math.max(0, baseSubtotal - subsidyAmt);
+
+    const subsidyRow = document.getElementById('inv_edit_subsidy_row');
+    if (subsidyRow) {
+        if (subsidyAmt > 0) {
+            subsidyRow.style.display = 'flex';
+            document.getElementById('inv_edit_subsidy_label').innerText = subsidyDesc + ':';
+            document.getElementById('inv_edit_subsidy_display').innerText = '- ' + formatCurrency(subsidyAmt);
+        } else {
+            subsidyRow.style.display = 'none';
+        }
+    }
+
+    // Discount
+    const discType = document.getElementById('inv_edit_discount_type')?.value || '';
+    const discValStr = document.getElementById('inv_edit_discount_value')?.value.trim() || '';
+    let discAmt = 0;
+    let discDesc = 'Diskon';
+
+    if (discType === 'cash' && discValStr) {
+        const pct = parseFloat(discValStr) || 0;
+        discAmt = Math.round(subtotalAfterSubsidy * pct / 100);
+        discDesc = `Diskon (${pct}%)`;
+    } else if (discType === 'cash_flat' && discValStr) {
+        discAmt = parseFloat(discValStr.replace(/[^0-9]/g, '')) || 0;
+        discDesc = 'Diskon Flat';
+    }
+
+    const discRow = document.getElementById('inv_edit_discount_row');
+    if (discRow) {
+        if (discAmt > 0) {
+            discRow.style.display = 'flex';
+            document.getElementById('inv_edit_discount_label').innerText = discDesc + ':';
+            document.getElementById('inv_edit_discount_display').innerText = '- ' + formatCurrency(discAmt);
+        } else {
+            discRow.style.display = 'none';
+        }
+    }
+
+    const grandTotalBeforeTax = Math.max(0, subtotalAfterSubsidy - discAmt);
+
+    // Tax
+    const taxRate = parseFloat(document.getElementById('inv_edit_tax_rate')?.value) || 0;
+    const isTax = taxRate > 0;
+    const taxAmt = isTax ? Math.round(grandTotalBeforeTax * taxRate / 100) : 0;
+
+    const nsfpContainer = document.getElementById('inv_edit_nsfp_container');
+    if (nsfpContainer) {
+        nsfpContainer.style.display = isTax ? 'block' : 'none';
+    }
+
+    const taxRow = document.getElementById('inv_edit_tax_row');
+    if (taxRow) {
+        if (isTax) {
+            taxRow.style.display = 'flex';
+            document.getElementById('inv_edit_tax_label').innerText = `PPN (${taxRate}%):`;
+            document.getElementById('inv_edit_tax_display').innerText = '+ ' + formatCurrency(taxAmt);
+        } else {
+            taxRow.style.display = 'none';
+        }
+    }
+
+    const grandTotal = grandTotalBeforeTax + taxAmt;
+
+    const totalDisplay = document.getElementById('inv_edit_total_display');
+    if (totalDisplay) totalDisplay.innerText = formatCurrency(grandTotal);
+
+    window._editInvCalcState = {
+        baseSubtotal,
+        subsidyAmount: subsidyAmt,
+        subsidyDescription: subsidyDesc,
+        discountAmount: discAmt,
+        discountType: discType,
+        discountValue: discValStr,
+        discountDescription: discDesc,
+        taxRate,
+        taxAmount: taxAmt,
+        isTax,
+        totalAmount: grandTotal
+    };
+};
+
+window.saveEditedInvoice = async (invoiceId) => {
+    const inv = db.findById('salesInvoices', invoiceId);
+    if (!inv) {
+        showToast('Invoice tidak ditemukan', 'error');
+        return;
+    }
+
+    const invDateStr = document.getElementById('inv_edit_date')?.value;
+    const dueDateStr = document.getElementById('inv_edit_due_date')?.value;
+    const notes = document.getElementById('inv_edit_notes')?.value || '';
+    const bankAccountId = document.getElementById('inv_edit_bank_account_id')?.value || '';
+    const selectedBank = bankAccountId ? db.findById('bankAccounts', bankAccountId) : null;
+    const nsfpVal = document.getElementById('inv_edit_nsfp')?.value.trim() || '';
+
+    if (!invDateStr || !dueDateStr) {
+        showToast('Tanggal Faktur dan Jatuh Tempo harus diisi', 'error');
+        return;
+    }
+
+    const invDate = new Date(invDateStr);
+    const dueDate = new Date(dueDateStr);
+
+    const rows = document.querySelectorAll('.inv-edit-item-row');
+    if (rows.length === 0) {
+        showToast('Minimal harus ada 1 item di dalam invoice', 'error');
+        return;
+    }
+
+    const updatedItems = [];
+    rows.forEach(row => {
+        const prodText = row.querySelector('.inv-item-prod-text')?.value.trim() || 'Item';
+        const prodCode = row.querySelector('.inv-item-prod-code')?.value.trim() || '';
+        const prodUnit = row.querySelector('.inv-item-prod-unit')?.value.trim() || 'KG';
+        const kemasan = row.querySelector('.inv-item-kemasan')?.value.trim() || '-';
+        const colly = row.querySelector('.inv-item-colly')?.value.trim() || '-';
+        const qty = parseFloat(row.querySelector('.inv-item-qty')?.value) || 0;
+        const price = parseFloat(row.querySelector('.inv-item-price')?.value) || 0;
+        const subtotal = Math.round(qty * price);
+        const inventoryItemId = row.dataset.itemId || '';
+
+        updatedItems.push({
+            inventoryItemId,
+            prodCode,
+            prodText,
+            prodUnit,
+            kemasan,
+            colly,
+            qty,
+            price,
+            subtotal
+        });
+    });
+
+    refreshEditInvoiceCalculation();
+    const calcState = window._editInvCalcState || {
+        totalAmount: updatedItems.reduce((s, i) => s + i.subtotal, 0),
+        taxRate: 0,
+        taxAmount: 0,
+        discountType: '',
+        discountValue: '',
+        discountAmount: 0,
+        discountDescription: '',
+        subsidyAmount: 0,
+        subsidyDescription: '',
+        isTax: false
+    };
+
+    // Calculate status against existing payments
+    const invPayments = (db.read('payments') || []).filter(p => p.invoiceId === invoiceId);
+    const totalPaid = invPayments.reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
+    let newStatus = inv.status;
+    if (inv.status !== 'CANCELLED') {
+        if (totalPaid >= calcState.totalAmount && calcState.totalAmount > 0) {
+            newStatus = 'PAID';
+        } else if (totalPaid > 0) {
+            newStatus = 'PARTIAL';
+        } else {
+            newStatus = 'UNPAID';
+        }
+    }
+
+    const updatedInvoiceData = {
+        date: invDate.toISOString(),
+        dueDate: dueDate.toISOString(),
+        totalAmount: calcState.totalAmount,
+        taxType: calcState.isTax ? 'Pajak' : 'Non-Pajak',
+        taxRate: calcState.taxRate,
+        taxAmount: calcState.taxAmount,
+        isTax: calcState.isTax,
+        discountType: calcState.discountType,
+        discountValue: calcState.discountValue,
+        discountAmount: calcState.discountAmount,
+        discountDescription: calcState.discountDescription,
+        subsidyAmount: calcState.subsidyAmount,
+        subsidyDescription: calcState.subsidyDescription,
+        nsfp: calcState.isTax ? nsfpVal : '',
+        notes: notes,
+        bankAccountId: bankAccountId,
+        bankName: selectedBank ? selectedBank.bankName : '',
+        bankAccount: selectedBank ? selectedBank.accountNumber : '',
+        bankHolder: selectedBank ? (selectedBank.accountHolder || '') : '',
+        status: newStatus,
+        items: updatedItems
+    };
+
+    await db.update('salesInvoices', invoiceId, updatedInvoiceData);
+
+    // Update Finance: Synchronize Journal Entries
+    const journalEntries = db.read('journalEntries') || [];
+    const existingJournal = journalEntries.find(j => 
+        (j.referenceType === 'SALES_INVOICE' && (j.referenceId === invoiceId || j.referenceId === String(invoiceId))) ||
+        j.journalNo === inv.invoiceNumber
+    );
+
+    const journalItems = [
+        { accountId: 'acc_ar', debit: calcState.totalAmount, credit: 0 },
+        { accountId: 'acc_sales', debit: 0, credit: (calcState.totalAmount - calcState.taxAmount) },
+        ...(calcState.taxAmount > 0 ? [{ accountId: 'acc_tax_payable', debit: 0, credit: calcState.taxAmount }] : [])
+    ];
+
+    if (existingJournal) {
+        await db.update('journalEntries', existingJournal.id, {
+            date: invDate.toISOString(),
+            description: `Invoice Penjualan ${inv.invoiceNumber} (Updated)`,
+            totalDebit: calcState.totalAmount,
+            totalCredit: calcState.totalAmount,
+            items: journalItems
+        });
+    } else if (typeof db.addJournalEntry === 'function') {
+        await db.addJournalEntry({
+            date: invDate.toISOString(),
+            journalNo: inv.invoiceNumber,
+            description: `Invoice Penjualan ${inv.invoiceNumber}`,
+            referenceType: 'SALES_INVOICE',
+            referenceId: invoiceId,
+            items: journalItems
+        });
+    }
+
+    showToast(`Invoice ${inv.invoiceNumber} berhasil diperbarui!`, 'success');
+    renderSalesInvoices();
 };
 
 window.onInvCustomerSelect = (customerId) => {
@@ -15721,6 +16281,9 @@ function renderSalesInvoices() {
                 <div class="hidden absolute right-0 z-[100] mt-1.5 w-44 origin-top-right rounded-xl bg-white shadow-xl border border-slate-150 overflow-hidden font-medium py-1 divide-y divide-slate-50 animate-in fade-in duration-150" id="menu-dropdown-si-${inv.id}">
                     <button onclick="handleSIAction('view', '${inv.id}')" class="group flex items-center w-full px-4 py-2 text-[11px] text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-all font-bold text-left" role="menuitem">
                         <i class="fas fa-eye w-4 mr-2 text-slate-400 group-hover:text-blue-500 transition-colors"></i> Lihat Detail
+                    </button>
+                    <button onclick="handleSIAction('edit', '${inv.id}')" class="group flex items-center w-full px-4 py-2 text-[11px] text-slate-700 hover:bg-amber-50 hover:text-amber-600 transition-all font-bold text-left" role="menuitem">
+                        <i class="fas fa-edit w-4 mr-2 text-slate-400 group-hover:text-amber-500 transition-colors"></i> Edit Invoice
                     </button>
                     <button onclick="handleSIAction('print', '${inv.id}')" class="group flex items-center w-full px-4 py-2 text-[11px] text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-all font-bold text-left" role="menuitem">
                         <i class="fas fa-print w-4 mr-2 text-slate-400 group-hover:text-blue-500 transition-colors"></i> Cetak Invoice
@@ -16350,8 +16913,11 @@ window.viewInvoice = (id) => {
     const waLink = `https://wa.me/?text=${encodeURIComponent(message)}`;
     const emailLink = `mailto:${customer?.email || ''}?subject=Sales%20Invoice%20${inv.invoiceNumber}&body=${encodeURIComponent(message)}`;
  
+    const isAdmin = typeof isCurrentUserAdmin === 'function' ? isCurrentUserAdmin() : false;
+
     const footer = `
         <div class="flex flex-wrap gap-3 w-full sm:w-auto justify-end items-center mt-2 px-4 py-2 bg-slate-50 rounded-xl border border-slate-100">
+            ${isAdmin ? `<button onclick="closeModal(); handleSIAction('edit', '${inv.id}')" class="group flex items-center px-5 py-2.5 bg-blue-600 text-white rounded-lg text-xs font-black hover:bg-blue-700 transition-all shadow-md active:scale-95"><i class="fas fa-edit mr-2"></i> EDIT INVOICE</button>` : ''}
             ${inv.isTax ? `<button onclick="printFakturPajak('${inv.id}')" class="group relative flex items-center px-5 py-2.5 bg-orange-600 text-white rounded-lg text-xs font-black hover:bg-orange-700 transition-all shadow-md hover:shadow-orange-200 active:scale-95"><i class="fas fa-receipt mr-2 group-hover:rotate-12 transition-transform"></i> TAX INVOICE</button>` : ''}
             <a href="${emailLink}" target="_blank" class="flex items-center px-5 py-2.5 bg-slate-800 text-white rounded-lg text-xs font-black hover:bg-slate-900 transition-all shadow-md active:scale-95"><i class="fas fa-envelope mr-2"></i> EMAIL</a>
             <a href="${waLink}" target="_blank" class="flex items-center px-5 py-2.5 bg-green-600 text-white rounded-lg text-xs font-black hover:bg-green-700 transition-all shadow-md hover:shadow-green-200 active:scale-95"><i class="fab fa-whatsapp mr-2 text-base"></i> WHATSAPP</a>
