@@ -372,6 +372,18 @@ const api = {
         return await res.json();
     },
 
+    deletePO: async (poId) => {
+        const cleanId = (poId || '').toString().replace(/^po-/, '').replace(/\//g, '___');
+        const res = await fetch(`${API_BASE}/purchase/orders/${cleanId}`, {
+            method: 'DELETE', headers: authHeaders()
+        });
+        if (!res.ok) { 
+            const err = await res.json().catch(() => ({})); 
+            throw new Error(err.error || `Gagal menghapus PO: Status ${res.status}`); 
+        }
+        return await res.json();
+    },
+
     paySupplierInvoice: async (invoiceId, data) => {
         const res = await fetch(`${API_BASE}/purchase/payments/${invoiceId}/pay`, {
             method: 'POST', headers: authHeaders(), body: JSON.stringify(data)

@@ -60,12 +60,16 @@ const db = {
     update: async (table, id, updates) => {
         if (!window.api) return null;
         const result = await window.api.update(table, id, updates);
+        if (!result) {
+            console.error(`[DB] Update failed on server for ${table} ID ${id}`);
+            return null;
+        }
         // Update local cache - merge updates into existing record to prevent data loss
         if (_dbCache[table]) {
-            const idx = _dbCache[table].findIndex(item => item.id === id);
+            const idx = _dbCache[table].findIndex(item => item.id == id);
             if (idx > -1) {
                 // If result is the full object, use it. Otherwise, merge updates into cache.
-                const updatedRecord = (result && typeof result === 'object' && result.id) ? result : { ..._dbCache[table][idx], ...updates };
+                const updatedRecord = (typeof result === 'object' && result.id) ? result : { ..._dbCache[table][idx], ...updates };
                 _dbCache[table][idx] = updatedRecord;
                 return updatedRecord;
             }

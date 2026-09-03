@@ -612,5 +612,42 @@ router.delete('/orders/:id/receipts/:receiptId', authenticateToken, requirePermi
     }
 });
 
+/**
+ * DELETE /api/purchase/orders/:id
+ * Hapus atau Arsipkan Purchase Order (Khusus Admin / Pembelian Edit)
+ */
+router.delete('/orders/:id', authenticateToken, requirePermission('pembelian', 'edit'), async (req, res) => {
+    try {
+        const poId = (req.params.id || '').replace(/___/g, '/');
+        const po = await PurchaseOrder.findByPk(poId);
+        if (!po) {
+            return res.status(404).json({ error: 'Purchase Order tidak ditemukan' });
+        }
+
+        // Set status to DELETED so it is moved to archive and hidden from active list
+        await po.update({ status: 'DELETED', updated_at: new Date() });
+
+        // Also create a system log
+        try {
+            await SystemLog.create({
+                user_id: req.user.userId || req.user.id || 'admin',
+                action: 'DELETE_PURCHASE_ORDER',
+                details: `Menghapus / Mengarsipkan Purchase Order ${po.po_number || po.id}`,
+                timestamp: new Date()
+            });
+        } catch (e) {}
+
+        res.json({
+            success: true,
+            id: po.id,
+            status: 'DELETED',
+            message: `Purchase Order ${po.po_number || po.id} berhasil dihapus/diarsipkan.`
+        });
+    } catch (err) {
+        console.error(`DELETE /api/purchase/orders/${req.params.id} error:`, err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 module.exports = router;
 

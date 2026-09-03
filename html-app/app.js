@@ -9536,6 +9536,7 @@ window.resetPGRHistoryHeaderDateFilter = () => {
 
 // --- Purchase Orders Helper Functions ---
 window.deletePO = async (id) => {
+    const cleanId = typeof id === 'string' ? id.replace(/^po-/, '') : id;
     const confirmed = await window.showConfirmDialog({
         title: 'Hapus Purchase Order',
         message: 'Apakah Anda yakin ingin memindahkan Purchase Order ini ke arsip terhapus?',
@@ -9546,13 +9547,27 @@ window.deletePO = async (id) => {
     });
     if (confirmed) {
         showToast('Menghapus PO...', 'info');
-        const success = await db.update('purchaseOrders', id, { status: 'DELETED' });
+        let success = false;
+        try {
+            if (window.api && typeof window.api.deletePO === 'function') {
+                const res = await window.api.deletePO(cleanId);
+                success = !!res;
+            } else {
+                const res = await db.update('purchaseOrders', cleanId, { status: 'DELETED' });
+                success = !!res;
+            }
+        } catch (e) {
+            console.error('Delete PO error:', e);
+            const res = await db.update('purchaseOrders', cleanId, { status: 'DELETED' });
+            success = !!res;
+        }
+
         if (success) {
             showToast('Purchase Order berhasil dihapus', 'success');
             await db.sync('purchaseOrders');
             renderPurchaseOrders();
         } else {
-            showToast('Gagal menghapus Purchase Order', 'error');
+            showToast('Gagal menghapus Purchase Order di server', 'error');
         }
     }
 };
@@ -9598,29 +9613,30 @@ window.renderDeletedPOHistory = () => {
     }
 
     mainContent.innerHTML = `
-        <div class="animate-in fade-in duration-300 h-[calc(100vh-64px)] flex flex-col bg-slate-50 -m-4 sm:-m-6">
-            <!-- Header bar with Back button -->
-            <div class="bg-white border-b border-gray-200 shrink-0 z-40 shadow-sm relative">
-                <div class="flex justify-between items-center px-6 py-4">
-                    <div class="flex items-center gap-3">
-                        <button onclick="renderPurchaseOrders()" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 w-10 h-10 rounded-xl transition-all shadow-sm flex items-center justify-center active:scale-95" title="Kembali ke Daftar PO">
-                            <i class="fas fa-arrow-left"></i>
-                        </button>
-                        <h3 class="text-sm font-black text-slate-700 uppercase tracking-wider">Arsip Purchase Order Terhapus</h3>
+        <div class="h-[calc(100vh-64px)] flex flex-col bg-white -m-4 sm:-m-6">
+            <!-- Header bar -->
+            <div class="bg-white border-b border-gray-200 p-4 shrink-0 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <button onclick="renderPurchaseOrders()" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 w-10 h-10 rounded-xl transition-all shadow-sm flex items-center justify-center active:scale-95" title="Kembali ke Daftar PO">
+                        <i class="fas fa-arrow-left text-sm"></i>
+                    </button>
+                    <div>
+                        <h2 class="text-base font-black text-slate-800 tracking-tight">Arsip Purchase Order Terhapus</h2>
+                        <p class="text-xs text-slate-400 font-medium">Daftar PO yang telah dihapus dan diarsipkan</p>
                     </div>
                 </div>
             </div>
 
-            <!-- Table Container wrapper -->
+            <!-- Table Container -->
             <div class="flex-1 overflow-auto">
                 <table class="w-full text-left border-collapse">
-                    <thead class="bg-slate-50 sticky top-0 z-30 shadow-[0_1px_0_#e2e8f0]">
-                        <tr class="bg-gray-50/50">
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">No. PO</th>
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tanggal</th>
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Supplier</th>
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Total</th>
-                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Aksi</th>
+                    <thead class="bg-slate-50 sticky top-0 z-10 shadow-sm border-b border-slate-200/80">
+                        <tr>
+                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">No. PO</th>
+                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Tanggal</th>
+                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Supplier</th>
+                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">Total</th>
+                            <th class="py-3 px-6 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">Aksi</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100 bg-white">${rows}</tbody>
