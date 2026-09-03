@@ -16038,24 +16038,39 @@ window.onInvCustomerSelect = (customerId) => {
 };
 
 window.filterSITable = () => {
-    const q = (document.getElementById('si_global_search')?.value || '').toLowerCase();
-    const rows = document.querySelectorAll('#si_main_table tbody tr');
+    const q = (document.getElementById('si_global_search')?.value || '').toLowerCase().trim();
+    const allData = window._siRawInvoices || [];
     
     let sumTagihan = 0;
     let sumPaid = 0;
 
-    rows.forEach(row => {
-        const text = row.innerText.toLowerCase();
-        const isVisible = text.includes(q);
-        row.style.display = isVisible ? '' : 'none';
+    allData.forEach(inv => {
+        if (inv.status === 'CANCELLED') return;
         
-        if (isVisible && row.dataset.status !== 'CANCELLED') {
-            sumTagihan += parseFloat(row.dataset.amount || 0);
-            sumPaid += parseFloat(row.dataset.paid || 0);
+        let isMatch = true;
+        if (q) {
+            const custName = (inv.customerName || '').toLowerCase();
+            const invNo = (inv.invoiceNumber || '').toLowerCase();
+            const status = (inv.status || '').toLowerCase();
+            const taxType = (inv.taxType || '').toLowerCase();
+            const dateStr = inv.date ? new Date(inv.date).toLocaleDateString('id-ID', {day:'2-digit', month:'short', year:'numeric'}).toLowerCase() : '';
+            isMatch = invNo.includes(q) || custName.includes(q) || status.includes(q) || taxType.includes(q) || dateStr.includes(q);
+        }
+
+        if (isMatch) {
+            sumTagihan += (parseFloat(inv.totalAmount) || 0);
+            sumPaid += (parseFloat(inv.paidAmount) || 0);
         }
     });
 
-    // Update Footer Values dynamically
+    const rows = document.querySelectorAll('#si_main_table tbody tr');
+    rows.forEach(row => {
+        const text = row.innerText.toLowerCase();
+        const isVisible = !q || text.includes(q);
+        row.style.display = isVisible ? '' : 'none';
+    });
+
+    // Update Footer Values dynamically across all matching records (not just current page)
     const footerTagihan = document.getElementById('si_footer_total_tagihan');
     const footerTerbayar = document.getElementById('si_footer_total_terbayar');
     const footerGrand = document.getElementById('si_footer_grand_total');
@@ -16073,15 +16088,25 @@ window.toggleSIDateDropdown = () => {
 window.applySIHeaderDateFilter = () => {
     const s = document.getElementById('si_header_start')?.value;
     const e = document.getElementById('si_header_end')?.value;
+    if (!window.currentFilters) window.currentFilters = {};
+    if (!window.currentFilters.salesInvoices) window.currentFilters.salesInvoices = {};
     window.currentFilters.salesInvoices.start = s || '';
     window.currentFilters.salesInvoices.end = e || '';
+    if (window.tablePagination && window.tablePagination['si']) {
+        window.tablePagination['si'].page = 1;
+    }
     document.getElementById('si_date_dropdown')?.classList.add('hidden');
     renderSalesInvoices();
 };
 
 window.resetSIHeaderDateFilter = () => {
+    if (!window.currentFilters) window.currentFilters = {};
+    if (!window.currentFilters.salesInvoices) window.currentFilters.salesInvoices = {};
     window.currentFilters.salesInvoices.start = '';
     window.currentFilters.salesInvoices.end = '';
+    if (window.tablePagination && window.tablePagination['si']) {
+        window.tablePagination['si'].page = 1;
+    }
     document.getElementById('si_date_dropdown')?.classList.add('hidden');
     renderSalesInvoices();
 };
@@ -16227,12 +16252,23 @@ function renderSalesInvoices() {
     let rawInvoices = (db.read('salesInvoices') || []).map(inv => {
         const invPayments = payments.filter(p => p.invoiceId === inv.id);
         const paidAmt = invPayments.reduce((s, p) => s + parseFloat(p.amount), 0);
-        return { ...inv, invoiceNumber: inv.invoiceNumber || inv.invNumber || '', paidAmount: paidAmt, remainingAmount: inv.totalAmount - paidAmt };
+        const cust = (customers || []).find(c => c.id === inv.customerId);
+        return { 
+            ...inv, 
+            customerName: cust ? cust.name : '',
+            invoiceNumber: inv.invoiceNumber || inv.invNumber || '', 
+            paidAmount: paidAmt, 
+            remainingAmount: (parseFloat(inv.totalAmount) || 0) - paidAmt 
+        };
     });
 
     // Filter by date if specified
     if (filters_data.start) { const d = new Date(filters_data.start); d.setHours(0,0,0,0); rawInvoices = rawInvoices.filter(x => new Date(x.date) >= d); }
     if (filters_data.end) { const d = new Date(filters_data.end); d.setHours(23,59,59,999); rawInvoices = rawInvoices.filter(x => new Date(x.date) <= d); }
+    
+    // Store full date-filtered dataset for cross-page totals and global search
+    window._siRawInvoices = rawInvoices;
+
     let invoices = window.applyTableSort(rawInvoices, 'si', defaultSISort);
     const paginated = window.paginateTable(invoices, 'si', 25);
 
