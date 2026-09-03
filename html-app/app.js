@@ -8584,6 +8584,13 @@ function renderPurchaseOrders() {
         });
     }
 
+    // Calculate total summary over all matching POs (excluding CANCELLED)
+    const validPOs = rawPos.filter(p => p.status !== 'CANCELLED');
+    const totalNominalPO = validPOs.reduce((sum, p) => sum + (parseFloat(p.totalAmount) || 0), 0);
+    const totalReceivedPO = validPOs.filter(p => p.status === 'RECEIVED').reduce((sum, p) => sum + (parseFloat(p.totalAmount) || 0), 0);
+    const totalPendingPO = Math.max(0, totalNominalPO - totalReceivedPO);
+    const activeCount = validPOs.length;
+
     // Apply user sort or default sort
     let pos = window.applyTableSort(rawPos, 'po', defaultPOSort);
     const paginated = window.paginateTable(pos, 'po', 25);
@@ -8757,6 +8764,29 @@ function renderPurchaseOrders() {
                 </table>
             </div>
             
+            <!-- Totals Summary Bar (Minimalist - Sales Invoices Style) -->
+            <div class="px-8 py-4 flex flex-wrap items-center justify-between border-t border-slate-200 bg-white shrink-0 shadow-sm gap-4">
+                <div>
+                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 opacity-70">Total Nilai PO</p>
+                    <p class="text-2xl font-black font-mono tracking-tighter text-slate-800" id="po_footer_grand_total">${formatCurrency(totalNominalPO)}</p>
+                </div>
+                
+                <div class="flex gap-8 md:gap-12 text-right items-center">
+                    <div class="flex flex-col">
+                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Sudah Diterima</span>
+                        <span class="text-sm font-bold font-mono text-emerald-600" id="po_footer_total_received">${formatCurrency(totalReceivedPO)}</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Menunggu Penerimaan</span>
+                        <span class="text-sm font-bold font-mono text-blue-600" id="po_footer_total_pending">${formatCurrency(totalPendingPO)}</span>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Jumlah Dokumen</span>
+                        <span class="text-sm font-bold font-mono text-slate-600" id="po_footer_total_docs">${activeCount} PO</span>
+                    </div>
+                </div>
+            </div>
+
             ${window.renderPaginationBar('po', paginated, 'renderPurchaseOrders')}
         </div>
 
