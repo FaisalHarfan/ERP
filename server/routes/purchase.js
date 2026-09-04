@@ -627,6 +627,15 @@ router.delete('/orders/:id', authenticateToken, requirePermission('pembelian', '
         // Set status to DELETED so it is moved to archive and hidden from active list
         await po.update({ status: 'DELETED', updated_at: new Date() });
 
+        try {
+            await sequelize.query(
+                `UPDATE purchase_orders SET status = 'DELETED', updated_at = NOW() WHERE id = :id`,
+                { replacements: { id: po.id } }
+            );
+        } catch (e) {
+            console.warn('Raw query PO delete fallback notice:', e.message);
+        }
+
         // Also create a system log
         try {
             await SystemLog.create({

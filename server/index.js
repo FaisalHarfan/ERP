@@ -98,7 +98,15 @@ app.use((err, _req, res, _next) => {
 
 // ─── Serve Frontend Static Files ───────────────
 const frontendPath = path.join(__dirname, '..', 'html-app');
-app.use(express.static(frontendPath));
+app.use(express.static(frontendPath, {
+    setHeaders: (res, filePath) => {
+        if (filePath.endsWith('.js') || filePath.endsWith('.html') || filePath.endsWith('.css')) {
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+        }
+    }
+}));
 
 app.get('/', (_req, res) => {
     res.sendFile(path.join(frontendPath, 'login.html'));

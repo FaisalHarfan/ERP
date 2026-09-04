@@ -8555,7 +8555,7 @@ function renderPurchaseOrders() {
 
     // Load raw POs and enrich with supplierName for sorting, filtering out DELETED POs
     let rawPos = (db.read('purchaseOrders') || [])
-        .filter(po => po.status !== 'DELETED')
+        .filter(po => (po.status || '').toString().trim().toUpperCase() !== 'DELETED')
         .map(po => ({
             ...po,
             poNumber: po.poNumber || '',
@@ -9113,8 +9113,8 @@ function renderPurchaseReceiving() {
 
     document.getElementById('pageTitle').innerText = 'Purchase Received';
 
-    // Auto-sync receivedQty and status for all POs from their actual receipts
-    const allDbPOs = db.read('purchaseOrders') || [];
+    // Auto-sync receivedQty and status for all POs from their actual receipts (Skip DELETED and CANCELLED POs)
+    const allDbPOs = (db.read('purchaseOrders') || []).filter(p => (p.status || '').toString().trim().toUpperCase() !== 'DELETED' && (p.status || '').toString().trim().toUpperCase() !== 'CANCELLED');
     allDbPOs.forEach(po => {
         let receipts = po.receipts || [];
         if (typeof receipts === 'string') {
@@ -9552,17 +9552,28 @@ window.deletePO = async (id) => {
             if (window.api && typeof window.api.deletePO === 'function') {
                 const res = await window.api.deletePO(cleanId);
                 success = !!res;
-            } else {
-                const res = await db.update('purchaseOrders', cleanId, { status: 'DELETED' });
-                success = !!res;
             }
         } catch (e) {
-            console.error('Delete PO error:', e);
-            const res = await db.update('purchaseOrders', cleanId, { status: 'DELETED' });
-            success = !!res;
+            console.error('API deletePO error:', e);
+        }
+
+        if (!success) {
+            try {
+                const res = await db.update('purchaseOrders', cleanId, { status: 'DELETED' });
+                success = !!res;
+            } catch (err) {
+                console.error('Fallback db.update error:', err);
+            }
         }
 
         if (success) {
+            // Update local memory cache immediately
+            if (typeof _dbCache !== 'undefined' && _dbCache['purchaseOrders']) {
+                const idx = _dbCache['purchaseOrders'].findIndex(p => p.id == cleanId);
+                if (idx > -1) {
+                    _dbCache['purchaseOrders'][idx].status = 'DELETED';
+                }
+            }
             showToast('Purchase Order berhasil dihapus', 'success');
             await db.sync('purchaseOrders');
             renderPurchaseOrders();
@@ -9580,7 +9591,7 @@ window.renderDeletedPOHistory = () => {
     
     // Load POs that have DELETED status
     let pos = (db.read('purchaseOrders') || [])
-        .filter(po => po.status === 'DELETED')
+        .filter(po => (po.status || '').toString().trim().toUpperCase() === 'DELETED')
         .map(po => ({
             ...po,
             supplierName: (suppliers.find(s => s.id === po.supplierId) || { name: 'Unknown' }).name
@@ -9591,7 +9602,7 @@ window.renderDeletedPOHistory = () => {
             <tr class="border-b border-gray-100 hover:bg-slate-50 transition-colors">
                 <td class="py-4 px-6 whitespace-nowrap">
                     <span class="font-mono text-sm font-bold text-slate-700 bg-slate-100 px-3.5 py-1.5 rounded-lg border border-slate-200 shadow-sm inline-block">
-                        ${po.poNumber.toUpperCase()}
+                        ${(po.poNumber || po.po_number || '').toUpperCase()}
                     </span>
                 </td>
                 <td class="py-4 px-6 text-sm text-slate-500 font-medium">${formatDate(po.date).split(' ')[0]}</td>

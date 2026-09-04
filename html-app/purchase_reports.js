@@ -121,9 +121,9 @@ window.updatePurchaseAnalytics = () => {
         }
     }
 
-    const purchaseOrders = db.read('purchaseOrders') || [];
+    const purchaseOrders = (db.read('purchaseOrders') || []).filter(p => (p.status || '').toString().trim().toUpperCase() !== 'DELETED');
     const purchaseInvoices = db.read('purchaseInvoices') || [];
-    const purchaseRFQs = db.read('purchaseRFQs') || [];
+    const purchaseRFQs = (db.read('purchaseRFQs') || []).filter(r => (r.status || '').toString().trim().toUpperCase() !== 'DELETED');
     const suppliers = db.read('suppliers') || [];
 
     const getDocDate  = (doc) => {
