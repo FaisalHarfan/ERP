@@ -60,19 +60,22 @@ router.post('/delivery/:id/ship', authenticateToken, requirePermission('penjuala
         let totalCogs = 0;
 
         for (const item of items) {
-            if (item.inventoryItemId) {
-                const invItem = await InventoryItem.findByPk(item.inventoryItemId, { transaction: t });
+            const itemId = item.inventoryItemId || item.itemId || item.productId;
+            if (itemId) {
+                const invItem = await InventoryItem.findByPk(itemId, { transaction: t });
                 if (invItem) {
                     await StockTransaction.create({
                         id: uuidv4(), 
                         txNo: doNumber,
                         date: txDate, 
-                        itemId: item.inventoryItemId,
+                        itemId: itemId,
+                        itemCode: invItem.itemCode || invItem.item_code || '',
+                        itemName: invItem.itemName || invItem.item_name || item.name || '',
                         type: 'OUT', qty: item.qty, reference: 'SALES_OUT', referenceId: doRecord.id,
                         notes: `Delivery Order ${doNumber}`,
-                        createdBy: req.user.full_name || 'Admin Warehouse', location: 'WHS'
+                        createdBy: req.user.full_name || req.user.email || 'Admin Warehouse', location: 'WHS'
                     }, { transaction: t });
-                    const price = parseFloat(invItem.purchase_price || 0);
+                    const price = parseFloat(invItem.purchasePrice || invItem.purchase_price || 0);
                     if (price > 0) totalCogs += price * item.qty;
                 }
             }
@@ -87,7 +90,24 @@ router.post('/delivery/:id/ship', authenticateToken, requirePermission('penjuala
             }, { transaction: t });
         }
 
-        await doRecord.update({ data: { ...doData, status: 'SHIPPED', shippedAt: new Date().toISOString(), driverName: driverName || doData.driverName, vehicleNo: vehicleNo || doData.vehicleNo } }, { transaction: t });
+        const salesOrderId = doData.salesOrderId || doData.sales_order_id || doRaw.sales_order_id || doRaw.salesOrderId || req.body.salesOrderId;
+
+        const updatePayload = {
+            status: 'SHIPPED',
+            driver_name: driverName || doRaw.driver_name || doData.driverName,
+            vehicle_no: vehicleNo || doRaw.vehicle_no || doData.vehicleNo
+        };
+        if (doRecord.data !== undefined) {
+            updatePayload.data = {
+                ...doData,
+                status: 'SHIPPED',
+                shippedAt: new Date().toISOString(),
+                driverName: driverName || doData.driverName,
+                vehicleNo: vehicleNo || doData.vehicleNo
+            };
+        }
+        await doRecord.update(updatePayload, { transaction: t });
+
         if (salesOrderId) {
             const so = await SalesOrder.findByPk(salesOrderId, { transaction: t });
             if (so) await so.update({ status: 'DELIVERED' }, { transaction: t });
