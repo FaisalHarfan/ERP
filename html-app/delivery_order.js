@@ -45,7 +45,8 @@ function doGenNum() {
 window.calculateColly = function (qty, kemasan) {
     if (!qty || !kemasan) return 0;
     let factor = 1;
-    if (kemasan === '25 Kg') factor = 25;
+    if (kemasan === '30 Kg') factor = 30;
+    else if (kemasan === '25 Kg') factor = 25;
     else if (kemasan === '20 Kg') factor = 20;
     else if (kemasan === '15 Kg') factor = 15;
     else if (kemasan === '5 Kg') factor = 5;
@@ -502,6 +503,7 @@ window.addBlankDOItem = function () {
         <div class="col-span-3">
             <select id="doi_kemasan_${id}" onchange="updateCollyValue('${id}')" class="w-full border border-slate-200 rounded-lg px-2 py-2 text-[10px] font-bold text-slate-600 focus:border-blue-500 outline-none doi-kemasan appearance-none shadow-sm cursor-pointer">
                 <option value="">-- Kemasan --</option>
+                <option value="30 Kg">30 Kg</option>
                 <option value="25 Kg">25 Kg</option>
                 <option value="20 Kg">20 Kg</option>
                 <option value="15 Kg">15 Kg</option>
@@ -957,6 +959,7 @@ window.loadSOForDO = function () {
                             <td class="px-4 py-3">
                                 <select onchange="window.updateSOColly('${idx}')" id="dosi_kemasan_${idx}" class="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-600 appearance-none shadow-sm cursor-pointer focus:border-blue-500 transition-all outline-none">
                                     <option value="">-- Pilih --</option>
+                                    <option value="30 Kg">30 Kg</option>
                                     <option value="25 Kg">25 Kg</option>
                                     <option value="20 Kg">20 Kg</option>
                                     <option value="15 Kg">15 Kg</option>

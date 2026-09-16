@@ -15645,7 +15645,7 @@ window.openEditInvoiceModal = (invoiceId) => {
                 <input type="hidden" class="inv-item-prod-code" value="${(item.prodCode || item.code || '').replace(/"/g, '&quot;')}">
             </td>
             <td class="px-3 py-3">
-                <input type="text" class="inv-item-kemasan w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:bg-white focus:border-blue-500 outline-none text-center" value="${(item.kemasan || '-').replace(/"/g, '&quot;')}" placeholder="Kemasan">
+                <input type="text" list="inv_kemasan_presets" class="inv-item-kemasan w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:bg-white focus:border-blue-500 outline-none text-center" value="${(item.kemasan || '-').replace(/"/g, '&quot;')}" placeholder="Kemasan">
             </td>
             <td class="px-3 py-3">
                 <input type="text" class="inv-item-colly w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black text-blue-600 focus:bg-white focus:border-blue-500 outline-none text-center" value="${(item.colly || '-').replace(/"/g, '&quot;')}" placeholder="Colly">
@@ -15775,6 +15775,14 @@ window.openEditInvoiceModal = (invoiceId) => {
                                 ${itemsHtml}
                             </tbody>
                         </table>
+                        <datalist id="inv_kemasan_presets">
+                            <option value="30 Kg"></option>
+                            <option value="25 Kg"></option>
+                            <option value="20 Kg"></option>
+                            <option value="15 Kg"></option>
+                            <option value="5 Kg"></option>
+                            <option value="4 KG (800 Gram)"></option>
+                        </datalist>
                     </div>
                 </div>
 
@@ -15870,7 +15878,7 @@ window.addEditInvoiceItemRow = () => {
             <input type="hidden" class="inv-item-prod-code" value="">
         </td>
         <td class="px-3 py-3">
-            <input type="text" class="inv-item-kemasan w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:bg-white focus:border-blue-500 outline-none text-center" value="-" placeholder="Kemasan">
+            <input type="text" list="inv_kemasan_presets" class="inv-item-kemasan w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 focus:bg-white focus:border-blue-500 outline-none text-center" value="-" placeholder="Kemasan">
         </td>
         <td class="px-3 py-3">
             <input type="text" class="inv-item-colly w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-black text-blue-600 focus:bg-white focus:border-blue-500 outline-none text-center" value="1" placeholder="Colly">
