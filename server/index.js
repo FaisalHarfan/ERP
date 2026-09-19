@@ -108,6 +108,10 @@ app.use(express.static(frontendPath, {
     }
 }));
 
+app.get('/favicon.ico', (_req, res) => {
+    res.sendFile(path.join(frontendPath, 'assets', 'logo.png'));
+});
+
 app.get('/', (_req, res) => {
     res.sendFile(path.join(frontendPath, 'login.html'));
 });
