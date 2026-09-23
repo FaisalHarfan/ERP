@@ -15759,6 +15759,7 @@ window.openEditInvoiceModal = (invoiceId) => {
                             <option value="15 Kg"></option>
                             <option value="5 Kg"></option>
                             <option value="4 KG (800 Gram)"></option>
+                            <option value="1 Kg"></option>
                         </datalist>
                     </div>
                 </div>

@@ -51,6 +51,11 @@ window.calculateColly = function (qty, kemasan) {
     else if (kemasan === '15 Kg') factor = 15;
     else if (kemasan === '5 Kg') factor = 5;
     else if (kemasan === '4 KG (800 Gram)' || kemasan === '800 Gram') factor = 4;
+    else if (kemasan === '1 Kg' || kemasan === '1 KG' || kemasan === '1 kg') factor = 1;
+    else {
+        const parsed = parseFloat(kemasan);
+        if (!isNaN(parsed) && parsed > 0) factor = parsed;
+    }
 
     const result = factor > 0 ? qty / factor : 0;
     return Number.isInteger(result) ? result : result.toFixed(2);
@@ -509,6 +514,7 @@ window.addBlankDOItem = function () {
                 <option value="15 Kg">15 Kg</option>
                 <option value="5 Kg">5 Kg</option>
                 <option value="4 KG (800 Gram)">4 KG (800 Gram)</option>
+                <option value="1 Kg">1 Kg</option>
             </select>
         </div>
         <div class="col-span-1 text-right">
@@ -965,6 +971,7 @@ window.loadSOForDO = function () {
                                     <option value="15 Kg">15 Kg</option>
                                     <option value="5 Kg">5 Kg</option>
                                     <option value="4 KG (800 Gram)">4 KG (800 Gram)</option>
+                                    <option value="1 Kg">1 Kg</option>
                                 </select>
                             </td>
                             <td class="px-4 py-3 text-center font-black text-blue-600 text-sm shadow-inner" id="dosi_colly_display_${idx}">0</td>
