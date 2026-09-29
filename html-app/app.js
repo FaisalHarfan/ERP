@@ -2232,7 +2232,17 @@ window.initSalesCharts = function(invoices, customers) {
         let labels = [];
         let data = [];
         
-        if (filters.period === 'Quarterly') {
+        if (filters.periodType === 'month') {
+            const daysInMonth = new Date(filters.fiscalYear, filters.month, 0).getDate();
+            labels = Array.from({ length: daysInMonth }, (_, i) => `Tgl ${i + 1}`);
+            data = new Array(daysInMonth).fill(0);
+            (invoices || []).forEach(inv => {
+                const dStr = inv.date || inv.createdAt;
+                if (!dStr) return;
+                const d = new Date(dStr).getDate();
+                if (d >= 1 && d <= daysInMonth) data[d - 1]++;
+            });
+        } else if (filters.period === 'Quarterly') {
             labels = ['Q1', 'Q2', 'Q3', 'Q4'];
             data = [0, 0, 0, 0];
             (invoices || []).forEach(inv => {
@@ -2271,18 +2281,29 @@ window.initSalesCharts = function(invoices, customers) {
                 datasets: [{
                     label: 'Sales Invoices',
                     data: data,
-                    borderColor: '#f9a8d4',
-                    borderWidth: 2,
-                    tension: 0.1,
-                    pointBackgroundColor: '#f9a8d4',
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                    borderWidth: 2.5,
+                    tension: 0.3,
+                    pointBackgroundColor: '#3b82f6',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
                     pointRadius: data.some(v => v > 0) ? 3 : 0,
-                    fill: false
+                    pointHoverRadius: 5,
+                    fill: true
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { display: false } },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: c => ` Invoices: ${c.parsed.y}`
+                        }
+                    }
+                },
                 scales: {
                     y: { 
                         beginAtZero: true, 
@@ -2300,23 +2321,36 @@ window.initSalesCharts = function(invoices, customers) {
         });
     }
 
-    // 2. Top Customers based on Invoices
+    // 2. Top 5 Customers based on Invoices in the active filtered month/period
     const ctxTop = document.getElementById('chartTopCustomers');
     if (ctxTop) {
         const custTotals = {};
+        const custNames = {};
+
         (invoices || []).forEach(inv => {
-            custTotals[inv.customerId] = (custTotals[inv.customerId] || 0) + parseFloat(inv.totalAmount || 0);
+            const cust = (customers || []).find(c => c.id === inv.customerId || c.id === inv.customer_id);
+            const rawName = cust?.name || inv.customerName || inv.customer_name || 'Customer';
+            const key = inv.customerId || inv.customer_id || rawName;
+            
+            custTotals[key] = (custTotals[key] || 0) + parseFloat(inv.totalAmount || inv.grandTotal || 0);
+            custNames[key] = rawName;
         });
-        const sortedCust = Object.entries(custTotals).sort((a,b) => b[1] - a[1]).slice(0,5);
+
+        const sortedCust = Object.entries(custTotals)
+            .filter(x => x[1] > 0)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5);
+
         const labels = sortedCust.map(x => {
-            const c = (customers || []).find(c => c.id === x[0]);
-            return c ? c.name.slice(0, 15) : 'Unknown';
+            const n = custNames[x[0]] || x[0];
+            return n.length > 22 ? n.slice(0, 22) + '...' : n;
         });
+        const fullLabels = sortedCust.map(x => custNames[x[0]] || x[0]);
         const data = sortedCust.map(x => x[1]);
 
         if (data.length === 0) {
             const parent = ctxTop.parentElement;
-            parent.innerHTML = '<div class="bg-[#f8f9fa] flex items-center justify-center w-full h-full rounded-lg"><span class="text-sm text-gray-400">No Data</span></div>';
+            parent.innerHTML = '<div class="bg-[#f8f9fa] flex items-center justify-center w-full h-full rounded-lg"><span class="text-sm text-gray-400">Tidak ada data transaksi untuk periode ini</span></div>';
         } else {
             new Chart(ctxTop, {
                 type: 'bar',
@@ -2324,9 +2358,10 @@ window.initSalesCharts = function(invoices, customers) {
                     labels: labels,
                     datasets: [{
                         data: data,
-                        backgroundColor: '#818cf8',
-                        borderRadius: 4,
-                        barPercentage: 0.5,
+                        backgroundColor: '#6366f1',
+                        hoverBackgroundColor: '#4f46e5',
+                        borderRadius: 6,
+                        barPercentage: 0.6,
                         categoryPercentage: 0.8
                     }]
                 },
@@ -2334,10 +2369,18 @@ window.initSalesCharts = function(invoices, customers) {
                     responsive: true,
                     maintainAspectRatio: false,
                     indexAxis: 'y',
-                    plugins: { legend: { display: false } },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                title: items => fullLabels[items[0].dataIndex] || items[0].label,
+                                label: c => ' Total: Rp ' + new Intl.NumberFormat('id-ID').format(c.parsed.x)
+                            }
+                        }
+                    },
                     scales: {
                         x: { display: false, grid: {display: false} },
-                        y: { grid: {display: false}, border: {display: false}, ticks: { color: '#6b7280', font: {size: 11}, crossAlign: 'far' } }
+                        y: { grid: {display: false}, border: {display: false}, ticks: { color: '#4b5563', font: {size: 11, weight: '500'}, crossAlign: 'far' } }
                     }
                 }
             });
