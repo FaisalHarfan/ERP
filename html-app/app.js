@@ -12511,33 +12511,64 @@ window.handleSOAction = (actionOrSelectEl, id) => {
     else if (act === 'delete') deleteSO(cleanId);
 };
 
+let _soSearchTimeout = null;
 window.filterSOTable = () => {
-    const q = (document.getElementById('so_global_search')?.value || '').toLowerCase();
-    const rows = document.querySelectorAll('#so_main_table tbody tr');
-    rows.forEach(row => {
-        const text = row.innerText.toLowerCase();
-        row.style.display = text.includes(q) ? '' : 'none';
-    });
+    const input = document.getElementById('so_global_search');
+    if (!input) return;
+    const q = input.value;
+    if (!window.currentFilters) window.currentFilters = {};
+    if (!window.currentFilters.salesOrders) window.currentFilters.salesOrders = {};
+    window.currentFilters.salesOrders.q = q;
+
+    clearTimeout(_soSearchTimeout);
+    _soSearchTimeout = setTimeout(() => {
+        if (window.tablePagination && window.tablePagination['so']) {
+            window.tablePagination['so'].page = 1;
+        }
+        const cursorPos = input.selectionStart;
+        renderSalesOrders();
+        const newInput = document.getElementById('so_global_search');
+        if (newInput) {
+            newInput.focus();
+            if (cursorPos !== null) {
+                newInput.setSelectionRange(cursorPos, cursorPos);
+            }
+        }
+    }, 150);
 };
 
 window.toggleSODateDropdown = () => {
-    const d = document.getElementById('so_date_dropdown');
-    d?.classList.toggle('hidden');
+    const el = document.getElementById('so_date_dropdown');
+    if (el) el.classList.toggle('hidden');
 };
 
 window.applySOHeaderDateFilter = () => {
-    const s = document.getElementById('so_header_start')?.value;
-    const e = document.getElementById('so_header_end')?.value;
-    window.currentFilters.salesOrders.start = s || '';
-    window.currentFilters.salesOrders.end = e || '';
-    document.getElementById('so_date_dropdown')?.classList.add('hidden');
+    if (!window.currentFilters) window.currentFilters = {};
+    window.currentFilters.salesOrders = {
+        ...(window.currentFilters.salesOrders || {}),
+        start: document.getElementById('so_header_start')?.value || '',
+        end: document.getElementById('so_header_end')?.value || ''
+    };
+    if (window.tablePagination && window.tablePagination['so']) {
+        window.tablePagination['so'].page = 1;
+    }
+    const el = document.getElementById('so_date_dropdown');
+    if (el) el.classList.add('hidden');
     renderSalesOrders();
 };
 
 window.resetSOHeaderDateFilter = () => {
-    window.currentFilters.salesOrders.start = '';
-    window.currentFilters.salesOrders.end = '';
-    document.getElementById('so_date_dropdown')?.classList.add('hidden');
+    if (!window.currentFilters) window.currentFilters = {};
+    window.currentFilters.salesOrders = { 
+        ...(window.currentFilters.salesOrders || {}),
+        start: '', 
+        end: '' 
+    };
+    if (window.tablePagination && window.tablePagination['so']) {
+        window.tablePagination['so'].page = 1;
+    }
+    const el = document.getElementById('so_date_dropdown');
+    if (el) el.classList.add('hidden');
     renderSalesOrders();
 };
 
@@ -12754,10 +12785,9 @@ function renderSalesOrders() {
     renderBreadcrumb(['Sales', 'Sales Orders']);
     const mainContent = document.getElementById('main-content');
 
-
-    const soStatusOrder = { 'DRAFT': 0, 'CONFIRMED': 1, 'DELIVERED': 2 };
-    const customers = db.read('customers');
-    const filters = window.currentFilters.salesOrders || { start: '', end: '', customer: '' };
+    const soStatusOrder = { 'DRAFT': 0, 'OPEN': 0, 'CONFIRMED': 1, 'APPROVED': 1, 'DELIVERED': 2, 'COMPLETED': 2 };
+    const customers = db.read('customers') || [];
+    const filters = window.currentFilters?.salesOrders || { start: '', end: '', customer: '', q: '' };
 
     const defaultSOSort = (arr) => [...arr].sort((a, b) => {
         const sa = soStatusOrder[a.status] ?? 99;
@@ -12769,8 +12799,18 @@ function renderSalesOrders() {
     // Enrich with customerName for sorting
     let rawSos = (db.read('salesOrders') || []).map(so => ({
         ...so,
-        customerName: (customers.find(c => c.id === so.customerId) || { name: '' }).name
+        customerName: (customers.find(c => c.id === so.customerId) || { name: 'Customer' }).name
     }));
+
+    // Search filter
+    if (filters.q) {
+        const q = filters.q.toLowerCase();
+        rawSos = rawSos.filter(s => 
+            (s.soNumber || '').toLowerCase().includes(q) ||
+            (s.customerName || '').toLowerCase().includes(q) ||
+            (s.status || '').toLowerCase().includes(q)
+        );
+    }
 
     // Check if any date filter is applied
     const hasDateFilter = filters.start || filters.end;
@@ -12779,13 +12819,26 @@ function renderSalesOrders() {
     let sos = window.applyTableSort(rawSos, 'so', defaultSOSort);
     const paginated = window.paginateTable(sos, 'so', 25);
 
+    // Calculate Summary Totals
+    const totalNominalSO = sos.reduce((sum, s) => sum + parseFloat(s.totalAmount || 0), 0);
+    const totalConfirmedSO = sos.filter(s => s.status === 'CONFIRMED' || s.status === 'DELIVERED' || s.status === 'COMPLETED').reduce((sum, s) => sum + parseFloat(s.totalAmount || 0), 0);
+    const totalDraftSO = sos.filter(s => s.status === 'DRAFT' || s.status === 'OPEN').reduce((sum, s) => sum + parseFloat(s.totalAmount || 0), 0);
+
     let rows = paginated.items.map(so => {
-        const customer = customers.find(c => c.id === so.customerId) || { name: 'Unknown' };
+        const customer = customers.find(c => c.id === so.customerId) || { name: so.customerName || 'Customer' };
         
         let statusBadge = '';
-        if (so.status === 'DRAFT') statusBadge = '<span class="px-3 py-1 bg-orange-50 text-orange-600 border border-orange-100 rounded-full text-[10px] font-bold tracking-tight shadow-sm">Open</span>';
-        if (so.status === 'CONFIRMED') statusBadge = '<span class="px-3 py-1 bg-blue-50 text-blue-600 border border-blue-100 rounded-full text-[10px] font-bold tracking-tight shadow-sm">CONFIRMED</span>';
-        if (so.status === 'DELIVERED') statusBadge = '<span class="px-3 py-1 bg-green-50 text-green-600 border border-green-100 rounded-full text-[10px] font-bold tracking-tight shadow-sm">DELIVERED</span>';
+        if (so.status === 'DRAFT' || so.status === 'OPEN') {
+            statusBadge = '<span class="px-2.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">DRAFT</span>';
+        } else if (so.status === 'CONFIRMED' || so.status === 'APPROVED') {
+            statusBadge = '<span class="px-2.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">CONFIRMED</span>';
+        } else if (so.status === 'DELIVERED' || so.status === 'COMPLETED') {
+            statusBadge = '<span class="px-2.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">DELIVERED</span>';
+        } else if (so.status === 'CANCELLED') {
+            statusBadge = '<span class="px-2.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">CANCELLED</span>';
+        } else {
+            statusBadge = `<span class="px-2.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">${so.status}</span>`;
+        }
 
         const isAdmin = typeof isCurrentUserAdmin === 'function' ? isCurrentUserAdmin() : false;
         let actionHtml = '';
@@ -12793,19 +12846,20 @@ function renderSalesOrders() {
         if (isAdmin || canEdit) {
             // Administrator & Sales User: Menu Dropdown Aksi Lengkap
             const dropdownOptions = [
-                ['view', 'Lihat Detail', 'fas fa-eye'],
-                ['send', 'Kirim', 'fas fa-paper-plane']
+                ['view', 'Lihat Detail', 'fas fa-eye text-slate-500']
             ];
 
-            if (so.status === 'DRAFT') {
-                dropdownOptions.push(['confirm', 'Konfirmasi', 'fas fa-check']);
-                dropdownOptions.push(['edit', 'Edit', 'fas fa-edit']);
-                dropdownOptions.push(['delete', 'Hapus', 'fas fa-trash-alt', 'text-red-600 hover:bg-red-50 hover:text-red-700 border-t border-slate-50']);
-            } else if (so.status === 'CONFIRMED' || so.status === 'DELIVERED') {
-                dropdownOptions.push(['edit', 'Edit', 'fas fa-edit']);
-                dropdownOptions.push(['delete', 'Hapus', 'fas fa-trash-alt', 'text-red-600 hover:bg-red-50 hover:text-red-700 border-t border-slate-50']);
+            if (so.status === 'DRAFT' || so.status === 'OPEN') {
+                dropdownOptions.push(['edit', 'Edit', 'fas fa-edit text-blue-500']);
+                dropdownOptions.push(['send', 'Kirim ke Customer', 'fas fa-paper-plane text-blue-500']);
+                dropdownOptions.push(['confirm', 'Konfirmasi', 'fas fa-check text-emerald-600', 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 border-t border-slate-50']);
+                dropdownOptions.push(['delete', 'Hapus', 'fas fa-trash-alt text-red-500', 'text-red-600 hover:bg-red-50 hover:text-red-700 border-t border-slate-50']);
+            } else if (so.status === 'CONFIRMED' || so.status === 'DELIVERED' || so.status === 'COMPLETED') {
+                dropdownOptions.push(['edit', 'Edit', 'fas fa-edit text-blue-500']);
+                dropdownOptions.push(['send', 'Kirim Ulang', 'fas fa-paper-plane text-blue-500']);
+                dropdownOptions.push(['delete', 'Hapus', 'fas fa-trash-alt text-red-500', 'text-red-600 hover:bg-red-50 hover:text-red-700 border-t border-slate-50']);
             } else if (so.status === 'CANCELLED') {
-                dropdownOptions.push(['delete', 'Hapus', 'fas fa-trash-alt', 'text-red-600 hover:bg-red-50 hover:text-red-700']);
+                dropdownOptions.push(['delete', 'Hapus', 'fas fa-trash-alt text-red-500', 'text-red-600 hover:bg-red-50 hover:text-red-700']);
             }
 
             actionHtml = window.renderActionsDropdownHtml(`so-${so.id}`, 'handleSOAction', dropdownOptions);
@@ -12814,22 +12868,18 @@ function renderSalesOrders() {
         }
 
         return `
-            <tr class="border-b border-gray-100 hover:bg-slate-50 transition-colors">
-                <td class="py-4 px-6 whitespace-nowrap">
-                    <button onclick="viewSO('${so.id}')" class="text-blue-700 hover:text-blue-800 font-mono text-sm font-bold transition-colors cursor-pointer outline-none bg-blue-50/80 px-3.5 py-1.5 rounded-lg border border-blue-200 shadow-sm">
-                        ${so.soNumber.toUpperCase()}
+            <tr class="border-b border-gray-100 hover:bg-slate-50 transition-colors group">
+                <td class="py-2.5 px-4 whitespace-nowrap">
+                    <button onclick="viewSO('${so.id}')" class="text-blue-700 hover:text-blue-800 font-mono text-xs font-bold transition-colors cursor-pointer outline-none bg-blue-50/80 px-2.5 py-1 rounded-lg border border-blue-200 shadow-sm">
+                        ${(so.soNumber || '').toUpperCase()}
                     </button>
                 </td>
-                <td class="py-4 px-6 text-sm text-slate-500 font-medium">${so.date.split('T')[0].split('-').reverse().join('-')}</td>
-                <td class="py-4 px-6 text-sm text-slate-900 font-bold tracking-tight">${customer.name}</td>
-                <td class="py-4 px-6 text-sm text-slate-800 font-bold text-right">${formatCurrency(so.totalAmount)}</td>
-                <td class="py-4 px-6 text-center">
-                    <span class="px-3 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest shadow-sm border border-black/5 ${so.status === 'DRAFT' ? 'bg-orange-50 text-orange-600 border-orange-100' : (so.status === 'CONFIRMED' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-green-50 text-green-600 border-green-100')}">
-                        ${so.status}
-                    </span>
-                </td>
-                <td class="py-4 px-6 text-right whitespace-nowrap">
-                    <div class="flex items-center justify-end gap-2 px-1">
+                <td class="py-2.5 px-4 text-xs text-slate-500 font-medium">${formatDate(so.date).split(' ')[0]}</td>
+                <td class="py-2.5 px-4 text-xs text-slate-900 font-bold tracking-tight">${customer.name}</td>
+                <td class="py-2.5 px-4 text-xs text-slate-800 font-bold text-right">${formatCurrency(so.totalAmount)}</td>
+                <td class="py-2.5 px-4 text-center">${statusBadge}</td>
+                <td class="py-2.5 px-4 text-right whitespace-nowrap">
+                    <div class="flex items-center justify-end gap-1.5 px-1">
                         ${actionHtml}
                     </div>
                 </td>
@@ -12838,37 +12888,37 @@ function renderSalesOrders() {
     }).join('');
 
     if (sos.length === 0) {
-        rows = `<tr><td colspan="7" class="py-12 text-center text-slate-400 text-sm font-medium">Belum ada data sales order untuk ditampilkan</td></tr>`;
+        rows = `<tr><td colspan="6" class="py-10 text-center text-slate-400 text-xs font-medium">Belum ada data sales order untuk ditampilkan</td></tr>`;
     }
 
     mainContent.innerHTML = `
         <div id="so-list-view" class="animate-in fade-in duration-300 h-[calc(100vh-64px)] flex flex-col bg-slate-50 -m-4 sm:-m-6">
-            <!-- Full Width Fixed Filter Bar -->
+            <!-- Full Width Fixed Filter Bar (Compact) -->
             <div class="bg-white border-b border-gray-200 shrink-0 z-40 shadow-sm relative">
-                <div class="flex flex-wrap md:flex-nowrap justify-between items-center px-6 py-4 gap-4">
+                <div class="flex flex-wrap md:flex-nowrap justify-between items-center px-6 py-2.5 gap-3">
                     <div class="flex items-center gap-3 flex-1">
                         <div class="flex-1 max-w-md relative">
-                            <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
-                            <input type="text" id="so_global_search" onkeyup="filterSOTable()" placeholder="Search Sales Orders..." 
-                                class="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-700 placeholder:text-slate-300 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 outline-none transition-all">
+                            <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs cursor-text pointer-events-none"></i>
+                            <input type="text" id="so_global_search" value="${filters.q || ''}" oninput="filterSOTable()" placeholder="Cari No. SO, Customer..." 
+                                class="w-full pl-10 pr-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:bg-white outline-none transition-all">
                         </div>
                         
                         <!-- Date Filter Dropdown Trigger -->
                         <div class="relative" id="so_date_filter_container">
-                            <button onclick="toggleSODateDropdown()" class="flex items-center bg-slate-50 border border-slate-200 rounded-lg overflow-hidden hover:bg-slate-100 transition-all shadow-sm h-[42px] group">
-                                <span class="bg-slate-100 border-r border-slate-200 px-3 h-full flex items-center text-slate-600 transition-colors">
-                                    <i class="fas fa-calendar-alt text-[13px]"></i>
+                            <button onclick="toggleSODateDropdown()" class="flex items-center bg-slate-50 border border-slate-200 rounded-lg overflow-hidden hover:bg-slate-100 transition-all shadow-sm h-[32px] group p-0">
+                                <span class="bg-slate-100 border-r border-slate-200 px-2.5 h-full flex items-center text-slate-600 transition-colors">
+                                    <i class="fas fa-calendar-alt text-xs"></i>
                                 </span>
-                                <span class="px-3 text-[13px] font-bold ${hasDateFilter ? 'text-blue-600' : 'text-slate-700'}">
+                                <span class="px-2.5 text-xs font-bold ${hasDateFilter ? 'text-blue-600' : 'text-slate-700'}">
                                     ${hasDateFilter ? `${filters.start || '...'} s/d ${filters.end || '...'}` : 'Date'}
                                 </span>
-                                <span class="pr-3 pl-1 text-slate-500 justify-center flex items-center">
-                                    <i class="fas fa-chevron-down text-[11px]"></i>
+                                <span class="pr-2 pl-0.5 text-slate-500 justify-center flex items-center">
+                                    <i class="fas fa-chevron-down text-[10px]"></i>
                                 </span>
                             </button>
                             
                             <!-- Dropdown Content -->
-                            <div id="so_date_dropdown" class="absolute left-0 mt-2 w-80 bg-white border border-slate-100 rounded-2xl shadow-2xl z-[200] hidden p-5 animate-in fade-in zoom-in-95 duration-200">
+                            <div id="so_date_dropdown" class="absolute left-0 mt-2 w-80 bg-white border border-slate-100 rounded-2xl shadow-xl z-[200] hidden p-5 animate-in fade-in zoom-in-95 duration-200">
                                 <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Pilihan Cepat</h4>
                                 <div class="grid grid-cols-2 gap-1.5 mb-4">
                                     <button type="button" onclick="setQuickDatePreset('so_header_start','so_header_end','today','applySOHeaderDateFilter')" class="py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-[10px] font-bold text-slate-600 transition-colors text-center border border-slate-100">Hari Ini</button>
@@ -12878,19 +12928,17 @@ function renderSalesOrders() {
                                 </div>
                                 <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Rentang Manual</h4>
                                 <div class="space-y-3">
-                                    <div class="grid grid-cols-2 gap-3">
-                                        <div>
-                                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Dari</label>
-                                            <input type="date" id="so_header_start" value="${filters.start}" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 bg-slate-50/50">
-                                        </div>
-                                        <div>
-                                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Ke</label>
-                                            <input type="date" id="so_header_end" value="${filters.end}" class="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 bg-slate-50/50">
-                                        </div>
+                                    <div>
+                                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Dari Tanggal</label>
+                                        <input type="date" id="so_header_start" value="${filters.start || ''}" class="w-full border border-slate-100 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 focus:bg-white focus:border-blue-500 outline-none transition-all">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Sampai Tanggal</label>
+                                        <input type="date" id="so_header_end" value="${filters.end || ''}" class="w-full border border-slate-100 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 focus:bg-white focus:border-blue-500 outline-none transition-all">
                                     </div>
                                     <div class="flex gap-2 pt-2">
-                                        <button onclick="applySOHeaderDateFilter()" class="flex-1 bg-blue-600 text-white py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-md active:scale-95">Apply</button>
-                                        <button onclick="resetSOHeaderDateFilter()" class="flex-1 bg-slate-100 text-slate-500 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-slate-200 transition-all">Reset</button>
+                                        <button onclick="applySOHeaderDateFilter()" class="flex-1 bg-blue-600 text-white py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-md active:scale-95">Terapkan</button>
+                                        <button onclick="resetSOHeaderDateFilter()" class="flex-1 bg-slate-100 text-slate-600 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all">Reset</button>
                                     </div>
                                 </div>
                             </div>
@@ -12898,33 +12946,56 @@ function renderSalesOrders() {
                     </div>
 
                     <div class="flex items-center gap-2">
-                        <button onclick="openSOModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest shadow-xl active:scale-95 flex items-center gap-2">
-                            <i class="fas fa-plus"></i>Buat SO Baru
+                        <button onclick="openSOModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg transition-all text-xs font-medium shadow-sm flex items-center gap-1.5 active:scale-95">
+                            <i class="fas fa-plus text-xs"></i> Buat SO Baru
                         </button>
                     </div>
                 </div>
             </div>
 
-            <!-- Content Area -->
-            <div class="flex-1 overflow-auto flex flex-col">
-                <div class="flex-1 overflow-auto">
-                    <table class="w-full text-left border-collapse" id="so_main_table">
-                        <thead class="sticky top-0 z-20">
-                            <tr class="bg-slate-50 border-b border-slate-100 text-slate-500 font-semibold uppercase text-[10px] tracking-wider shadow-sm">
-                                ${window.sortTh('so','soNumber','string','No. SO','renderSalesOrders')}
-                                ${window.sortTh('so','date','date','Tanggal','renderSalesOrders')}
-                                ${window.sortTh('so','customerName','string','Customer','renderSalesOrders')}
-                                ${window.sortTh('so','totalAmount','number','Grand Total','renderSalesOrders','text-right')}
-                                ${window.sortTh('so','status','string','Status','renderSalesOrders','text-center')}
-                                <th class="px-6 py-3.5 text-right w-[150px]">Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-100 bg-white font-sans">${rows}</tbody>
-                    </table>
-                </div>
-                ${window.renderPaginationBar('so', paginated, 'renderSalesOrders')}
+            <!-- Table Container wrapper -->
+            <div class="flex-1 overflow-auto">
+                <table class="w-full text-left border-collapse" id="so_table">
+                    <thead class="bg-slate-50 sticky top-0 z-30 shadow-[0_1px_0_#e2e8f0]">
+                        <tr class="bg-gray-50/50">
+                            ${window.sortTh('so','soNumber','string','No. SO','renderSalesOrders','py-2.5 px-4 text-xs')}
+                            ${window.sortTh('so','date','date','Tanggal','renderSalesOrders','py-2.5 px-4 text-xs')}
+                            ${window.sortTh('so','customerName','string','Customer','renderSalesOrders','py-2.5 px-4 text-xs')}
+                            ${window.sortTh('so','totalAmount','number','Total','renderSalesOrders','py-2.5 px-4 text-xs text-right')}
+                            ${window.sortTh('so','status','string','Status','renderSalesOrders','py-2.5 px-4 text-xs text-center')}
+                            <th class="py-2.5 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 bg-white">${rows}</tbody>
+                </table>
             </div>
+            
+            <!-- Compact Totals Summary Bar -->
+            <div class="px-6 py-2.5 flex flex-wrap items-center justify-between border-t border-slate-200 bg-white shrink-0 shadow-sm gap-3">
+                <div class="flex items-center gap-3">
+                    <span class="text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">Total Nilai SO</span>
+                    <span class="text-base font-black font-mono tracking-tight text-slate-800" id="so_footer_grand_total">${formatCurrency(totalNominalSO)}</span>
+                </div>
+                
+                <div class="flex gap-6 md:gap-8 text-right items-center">
+                    <div class="flex items-center gap-2">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-wider">Terkonfirmasi:</span>
+                        <span class="text-xs font-bold font-mono text-emerald-600" id="so_footer_total_confirmed">${formatCurrency(totalConfirmedSO)}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-wider">Draft:</span>
+                        <span class="text-xs font-bold font-mono text-amber-600" id="so_footer_total_draft">${formatCurrency(totalDraftSO)}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-wider">Total:</span>
+                        <span class="text-xs font-bold font-mono text-slate-600" id="so_footer_total_docs">${sos.length} SO</span>
+                    </div>
+                </div>
+            </div>
+
+            ${window.renderPaginationBar('so', paginated, 'renderSalesOrders')}
         </div>
+
         <div id="so-form-view" class="hidden"></div>
     `;
 }
@@ -16206,209 +16277,76 @@ window.onInvCustomerSelect = (customerId) => {
     openInvoiceModal(null, customerId);
 };
 
+let _siSearchTimeout = null;
 window.filterSITable = () => {
-    const q = (document.getElementById('si_global_search')?.value || '').toLowerCase().trim();
-    const allData = window._siRawInvoices || [];
-    
-    let sumTagihan = 0;
-    let sumPaid = 0;
+    const input = document.getElementById('si_global_search');
+    if (!input) return;
+    const q = input.value;
+    if (!window.currentFilters) window.currentFilters = {};
+    if (!window.currentFilters.salesInvoices) window.currentFilters.salesInvoices = {};
+    window.currentFilters.salesInvoices.q = q;
 
-    allData.forEach(inv => {
-        if (inv.status === 'CANCELLED') return;
-        
-        let isMatch = true;
-        if (q) {
-            const custName = (inv.customerName || '').toLowerCase();
-            const invNo = (inv.invoiceNumber || '').toLowerCase();
-            const status = (inv.status || '').toLowerCase();
-            const taxType = (inv.taxType || '').toLowerCase();
-            const dateStr = inv.date ? new Date(inv.date).toLocaleDateString('id-ID', {day:'2-digit', month:'short', year:'numeric'}).toLowerCase() : '';
-            isMatch = invNo.includes(q) || custName.includes(q) || status.includes(q) || taxType.includes(q) || dateStr.includes(q);
+    clearTimeout(_siSearchTimeout);
+    _siSearchTimeout = setTimeout(() => {
+        if (window.tablePagination && window.tablePagination['si']) {
+            window.tablePagination['si'].page = 1;
         }
-
-        if (isMatch) {
-            sumTagihan += (parseFloat(inv.totalAmount) || 0);
-            sumPaid += (parseFloat(inv.paidAmount) || 0);
+        const cursorPos = input.selectionStart;
+        renderSalesInvoices();
+        const newInput = document.getElementById('si_global_search');
+        if (newInput) {
+            newInput.focus();
+            if (cursorPos !== null) {
+                newInput.setSelectionRange(cursorPos, cursorPos);
+            }
         }
-    });
-
-    const rows = document.querySelectorAll('#si_main_table tbody tr');
-    rows.forEach(row => {
-        const text = row.innerText.toLowerCase();
-        const isVisible = !q || text.includes(q);
-        row.style.display = isVisible ? '' : 'none';
-    });
-
-    // Update Footer Values dynamically across all matching records (not just current page)
-    const footerTagihan = document.getElementById('si_footer_total_tagihan');
-    const footerTerbayar = document.getElementById('si_footer_total_terbayar');
-    const footerGrand = document.getElementById('si_footer_grand_total');
-    
-    if (footerTagihan) footerTagihan.innerText = formatCurrency(sumTagihan);
-    if (footerTerbayar) footerTerbayar.innerText = formatCurrency(sumPaid);
-    if (footerGrand) footerGrand.innerText = formatCurrency(sumTagihan - sumPaid);
+    }, 150);
 };
 
 window.toggleSIDateDropdown = () => {
-    const d = document.getElementById('si_date_dropdown');
-    d?.classList.toggle('hidden');
+    const el = document.getElementById('si_date_dropdown');
+    if (el) el.classList.toggle('hidden');
 };
 
 window.applySIHeaderDateFilter = () => {
-    const s = document.getElementById('si_header_start')?.value;
-    const e = document.getElementById('si_header_end')?.value;
     if (!window.currentFilters) window.currentFilters = {};
-    if (!window.currentFilters.salesInvoices) window.currentFilters.salesInvoices = {};
-    window.currentFilters.salesInvoices.start = s || '';
-    window.currentFilters.salesInvoices.end = e || '';
+    window.currentFilters.salesInvoices = {
+        ...(window.currentFilters.salesInvoices || {}),
+        start: document.getElementById('si_header_start')?.value || '',
+        end: document.getElementById('si_header_end')?.value || ''
+    };
     if (window.tablePagination && window.tablePagination['si']) {
         window.tablePagination['si'].page = 1;
     }
-    document.getElementById('si_date_dropdown')?.classList.add('hidden');
+    const el = document.getElementById('si_date_dropdown');
+    if (el) el.classList.add('hidden');
     renderSalesInvoices();
 };
 
 window.resetSIHeaderDateFilter = () => {
     if (!window.currentFilters) window.currentFilters = {};
-    if (!window.currentFilters.salesInvoices) window.currentFilters.salesInvoices = {};
-    window.currentFilters.salesInvoices.start = '';
-    window.currentFilters.salesInvoices.end = '';
+    window.currentFilters.salesInvoices = { 
+        ...(window.currentFilters.salesInvoices || {}),
+        start: '', 
+        end: '' 
+    };
     if (window.tablePagination && window.tablePagination['si']) {
         window.tablePagination['si'].page = 1;
     }
-    document.getElementById('si_date_dropdown')?.classList.add('hidden');
+    const el = document.getElementById('si_date_dropdown');
+    if (el) el.classList.add('hidden');
     renderSalesInvoices();
 };
 
-
-
 function renderSalesInvoices() {
-    document.getElementById('pageTitle').innerText = 'Sales Invoices';
+    renderBreadcrumb(['Sales', 'Sales Invoices']);
     const mainContent = document.getElementById('main-content');
-    const filters_data = window.currentFilters.salesInvoices || { start: '', end: '' };
+    const filters_data = window.currentFilters?.salesInvoices || { start: '', end: '', q: '' };
     const hasDateFilter = !!(filters_data.start || filters_data.end);
-    
-    // Setup List vs Form view containers
-    mainContent.innerHTML = `
-        <div id="si-list-view" class="h-full flex flex-col space-y-6 animate-in fade-in duration-500 font-sans">
-            <!-- Filter & Action Bar (Fraction Style) -->
-            <div class="bg-white border-b border-gray-100 shrink-0 z-40 shadow-[0_2px_15px_-3px_rgba(0,0,0,0.04)] rounded-3xl">
-                <div class="flex flex-wrap md:flex-nowrap justify-between items-center px-8 py-5 gap-4">
-                    <div class="flex items-center gap-4 flex-1">
-                        <div class="flex-1 max-w-lg relative group">
-                            <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors"></i>
-                            <input type="text" id="si_global_search" onkeyup="filterSITable()" placeholder="Cari No. Invoice, Nama Customer, atau Tipe Faktur..." 
-                                class="w-full pl-12 pr-6 py-3.5 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-700 placeholder:text-slate-300 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all shadow-inner">
-                        </div>
-                        
-                        <div class="relative">
-                            <button onclick="toggleSIDateDropdown()" class="flex items-center bg-slate-50 border border-slate-200 rounded-lg overflow-hidden hover:bg-slate-100 transition-all shadow-sm h-[44px] group">
-                                <span class="bg-slate-100 border-r border-slate-200 px-3 h-full flex items-center text-slate-600 transition-colors">
-                                    <i class="fas fa-calendar-alt text-[13px]"></i>
-                                </span>
-                                <span class="px-3 text-[13px] font-bold ${hasDateFilter ? 'text-blue-600' : 'text-slate-700'}">
-                                    ${hasDateFilter ? `${filters_data.start || '...'} s/d ${filters_data.end || '...'}` : 'Date'}
-                                </span>
-                                <span class="pr-3 pl-1 text-slate-500 justify-center flex items-center">
-                                    <i class="fas fa-chevron-down text-[11px]"></i>
-                                </span>
-                            </button>
-                            
-                            <div id="si_date_dropdown" class="absolute left-0 mt-3 w-80 bg-white border border-slate-100 rounded-3xl shadow-[0_20px_50px_-10px_rgba(0,0,0,0.1)] z-[200] hidden p-6 animate-in fade-in zoom-in-95 duration-200">
-                                <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
-                                    <span class="w-1 h-3 bg-blue-600 rounded-full"></span> Pilihan Cepat
-                                </h4>
-                                <div class="grid grid-cols-2 gap-1.5 mb-4">
-                                    <button type="button" onclick="setQuickDatePreset('si_header_start','si_header_end','today','applySIHeaderDateFilter')" class="py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-[10px] font-bold text-slate-600 transition-colors text-center border border-slate-100">Hari Ini</button>
-                                    <button type="button" onclick="setQuickDatePreset('si_header_start','si_header_end','this_month','applySIHeaderDateFilter')" class="py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-[10px] font-bold text-slate-600 transition-colors text-center border border-slate-100">Bulan Ini</button>
-                                    <button type="button" onclick="setQuickDatePreset('si_header_start','si_header_end','last_30_days','applySIHeaderDateFilter')" class="py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-[10px] font-bold text-slate-600 transition-colors text-center border border-slate-100">30 Hari Terakhir</button>
-                                    <button type="button" onclick="setQuickDatePreset('si_header_start','si_header_end','this_year','applySIHeaderDateFilter')" class="py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-[10px] font-bold text-slate-600 transition-colors text-center border border-slate-100">Tahun Ini</button>
-                                </div>
-                                <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 flex items-center gap-2">
-                                    <span class="w-1 h-3 bg-blue-600 rounded-full"></span> Rentang Manual
-                                </h4>
-                                <div class="space-y-4">
-                                    <div class="grid grid-cols-2 gap-3 font-sans">
-                                        <div>
-                                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Start Date</label>
-                                            <input type="date" id="si_header_start" value="${filters_data.start || ''}" class="w-full border-2 border-slate-50 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 bg-slate-50/50 outline-none focus:border-blue-500/20">
-                                        </div>
-                                        <div>
-                                            <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">End Date</label>
-                                            <input type="date" id="si_header_end" value="${filters_data.end || ''}" class="w-full border-2 border-slate-50 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 bg-slate-50/50 outline-none focus:border-blue-500/20">
-                                        </div>
-                                    </div>
-                                    <div class="flex gap-2 pt-2 uppercase text-[10px] font-black tracking-[0.1em]">
-                                        <button onclick="applySIHeaderDateFilter()" class="flex-1 bg-blue-600 text-white py-3 rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-500/20 active:scale-95 transition-all">Apply Filter</button>
-                                        <button onclick="resetSIHeaderDateFilter()" class="flex-1 bg-slate-100 text-slate-500 py-3 rounded-xl hover:bg-slate-200 active:scale-95 transition-all">Reset</button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="flex items-center gap-3">
-                        <button onclick="openInvoiceModal()" class="bg-blue-600 hover:bg-slate-900 text-white px-6 py-2.5 rounded-xl transition-all text-[10px] font-black uppercase tracking-widest shadow-lg shadow-blue-600/10 active:scale-95 flex items-center gap-2">
-                            <i class="fas fa-plus text-sm"></i> Buat Invoice
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Main Table Block (Premium Style) -->
-            <div class="bg-white rounded-[32px] border border-slate-100 shadow-[0_10px_30px_-15px_rgba(0,0,0,0.05)] flex-1 flex flex-col min-h-0 overflow-hidden">
-                <div class="overflow-x-auto flex-1 custom-scrollbar">
-                    <table class="w-full text-sm text-left border-collapse" id="si_main_table">
-                        <thead class="sticky top-0 z-20 bg-white/95 backdrop-blur-md shadow-sm">
-                            <tr class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] border-b border-slate-100">
-
-                                ${window.sortTh('si','invoiceNumber','string','Informasi Faktur','renderSalesInvoices','py-6 px-4')}
-                                ${window.sortTh('si','dueDate','date','Jatuh Tempo','renderSalesInvoices','py-6 px-4')}
-                                ${window.sortTh('si','totalAmount','number','Tagihan Bruto','renderSalesInvoices','py-6 px-4 text-right')}
-                                ${window.sortTh('si','paidAmount','number','Sudah Bayar','renderSalesInvoices','py-6 px-4 text-right')}
-                                ${window.sortTh('si','remainingAmount','number','Sisa Hutang','renderSalesInvoices','py-6 px-4 text-right')}
-                                ${window.sortTh('si','status','string','Status','renderSalesInvoices','py-6 px-6 text-center')}
-                                <th class="py-6 px-8 text-center">Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-50 uppercase text-[10px] font-black">
-                            <!-- Invoiced dynamically -->
-                        </tbody>
-                    </table>
-
-                    <!-- Totals Summary Bar (Minimalist) -->
-                    <div class="px-10 py-6 flex items-center justify-between border-t border-slate-50 bg-white">
-                        <div>
-                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-1 opacity-70">Total Outstanding</p>
-                            <p class="text-2xl font-black font-mono tracking-tighter text-slate-800" id="si_footer_grand_total">Rp 0</p>
-                        </div>
-                        
-                        <div class="flex gap-12 text-right items-center">
-                            <div class="flex flex-col">
-                                <span class="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1">Total Tagihan</span>
-                                <span class="text-sm font-bold font-mono text-slate-500" id="si_footer_total_tagihan">Rp 0</span>
-                            </div>
-                            <div class="flex flex-col">
-                                <span class="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1">Total Terbayar</span>
-                                <span class="text-sm font-bold font-mono text-slate-500" id="si_footer_total_terbayar">Rp 0</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div id="si_pagination_container"></div>
-            </div>
-        </div>
-
-        <div id="si-form-view" class="hidden w-full bg-slate-50 min-h-full">
-            <!-- Form View Content -->
-        </div>
-    `;
-
-    const tbody = mainContent.querySelector('#si_main_table tbody');
 
     const invStatusOrder = { 'UNPAID': 0, 'PARTIAL': 1, 'PAID': 2 };
-    const customers = db.read('customers');
-    const payments = db.read('payments');
+    const customers = db.read('customers') || [];
+    const payments = db.read('payments') || [];
 
     const defaultSISort = (arr) => [...arr].sort((a, b) => {
         const sa = invStatusOrder[a.status] ?? 99;
@@ -16417,127 +16355,213 @@ function renderSalesInvoices() {
         return new Date(b.date) - new Date(a.date);
     });
 
-    // Enrich with computed fields for sorting
+    // Enrich with computed fields for sorting & filtering
     let rawInvoices = (db.read('salesInvoices') || []).map(inv => {
         const invPayments = payments.filter(p => p.invoiceId === inv.id);
-        const paidAmt = invPayments.reduce((s, p) => s + parseFloat(p.amount), 0);
+        const paidAmt = invPayments.reduce((s, p) => s + parseFloat(p.amount || 0), 0);
         const cust = (customers || []).find(c => c.id === inv.customerId);
         return { 
             ...inv, 
-            customerName: cust ? cust.name : '',
+            customerName: cust ? cust.name : (inv.customerName || 'Customer'),
             invoiceNumber: inv.invoiceNumber || inv.invNumber || '', 
             paidAmount: paidAmt, 
             remainingAmount: (parseFloat(inv.totalAmount) || 0) - paidAmt 
         };
     });
 
+    // Search filter
+    if (filters_data.q) {
+        const q = filters_data.q.toLowerCase();
+        rawInvoices = rawInvoices.filter(s => 
+            (s.invoiceNumber || '').toLowerCase().includes(q) ||
+            (s.customerName || '').toLowerCase().includes(q) ||
+            (s.status || '').toLowerCase().includes(q) ||
+            (s.taxType || '').toLowerCase().includes(q)
+        );
+    }
+
     // Filter by date if specified
     if (filters_data.start) { const d = new Date(filters_data.start); d.setHours(0,0,0,0); rawInvoices = rawInvoices.filter(x => new Date(x.date) >= d); }
     if (filters_data.end) { const d = new Date(filters_data.end); d.setHours(23,59,59,999); rawInvoices = rawInvoices.filter(x => new Date(x.date) <= d); }
     
-    // Store full date-filtered dataset for cross-page totals and global search
-    window._siRawInvoices = rawInvoices;
-
     let invoices = window.applyTableSort(rawInvoices, 'si', defaultSISort);
     const paginated = window.paginateTable(invoices, 'si', 25);
 
-    const pagContainer = mainContent.querySelector('#si_pagination_container');
-    if (pagContainer) {
-        pagContainer.innerHTML = window.renderPaginationBar('si', paginated, 'renderSalesInvoices');
-    }
+    // Calculate Summary Totals
+    const totalTagihan = invoices.reduce((sum, inv) => sum + (parseFloat(inv.totalAmount) || 0), 0);
+    const totalTerbayar = invoices.reduce((sum, inv) => sum + (parseFloat(inv.paidAmount) || 0), 0);
+    const totalOutstanding = invoices.filter(inv => inv.status !== 'CANCELLED').reduce((sum, inv) => sum + Math.max(0, (parseFloat(inv.totalAmount) || 0) - (parseFloat(inv.paidAmount) || 0)), 0);
 
-    if (invoices.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="7" class="py-12 text-center text-slate-400 text-sm font-medium">
-                    Belum ada data sales invoice untuk ditampilkan
-                </td>
-            </tr>
-        `;
-        return;
-    }
+    const canEdit = typeof getModulePermission === 'function' ? getModulePermission('penjualan').edit : true;
+    const isAdmin = typeof isCurrentUserAdmin === 'function' ? isCurrentUserAdmin() : false;
 
-    let pageTagihan = 0;
-    let pagePaid = 0;
-
-    tbody.innerHTML = paginated.items.map(inv => {
-        const customer = customers.find(c => c.id === inv.customerId) || { name: 'Unknown Customer' };
-        const invPayments = payments.filter(p => p.invoiceId === inv.id);
-        const totalPaid = invPayments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
-        const balance = inv.totalAmount - totalPaid;
-
-        pageTagihan += (parseFloat(inv.totalAmount) || 0);
-        pagePaid += totalPaid;
+    let rows = paginated.items.map(inv => {
+        const customer = customers.find(c => c.id === inv.customerId) || { name: inv.customerName || 'Customer' };
+        const balance = (parseFloat(inv.totalAmount) || 0) - (parseFloat(inv.paidAmount) || 0);
 
         let statusBadge = '';
-        if (inv.status === 'UNPAID') statusBadge = '<span class="px-4 py-1.5 bg-red-50 text-red-600 border border-red-100 rounded-xl text-[10px] font-black tracking-widest shadow-sm">UNPAID</span>';
-        else if (inv.status === 'PAID') statusBadge = '<span class="px-4 py-1.5 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl text-[10px] font-black tracking-widest shadow-sm">PAID</span>';
-        else if (inv.status === 'PARTIAL') statusBadge = '<span class="px-4 py-1.5 bg-blue-50 text-blue-600 border border-blue-100 rounded-xl text-[10px] font-black tracking-widest shadow-sm uppercase">Partial</span>';
-        else if (inv.status === 'CANCELLED') statusBadge = '<span class="px-4 py-1.5 bg-slate-50 text-slate-400 border border-slate-100 rounded-xl text-[10px] font-bold tracking-widest uppercase">Cancelled</span>';
+        if (inv.status === 'UNPAID') statusBadge = '<span class="px-2.5 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">UNPAID</span>';
+        else if (inv.status === 'PAID') statusBadge = '<span class="px-2.5 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">PAID</span>';
+        else if (inv.status === 'PARTIAL') statusBadge = '<span class="px-2.5 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">PARTIAL</span>';
+        else if (inv.status === 'CANCELLED') statusBadge = '<span class="px-2.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">CANCELLED</span>';
+        else statusBadge = `<span class="px-2.5 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">${inv.status}</span>`;
 
-        const canEdit = typeof getModulePermission === 'function' ? getModulePermission('penjualan').edit : true;
-        const isAdmin = typeof isCurrentUserAdmin === 'function' ? isCurrentUserAdmin() : false;
-
-        const actionHtml = (isAdmin || canEdit) ? `
-            <div class="relative inline-block text-left font-sans">
-                <button type="button" onclick="event.stopPropagation(); window.toggleActionsDropdown('si-${inv.id}')" class="flex items-center justify-between gap-x-1.5 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 transition-all cursor-pointer shadow-sm active:scale-95 w-[115px]" id="menu-btn-si-${inv.id}">
-                    <span>Pilih Aksi</span>
-                    <i class="fas fa-chevron-down text-[9px] text-slate-400 transition-transform duration-200" id="menu-arrow-si-${inv.id}"></i>
-                </button>
-                <div class="hidden absolute right-0 z-[100] mt-1.5 w-44 origin-top-right rounded-xl bg-white shadow-xl border border-slate-150 overflow-hidden font-medium py-1 divide-y divide-slate-50 animate-in fade-in duration-150" id="menu-dropdown-si-${inv.id}">
-                    <button onclick="handleSIAction('view', '${inv.id}')" class="group flex items-center w-full px-4 py-2 text-[11px] text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-all font-bold text-left" role="menuitem">
-                        <i class="fas fa-eye w-4 mr-2 text-slate-400 group-hover:text-blue-500 transition-colors"></i> Lihat Detail
-                    </button>
-                    <button onclick="handleSIAction('edit', '${inv.id}')" class="group flex items-center w-full px-4 py-2 text-[11px] text-slate-700 hover:bg-amber-50 hover:text-amber-600 transition-all font-bold text-left" role="menuitem">
-                        <i class="fas fa-edit w-4 mr-2 text-slate-400 group-hover:text-amber-500 transition-colors"></i> Edit Invoice
-                    </button>
-                    <button onclick="handleSIAction('print', '${inv.id}')" class="group flex items-center w-full px-4 py-2 text-[11px] text-slate-700 hover:bg-blue-50 hover:text-blue-600 transition-all font-bold text-left" role="menuitem">
-                        <i class="fas fa-print w-4 mr-2 text-slate-400 group-hover:text-blue-500 transition-colors"></i> Cetak Invoice
-                    </button>
-                    ${inv.status !== 'CANCELLED' ? `
-                    <button onclick="handleSIAction('cancel', '${inv.id}')" class="group flex items-center w-full px-4 py-2.5 text-[11px] text-red-600 hover:bg-red-50 hover:text-red-700 transition-all font-bold text-left border-t border-slate-50" role="menuitem">
-                        <i class="fas fa-ban w-4 mr-2 text-red-400 group-hover:text-red-600 transition-colors"></i> Batalkan SI
-                    </button>` : ''}
-                </div>
-            </div>
-        ` : `
-            <div class="flex items-center justify-end gap-2">
-                <button onclick="handleSIAction('print', '${inv.id}')" class="bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm inline-flex items-center gap-1.5 active:scale-95 cursor-pointer" title="Cetak Invoice">
-                    <i class="fas fa-print text-[11px] text-slate-400"></i> Cetak
-                </button>
-            </div>
-        `;
+        let actionHtml = '';
+        if (isAdmin || canEdit) {
+            const dropdownOptions = [
+                ['view', 'Lihat Detail', 'fas fa-eye text-slate-500'],
+                ['print', 'Cetak Invoice', 'fas fa-print text-blue-500']
+            ];
+            if (inv.status !== 'PAID' && inv.status !== 'CANCELLED') {
+                dropdownOptions.push(['edit', 'Edit Invoice', 'fas fa-edit text-amber-500']);
+            }
+            if (inv.status !== 'CANCELLED') {
+                dropdownOptions.push(['cancel', 'Batalkan SI', 'fas fa-ban text-red-500', 'text-red-600 hover:bg-red-50 hover:text-red-700 border-t border-slate-50']);
+            }
+            actionHtml = window.renderActionsDropdownHtml(`si-${inv.id}`, 'handleSIAction', dropdownOptions);
+        } else {
+            actionHtml = `<span class="text-xs text-slate-300 font-medium px-2">-</span>`;
+        }
 
         return `
-            <tr class="hover:bg-blue-50/20 transition-all group duration-300" data-amount="${inv.totalAmount}" data-paid="${totalPaid}" data-status="${inv.status}">
-
-                <td class="py-6 px-4">
-                    <div class="flex flex-col">
-                        <button onclick="handleSIAction('view', '${inv.id}')" class="text-blue-700 hover:text-blue-800 font-mono text-sm font-bold transition-colors cursor-pointer outline-none bg-blue-50/80 px-3 py-1 rounded-lg border border-blue-200 shadow-sm text-left w-fit">
-                            ${inv.invoiceNumber}
-                        </button>
-                        <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">${customer.name}</span>
-                    </div>
+            <tr class="border-b border-gray-100 hover:bg-slate-50 transition-colors group">
+                <td class="py-2.5 px-4 whitespace-nowrap">
+                    <button onclick="handleSIAction('view', '${inv.id}')" class="text-blue-700 hover:text-blue-800 font-mono text-xs font-bold transition-colors cursor-pointer outline-none bg-blue-50/80 px-2.5 py-1 rounded-lg border border-blue-200 shadow-sm">
+                        ${inv.invoiceNumber || '-'}
+                    </button>
                 </td>
-                <td class="py-6 px-4">
-                    <div class="flex flex-col">
-                        <span class="text-xs font-bold text-slate-700">${new Date(inv.date).toLocaleDateString('id-ID', {day:'2-digit', month:'short', year:'numeric'})}</span>
-                        <span class="text-[9px] font-black text-red-400 uppercase mt-0.5 italic">Jatuh Tempo: ${new Date(inv.dueDate).toLocaleDateString('id-ID', {day:'2-digit', month:'short'})}</span>
+                <td class="py-2.5 px-4 text-xs text-slate-500 font-medium">${formatDate(inv.date).split(' ')[0]}</td>
+                <td class="py-2.5 px-4 text-xs text-slate-500 font-medium">${inv.dueDate ? formatDate(inv.dueDate).split(' ')[0] : '-'}</td>
+                <td class="py-2.5 px-4 text-xs text-slate-900 font-bold tracking-tight">${customer.name}</td>
+                <td class="py-2.5 px-4 text-xs text-slate-800 font-bold text-right">${formatCurrency(inv.totalAmount)}</td>
+                <td class="py-2.5 px-4 text-xs text-emerald-600 font-bold text-right">${formatCurrency(inv.paidAmount)}</td>
+                <td class="py-2.5 px-4 text-xs ${balance > 0 ? 'text-red-500 font-bold' : 'text-slate-400 font-medium'} text-right">${formatCurrency(balance)}</td>
+                <td class="py-2.5 px-4 text-center">${statusBadge}</td>
+                <td class="py-2.5 px-4 text-right whitespace-nowrap">
+                    <div class="flex items-center justify-end gap-1.5 px-1">
+                        ${actionHtml}
                     </div>
-                </td>
-                <td class="py-6 px-4 text-right font-black text-slate-900 font-mono text-sm tracking-tighter">${formatCurrency(inv.totalAmount)}</td>
-                <td class="py-6 px-4 text-right font-bold text-emerald-600 font-mono text-sm tracking-tighter">${formatCurrency(totalPaid)}</td>
-                <td class="py-6 px-4 text-right font-black ${balance > 0 ? 'text-red-500' : 'text-slate-400'} font-mono text-sm tracking-tighter">${formatCurrency(balance)}</td>
-                <td class="py-6 px-6 text-center">${statusBadge}</td>
-                <td class="py-6 px-8 text-right relative font-sans">
-                    ${actionHtml}
                 </td>
             </tr>
         `;
     }).join('');
 
-    // Re-apply search filter and update totals
-    filterSITable();
+    if (invoices.length === 0) {
+        rows = `<tr><td colspan="9" class="py-10 text-center text-slate-400 text-xs font-medium">Belum ada data sales invoice untuk ditampilkan</td></tr>`;
+    }
+
+    mainContent.innerHTML = `
+        <div id="si-list-view" class="animate-in fade-in duration-300 h-[calc(100vh-64px)] flex flex-col bg-slate-50 -m-4 sm:-m-6">
+            <!-- Full Width Fixed Filter Bar (Compact) -->
+            <div class="bg-white border-b border-gray-200 shrink-0 z-40 shadow-sm relative">
+                <div class="flex flex-wrap md:flex-nowrap justify-between items-center px-6 py-2.5 gap-3">
+                    <div class="flex items-center gap-3 flex-1">
+                        <div class="flex-1 max-w-md relative">
+                            <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs cursor-text pointer-events-none"></i>
+                            <input type="text" id="si_global_search" value="${filters_data.q || ''}" oninput="filterSITable()" placeholder="Cari No. Invoice, Customer..." 
+                                class="w-full pl-10 pr-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:bg-white outline-none transition-all">
+                        </div>
+                        
+                        <!-- Date Filter Dropdown Trigger -->
+                        <div class="relative" id="si_date_filter_container">
+                            <button onclick="toggleSIDateDropdown()" class="flex items-center bg-slate-50 border border-slate-200 rounded-lg overflow-hidden hover:bg-slate-100 transition-all shadow-sm h-[32px] group p-0">
+                                <span class="bg-slate-100 border-r border-slate-200 px-2.5 h-full flex items-center text-slate-600 transition-colors">
+                                    <i class="fas fa-calendar-alt text-xs"></i>
+                                </span>
+                                <span class="px-2.5 text-xs font-bold ${hasDateFilter ? 'text-blue-600' : 'text-slate-700'}">
+                                    ${hasDateFilter ? `${filters_data.start || '...'} s/d ${filters_data.end || '...'}` : 'Date'}
+                                </span>
+                                <span class="pr-2 pl-0.5 text-slate-500 justify-center flex items-center">
+                                    <i class="fas fa-chevron-down text-[10px]"></i>
+                                </span>
+                            </button>
+                            
+                            <!-- Dropdown Content -->
+                            <div id="si_date_dropdown" class="absolute left-0 mt-2 w-80 bg-white border border-slate-100 rounded-2xl shadow-xl z-[200] hidden p-5 animate-in fade-in zoom-in-95 duration-200">
+                                <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Pilihan Cepat</h4>
+                                <div class="grid grid-cols-2 gap-1.5 mb-4">
+                                    <button type="button" onclick="setQuickDatePreset('si_header_start','si_header_end','today','applySIHeaderDateFilter')" class="py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-[10px] font-bold text-slate-600 transition-colors text-center border border-slate-100">Hari Ini</button>
+                                    <button type="button" onclick="setQuickDatePreset('si_header_start','si_header_end','this_month','applySIHeaderDateFilter')" class="py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-[10px] font-bold text-slate-600 transition-colors text-center border border-slate-100">Bulan Ini</button>
+                                    <button type="button" onclick="setQuickDatePreset('si_header_start','si_header_end','last_30_days','applySIHeaderDateFilter')" class="py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-[10px] font-bold text-slate-600 transition-colors text-center border border-slate-100">30 Hari Terakhir</button>
+                                    <button type="button" onclick="setQuickDatePreset('si_header_start','si_header_end','this_year','applySIHeaderDateFilter')" class="py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-[10px] font-bold text-slate-600 transition-colors text-center border border-slate-100">Tahun Ini</button>
+                                </div>
+                                <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Rentang Manual</h4>
+                                <div class="space-y-3">
+                                    <div>
+                                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Dari Tanggal</label>
+                                        <input type="date" id="si_header_start" value="${filters_data.start || ''}" class="w-full border border-slate-100 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 focus:bg-white focus:border-blue-500 outline-none transition-all">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Sampai Tanggal</label>
+                                        <input type="date" id="si_header_end" value="${filters_data.end || ''}" class="w-full border border-slate-100 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 focus:bg-white focus:border-blue-500 outline-none transition-all">
+                                    </div>
+                                    <div class="flex gap-2 pt-2">
+                                        <button onclick="applySIHeaderDateFilter()" class="flex-1 bg-blue-600 text-white py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-md active:scale-95">Terapkan</button>
+                                        <button onclick="resetSIHeaderDateFilter()" class="flex-1 bg-slate-100 text-slate-600 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all">Reset</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <button onclick="openInvoiceModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg transition-all text-xs font-medium shadow-sm flex items-center gap-1.5 active:scale-95">
+                            <i class="fas fa-plus text-xs"></i> Buat Invoice
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Table Container wrapper -->
+            <div class="flex-1 overflow-auto">
+                <table class="w-full text-left border-collapse" id="si_table">
+                    <thead class="bg-slate-50 sticky top-0 z-30 shadow-[0_1px_0_#e2e8f0]">
+                        <tr class="bg-gray-50/50">
+                            ${window.sortTh('si','invoiceNumber','string','No. Invoice','renderSalesInvoices','py-2.5 px-4 text-xs')}
+                            ${window.sortTh('si','date','date','Tanggal','renderSalesInvoices','py-2.5 px-4 text-xs')}
+                            ${window.sortTh('si','dueDate','date','Jatuh Tempo','renderSalesInvoices','py-2.5 px-4 text-xs')}
+                            ${window.sortTh('si','customerName','string','Customer','renderSalesInvoices','py-2.5 px-4 text-xs')}
+                            ${window.sortTh('si','totalAmount','number','Tagihan','renderSalesInvoices','py-2.5 px-4 text-xs text-right')}
+                            ${window.sortTh('si','paidAmount','number','Terbayar','renderSalesInvoices','py-2.5 px-4 text-xs text-right')}
+                            ${window.sortTh('si','remainingAmount','number','Sisa Piutang','renderSalesInvoices','py-2.5 px-4 text-xs text-right')}
+                            ${window.sortTh('si','status','string','Status','renderSalesInvoices','py-2.5 px-4 text-xs text-center')}
+                            <th class="py-2.5 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap text-right">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 bg-white">${rows}</tbody>
+                </table>
+            </div>
+            
+            <!-- Compact Totals Summary Bar -->
+            <div class="px-6 py-2.5 flex flex-wrap items-center justify-between border-t border-slate-200 bg-white shrink-0 shadow-sm gap-3">
+                <div class="flex items-center gap-3">
+                    <span class="text-[9px] font-black text-slate-400 uppercase tracking-[0.15em]">Total Sisa Piutang</span>
+                    <span class="text-base font-black font-mono tracking-tight text-slate-800" id="si_footer_grand_total">${formatCurrency(totalOutstanding)}</span>
+                </div>
+                
+                <div class="flex gap-6 md:gap-8 text-right items-center">
+                    <div class="flex items-center gap-2">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-wider">Total Tagihan:</span>
+                        <span class="text-xs font-bold font-mono text-slate-700" id="si_footer_total_tagihan">${formatCurrency(totalTagihan)}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-wider">Total Terbayar:</span>
+                        <span class="text-xs font-bold font-mono text-emerald-600" id="si_footer_total_terbayar">${formatCurrency(totalTerbayar)}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-[9px] font-black text-slate-400 uppercase tracking-wider">Total:</span>
+                        <span class="text-xs font-bold font-mono text-slate-600" id="si_footer_total_docs">${invoices.length} Faktur</span>
+                    </div>
+                </div>
+            </div>
+
+            ${window.renderPaginationBar('si', paginated, 'renderSalesInvoices')}
+        </div>
+
+        <div id="si-form-view" class="hidden w-full bg-slate-50 min-h-full">
+            <!-- Form View Content -->
+        </div>
+    `;
 }
 
 window.openInvoiceFromSOSelectorModal = () => {
