@@ -1882,12 +1882,12 @@ function renderSalesDashboard() {
                 ${frappeCard('Active Customers', activeCustomers)}
             </div>
 
-            <!-- Chart 1 -->
-            ${chartPanel('Sales Order Trends', 'chartSOTrends', 'h-[320px]')}
+            <!-- Chart 1: Top 5 Customers by Sales Amount -->
+            ${chartPanel('Top 5 Customers', 'chartSOTrends', 'h-[320px]')}
 
             <!-- Chart Row 2 -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                ${chartPanel('Top Customers', 'chartTopCustomers', 'h-[250px]')}
+                ${chartPanel(`Tren Penjualan Bulanan (${filters.fiscalYear})`, 'chartTopCustomers', 'h-[250px]')}
                 ${noDataPanel('Sales Order Analysis')}
             </div>
         </div>
@@ -1902,7 +1902,7 @@ function renderSalesDashboard() {
 }
 
 window.openDashboardFilter = (title) => {
-    const isDetailed = title === 'Sales Order Trends' || title === 'Top Customers';
+    const isDetailed = title === 'Sales Order Trends' || title.includes('Top') || title.includes('Tren');
     const isAnalysis = title === 'Sales Order Analysis' || title === 'Sales Order Analyst';
     const filters = window.dashFilters;
     
@@ -2226,81 +2226,25 @@ window.initSalesCharts = function(invoices, customers, allYearInvoices) {
     }
 
     const filters = window.dashFilters;
-    const currentYear = filters.fiscalYear;
     
-    // Helper to destroy existing charts if any (to prevent multiple instances on canvas re-render)
+    // Helper to destroy existing charts if any
     const chartIds = ['chartSOTrends', 'chartTopCustomers'];
     chartIds.forEach(id => {
         const existing = Chart.getChart(id);
         if (existing) existing.destroy();
     });
 
-    // 1. Sales Invoices Trends (Monthly breakdown for the year)
-    const ctxTrends = document.getElementById('chartSOTrends');
-    if (ctxTrends) {
-        const trendInvoices = (allYearInvoices && allYearInvoices.length > 0) ? allYearInvoices : (invoices || []);
-        const labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const data = new Array(12).fill(0);
-        
-        trendInvoices.forEach(inv => {
-            const dStr = inv.date || inv.createdAt;
-            if (!dStr) return;
-            const d = new Date(dStr);
-            if (isNaN(d.getTime())) return;
-            const m = d.getMonth();
-            if (m >= 0 && m < 12) data[m]++;
-        });
-        
-        new Chart(ctxTrends, {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Sales Invoices',
-                    data: data,
-                    borderColor: '#3b82f6',
-                    backgroundColor: 'rgba(59, 130, 246, 0.08)',
-                    borderWidth: 2.5,
-                    tension: 0.3,
-                    pointBackgroundColor: '#3b82f6',
-                    pointBorderColor: '#fff',
-                    pointBorderWidth: 2,
-                    pointRadius: data.some(v => v > 0) ? 3 : 0,
-                    pointHoverRadius: 5,
-                    fill: true
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: c => ` Invoices: ${c.parsed.y}`
-                        }
-                    }
-                },
-                scales: {
-                    y: { 
-                        beginAtZero: true, 
-                        grid: { color: '#f3f4f6', drawBorder: false }, 
-                        ticks: { stepSize: 1, color: '#9ca3af', font: {size: 11} },
-                        border: {display: false}
-                    },
-                    x: { 
-                        grid: { display: false, drawBorder: false }, 
-                        ticks: { color: '#9ca3af', font: {size: 11} },
-                        border: {display: false}
-                    }
-                }
-            }
-        });
-    }
+    const formatShortRp = (val) => {
+        if (!val || val === 0) return '0';
+        if (val >= 1_000_000_000) return 'Rp ' + (val / 1_000_000_000).toFixed(1).replace(/\.0$/, '') + ' M';
+        if (val >= 1_000_000) return 'Rp ' + (val / 1_000_000).toFixed(1).replace(/\.0$/, '') + ' Jt';
+        if (val >= 1_000) return 'Rp ' + (val / 1_000).toFixed(0) + ' Rb';
+        return 'Rp ' + val;
+    };
 
-    // 2. Top 5 Customers based on Invoices in the active filtered month/period
-    const ctxTop = document.getElementById('chartTopCustomers');
-    if (ctxTop) {
+    // 1. Top 5 Customers by Sales Amount for the active filtered month/period
+    const ctxTopCust = document.getElementById('chartSOTrends');
+    if (ctxTopCust) {
         const custTotals = {};
         const custNames = {};
 
@@ -2320,50 +2264,144 @@ window.initSalesCharts = function(invoices, customers, allYearInvoices) {
 
         const labels = sortedCust.map(x => {
             const n = custNames[x[0]] || x[0];
-            return n.length > 22 ? n.slice(0, 22) + '...' : n;
+            return n.length > 20 ? n.slice(0, 20) + '...' : n;
         });
         const fullLabels = sortedCust.map(x => custNames[x[0]] || x[0]);
         const data = sortedCust.map(x => x[1]);
 
         if (data.length === 0) {
-            const parent = ctxTop.parentElement;
-            parent.innerHTML = '<div class="bg-[#f8f9fa] flex items-center justify-center w-full h-full rounded-lg"><span class="text-sm text-gray-400">Tidak ada data transaksi untuk periode ini</span></div>';
+            const parent = ctxTopCust.parentElement;
+            parent.innerHTML = '<div class="bg-[#f8f9fa] flex items-center justify-center w-full h-full rounded-lg min-h-[220px]"><span class="text-sm text-gray-400 font-medium">Tidak ada data transaksi penjualan untuk periode ini</span></div>';
         } else {
-            new Chart(ctxTop, {
+            new Chart(ctxTopCust, {
                 type: 'bar',
                 data: {
                     labels: labels,
                     datasets: [{
+                        label: 'Total Penjualan',
                         data: data,
-                        backgroundColor: '#6366f1',
-                        hoverBackgroundColor: '#4f46e5',
-                        borderRadius: 6,
-                        barPercentage: 0.6,
-                        categoryPercentage: 0.8
+                        backgroundColor: [
+                            'rgba(59, 130, 246, 0.85)',
+                            'rgba(99, 102, 241, 0.85)',
+                            'rgba(139, 92, 246, 0.85)',
+                            'rgba(236, 72, 153, 0.85)',
+                            'rgba(245, 158, 11, 0.85)'
+                        ],
+                        hoverBackgroundColor: [
+                            '#2563eb',
+                            '#4f46e5',
+                            '#7c3aed',
+                            '#db2777',
+                            '#d97706'
+                        ],
+                        borderRadius: 8,
+                        barPercentage: 0.5,
+                        categoryPercentage: 0.7
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    indexAxis: 'y',
                     plugins: {
                         legend: { display: false },
                         tooltip: {
                             callbacks: {
                                 title: items => fullLabels[items[0].dataIndex] || items[0].label,
-                                label: c => ' Total: Rp ' + new Intl.NumberFormat('id-ID').format(c.parsed.x)
+                                label: c => ' Total Penjualan: Rp ' + new Intl.NumberFormat('id-ID').format(c.parsed.y)
                             }
                         }
                     },
                     scales: {
-                        x: { display: false, grid: {display: false} },
-                        y: { grid: {display: false}, border: {display: false}, ticks: { color: '#4b5563', font: {size: 11, weight: '500'}, crossAlign: 'far' } }
+                        y: { 
+                            beginAtZero: true, 
+                            grid: { color: '#f3f4f6', drawBorder: false }, 
+                            ticks: { 
+                                color: '#9ca3af', 
+                                font: {size: 11},
+                                callback: val => formatShortRp(val)
+                            },
+                            border: {display: false}
+                        },
+                        x: { 
+                            grid: { display: false, drawBorder: false }, 
+                            ticks: { color: '#4b5563', font: {size: 11, weight: '600'} },
+                            border: {display: false}
+                        }
                     }
                 }
             });
         }
     }
-}
+
+    // 2. Tren Penjualan Bulanan (Annual Revenue Jan - Dec)
+    const ctxMonthlyTrend = document.getElementById('chartTopCustomers');
+    if (ctxMonthlyTrend) {
+        const trendInvoices = (allYearInvoices && allYearInvoices.length > 0) ? allYearInvoices : (invoices || []);
+        const labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const monthlyRevenue = new Array(12).fill(0);
+        
+        trendInvoices.forEach(inv => {
+            const dStr = inv.date || inv.createdAt;
+            if (!dStr) return;
+            const d = new Date(dStr);
+            if (isNaN(d.getTime())) return;
+            const m = d.getMonth();
+            if (m >= 0 && m < 12) {
+                monthlyRevenue[m] += parseFloat(inv.totalAmount || inv.grandTotal || 0);
+            }
+        });
+
+        new Chart(ctxMonthlyTrend, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Total Penjualan',
+                    data: monthlyRevenue,
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                    borderWidth: 2.5,
+                    tension: 0.35,
+                    pointBackgroundColor: '#3b82f6',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 2,
+                    pointRadius: monthlyRevenue.some(v => v > 0) ? 3.5 : 0,
+                    pointHoverRadius: 6,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: c => ' Total Penjualan: Rp ' + new Intl.NumberFormat('id-ID').format(c.parsed.y)
+                        }
+                    }
+                },
+                scales: {
+                    y: { 
+                        beginAtZero: true, 
+                        grid: { color: '#f3f4f6', drawBorder: false }, 
+                        ticks: { 
+                            color: '#9ca3af', 
+                            font: {size: 11},
+                            callback: val => formatShortRp(val)
+                        },
+                        border: {display: false}
+                    },
+                    x: { 
+                        grid: { display: false, drawBorder: false }, 
+                        ticks: { color: '#9ca3af', font: {size: 11} },
+                        border: {display: false}
+                    }
+                }
+            }
+        });
+    }
+};
 
 // Helper to get effective date of PO (Uses Actual Received Date if goods have been received)
 window.getPOEffectiveDate = (p) => {
