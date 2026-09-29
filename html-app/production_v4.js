@@ -90,7 +90,7 @@ function prodDate(d) { return d ? new Date(d).toLocaleDateString('id-ID') : '-';
 // --- DASHBOARD: VISUAL PIPELINE ---
 // Global Production Dashboard Filter State
 window.mfgDashFilters = window.mfgDashFilters || {
-    periodType: 'year', // 'year', 'month', 'custom', 'all'
+    periodType: 'month', // 'year', 'month', 'custom', 'all'
     fiscalYear: new Date().getFullYear(),
     month: new Date().getMonth() + 1,
     startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],

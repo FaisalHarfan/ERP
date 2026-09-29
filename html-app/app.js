@@ -1403,7 +1403,7 @@ window.formatDate = (isoString) => {
 // Global Dashboard Filter State
 window.dashFilters = {
     period: 'Monthly',
-    periodType: 'year', // 'year', 'month', 'custom', 'all'
+    periodType: 'month', // 'year', 'month', 'custom', 'all'
     fiscalYear: new Date().getFullYear(),
     month: new Date().getMonth() + 1,
     startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
@@ -1415,7 +1415,7 @@ window.dashFilters = {
 
 window.poDashFilters = {
     period: 'Monthly',
-    periodType: 'year', // 'year', 'month', 'custom', 'all'
+    periodType: 'month', // 'year', 'month', 'custom', 'all'
     fiscalYear: new Date().getFullYear(),
     month: new Date().getMonth() + 1,
     startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],

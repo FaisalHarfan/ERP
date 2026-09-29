@@ -2127,7 +2127,7 @@ window.saveStockOut = async () => {
 
 // â”€â”€â”€ 4. PRODUCTION COMMAND CENTER (UNIFIED) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 window.mfgBoardFilters = window.mfgBoardFilters || {
-    periodType: 'year', // 'year', 'month', 'custom', 'all'
+    periodType: 'month', // 'year', 'month', 'custom', 'all'
     fiscalYear: new Date().getFullYear(),
     month: new Date().getMonth() + 1,
     startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
