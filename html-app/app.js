@@ -1707,6 +1707,15 @@ function renderSalesDashboard() {
     const soToBill = filteredInvoices.filter(i => i.status === 'UNPAID' || i.status === 'PARTIAL').length;
     const activeCustomers = filters.company ? (filteredInvoices.length > 0 ? 1 : 0) : new Set(filteredInvoices.map(i => i.customerId)).size;
 
+    // Invoices for the entire fiscal year (for yearly Jan-Dec trend chart)
+    const allYearInvoices = (invoices || []).filter(i => {
+        const isCancelled = (i.status || '').toUpperCase() === 'CANCELLED' || (i.status || '').toUpperCase() === 'CANCELED';
+        if (isCancelled) return false;
+        const d = new Date(i.date || i.createdAt);
+        if (isNaN(d.getTime())) return false;
+        return d.getFullYear() === filters.fiscalYear;
+    });
+
     // Add Demo Data Trigger for empty state
     if (orders.length === 0 && invoices.length === 0) {
         mc.innerHTML = `
@@ -1887,7 +1896,7 @@ function renderSalesDashboard() {
     // Ensure the DOM is updated before drawing
     requestAnimationFrame(() => {
         setTimeout(() => {
-            if(window.initSalesCharts) window.initSalesCharts(filteredInvoices, customers);
+            if(window.initSalesCharts) window.initSalesCharts(filteredInvoices, customers, allYearInvoices);
         }, 120);
     });
 }
@@ -2210,7 +2219,7 @@ window.generateSampleSalesData = () => {
     renderSalesDashboard();
 };
 
-window.initSalesCharts = function(invoices, customers) {
+window.initSalesCharts = function(invoices, customers, allYearInvoices) {
     if (typeof Chart === 'undefined') {
         console.warn('Chart.js not loaded yet');
         return;
@@ -2226,53 +2235,21 @@ window.initSalesCharts = function(invoices, customers) {
         if (existing) existing.destroy();
     });
 
-    // 1. Sales Invoices Trends (Responds to Period)
+    // 1. Sales Invoices Trends (Monthly breakdown for the year)
     const ctxTrends = document.getElementById('chartSOTrends');
     if (ctxTrends) {
-        let labels = [];
-        let data = [];
+        const trendInvoices = (allYearInvoices && allYearInvoices.length > 0) ? allYearInvoices : (invoices || []);
+        const labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const data = new Array(12).fill(0);
         
-        if (filters.periodType === 'month') {
-            const daysInMonth = new Date(filters.fiscalYear, filters.month, 0).getDate();
-            labels = Array.from({ length: daysInMonth }, (_, i) => `Tgl ${i + 1}`);
-            data = new Array(daysInMonth).fill(0);
-            (invoices || []).forEach(inv => {
-                const dStr = inv.date || inv.createdAt;
-                if (!dStr) return;
-                const d = new Date(dStr).getDate();
-                if (d >= 1 && d <= daysInMonth) data[d - 1]++;
-            });
-        } else if (filters.period === 'Quarterly') {
-            labels = ['Q1', 'Q2', 'Q3', 'Q4'];
-            data = [0, 0, 0, 0];
-            (invoices || []).forEach(inv => {
-                const dStr = inv.date || inv.createdAt;
-                if(!dStr) return;
-                const m = new Date(dStr).getMonth();
-                const q = Math.floor(m / 3);
-                data[q]++;
-            });
-        } else if (filters.period === 'Weekly') {
-            labels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
-            data = [0, 0, 0, 0];
-            (invoices || []).forEach(inv => {
-                const dStr = inv.date || inv.createdAt;
-                if(!dStr) return;
-                const d = new Date(dStr).getDate();
-                const w = Math.min(3, Math.floor((d - 1) / 7));
-                data[w]++;
-            });
-        } else {
-            // Default Monthly
-            labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            data = new Array(12).fill(0);
-            (invoices || []).forEach(inv => {
-                const dStr = inv.date || inv.createdAt;
-                if(!dStr) return;
-                const m = new Date(dStr).getMonth();
-                data[m]++;
-            });
-        }
+        trendInvoices.forEach(inv => {
+            const dStr = inv.date || inv.createdAt;
+            if (!dStr) return;
+            const d = new Date(dStr);
+            if (isNaN(d.getTime())) return;
+            const m = d.getMonth();
+            if (m >= 0 && m < 12) data[m]++;
+        });
         
         new Chart(ctxTrends, {
             type: 'line',
