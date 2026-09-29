@@ -363,33 +363,20 @@ window.updatePurchaseInvoiceTrends = () => {
         }
     });
 
-    const chartColors = ['#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899', '#84cc16', '#14b8a6', '#6366f1'];
     const datasets = [{
         label: `Total ${isSupplier ? 'Value' : 'Qty'}`,
         data: chartTotal,
-        borderColor: '#9ca3af',
-        borderDash: [5, 5],
-        backgroundColor: 'transparent',
-        pointBackgroundColor: '#9ca3af',
-        borderWidth: 2,
-        pointRadius: 3,
+        borderColor: '#2563eb',
+        backgroundColor: 'rgba(37, 99, 235, 0.08)',
+        fill: true,
+        pointBackgroundColor: '#2563eb',
+        pointBorderColor: '#ffffff',
+        pointBorderWidth: 2,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        borderWidth: 2.5,
         tension: 0.3
     }];
-
-    const sortedRows = Object.values(pivot).sort((a, b) => b.periods.reduce((sum, v) => sum + v, 0) - a.periods.reduce((sum, v) => sum + v, 0));
-    sortedRows.slice(0, 10).forEach((row, i) => {
-        const color = chartColors[i % chartColors.length];
-        datasets.push({
-            label: row.label,
-            data: row.periods,
-            borderColor: color,
-            backgroundColor: 'transparent',
-            pointBackgroundColor: color,
-            borderWidth: 2,
-            pointRadius: 3,
-            tension: 0.3
-        });
-    });
 
     const ctx = document.getElementById('pit_chart');
     if (ctx && typeof Chart !== 'undefined') {
@@ -401,8 +388,8 @@ window.updatePurchaseInvoiceTrends = () => {
                 responsive: true, maintainAspectRatio: false,
                 interaction: { mode: 'index', intersect: false },
                 plugins: {
-                    legend: { display: true, position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, font: { size: 10 } } },
-                    tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${isSupplier ? 'Rp ' : ''}${formatNumber(ctx.parsed.y)}${isSupplier ? '' : ' KG'}` } }
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: ctx => ` Total: ${isSupplier ? 'Rp ' : ''}${formatNumber(ctx.parsed.y)}${isSupplier ? '' : ' KG'}` } }
                 },
                 scales: {
                     y: { ticks: { callback: v => (isSupplier ? 'Rp ' : '') + formatNumber(v) + (isSupplier ? '' : ' KG') } }
@@ -518,31 +505,20 @@ window.updatePurchaseRFQTrends = () => {
         }
     });
 
-    const chartColors = ['#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899', '#84cc16', '#14b8a6', '#6366f1'];
     const datasets = [{
         label: `Total ${isSupplier ? 'Value' : 'Qty'}`,
         data: chartData,
-        borderColor: '#9ca3af',
-        borderDash: [5, 5],
-        backgroundColor: 'transparent',
-        borderWidth: 2,
-        pointRadius: 3,
+        borderColor: '#0284c7',
+        backgroundColor: 'rgba(2, 132, 199, 0.08)',
+        fill: true,
+        pointBackgroundColor: '#0284c7',
+        pointBorderColor: '#ffffff',
+        pointBorderWidth: 2,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        borderWidth: 2.5,
         tension: 0.3
     }];
-
-    const sortedLabels = Object.keys(pivot).sort((a, b) => pivot[b].reduce((s, v) => s + v, 0) - pivot[a].reduce((s, v) => s + v, 0));
-    sortedLabels.slice(0, 10).forEach((label, i) => {
-        const color = chartColors[i % chartColors.length];
-        datasets.push({
-            label: label,
-            data: pivot[label],
-            borderColor: color,
-            backgroundColor: 'transparent',
-            borderWidth: 2,
-            pointRadius: 3,
-            tension: 0.3
-        });
-    });
 
     const ctx = document.getElementById('rfqt_chart');
     if (ctx && typeof Chart !== 'undefined') {
@@ -555,8 +531,8 @@ window.updatePurchaseRFQTrends = () => {
                 maintainAspectRatio: false, 
                 interaction: { mode: 'index', intersect: false },
                 plugins: { 
-                    legend: { display: true, position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, font: { size: 10 } } },
-                    tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${isSupplier ? 'Rp ' : ''}${formatNumber(ctx.parsed.y)}${isSupplier ? '' : ' KG'}` } }
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: ctx => ` Total: ${isSupplier ? 'Rp ' : ''}${formatNumber(ctx.parsed.y)}${isSupplier ? '' : ' KG'}` } }
                 },
                 scales: {
                     y: { ticks: { callback: v => (isSupplier ? 'Rp ' : '') + formatNumber(v) + (isSupplier ? '' : ' KG') } }
@@ -665,31 +641,20 @@ window.updatePurchaseOrderTrends = () => {
         }
     });
 
-    const chartColors = ['#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899', '#84cc16', '#14b8a6', '#6366f1'];
     const datasets = [{
         label: `Total ${isSupplier ? 'Value' : 'Qty'}`,
         data: chartData,
-        borderColor: '#9ca3af',
-        borderDash: [5, 5],
-        backgroundColor: 'transparent',
-        borderWidth: 2,
-        pointRadius: 3,
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16, 185, 129, 0.08)',
+        fill: true,
+        pointBackgroundColor: '#10b981',
+        pointBorderColor: '#ffffff',
+        pointBorderWidth: 2,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        borderWidth: 2.5,
         tension: 0.3
     }];
-
-    const sortedLabels = Object.keys(pivot).sort((a, b) => pivot[b].reduce((s, v) => s + v, 0) - pivot[a].reduce((s, v) => s + v, 0));
-    sortedLabels.slice(0, 10).forEach((label, i) => {
-        const color = chartColors[i % chartColors.length];
-        datasets.push({
-            label: label,
-            data: pivot[label],
-            borderColor: color,
-            backgroundColor: 'transparent',
-            borderWidth: 2,
-            pointRadius: 3,
-            tension: 0.3
-        });
-    });
 
     const ctx = document.getElementById('pot_chart');
     if (ctx && typeof Chart !== 'undefined') {
@@ -702,8 +667,8 @@ window.updatePurchaseOrderTrends = () => {
                 maintainAspectRatio: false, 
                 interaction: { mode: 'index', intersect: false },
                 plugins: { 
-                    legend: { display: true, position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, font: { size: 10 } } },
-                    tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${isSupplier ? 'Rp ' : ''}${formatNumber(ctx.parsed.y)}${isSupplier ? '' : ' KG'}` } }
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: ctx => ` Total: ${isSupplier ? 'Rp ' : ''}${formatNumber(ctx.parsed.y)}${isSupplier ? '' : ' KG'}` } }
                 },
                 scales: {
                     y: { ticks: { callback: v => (isSupplier ? 'Rp ' : '') + formatNumber(v) + (isSupplier ? '' : ' KG') } }

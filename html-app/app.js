@@ -17997,10 +17997,27 @@ function renderSalesInvoiceTrends() {
             <div class="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white shadow-sm shrink-0">
                 <select id="sit_period" onchange="updateSalesInvoiceTrends()"
                     class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
-                    <option value="Monthly" selected>Monthly</option>
+                    <option value="Monthly" selected>Monthly (Jan - Dec)</option>
                     <option value="Quarterly">Quarterly</option>
                     <option value="Half-Yearly">Half-Yearly</option>
                     <option value="Yearly">Yearly</option>
+                </select>
+
+                <select id="sit_month" onchange="updateSalesInvoiceTrends()"
+                    class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
+                    <option value="All" selected>Semua Bulan (Jan - Des)</option>
+                    <option value="1">Januari</option>
+                    <option value="2">Februari</option>
+                    <option value="3">Maret</option>
+                    <option value="4">April</option>
+                    <option value="5">Mei</option>
+                    <option value="6">Juni</option>
+                    <option value="7">Juli</option>
+                    <option value="8">Agustus</option>
+                    <option value="9">September</option>
+                    <option value="10">Oktober</option>
+                    <option value="11">November</option>
+                    <option value="12">Desember</option>
                 </select>
 
                 <select id="sit_based_on" onchange="updateSalesInvoiceTrends()"
@@ -18057,26 +18074,40 @@ function renderSalesInvoiceTrends() {
 }
 
 window.updateSalesInvoiceTrends = () => {
-    const year      = parseInt(document.getElementById('sit_year')?.value || new Date().getFullYear());
-    const basedOn   = document.getElementById('sit_based_on')?.value || 'Item';
-    const period    = document.getElementById('sit_period')?.value || 'Monthly';
+    const year          = parseInt(document.getElementById('sit_year')?.value || new Date().getFullYear());
+    const basedOn       = document.getElementById('sit_based_on')?.value || 'Item';
+    const period        = document.getElementById('sit_period')?.value || 'Monthly';
+    const selectedMonth = document.getElementById('sit_month')?.value || 'All';
+    const isSpecificMonth = selectedMonth !== 'All';
+    const monthNum      = isSpecificMonth ? parseInt(selectedMonth) : null;
     
-    // Config periods based on period dropdown
+    // Config periods based on month / period dropdown
     let periods = [];
-    if (period === 'Monthly') periods = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    else if (period === 'Quarterly') periods = ['Q1', 'Q2', 'Q3', 'Q4'];
-    else if (period === 'Half-Yearly') periods = ['H1', 'H2'];
-    else if (period === 'Yearly') periods = [year.toString()];
+    if (isSpecificMonth) {
+        const daysInMonth = new Date(year, monthNum, 0).getDate();
+        periods = Array.from({ length: daysInMonth }, (_, i) => `Tgl ${i + 1}`);
+    } else if (period === 'Monthly') {
+        periods = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    } else if (period === 'Quarterly') {
+        periods = ['Q1', 'Q2', 'Q3', 'Q4'];
+    } else if (period === 'Half-Yearly') {
+        periods = ['H1', 'H2'];
+    } else if (period === 'Yearly') {
+        periods = [year.toString()];
+    }
     
     const invoices  = db.read('salesInvoices') || [];
     const customers = db.read('customers') || [];
 
-    // Filter by year (excluding CANCELLED/CANCELED docs)
+    // Filter by year & month (excluding CANCELLED/CANCELED docs)
     const yearInvs = invoices.filter(inv => {
         const d = new Date(inv.date || inv.createdAt);
         const statusUpper = (inv.status || '').toUpperCase();
         const isCancelled = statusUpper === 'CANCELLED' || statusUpper === 'CANCELED';
-        return d.getFullYear() === year && !isCancelled;
+        if (isCancelled) return false;
+        if (d.getFullYear() !== year) return false;
+        if (isSpecificMonth && (d.getMonth() + 1) !== monthNum) return false;
+        return true;
     });
 
     // Build pivot: rowKey => { label, currency, periods: [{qty, amt}] }
@@ -18088,10 +18119,18 @@ window.updateSalesInvoiceTrends = () => {
         const monthIdx = date.getMonth();
         let pIdx = 0;
         
-        if (period === 'Monthly') pIdx = monthIdx;
-        else if (period === 'Quarterly') pIdx = Math.floor(monthIdx / 3);
-        else if (period === 'Half-Yearly') pIdx = Math.floor(monthIdx / 6);
-        else if (period === 'Yearly') pIdx = 0;
+        if (isSpecificMonth) {
+            pIdx = date.getDate() - 1;
+        } else if (period === 'Monthly') {
+            pIdx = monthIdx;
+        } else if (period === 'Quarterly') {
+            pIdx = Math.floor(monthIdx / 3);
+        } else if (period === 'Half-Yearly') {
+            pIdx = Math.floor(monthIdx / 6);
+        } else if (period === 'Yearly') {
+            pIdx = 0;
+        }
+        if (pIdx < 0 || pIdx >= periods.length) return;
         const currency = 'IDR';
 
         chartTotalAmt[pIdx] += parseFloat(inv.totalAmount || inv.grandTotal || 0);
@@ -18125,41 +18164,22 @@ window.updateSalesInvoiceTrends = () => {
 
     const rows = Object.values(pivot);
 
-    const chartColors = ['#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899', '#84cc16', '#14b8a6', '#6366f1'];
     const datasets = [{
         label: 'Total Invoice Value',
         data: chartTotalAmt,
-        borderColor: '#9ca3af',
-        borderDash: [5, 5],
-        backgroundColor: 'transparent',
-        pointBackgroundColor: '#9ca3af',
-        pointBorderColor: '#fff',
-        pointHoverBackgroundColor: '#fff',
-        pointHoverBorderColor: '#9ca3af',
-        borderWidth: 2,
-        pointRadius: 0,
+        borderColor: '#2563eb',
+        backgroundColor: 'rgba(37, 99, 235, 0.08)',
+        fill: true,
+        pointBackgroundColor: '#2563eb',
+        pointBorderColor: '#ffffff',
+        pointBorderWidth: 2,
+        pointHoverBackgroundColor: '#2563eb',
+        pointHoverBorderColor: '#ffffff',
+        pointRadius: 4,
         pointHoverRadius: 6,
-        tension: 0,
+        borderWidth: 2.5,
+        tension: 0.3
     }];
-
-    const sortedRows = [...rows].sort((a, b) => b.periods.reduce((sum, v) => sum + v.amt, 0) - a.periods.reduce((sum, v) => sum + v.amt, 0));
-    sortedRows.slice(0, 10).forEach((row, i) => {
-        const color = chartColors[i % chartColors.length];
-        datasets.push({
-            label: row.label,
-            data: row.periods.map(p => p.amt),
-            borderColor: color,
-            backgroundColor: 'transparent',
-            pointBackgroundColor: color,
-            pointBorderColor: '#fff',
-            pointHoverBackgroundColor: '#fff',
-            pointHoverBorderColor: color,
-            borderWidth: 2,
-            pointRadius: 0,
-            pointHoverRadius: 6,
-            tension: 0,
-        });
-    });
 
     // Draw Chart
     const ctx = document.getElementById('sit_chart');
@@ -18176,10 +18196,10 @@ window.updateSalesInvoiceTrends = () => {
                 maintainAspectRatio: false,
                 interaction: { mode: 'index', intersect: false },
                 plugins: {
-                    legend: { display: true, position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, font: { size: 10 } } },
+                    legend: { display: false },
                     tooltip: {
                         callbacks: {
-                            label: c => ' ' + c.dataset.label + ': Rp ' + new Intl.NumberFormat('id-ID').format(c.parsed.y)
+                            label: c => ' Total Invoice: Rp ' + new Intl.NumberFormat('id-ID').format(c.parsed.y)
                         }
                     }
                 },
@@ -18203,6 +18223,8 @@ window.updateSalesInvoiceTrends = () => {
         });
     }
 
+    const isItem = basedOn === 'Item';
+
     // Thead
     const thead = document.getElementById('sit_thead');
     if (!thead) return;
@@ -18210,9 +18232,10 @@ window.updateSalesInvoiceTrends = () => {
     thead.innerHTML = `
         <th class="w-10 px-3 py-2 border-r border-[#e5e7eb] font-medium text-center"></th>
         <th class="min-w-[200px] px-3 py-2 border-r border-[#e5e7eb] font-medium">${basedOn}</th>
-        <th class="px-3 py-2 border-r border-[#e5e7eb] font-medium">Currency</th>
-        ${periods.map(p => `
+        ${!isItem ? `<th class="px-3 py-2 border-r border-[#e5e7eb] font-medium">Currency</th>` : ''}
+        ${periods.map(p => isItem ? `
             <th class="px-3 py-2 border-r border-[#e5e7eb] text-right font-medium">${p} (Qty)</th>
+        ` : `
             <th class="px-3 py-2 border-r border-[#e5e7eb] text-right font-medium">${p} (Amt)</th>
         `).join('')}
     `;
@@ -18229,17 +18252,19 @@ window.updateSalesInvoiceTrends = () => {
     });
 
     const formatNum = v => new Intl.NumberFormat('id-ID', { maximumFractionDigits: 3 }).format(v || 0);
+    const colCount = (isItem ? 2 : 3) + periods.length;
 
     // Data rows
     tbody.innerHTML = rows.length === 0
-        ? `<tr><td colspan="${3 + periods.length * 2}" class="text-center text-gray-500 py-10">No Data Available</td></tr>`
+        ? `<tr><td colspan="${colCount}" class="text-center text-gray-500 py-10">No Data Available</td></tr>`
         : rows.map(row => `
         <tr class="hover:bg-gray-50 transition-colors group">
             <td class="px-3 py-2 border-r border-[#e5e7eb] bg-[#f9fafb] text-xs text-gray-400 text-center select-none w-10"></td>
-            <td class="px-3 py-2 border-r border-[#e5e7eb] whitespace-nowrap">${row.label}</td>
-            <td class="px-3 py-2 border-r border-[#e5e7eb] whitespace-nowrap text-gray-500">${row.currency}</td>
-            ${row.periods.map(m => `
+            <td class="px-3 py-2 border-r border-[#e5e7eb] whitespace-nowrap font-medium">${row.label}</td>
+            ${!isItem ? `<td class="px-3 py-2 border-r border-[#e5e7eb] whitespace-nowrap text-gray-500">${row.currency}</td>` : ''}
+            ${row.periods.map(m => isItem ? `
                 <td class="px-3 py-2 border-r border-[#e5e7eb] text-right whitespace-nowrap">${formatNum(m.qty)}</td>
+            ` : `
                 <td class="px-3 py-2 border-r border-[#e5e7eb] text-right whitespace-nowrap"><span class="text-gray-400 text-[11px] mr-1">Rp</span>${formatNum(m.amt)}</td>
             `).join('')}
         </tr>
@@ -18247,14 +18272,15 @@ window.updateSalesInvoiceTrends = () => {
 
     // Total row
     const totalRow = document.createElement('tr');
-    totalRow.className = 'border-t border-[#e5e7eb] bg-[#f9fafb]';
+    totalRow.className = 'border-t border-[#e5e7eb] bg-[#f9fafb] font-semibold';
     totalRow.innerHTML = `
         <td class="px-3 py-2 border-r border-[#e5e7eb] text-gray-500 font-medium text-xs text-center w-10">1</td>
         <td class="px-3 py-2 border-r border-[#e5e7eb] font-semibold">Total</td>
-        <td class="px-3 py-2 border-r border-[#e5e7eb]"></td>
-        ${totQty.map((q, i) => `
-            <td class="px-3 py-2 border-r border-[#e5e7eb] text-right font-medium">${formatNum(q)}</td>
-            <td class="px-3 py-2 border-r border-[#e5e7eb] text-right font-medium"><span class="text-gray-400 text-[11px] mr-1">Rp</span>${formatNum(totAmt[i])}</td>
+        ${!isItem ? `<td class="px-3 py-2 border-r border-[#e5e7eb]"></td>` : ''}
+        ${(isItem ? totQty : totAmt).map(val => isItem ? `
+            <td class="px-3 py-2 border-r border-[#e5e7eb] text-right font-semibold">${formatNum(val)}</td>
+        ` : `
+            <td class="px-3 py-2 border-r border-[#e5e7eb] text-right font-semibold"><span class="text-gray-400 text-[11px] mr-1">Rp</span>${formatNum(val)}</td>
         `).join('')}
     `;
     
@@ -18299,10 +18325,27 @@ window.renderSalesQuotationTrends = () => {
             <div class="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white shadow-sm shrink-0">
                 <select id="sqt_period" onchange="updateSalesQuotationTrends()"
                     class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
-                    <option value="Monthly" selected>Monthly</option>
+                    <option value="Monthly" selected>Monthly (Jan - Dec)</option>
                     <option value="Quarterly">Quarterly</option>
                     <option value="Half-Yearly">Half-Yearly</option>
                     <option value="Yearly">Yearly</option>
+                </select>
+
+                <select id="sqt_month" onchange="updateSalesQuotationTrends()"
+                    class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
+                    <option value="All" selected>Semua Bulan (Jan - Des)</option>
+                    <option value="1">Januari</option>
+                    <option value="2">Februari</option>
+                    <option value="3">Maret</option>
+                    <option value="4">April</option>
+                    <option value="5">Mei</option>
+                    <option value="6">Juni</option>
+                    <option value="7">Juli</option>
+                    <option value="8">Agustus</option>
+                    <option value="9">September</option>
+                    <option value="10">Oktober</option>
+                    <option value="11">November</option>
+                    <option value="12">Desember</option>
                 </select>
 
                 <select id="sqt_based_on" onchange="updateSalesQuotationTrends()"
@@ -18369,14 +18412,25 @@ window.updateSalesQuotationTrends = () => {
     const year          = parseInt(document.getElementById('sqt_year')?.value || new Date().getFullYear());
     const basedOn       = document.getElementById('sqt_based_on')?.value || 'Item';
     const period        = document.getElementById('sqt_period')?.value || 'Monthly';
+    const selectedMonth = document.getElementById('sqt_month')?.value || 'All';
     const custFilter    = (document.getElementById('sqt_customer')?.value || '').toLowerCase();
     const includeClosed = document.getElementById('sqt_include_closed')?.checked;
+    const isSpecificMonth = selectedMonth !== 'All';
+    const monthNum      = isSpecificMonth ? parseInt(selectedMonth) : null;
     
     let periods = [];
-    if (period === 'Monthly') periods = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    else if (period === 'Quarterly') periods = ['Q1', 'Q2', 'Q3', 'Q4'];
-    else if (period === 'Half-Yearly') periods = ['H1', 'H2'];
-    else if (period === 'Yearly') periods = [year.toString()];
+    if (isSpecificMonth) {
+        const daysInMonth = new Date(year, monthNum, 0).getDate();
+        periods = Array.from({ length: daysInMonth }, (_, i) => `Tgl ${i + 1}`);
+    } else if (period === 'Monthly') {
+        periods = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    } else if (period === 'Quarterly') {
+        periods = ['Q1', 'Q2', 'Q3', 'Q4'];
+    } else if (period === 'Half-Yearly') {
+        periods = ['H1', 'H2'];
+    } else if (period === 'Yearly') {
+        periods = [year.toString()];
+    }
     
     let quotations = db.read('salesQuotations') || [];
     const customers = db.read('customers') || [];
@@ -18385,12 +18439,9 @@ window.updateSalesQuotationTrends = () => {
     quotations = quotations.filter(qt => {
         const d = new Date(qt.date || qt.createdAt);
         if (d.getFullYear() !== year) return false;
-        
-        // Status filter: by default, exclude rejected/canceled unless implemented. Let's say closed is completely shipped or closed manually.
-        // Assuming 'CLOSED' or 'REJECTED' might be statuses.
+        if (isSpecificMonth && (d.getMonth() + 1) !== monthNum) return false;
         if (!includeClosed && (qt.status === 'CLOSED' || qt.status === 'REJECTED' || qt.status === 'CANCELED')) return false;
         
-        // Customer text filter
         if (custFilter) {
             const cust = customers.find(c => c.id === qt.customerId);
             const cName = (cust?.name || qt.customerName || qt.customerId || '').toLowerCase();
@@ -18400,18 +18451,25 @@ window.updateSalesQuotationTrends = () => {
     });
 
     const pivot = {};
-    const chartTotalAmt = Array(periods.length).fill(0); // For the line chart (total amount per period)
+    const chartTotalAmt = Array(periods.length).fill(0);
 
     quotations.forEach(qt => {
         const date = new Date(qt.date || qt.createdAt);
         const monthIdx = date.getMonth();
         let pIdx = 0;
         
-        if (period === 'Monthly') pIdx = monthIdx;
-        else if (period === 'Quarterly') pIdx = Math.floor(monthIdx / 3);
-        else if (period === 'Half-Yearly') pIdx = Math.floor(monthIdx / 6);
-        else if (period === 'Yearly') pIdx = 0;
-        
+        if (isSpecificMonth) {
+            pIdx = date.getDate() - 1;
+        } else if (period === 'Monthly') {
+            pIdx = monthIdx;
+        } else if (period === 'Quarterly') {
+            pIdx = Math.floor(monthIdx / 3);
+        } else if (period === 'Half-Yearly') {
+            pIdx = Math.floor(monthIdx / 6);
+        } else if (period === 'Yearly') {
+            pIdx = 0;
+        }
+        if (pIdx < 0 || pIdx >= periods.length) return;
         const currency = 'IDR';
 
         chartTotalAmt[pIdx] += parseFloat(qt.totalAmount || qt.grandTotal || 0);
@@ -18443,41 +18501,22 @@ window.updateSalesQuotationTrends = () => {
 
     const rows = Object.values(pivot);
 
-    const chartColors = ['#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899', '#84cc16', '#14b8a6', '#6366f1'];
     const datasets = [{
         label: 'Total Quotation Value',
         data: chartTotalAmt,
-        borderColor: '#9ca3af',
-        borderDash: [5, 5],
-        backgroundColor: 'transparent',
-        pointBackgroundColor: '#9ca3af',
-        pointBorderColor: '#fff',
-        pointHoverBackgroundColor: '#fff',
-        pointHoverBorderColor: '#9ca3af',
-        borderWidth: 2,
-        pointRadius: 0,
+        borderColor: '#0284c7',
+        backgroundColor: 'rgba(2, 132, 199, 0.08)',
+        fill: true,
+        pointBackgroundColor: '#0284c7',
+        pointBorderColor: '#ffffff',
+        pointBorderWidth: 2,
+        pointHoverBackgroundColor: '#0284c7',
+        pointHoverBorderColor: '#ffffff',
+        pointRadius: 4,
         pointHoverRadius: 6,
-        tension: 0,
+        borderWidth: 2.5,
+        tension: 0.3
     }];
-
-    const sortedRows = [...rows].sort((a, b) => b.periods.reduce((sum, v) => sum + v.amt, 0) - a.periods.reduce((sum, v) => sum + v.amt, 0));
-    sortedRows.slice(0, 10).forEach((row, i) => {
-        const color = chartColors[i % chartColors.length];
-        datasets.push({
-            label: row.label,
-            data: row.periods.map(p => p.amt),
-            borderColor: color,
-            backgroundColor: 'transparent',
-            pointBackgroundColor: color,
-            pointBorderColor: '#fff',
-            pointHoverBackgroundColor: '#fff',
-            pointHoverBorderColor: color,
-            borderWidth: 2,
-            pointRadius: 0,
-            pointHoverRadius: 6,
-            tension: 0,
-        });
-    });
 
     // Draw Chart
     const ctx = document.getElementById('sqt_chart');
@@ -18494,10 +18533,10 @@ window.updateSalesQuotationTrends = () => {
                 maintainAspectRatio: false,
                 interaction: { mode: 'index', intersect: false },
                 plugins: {
-                    legend: { display: true, position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, font: { size: 10 } } },
+                    legend: { display: false },
                     tooltip: {
                         callbacks: {
-                            label: c => ' ' + c.dataset.label + ': Rp ' + new Intl.NumberFormat('id-ID').format(c.parsed.y)
+                            label: c => ' Total Quotation: Rp ' + new Intl.NumberFormat('id-ID').format(c.parsed.y)
                         }
                     }
                 },
@@ -18525,6 +18564,8 @@ window.updateSalesQuotationTrends = () => {
         });
     }
 
+    const isItem = basedOn === 'Item';
+
     // Thead
     const thead = document.getElementById('sqt_thead');
     if (!thead) return;
@@ -18532,9 +18573,10 @@ window.updateSalesQuotationTrends = () => {
     thead.innerHTML = `
         <th class="w-10 px-3 py-2 border-r border-[#e5e7eb] font-medium text-center"></th>
         <th class="min-w-[200px] px-3 py-2 border-r border-[#e5e7eb] font-medium">${basedOn}</th>
-        <th class="px-3 py-2 border-r border-[#e5e7eb] font-medium">Currency</th>
-        ${periods.map(p => `
+        ${!isItem ? `<th class="px-3 py-2 border-r border-[#e5e7eb] font-medium">Currency</th>` : ''}
+        ${periods.map(p => isItem ? `
             <th class="px-3 py-2 border-r border-[#e5e7eb] text-right font-medium">${p} (Qty)</th>
+        ` : `
             <th class="px-3 py-2 border-r border-[#e5e7eb] text-right font-medium">${p} (Amt)</th>
         `).join('')}
     `;
@@ -18549,30 +18591,33 @@ window.updateSalesQuotationTrends = () => {
     });
 
     const formatNum = v => new Intl.NumberFormat('id-ID', { maximumFractionDigits: 3 }).format(v || 0);
+    const colCount = (isItem ? 2 : 3) + periods.length;
 
     tbody.innerHTML = rows.length === 0
-        ? `<tr><td colspan="${3 + periods.length * 2}" class="text-center text-gray-500 py-10">No Data Available</td></tr>`
+        ? `<tr><td colspan="${colCount}" class="text-center text-gray-500 py-10">No Data Available</td></tr>`
         : rows.map(row => `
         <tr class="hover:bg-gray-50 transition-colors group">
             <td class="px-3 py-2 border-r border-[#e5e7eb] bg-[#f9fafb] text-xs text-gray-400 text-center select-none w-10"></td>
-            <td class="px-3 py-2 border-r border-[#e5e7eb] whitespace-nowrap">${row.label}</td>
-            <td class="px-3 py-2 border-r border-[#e5e7eb] whitespace-nowrap text-gray-500">${row.currency}</td>
-            ${row.periods.map(m => `
+            <td class="px-3 py-2 border-r border-[#e5e7eb] whitespace-nowrap font-medium">${row.label}</td>
+            ${!isItem ? `<td class="px-3 py-2 border-r border-[#e5e7eb] whitespace-nowrap text-gray-500">${row.currency}</td>` : ''}
+            ${row.periods.map(m => isItem ? `
                 <td class="px-3 py-2 border-r border-[#e5e7eb] text-right whitespace-nowrap">${formatNum(m.qty)}</td>
+            ` : `
                 <td class="px-3 py-2 border-r border-[#e5e7eb] text-right whitespace-nowrap"><span class="text-gray-400 text-[11px] mr-1">Rp</span>${formatNum(m.amt)}</td>
             `).join('')}
         </tr>
     `).join('');
 
     const totalRow = document.createElement('tr');
-    totalRow.className = 'border-t border-[#e5e7eb] bg-[#f9fafb]';
+    totalRow.className = 'border-t border-[#e5e7eb] bg-[#f9fafb] font-semibold';
     totalRow.innerHTML = `
         <td class="px-3 py-2 border-r border-[#e5e7eb] text-gray-500 font-medium text-xs text-center w-10">1</td>
         <td class="px-3 py-2 border-r border-[#e5e7eb] font-semibold">Total</td>
-        <td class="px-3 py-2 border-r border-[#e5e7eb]"></td>
-        ${totQty.map((q, i) => `
-            <td class="px-3 py-2 border-r border-[#e5e7eb] text-right font-medium">${formatNum(q)}</td>
-            <td class="px-3 py-2 border-r border-[#e5e7eb] text-right font-medium"><span class="text-gray-400 text-[11px] mr-1">Rp</span>${formatNum(totAmt[i])}</td>
+        ${!isItem ? `<td class="px-3 py-2 border-r border-[#e5e7eb]"></td>` : ''}
+        ${(isItem ? totQty : totAmt).map(val => isItem ? `
+            <td class="px-3 py-2 border-r border-[#e5e7eb] text-right font-semibold">${formatNum(val)}</td>
+        ` : `
+            <td class="px-3 py-2 border-r border-[#e5e7eb] text-right font-semibold"><span class="text-gray-400 text-[11px] mr-1">Rp</span>${formatNum(val)}</td>
         `).join('')}
     `;
     
@@ -18614,10 +18659,27 @@ window.renderSalesOrderTrends = () => {
             <div class="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white shadow-sm shrink-0">
                 <select id="sot_period" onchange="updateSalesOrderTrends()"
                     class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
-                    <option value="Monthly" selected>Monthly</option>
+                    <option value="Monthly" selected>Monthly (Jan - Dec)</option>
                     <option value="Quarterly">Quarterly</option>
                     <option value="Half-Yearly">Half-Yearly</option>
                     <option value="Yearly">Yearly</option>
+                </select>
+
+                <select id="sot_month" onchange="updateSalesOrderTrends()"
+                    class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
+                    <option value="All" selected>Semua Bulan (Jan - Des)</option>
+                    <option value="1">Januari</option>
+                    <option value="2">Februari</option>
+                    <option value="3">Maret</option>
+                    <option value="4">April</option>
+                    <option value="5">Mei</option>
+                    <option value="6">Juni</option>
+                    <option value="7">Juli</option>
+                    <option value="8">Agustus</option>
+                    <option value="9">September</option>
+                    <option value="10">Oktober</option>
+                    <option value="11">November</option>
+                    <option value="12">Desember</option>
                 </select>
 
                 <select id="sot_based_on" onchange="updateSalesOrderTrends()"
@@ -18685,14 +18747,25 @@ window.updateSalesOrderTrends = () => {
     const year          = parseInt(document.getElementById('sot_year')?.value || new Date().getFullYear());
     const basedOn       = document.getElementById('sot_based_on')?.value || 'Item';
     const period        = document.getElementById('sot_period')?.value || 'Monthly';
+    const selectedMonth = document.getElementById('sot_month')?.value || 'All';
     const custFilter    = (document.getElementById('sot_customer')?.value || '').toLowerCase();
     const includeClosed = document.getElementById('sot_include_closed')?.checked;
+    const isSpecificMonth = selectedMonth !== 'All';
+    const monthNum      = isSpecificMonth ? parseInt(selectedMonth) : null;
     
     let periods = [];
-    if (period === 'Monthly') periods = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    else if (period === 'Quarterly') periods = ['Q1', 'Q2', 'Q3', 'Q4'];
-    else if (period === 'Half-Yearly') periods = ['H1', 'H2'];
-    else if (period === 'Yearly') periods = [year.toString()];
+    if (isSpecificMonth) {
+        const daysInMonth = new Date(year, monthNum, 0).getDate();
+        periods = Array.from({ length: daysInMonth }, (_, i) => `Tgl ${i + 1}`);
+    } else if (period === 'Monthly') {
+        periods = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    } else if (period === 'Quarterly') {
+        periods = ['Q1', 'Q2', 'Q3', 'Q4'];
+    } else if (period === 'Half-Yearly') {
+        periods = ['H1', 'H2'];
+    } else if (period === 'Yearly') {
+        periods = [year.toString()];
+    }
     
     let orders = db.read('salesOrders') || [];
     const customers = db.read('customers') || [];
@@ -18701,7 +18774,7 @@ window.updateSalesOrderTrends = () => {
     orders = orders.filter(so => {
         const d = new Date(so.date || so.createdAt);
         if (d.getFullYear() !== year) return false;
-        
+        if (isSpecificMonth && (d.getMonth() + 1) !== monthNum) return false;
         if (!includeClosed && (so.status === 'CLOSED' || so.status === 'REJECTED' || so.status === 'CANCELED')) return false;
         
         if (custFilter) {
@@ -18720,10 +18793,18 @@ window.updateSalesOrderTrends = () => {
         const monthIdx = date.getMonth();
         let pIdx = 0;
         
-        if (period === 'Monthly') pIdx = monthIdx;
-        else if (period === 'Quarterly') pIdx = Math.floor(monthIdx / 3);
-        else if (period === 'Half-Yearly') pIdx = Math.floor(monthIdx / 6);
-        else if (period === 'Yearly') pIdx = 0;
+        if (isSpecificMonth) {
+            pIdx = date.getDate() - 1;
+        } else if (period === 'Monthly') {
+            pIdx = monthIdx;
+        } else if (period === 'Quarterly') {
+            pIdx = Math.floor(monthIdx / 3);
+        } else if (period === 'Half-Yearly') {
+            pIdx = Math.floor(monthIdx / 6);
+        } else if (period === 'Yearly') {
+            pIdx = 0;
+        }
+        if (pIdx < 0 || pIdx >= periods.length) return;
         
         const currency = 'IDR';
 
@@ -18756,41 +18837,22 @@ window.updateSalesOrderTrends = () => {
 
     const rows = Object.values(pivot);
 
-    const chartColors = ['#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899', '#84cc16', '#14b8a6', '#6366f1'];
     const datasets = [{
         label: 'Total Order Value',
         data: chartTotalAmt,
-        borderColor: '#9ca3af',
-        borderDash: [5, 5],
-        backgroundColor: 'transparent',
-        pointBackgroundColor: '#9ca3af',
-        pointBorderColor: '#fff',
-        pointHoverBackgroundColor: '#fff',
-        pointHoverBorderColor: '#9ca3af',
-        borderWidth: 2,
-        pointRadius: 0,
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16, 185, 129, 0.08)',
+        fill: true,
+        pointBackgroundColor: '#10b981',
+        pointBorderColor: '#ffffff',
+        pointBorderWidth: 2,
+        pointHoverBackgroundColor: '#10b981',
+        pointHoverBorderColor: '#ffffff',
+        pointRadius: 4,
         pointHoverRadius: 6,
-        tension: 0,
+        borderWidth: 2.5,
+        tension: 0.3
     }];
-
-    const sortedRows = [...rows].sort((a, b) => b.periods.reduce((sum, v) => sum + v.amt, 0) - a.periods.reduce((sum, v) => sum + v.amt, 0));
-    sortedRows.slice(0, 10).forEach((row, i) => {
-        const color = chartColors[i % chartColors.length];
-        datasets.push({
-            label: row.label,
-            data: row.periods.map(p => p.amt),
-            borderColor: color,
-            backgroundColor: 'transparent',
-            pointBackgroundColor: color,
-            pointBorderColor: '#fff',
-            pointHoverBackgroundColor: '#fff',
-            pointHoverBorderColor: color,
-            borderWidth: 2,
-            pointRadius: 0,
-            pointHoverRadius: 6,
-            tension: 0,
-        });
-    });
 
     // Draw Chart
     const ctx = document.getElementById('sot_chart');
@@ -18807,10 +18869,10 @@ window.updateSalesOrderTrends = () => {
                 maintainAspectRatio: false,
                 interaction: { mode: 'index', intersect: false },
                 plugins: {
-                    legend: { display: true, position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, font: { size: 10 } } },
+                    legend: { display: false },
                     tooltip: {
                         callbacks: {
-                            label: c => ' ' + c.dataset.label + ': Rp ' + new Intl.NumberFormat('id-ID').format(c.parsed.y)
+                            label: c => ' Total Order: Rp ' + new Intl.NumberFormat('id-ID').format(c.parsed.y)
                         }
                     }
                 },
@@ -18834,6 +18896,8 @@ window.updateSalesOrderTrends = () => {
         });
     }
 
+    const isItem = basedOn === 'Item';
+
     // Thead
     const thead = document.getElementById('sot_thead');
     if (!thead) return;
@@ -18841,9 +18905,10 @@ window.updateSalesOrderTrends = () => {
     thead.innerHTML = `
         <th class="w-10 px-3 py-2 border-r border-[#e5e7eb] font-medium text-center"></th>
         <th class="min-w-[200px] px-3 py-2 border-r border-[#e5e7eb] font-medium">${basedOn}</th>
-        <th class="px-3 py-2 border-r border-[#e5e7eb] font-medium">Currency</th>
-        ${periods.map(p => `
+        ${!isItem ? `<th class="px-3 py-2 border-r border-[#e5e7eb] font-medium">Currency</th>` : ''}
+        ${periods.map(p => isItem ? `
             <th class="px-3 py-2 border-r border-[#e5e7eb] text-right font-medium">${p} (Qty)</th>
+        ` : `
             <th class="px-3 py-2 border-r border-[#e5e7eb] text-right font-medium">${p} (Amt)</th>
         `).join('')}
     `;
@@ -18858,30 +18923,33 @@ window.updateSalesOrderTrends = () => {
     });
 
     const formatNum = v => new Intl.NumberFormat('id-ID', { maximumFractionDigits: 3 }).format(v || 0);
+    const colCount = (isItem ? 2 : 3) + periods.length;
 
     tbody.innerHTML = rows.length === 0
-        ? `<tr><td colspan="${3 + periods.length * 2}" class="text-center text-gray-500 py-10">No Data Available</td></tr>`
+        ? `<tr><td colspan="${colCount}" class="text-center text-gray-500 py-10">No Data Available</td></tr>`
         : rows.map(row => `
         <tr class="hover:bg-gray-50 transition-colors group">
             <td class="px-3 py-2 border-r border-[#e5e7eb] bg-[#f9fafb] text-xs text-gray-400 text-center select-none w-10"></td>
-            <td class="px-3 py-2 border-r border-[#e5e7eb] whitespace-nowrap">${row.label}</td>
-            <td class="px-3 py-2 border-r border-[#e5e7eb] whitespace-nowrap text-gray-500">${row.currency}</td>
-            ${row.periods.map(m => `
+            <td class="px-3 py-2 border-r border-[#e5e7eb] whitespace-nowrap font-medium">${row.label}</td>
+            ${!isItem ? `<td class="px-3 py-2 border-r border-[#e5e7eb] whitespace-nowrap text-gray-500">${row.currency}</td>` : ''}
+            ${row.periods.map(m => isItem ? `
                 <td class="px-3 py-2 border-r border-[#e5e7eb] text-right whitespace-nowrap">${formatNum(m.qty)}</td>
+            ` : `
                 <td class="px-3 py-2 border-r border-[#e5e7eb] text-right whitespace-nowrap"><span class="text-gray-400 text-[11px] mr-1">Rp</span>${formatNum(m.amt)}</td>
             `).join('')}
         </tr>
     `).join('');
 
     const totalRow = document.createElement('tr');
-    totalRow.className = 'border-t border-[#e5e7eb] bg-[#f9fafb]';
+    totalRow.className = 'border-t border-[#e5e7eb] bg-[#f9fafb] font-semibold';
     totalRow.innerHTML = `
         <td class="px-3 py-2 border-r border-[#e5e7eb] text-gray-500 font-medium text-xs text-center w-10">1</td>
         <td class="px-3 py-2 border-r border-[#e5e7eb] font-semibold">Total</td>
-        <td class="px-3 py-2 border-r border-[#e5e7eb]"></td>
-        ${totQty.map((q, i) => `
-            <td class="px-3 py-2 border-r border-[#e5e7eb] text-right font-medium">${formatNum(q)}</td>
-            <td class="px-3 py-2 border-r border-[#e5e7eb] text-right font-medium"><span class="text-gray-400 text-[11px] mr-1">Rp</span>${formatNum(totAmt[i])}</td>
+        ${!isItem ? `<td class="px-3 py-2 border-r border-[#e5e7eb]"></td>` : ''}
+        ${(isItem ? totQty : totAmt).map(val => isItem ? `
+            <td class="px-3 py-2 border-r border-[#e5e7eb] text-right font-semibold">${formatNum(val)}</td>
+        ` : `
+            <td class="px-3 py-2 border-r border-[#e5e7eb] text-right font-semibold"><span class="text-gray-400 text-[11px] mr-1">Rp</span>${formatNum(val)}</td>
         `).join('')}
     `;
     
@@ -19105,41 +19173,22 @@ window.updateSalesRegionTrends = () => {
 
     const rows = Object.entries(pivot).map(([region, data]) => ({ region, periods: data.periods }));
 
-    const chartColors = ['#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899', '#84cc16', '#14b8a6', '#6366f1'];
     const datasets = [{
         label: 'Total Qty (Kg)',
         data: chartTotalQty,
-        borderColor: '#9ca3af',
-        borderDash: [5, 5],
-        backgroundColor: 'transparent',
-        pointBackgroundColor: '#9ca3af',
-        pointBorderColor: '#fff',
-        pointHoverBackgroundColor: '#fff',
-        pointHoverBorderColor: '#9ca3af',
-        borderWidth: 2,
-        pointRadius: 0,
+        borderColor: '#8b5cf6',
+        backgroundColor: 'rgba(139, 92, 246, 0.08)',
+        fill: true,
+        pointBackgroundColor: '#8b5cf6',
+        pointBorderColor: '#ffffff',
+        pointBorderWidth: 2,
+        pointHoverBackgroundColor: '#8b5cf6',
+        pointHoverBorderColor: '#ffffff',
+        pointRadius: 4,
         pointHoverRadius: 6,
-        tension: 0,
+        borderWidth: 2.5,
+        tension: 0.3
     }];
-
-    const sortedRows = [...rows].sort((a, b) => b.periods.reduce((sum, v) => sum + v, 0) - a.periods.reduce((sum, v) => sum + v, 0));
-    sortedRows.slice(0, 10).forEach((row, i) => {
-        const color = chartColors[i % chartColors.length];
-        datasets.push({
-            label: row.region,
-            data: row.periods,
-            borderColor: color,
-            backgroundColor: 'transparent',
-            pointBackgroundColor: color,
-            pointBorderColor: '#fff',
-            pointHoverBackgroundColor: '#fff',
-            pointHoverBorderColor: color,
-            borderWidth: 2,
-            pointRadius: 0,
-            pointHoverRadius: 6,
-            tension: 0,
-        });
-    });
 
     // Draw Chart
     const ctx = document.getElementById('srt_chart');
@@ -19156,10 +19205,10 @@ window.updateSalesRegionTrends = () => {
                 maintainAspectRatio: false,
                 interaction: { mode: 'index', intersect: false },
                 plugins: {
-                    legend: { display: true, position: 'bottom', labels: { boxWidth: 10, usePointStyle: true, font: { size: 10 } } },
+                    legend: { display: false },
                     tooltip: {
                         callbacks: {
-                            label: c => ' ' + c.dataset.label + ': ' + new Intl.NumberFormat('id-ID').format(c.parsed.y) + ' Kg'
+                            label: c => ' Total Qty: ' + new Intl.NumberFormat('id-ID').format(c.parsed.y) + ' Kg'
                         }
                     }
                 },
