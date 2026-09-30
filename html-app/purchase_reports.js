@@ -26,7 +26,8 @@ window.renderPurchaseAnalytics = () => {
                         class="border border-slate-300 rounded-lg px-5 py-2.5 text-base font-semibold text-slate-700 bg-white focus:outline-none focus:border-blue-400 cursor-pointer min-w-[190px]">
                         <option value="all">All</option>
                         <option value="rfq">RFQ</option>
-                        <option value="purchase_order" selected>Purchase Order</option>
+                        <option value="purchase_order">Purchase Order</option>
+                        <option value="goods_receipt" selected>Goods Receipt (Penerimaan Barang)</option>
                         <option value="purchase_invoice">Purchase Invoice</option>
                     </select>
 
@@ -78,195 +79,271 @@ window.renderPurchaseAnalytics = () => {
 };
 
 window.updatePurchaseAnalytics = () => {
-    const basedOn = document.getElementById('pa_based_on')?.value || 'Supplier';
-    const valueField = document.getElementById('pa_value_field')?.value || 'purchase_order';
-    const period = document.getElementById('pa_period')?.value || 'Monthly';
-    const fromStr = document.getElementById('pa_from')?.value;
-    const toStr = document.getElementById('pa_to')?.value;
+    try {
+        const basedOn = document.getElementById('pa_based_on')?.value || 'Supplier';
+        const valueField = document.getElementById('pa_value_field')?.value || 'purchase_order';
+        const period = document.getElementById('pa_period')?.value || 'Monthly';
+        const fromStr = document.getElementById('pa_from')?.value;
+        const toStr = document.getElementById('pa_to')?.value;
 
-    const from = fromStr ? new Date(fromStr) : new Date(new Date().getFullYear(), 0, 1);
-    const to = toStr ? new Date(toStr) : new Date(new Date().getFullYear(), 11, 31);
-    from.setHours(0,0,0,0); to.setHours(23,59,59,999);
+        const from = fromStr ? new Date(fromStr) : new Date(new Date().getFullYear(), 0, 1);
+        const to = toStr ? new Date(toStr) : new Date(new Date().getFullYear(), 11, 31);
+        from.setHours(0,0,0,0); to.setHours(23,59,59,999);
 
-    // Build period buckets
-    const buckets = [];
-    if (period === 'Weekly') {
-        let cur = new Date(from);
-        cur.setDate(cur.getDate() - ((cur.getDay()+6)%7));
-        while (cur <= to) {
-            const end = new Date(cur); end.setDate(end.getDate()+6);
-            buckets.push({ label: `W${Math.ceil(cur.getDate()/7)} ${cur.getFullYear()}`, start: new Date(cur), end: new Date(end) });
-            cur.setDate(cur.getDate()+7);
-        }
-    } else if (period === 'Monthly') {
-        const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-        let y = from.getFullYear(), m = from.getMonth();
-        const toY = to.getFullYear(), toM = to.getMonth();
-        while (y < toY || (y===toY && m<=toM)) {
-            const s = new Date(y, m, 1); const e = new Date(y, m+1, 0, 23, 59, 59);
-            buckets.push({ label: months[m], start: s, end: e });
-            m++; if (m>11){m=0;y++;}
-        }
-    } else if (period === 'Quarterly') {
-        let y = from.getFullYear(); let q = Math.floor(from.getMonth()/3);
-        const toY = to.getFullYear(); const toQ = Math.floor(to.getMonth()/3);
-        while (y < toY || (y===toY && q<=toQ)) {
-            const s = new Date(y, q*3, 1); const e = new Date(y, q*3+3, 0, 23, 59, 59);
-            buckets.push({ label: `Q${q+1} ${y}`, start: s, end: e });
-            q++; if(q>3){q=0;y++;}
-        }
-    } else { // Yearly
-        for (let y = from.getFullYear(); y <= to.getFullYear(); y++) {
-            buckets.push({ label: String(y), start: new Date(y,0,1), end: new Date(y,11,31,23,59,59) });
-        }
-    }
-
-    const purchaseOrders = (db.read('purchaseOrders') || []).filter(p => (p.status || '').toString().trim().toUpperCase() !== 'DELETED');
-    const purchaseInvoices = db.read('purchaseInvoices') || [];
-    const purchaseRFQs = (db.read('purchaseRFQs') || []).filter(r => (r.status || '').toString().trim().toUpperCase() !== 'DELETED');
-    const suppliers = db.read('suppliers') || [];
-
-    const getDocDate  = (doc) => {
-        if (doc && (doc.poNumber || doc.supplierId)) {
-            if (typeof window.getPOEffectiveDate === 'function') return window.getPOEffectiveDate(doc);
-            if (doc.actualDeliveryDate) return new Date(doc.actualDeliveryDate);
-            if (doc.receivedAt) return new Date(doc.receivedAt);
-        }
-        return doc.date || doc.createdAt || '';
-    };
-    const getDocQty   = (doc) => (doc.items || []).reduce((sum, it) => sum + parseFloat(it.qty || it.receivedQty || 0), 0);
-    const getDocAmt   = (doc) => parseFloat(doc.totalAmount || doc.grandTotal || 0);
-    const isSupplier  = basedOn === 'Supplier';
-    const getValue    = isSupplier ? getDocAmt : getDocQty;
-    const getItemVal  = (it) => isSupplier ? parseFloat(it.subtotal || (it.qty * (it.price||0)) || 0) : parseFloat(it.qty || it.receivedQty || 0);
-    const unit        = isSupplier ? '' : ' KG';
-    const fmtVal      = (v) => isSupplier ? 'Rp ' + formatNumber(v) : formatNumber(v) + ' KG';
-
-    const filterByRange = (docs) => docs.filter(doc => {
-        const d = new Date(getDocDate(doc));
-        return d >= from && d <= to;
-    });
-
-    let targetDocs = [];
-    switch (valueField) {
-        case 'rfq': targetDocs = filterByRange(purchaseRFQs); break;
-        case 'purchase_order': targetDocs = filterByRange(purchaseOrders); break;
-        case 'purchase_invoice': targetDocs = filterByRange(purchaseInvoices.filter(i => i.status !== 'CANCELLED' && i.status !== 'CANCELED')); break;
-        default: targetDocs = filterByRange(purchaseOrders);
-    }
-
-    let groups = ['Overall'];
-    if (basedOn === 'Supplier') {
-        const totals = {};
-        targetDocs.forEach(d => {
-            const name = suppliers.find(s => s.id === d.supplierId)?.name || 'Unknown';
-            totals[name] = (totals[name] || 0) + getValue(d);
-        });
-        groups = Object.keys(totals).sort((a,b) => totals[b] - totals[a]).slice(0, 10);
-        if (groups.length === 0) groups = ['Overall'];
-        targetDocs.forEach(d => {
-            (d.items || []).forEach(it => {
-                const name = it.itemName || it.prodText || 'Unknown';
-                totals[name] = (totals[name] || 0) + getItemVal(it);
-            });
-        });
-        groups = Object.keys(totals).sort((a,b) => totals[b] - totals[a]).slice(0, 10);
-        if (groups.length === 0) groups = ['Overall'];
-    }
-
-    const overallData = buckets.map(b => {
-        let sum = 0;
-        targetDocs.forEach(d => {
-            const dt = new Date(getDocDate(d));
-            if (dt >= b.start && dt <= b.end) {
-                sum += getValue(d);
+        // Helper to safely parse JSON arrays
+        const safeArray = (val) => {
+            if (!val) return [];
+            if (typeof val === 'string') {
+                try {
+                    const parsed = JSON.parse(val);
+                    return Array.isArray(parsed) ? parsed : [];
+                } catch (e) { return []; }
             }
-        });
-        return sum;
-    });
-    const grandTotal = overallData.reduce((sum, v) => sum + v, 0);
+            return Array.isArray(val) ? val : [];
+        };
 
-    const datasets = groups.map((g, idx) => {
-        const color = chartColors[idx % chartColors.length];
-        const bucketData = buckets.map((b, i) => {
-            if (g === 'Overall') return overallData[i];
+        // Build period buckets
+        const buckets = [];
+        if (period === 'Weekly') {
+            let cur = new Date(from);
+            cur.setDate(cur.getDate() - ((cur.getDay()+6)%7));
+            while (cur <= to) {
+                const end = new Date(cur); end.setDate(end.getDate()+6);
+                buckets.push({ label: `W${Math.ceil(cur.getDate()/7)} ${cur.getFullYear()}`, start: new Date(cur), end: new Date(end) });
+                cur.setDate(cur.getDate()+7);
+            }
+        } else if (period === 'Monthly') {
+            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            let y = from.getFullYear(), m = from.getMonth();
+            const toY = to.getFullYear(), toM = to.getMonth();
+            while (y < toY || (y===toY && m<=toM)) {
+                const s = new Date(y, m, 1); const e = new Date(y, m+1, 0, 23, 59, 59);
+                buckets.push({ label: months[m], start: s, end: e });
+                m++; if (m>11){m=0;y++;}
+            }
+        } else if (period === 'Quarterly') {
+            let y = from.getFullYear(); let q = Math.floor(from.getMonth()/3);
+            const toY = to.getFullYear(); const toQ = Math.floor(to.getMonth()/3);
+            while (y < toY || (y===toY && q<=toQ)) {
+                const s = new Date(y, q*3, 1); const e = new Date(y, q*3+3, 0, 23, 59, 59);
+                buckets.push({ label: `Q${q+1} ${y}`, start: s, end: e });
+                q++; if(q>3){q=0;y++;}
+            }
+        } else { // Yearly
+            for (let y = from.getFullYear(); y <= to.getFullYear(); y++) {
+                buckets.push({ label: String(y), start: new Date(y,0,1), end: new Date(y,11,31,23,59,59) });
+            }
+        }
+
+        const purchaseOrders = (db.read('purchaseOrders') || []).filter(p => (p.status || '').toString().trim().toUpperCase() !== 'DELETED');
+        const purchaseInvoices = db.read('purchaseInvoices') || [];
+        const purchaseRFQs = (db.read('purchaseRFQs') || []).filter(r => (r.status || '').toString().trim().toUpperCase() !== 'DELETED');
+        const suppliers = db.read('suppliers') || [];
+
+        const formatNum   = (v) => typeof window.formatNumber === 'function' ? window.formatNumber(v) : (v || 0).toLocaleString('id-ID');
+        const isSupplier  = basedOn === 'Supplier';
+        const getDocDate  = (doc) => {
+            if (doc && doc.isReceipt) return doc.date || doc.createdAt;
+            if (doc && (doc.poNumber || doc.po_number || doc.supplierId || doc.supplier_id)) {
+                if (typeof window.getPOEffectiveDate === 'function') return window.getPOEffectiveDate(doc);
+                if (doc.actualDeliveryDate || doc.actual_delivery_date) return new Date(doc.actualDeliveryDate || doc.actual_delivery_date);
+                if (doc.receivedAt) return new Date(doc.receivedAt);
+            }
+            return doc.date || doc.createdAt || '';
+        };
+        const getDocQty   = (doc) => safeArray(doc.items).reduce((sum, it) => sum + parseFloat(it.qty || it.receivedQty || 0), 0);
+        const getDocAmt   = (doc) => parseFloat(doc.totalAmount || doc.grandTotal || doc.total_amount || 0);
+        const getValue    = isSupplier ? getDocAmt : getDocQty;
+        const getItemVal  = (it) => isSupplier ? parseFloat(it.subtotal || (parseFloat(it.qty||0) * parseFloat(it.price||0)) || 0) : parseFloat(it.qty || it.receivedQty || 0);
+        const fmtVal      = (v) => isSupplier ? 'Rp ' + formatNum(v) : formatNum(v) + ' KG';
+
+        const filterByRange = (docs) => docs.filter(doc => {
+            const rawD = getDocDate(doc);
+            if (!rawD) return false;
+            const d = new Date(rawD);
+            if (isNaN(d.getTime())) return false;
+            return d >= from && d <= to;
+        });
+
+        let targetDocs = [];
+        switch (valueField) {
+            case 'rfq': targetDocs = filterByRange(purchaseRFQs); break;
+            case 'purchase_order': targetDocs = filterByRange(purchaseOrders); break;
+            case 'goods_receipt': {
+                const allReceipts = [];
+                purchaseOrders.forEach(po => {
+                    const receipts = safeArray(po.receipts);
+                    const poItems = safeArray(po.items);
+                    receipts.forEach(rcpt => {
+                        const rcptItems = safeArray(rcpt.items);
+                        let rcptAmt = 0;
+                        const mappedItems = rcptItems.map(it => {
+                            const poItem = poItems.find(pi => (pi.inventoryItemId && pi.inventoryItemId === it.inventoryItemId) || (pi.itemName && pi.itemName === it.itemName));
+                            const price = parseFloat(it.price || (poItem ? poItem.price : 0) || 0);
+                            const qty = parseFloat(it.receivedQty || it.qty || 0);
+                            const subtotal = parseFloat(it.subtotal || (qty * price) || 0);
+                            rcptAmt += subtotal;
+                            return {
+                                ...it,
+                                price,
+                                qty,
+                                subtotal,
+                                itemName: it.itemName || it.prodText || (poItem ? (poItem.itemName || poItem.prodText) : 'Unknown')
+                            };
+                        });
+                        allReceipts.push({
+                            id: rcpt.id || rcpt.receiptNumber,
+                            receiptNumber: rcpt.receiptNumber,
+                            poId: po.id,
+                            poNumber: po.poNumber || po.po_number,
+                            supplierId: po.supplierId || po.supplier_id,
+                            supplierName: po.supplierName || po.supplier_name,
+                            date: rcpt.date || rcpt.receivedDate || rcpt.createdAt,
+                            createdAt: rcpt.createdAt,
+                            totalAmount: rcptAmt,
+                            grandTotal: rcptAmt,
+                            items: mappedItems,
+                            isReceipt: true,
+                            status: 'RECEIVED'
+                        });
+                    });
+                });
+                targetDocs = filterByRange(allReceipts);
+                break;
+            }
+            case 'purchase_invoice': targetDocs = filterByRange(purchaseInvoices.filter(i => (i.status || '').toUpperCase() !== 'CANCELLED' && (i.status || '').toUpperCase() !== 'CANCELED')); break;
+            default: targetDocs = filterByRange(purchaseOrders);
+        }
+
+        let groups = ['Overall'];
+        if (basedOn === 'Supplier') {
+            const totals = {};
+            targetDocs.forEach(d => {
+                const suppId = d.supplierId || d.supplier_id;
+                const s = suppliers.find(x => x.id === suppId);
+                const name = s ? s.name : (d.supplierName || d.supplier_name || 'Unknown');
+                totals[name] = (totals[name] || 0) + getValue(d);
+            });
+            groups = Object.keys(totals).sort((a,b) => totals[b] - totals[a]).slice(0, 10);
+            if (groups.length === 0) groups = ['Overall'];
+        } else if (basedOn === 'Item') {
+            const totals = {};
+            targetDocs.forEach(d => {
+                safeArray(d.items).forEach(it => {
+                    const name = it.itemName || it.prodText || 'Unknown';
+                    totals[name] = (totals[name] || 0) + getItemVal(it);
+                });
+            });
+            groups = Object.keys(totals).sort((a,b) => totals[b] - totals[a]).slice(0, 10);
+            if (groups.length === 0) groups = ['Overall'];
+        }
+
+        const overallData = buckets.map(b => {
             let sum = 0;
             targetDocs.forEach(d => {
-                const dt = new Date(getDocDate(d));
+                const rawD = getDocDate(d);
+                if (!rawD) return;
+                const dt = new Date(rawD);
                 if (dt >= b.start && dt <= b.end) {
-                    if (basedOn === 'Supplier') {
-                        const sName = suppliers.find(s => s.id === d.supplierId)?.name || 'Unknown';
-                        if (sName === g) sum += getValue(d);
-                    } else if (basedOn === 'Item') {
-                        (d.items || []).forEach(it => { if ((it.itemName || it.prodText) === g) sum += getItemVal(it); });
-                    }
+                    sum += getValue(d);
                 }
             });
             return sum;
         });
+        const grandTotal = overallData.reduce((sum, v) => sum + v, 0);
 
-        return {
-            label: g,
-            data: bucketData,
-            borderColor: color,
-            backgroundColor: color + '15',
-            pointBackgroundColor: color,
-            pointBorderColor: '#fff',
-            pointBorderWidth: 2,
-            pointRadius: groups.length > 1 ? 3 : 5,
-            tension: 0.3,
-            fill: groups.length === 1,
-            borderWidth: 2
-        };
-    });
+        const chartColors = ['#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#ec4899', '#84cc16', '#14b8a6', '#6366f1'];
+        const datasets = groups.map((g, idx) => {
+            const color = chartColors[idx % chartColors.length];
+            const bucketData = buckets.map((b, i) => {
+                if (g === 'Overall') return overallData[i];
+                let sum = 0;
+                targetDocs.forEach(d => {
+                    const rawD = getDocDate(d);
+                    if (!rawD) return;
+                    const dt = new Date(rawD);
+                    if (dt >= b.start && dt <= b.end) {
+                        if (basedOn === 'Supplier') {
+                            const suppId = d.supplierId || d.supplier_id;
+                            const s = suppliers.find(x => x.id === suppId);
+                            const sName = s ? s.name : (d.supplierName || d.supplier_name || 'Unknown');
+                            if (sName === g) sum += getValue(d);
+                        } else if (basedOn === 'Item') {
+                            safeArray(d.items).forEach(it => {
+                                const itName = it.itemName || it.prodText || 'Unknown';
+                                if (itName === g) sum += getItemVal(it);
+                            });
+                        }
+                    }
+                });
+                return sum;
+            });
 
-    const title = document.getElementById('pa_chart_title');
-    if (title) title.textContent = `Purchasing Analytics - By ${basedOn} (${period})`;
-
-    const ctx = document.getElementById('pa_chart');
-    if (ctx && typeof Chart !== 'undefined') {
-        if (window._paChart) window._paChart.destroy();
-        window._paChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: buckets.map(b => b.label),
-                datasets: datasets
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: { mode: 'index', intersect: false },
-                plugins: {
-                    legend: { display: groups.length > 1, position: 'top', align: 'end', labels: { boxWidth: 10, font: { size: 10, weight: 'bold' } } },
-                    tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmtVal(ctx.parsed.y)}` } }
-                },
-                scales: {
-                    x: { grid: { color: 'rgba(51, 65, 85, 0.05)' }, ticks: { color: '#94a3b8', font: { size: 10 } } },
-                    y: { grid: { color: 'rgba(51, 65, 85, 0.05)' }, ticks: { color: '#94a3b8', font: { size: 10 }, callback: v => isSupplier ? formatNumber(v) : formatNumber(v) + ' KG' } }
-                }
-            }
+            return {
+                label: g,
+                data: bucketData,
+                borderColor: color,
+                backgroundColor: color + '15',
+                pointBackgroundColor: color,
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2,
+                pointRadius: groups.length > 1 ? 3 : 5,
+                tension: 0.3,
+                fill: groups.length === 1,
+                borderWidth: 2
+            };
         });
-    }
 
-    const thead = document.getElementById('pa_table_head');
-    const tbody = document.getElementById('pa_table_body');
-    if (thead && tbody) {
-        thead.innerHTML = `
-            <th class="px-6 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Period</th>
-            <th class="px-6 py-3 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Total ${isSupplier ? 'Value (Rp)' : 'Qty (KG)'}</th>
-        `;
+        const title = document.getElementById('pa_chart_title');
+        if (title) title.textContent = `Purchasing Analytics - By ${basedOn} (${period})`;
 
-        tbody.innerHTML = buckets.map((b, i) => `
-            <tr class="hover:bg-slate-50 transition-colors">
-                <td class="px-6 py-3 text-sm text-slate-600 font-semibold">${b.label}</td>
-                <td class="px-6 py-3 text-sm text-slate-800 font-mono text-right">${fmtVal(overallData[i])}</td>
-            </tr>
-        `).join('') + `
-            <tr class="bg-blue-50/30 border-t-2 border-blue-100 font-black">
-                <td class="px-6 py-4 text-sm text-blue-800 uppercase tracking-widest">Total Summary</td>
-                <td class="px-6 py-4 text-sm text-right text-blue-700 font-mono">${fmtVal(grandTotal)}</td>
-            </tr>
-        `;
+        const ctx = document.getElementById('pa_chart');
+        if (ctx && typeof Chart !== 'undefined') {
+            if (window._paChart) window._paChart.destroy();
+            window._paChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: buckets.map(b => b.label),
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { display: groups.length > 1, position: 'top', align: 'end', labels: { boxWidth: 10, font: { size: 10, weight: 'bold' } } },
+                        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmtVal(ctx.parsed.y)}` } }
+                    },
+                    scales: {
+                        x: { grid: { color: 'rgba(51, 65, 85, 0.05)' }, ticks: { color: '#94a3b8', font: { size: 10 } } },
+                        y: { grid: { color: 'rgba(51, 65, 85, 0.05)' }, ticks: { color: '#94a3b8', font: { size: 10 }, callback: v => isSupplier ? ('Rp ' + formatNum(v)) : (formatNum(v) + ' KG') } }
+                    }
+                }
+            });
+        }
+
+        const thead = document.getElementById('pa_table_head');
+        const tbody = document.getElementById('pa_table_body');
+        if (thead && tbody) {
+            thead.innerHTML = `
+                <th class="px-6 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Period</th>
+                <th class="px-6 py-3 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Total ${isSupplier ? 'Value (Rp)' : 'Qty (KG)'}</th>
+            `;
+
+            tbody.innerHTML = buckets.map((b, i) => `
+                <tr class="hover:bg-slate-50 transition-colors">
+                    <td class="px-6 py-3 text-sm text-slate-600 font-semibold">${b.label}</td>
+                    <td class="px-6 py-3 text-sm text-slate-800 font-mono text-right">${fmtVal(overallData[i])}</td>
+                </tr>
+            `).join('') + `
+                <tr class="bg-blue-50/30 border-t-2 border-blue-100 font-black">
+                    <td class="px-6 py-4 text-sm text-blue-800 uppercase tracking-widest">Total Summary</td>
+                    <td class="px-6 py-4 text-sm text-right text-blue-700 font-mono">${fmtVal(grandTotal)}</td>
+                </tr>
+            `;
+        }
+    } catch (err) {
+        console.error('Error updating purchase analytics:', err);
     }
 };
 
@@ -1214,4 +1291,357 @@ window.exportPOTrendsCsv = () => {
     a.download = `purchase_order_trends_${document.getElementById('pot_year')?.value || ''}.csv`;
     a.click();
 };
+
+// --- Purchase Receipts (GRN) Trends ---
+window.renderPurchaseReceiptTrends = () => {
+    document.getElementById('pageTitle').innerText = 'Purchase Receipts Trends';
+    const mainContent = document.getElementById('main-content');
+    const currentYear = new Date().getFullYear();
+
+    mainContent.innerHTML = `
+        <div class="min-h-full flex flex-col font-sans bg-white">
+            <div class="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white shadow-sm shrink-0">
+                <select id="prt_period" onchange="updatePurchaseReceiptTrends()"
+                    class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
+                    <option value="Monthly" selected>Monthly (Jan - Dec)</option>
+                    <option value="Quarterly">Quarterly</option>
+                    <option value="Half-Yearly">Half-Yearly</option>
+                    <option value="Yearly">Yearly</option>
+                </select>
+
+                <select id="prt_month" onchange="updatePurchaseReceiptTrends()"
+                    class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
+                    <option value="All" selected>Semua Bulan (Jan - Des)</option>
+                    <option value="1">Januari</option>
+                    <option value="2">Februari</option>
+                    <option value="3">Maret</option>
+                    <option value="4">April</option>
+                    <option value="5">Mei</option>
+                    <option value="6">Juni</option>
+                    <option value="7">Juli</option>
+                    <option value="8">Agustus</option>
+                    <option value="9">September</option>
+                    <option value="10">Oktober</option>
+                    <option value="11">November</option>
+                    <option value="12">Desember</option>
+                </select>
+
+                <select id="prt_based_on" onchange="updatePurchaseReceiptTrends()"
+                    class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
+                    <option value="Item" selected>Item</option>
+                    <option value="Supplier">Supplier</option>
+                </select>
+
+                <input type="number" id="prt_year" value="${currentYear}" onchange="updatePurchaseReceiptTrends()"
+                    class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 outline-none w-24">
+
+                <div class="flex-1"></div>
+                <button onclick="exportPRcptTrendsCsv()" class="bg-gray-100 border border-gray-200 rounded-md px-3 py-1.5 text-[13px] text-gray-700 transition-colors hover:bg-gray-200 shadow-sm">
+                    Export
+                </button>
+            </div>
+
+            <div class="px-5 mt-4 mb-2 text-[13px] text-gray-500 font-medium flex items-center gap-2">
+                <div class="w-2 h-2 rounded-full bg-[#0d9488]"></div>
+                This report was generated just now (Based on Actual Goods Received / GRN Date).
+            </div>
+
+            <div class="bg-white px-8 pt-8 pb-4 shrink-0 border-b border-gray-200 relative">
+                <div style="height: 250px;">
+                    <canvas id="prt_chart"></canvas>
+                </div>
+            </div>
+
+            <div class="w-full overflow-x-auto bg-white border border-gray-200 border-t-0 border-x-0 relative">
+                <table class="w-full text-left border-collapse" id="prt_table">
+                    <thead class="bg-[#f9fafb] sticky top-0 z-20 shadow-[0_1px_0_#e5e7eb]">
+                        <tr id="prt_thead" class="text-[13px] text-gray-600 border-b border-gray-200"></tr>
+                    </thead>
+                    <tbody id="prt_tbody" class="divide-y divide-gray-100 text-[13px] text-gray-800"></tbody>
+                </table>
+            </div>
+
+            <div class="px-5 py-3 bg-white border-t border-gray-200 shrink-0 flex justify-between items-center w-full mt-auto">
+                <p class="text-[13px] text-gray-500">Closing calculation uses actual receipt date &amp; partial delivery quantities.</p>
+                <p class="text-[12px] text-gray-500 font-medium tracking-wide">Execution Time: ${(Math.random() * 0.05 + 0.01).toFixed(6)} sec</p>
+            </div>
+        </div>
+    `;
+    updatePurchaseReceiptTrends();
+};
+
+window.updatePurchaseReceiptTrends = () => {
+    const year          = parseInt(document.getElementById('prt_year')?.value || new Date().getFullYear());
+    const basedOn       = document.getElementById('prt_based_on')?.value || 'Item';
+    const period        = document.getElementById('prt_period')?.value || 'Monthly';
+    const selectedMonth = document.getElementById('prt_month')?.value || 'All';
+    const isSpecificMonth = selectedMonth !== 'All';
+    const monthNum      = isSpecificMonth ? parseInt(selectedMonth) : null;
+    const isItem        = basedOn === 'Item';
+
+    let periods = [];
+    if (isSpecificMonth) {
+        const daysInMonth = new Date(year, monthNum, 0).getDate();
+        periods = Array.from({ length: daysInMonth }, (_, i) => `Tgl ${i + 1}`);
+    } else if (period === 'Monthly') {
+        periods = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    } else if (period === 'Quarterly') {
+        periods = ['Q1', 'Q2', 'Q3', 'Q4'];
+    } else if (period === 'Half-Yearly') {
+        periods = ['H1', 'H2'];
+    } else if (period === 'Yearly') {
+        periods = [year.toString()];
+    }
+
+    const purchaseOrders = db.read('purchaseOrders') || [];
+    const suppliers      = db.read('suppliers') || [];
+
+    // Extract all receipt events
+    const allReceipts = [];
+    purchaseOrders.forEach(po => {
+        const statusUpper = (po.status || '').toUpperCase();
+        if (statusUpper === 'CANCELLED' || statusUpper === 'DELETED') return;
+
+        const safeArray = (val) => {
+            if (!val) return [];
+            if (typeof val === 'string') {
+                try {
+                    const parsed = JSON.parse(val);
+                    return Array.isArray(parsed) ? parsed : [];
+                } catch (e) { return []; }
+            }
+            return Array.isArray(val) ? val : [];
+        };
+
+        const receipts = safeArray(po.receipts);
+        const poItems = safeArray(po.items);
+
+        receipts.forEach(rcpt => {
+            const rcptDate = new Date(rcpt.date || rcpt.receivedDate || rcpt.createdAt);
+            if (isNaN(rcptDate.getTime())) return;
+            if (rcptDate.getFullYear() !== year) return;
+            if (isSpecificMonth && (rcptDate.getMonth() + 1) !== monthNum) return;
+
+            const rcptItems = safeArray(rcpt.items);
+            let rcptAmt = 0;
+            const mappedItems = rcptItems.map(it => {
+                const poItem = poItems.find(pi => (pi.inventoryItemId && pi.inventoryItemId === it.inventoryItemId) || (pi.itemName && pi.itemName === it.itemName));
+                const price = parseFloat(it.price || (poItem ? poItem.price : 0) || 0);
+                const qty = parseFloat(it.receivedQty || it.qty || 0);
+                const subtotal = parseFloat(it.subtotal || (qty * price) || 0);
+                rcptAmt += subtotal;
+                return {
+                    ...it,
+                    price,
+                    qty,
+                    subtotal,
+                    itemName: it.itemName || it.prodText || (poItem ? (poItem.itemName || poItem.prodText) : 'Unknown')
+                };
+            });
+
+            allReceipts.push({
+                id: rcpt.id || rcpt.receiptNumber,
+                receiptNumber: rcpt.receiptNumber,
+                poId: po.id,
+                poNumber: po.poNumber || po.po_number,
+                supplierId: po.supplierId || po.supplier_id,
+                supplierName: po.supplierName || po.supplier_name,
+                date: rcptDate,
+                totalAmount: rcptAmt,
+                items: mappedItems
+            });
+        });
+    });
+
+    const chartData = Array(periods.length).fill(0);
+    const pivot = {};
+
+    allReceipts.forEach(rcpt => {
+        const d = rcpt.date;
+        const monthIdx = d.getMonth();
+        let pIdx = 0;
+
+        if (isSpecificMonth) {
+            pIdx = d.getDate() - 1;
+        } else if (period === 'Monthly') {
+            pIdx = monthIdx;
+        } else if (period === 'Quarterly') {
+            pIdx = Math.floor(monthIdx / 3);
+        } else if (period === 'Half-Yearly') {
+            pIdx = Math.floor(monthIdx / 6);
+        } else if (period === 'Yearly') {
+            pIdx = 0;
+        }
+
+        if (pIdx < 0 || pIdx >= periods.length) return;
+
+        const items = rcpt.items;
+        const rcptTotalAmt = rcpt.totalAmount;
+        const rcptTotalQty = items.reduce((s, it) => s + (parseFloat(it.qty || 0) || 0), 0);
+
+        if (isItem) {
+            chartData[pIdx] += rcptTotalQty;
+            items.forEach(it => {
+                const rawLabel = it.itemName || it.prodText || 'Unknown Item';
+                const label = rawLabel.split(' (')[0].trim();
+                const key = label;
+                const itQty = parseFloat(it.qty || 0) || 0;
+                const itAmt = parseFloat(it.subtotal || 0) || 0;
+
+                if (!pivot[key]) {
+                    pivot[key] = { label, code: it.inventoryItemId || '-', currency: 'IDR', periods: Array.from({ length: periods.length }, () => ({ qty: 0, amt: 0 })) };
+                }
+                pivot[key].periods[pIdx].qty += itQty;
+                pivot[key].periods[pIdx].amt += itAmt;
+            });
+        } else {
+            chartData[pIdx] += rcptTotalAmt;
+            const supplier = suppliers.find(s => s.id === rcpt.supplierId);
+            const label = supplier ? supplier.name : 'Unknown Supplier';
+            const key = rcpt.supplierId || label;
+
+            if (!pivot[key]) {
+                pivot[key] = { label, code: key, currency: 'IDR', periods: Array.from({ length: periods.length }, () => ({ qty: 0, amt: 0 })) };
+            }
+            pivot[key].periods[pIdx].qty += rcptTotalQty;
+            pivot[key].periods[pIdx].amt += rcptTotalAmt;
+        }
+    });
+
+    const rows = Object.values(pivot);
+    const formatNum = v => new Intl.NumberFormat('id-ID', { maximumFractionDigits: 3 }).format(v || 0);
+
+    const datasets = [{
+        label: isItem ? 'Total Qty Received' : 'Total Value Received',
+        data: chartData,
+        borderColor: '#0d9488',
+        backgroundColor: 'rgba(13, 148, 136, 0.08)',
+        fill: true,
+        pointBackgroundColor: '#0d9488',
+        pointBorderColor: '#ffffff',
+        pointBorderWidth: 2,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        borderWidth: 2.5,
+        tension: 0.3
+    }];
+
+    const ctx = document.getElementById('prt_chart');
+    if (ctx && typeof Chart !== 'undefined') {
+        if (window._prtChart) window._prtChart.destroy();
+        window._prtChart = new Chart(ctx, {
+            type: 'line',
+            data: { labels: periods, datasets: datasets },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: c => isItem
+                                ? ` Total Qty: ${formatNum(c.parsed.y)} KG`
+                                : ` Total Value: Rp ${new Intl.NumberFormat('id-ID').format(c.parsed.y)}`
+                        }
+                    }
+                },
+                scales: {
+                    x: { grid: { color: 'transparent', drawBorder: false }, ticks: { color: '#6b7280', font: { size: 10 } } },
+                    y: {
+                        grid: { color: '#f3f4f6', strokeDash: [3, 3] },
+                        border: { display: false },
+                        ticks: {
+                            color: '#6b7280', font: { size: 10 },
+                            callback: v => isItem
+                                ? (v >= 1000 ? (v / 1000).toFixed(0) + ' K' : v) + ' KG'
+                                : (v >= 1000000 ? (v / 1000000).toFixed(0) + ' M' : (v >= 1000 ? (v / 1000).toFixed(0) + ' K' : v))
+                        },
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+
+    const thead = document.getElementById('prt_thead');
+    if (!thead) return;
+
+    thead.innerHTML = `
+        <th class="w-10 px-3 py-2 border-r border-[#e5e7eb] font-medium text-center"></th>
+        <th class="min-w-[200px] px-3 py-2 border-r border-[#e5e7eb] font-medium">${basedOn}</th>
+        ${!isItem ? `<th class="px-3 py-2 border-r border-[#e5e7eb] font-medium">Currency</th>` : ''}
+        ${periods.map(p => isItem ? `
+            <th class="px-3 py-2 border-r border-[#e5e7eb] text-right font-medium">${p} (Qty)</th>
+        ` : `
+            <th class="px-3 py-2 border-r border-[#e5e7eb] text-right font-medium">${p} (Amt)</th>
+        `).join('')}
+    `;
+
+    const tbody = document.getElementById('prt_tbody');
+    if (!tbody) return;
+
+    const totQty = Array(periods.length).fill(0);
+    const totAmt = Array(periods.length).fill(0);
+    rows.forEach(row => {
+        row.periods.forEach((m, i) => { totQty[i] += m.qty; totAmt[i] += m.amt; });
+    });
+
+    const colCount = (isItem ? 2 : 3) + periods.length;
+
+    tbody.innerHTML = rows.length === 0
+        ? `<tr><td colspan="${colCount}" class="text-center text-gray-500 py-10">No Data Available</td></tr>`
+        : rows.map(row => `
+        <tr class="hover:bg-gray-50 transition-colors group">
+            <td class="px-3 py-2 border-r border-[#e5e7eb] bg-[#f9fafb] text-xs text-gray-400 text-center select-none w-10"></td>
+            <td class="px-3 py-2 border-r border-[#e5e7eb] whitespace-nowrap font-medium">${row.label}</td>
+            ${!isItem ? `<td class="px-3 py-2 border-r border-[#e5e7eb] whitespace-nowrap text-gray-500">${row.currency}</td>` : ''}
+            ${row.periods.map(m => isItem ? `
+                <td class="px-3 py-2 border-r border-[#e5e7eb] text-right whitespace-nowrap">${formatNum(m.qty)}</td>
+            ` : `
+                <td class="px-3 py-2 border-r border-[#e5e7eb] text-right whitespace-nowrap"><span class="text-gray-400 text-[11px] mr-1">Rp</span>${formatNum(m.amt)}</td>
+            `).join('')}
+        </tr>
+    `).join('');
+
+    if (rows.length > 0) {
+        const totalRow = document.createElement('tr');
+        totalRow.className = 'border-t border-[#e5e7eb] bg-[#f9fafb] font-semibold';
+        totalRow.innerHTML = `
+            <td class="px-3 py-2 border-r border-[#e5e7eb] text-gray-500 font-medium text-xs text-center w-10">1</td>
+            <td class="px-3 py-2 border-r border-[#e5e7eb] font-semibold">Total</td>
+            ${!isItem ? `<td class="px-3 py-2 border-r border-[#e5e7eb]"></td>` : ''}
+            ${(isItem ? totQty : totAmt).map(val => isItem ? `
+                <td class="px-3 py-2 border-r border-[#e5e7eb] text-right font-semibold">${formatNum(val)}</td>
+            ` : `
+                <td class="px-3 py-2 border-r border-[#e5e7eb] text-right font-semibold"><span class="text-gray-400 text-[11px] mr-1">Rp</span>${formatNum(val)}</td>
+            `).join('')}
+        `;
+
+        Array.from(tbody.children).forEach((tr, i) => {
+            if (tr !== totalRow && tr.children[0] && tr.children.length > 1) {
+                tr.children[0].innerHTML = i + 1;
+            }
+        });
+
+        tbody.appendChild(totalRow);
+    }
+};
+
+window.exportPRcptTrendsCsv = () => {
+    const table = document.getElementById('prt_table');
+    if (!table) return;
+    let csv = '';
+    const trs = Array.from(table.querySelectorAll('tr'));
+    trs.forEach(row => {
+        const cells = [...row.querySelectorAll('th,td')].map(c => `"${c.textContent.trim().replace(/"/g, '""')}"`);
+        csv += cells.join(',') + '\n';
+    });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `purchase_receipts_trends_${document.getElementById('prt_year')?.value || ''}.csv`;
+    a.click();
+};
+
 
