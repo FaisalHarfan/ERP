@@ -3057,7 +3057,6 @@ function renderCustomerRows(customers) {
                     </div>
                     <div>
                         <div class="text-sm font-bold text-slate-800">${c.name}</div>
-                        <div class="text-[11px] text-slate-400 font-medium">${c.id}</div>
                     </div>
                 </div>
             </td>
@@ -3759,7 +3758,6 @@ function renderSupplierRows(suppliers) {
                     </div>
                     <div>
                         <div class="text-sm font-bold text-slate-800">${s.name}</div>
-                        <div class="text-[11px] text-slate-400 font-medium">${s.id}</div>
                     </div>
                 </div>
             </td>
@@ -17938,15 +17936,27 @@ window.updateSalesAnalytics = async () => {
         groups = Object.keys(totals).sort((a,b) => totals[b] - totals[a]).slice(0, 5);
     }
 
+    const overallData = buckets.map(b => {
+        let sum = 0;
+        targetDocs.forEach(d => {
+            const dt = new Date(getDocDate(d));
+            if (dt >= b.start && dt <= b.end) {
+                sum += getDocValue(d);
+            }
+        });
+        return parseFloat(sum) || 0;
+    });
+    const grandTotal = overallData.reduce((sum, v) => sum + v, 0);
+
     const datasets = groups.map((g, idx) => {
         const color = ['#f472b6', '#60a5fa', '#34d399', '#fbbf24', '#a78bfa'][idx];
-        const bucketData = buckets.map(b => {
+        const bucketData = buckets.map((b, i) => {
+            if (g === 'Overall') return overallData[i];
             let sum = 0;
             targetDocs.forEach(d => {
                 const dt = new Date(getDocDate(d));
                 if (dt >= b.start && dt <= b.end) {
-                    if (g === 'Overall') sum += getDocValue(d);
-                    else if (basedOn === 'Customer') {
+                    if (basedOn === 'Customer') {
                         const cName = customers.find(c => c.id === d.customerId)?.name || 'Unknown';
                         if (cName === g) sum += getDocValue(d);
                     } else if (basedOn === 'Item') {
@@ -18025,9 +18035,6 @@ window.updateSalesAnalytics = async () => {
         <th class="px-6 py-3 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Period</th>
         <th class="px-6 py-3 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Value (Rp)</th>
     `;
-    
-    const overallData = buckets.map((b, i) => datasets.reduce((sum, ds) => sum + ds.data[i], 0));
-    const grandTotal = overallData.reduce((sum, v) => sum + v, 0);
 
     tbody.innerHTML = buckets.map((b, i) => `
         <tr class="hover:bg-slate-50 transition-colors">
