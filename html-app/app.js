@@ -2522,7 +2522,7 @@ function renderPurchaseDashboard() {
                 poMatchedInPeriod = true;
             });
             if (poMatchedInPeriod) matchingPosCount++;
-        } else {
+        } else if (['RECEIVED', 'COMPLETED'].includes(statusUpper)) {
             const d = window.getPOEffectiveDate(p);
             if ((!startDate || d >= startDate) && (!endDate || d <= endDate)) {
                 const amt = parseFloat(p.totalAmount || p.total_amount || 0);
