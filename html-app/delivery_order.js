@@ -950,6 +950,7 @@ window.loadSOForDO = function () {
                         <th class="px-4 py-3 border-b border-slate-100 text-center w-24">Order</th>
                         <th class="px-4 py-3 border-b border-slate-100 text-center w-36">Kemasan</th>
                         <th class="px-4 py-3 border-b border-slate-100 text-center w-20">Colly</th>
+                        <th class="px-2 py-3 border-b border-slate-100 w-10"></th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-50">
@@ -960,7 +961,7 @@ window.loadSOForDO = function () {
                                 <div class="text-sm font-black text-slate-800 uppercase tracking-tight">${i.prodText || '-'}</div>
                             </td>
                             <td class="px-4 py-3 text-center">
-                                <span class="bg-slate-50 px-3 py-1.5 rounded-lg text-sm font-black text-slate-700" id="dosi_qty_${idx}" data-qty="${i.qty}">${(i.qty || 0).toLocaleString('id-ID')}</span>
+                                <input type="number" id="dosi_qty_${idx}" value="${i.qty || 0}" min="1" oninput="window.updateSOColly('${idx}')" class="w-full text-center bg-white border border-slate-200 px-2 py-1.5 rounded-lg text-sm font-black text-slate-700 focus:border-blue-500 outline-none shadow-inner transition-all">
                             </td>
                             <td class="px-4 py-3">
                                 <select onchange="window.updateSOColly('${idx}')" id="dosi_kemasan_${idx}" class="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-[10px] font-bold text-slate-600 appearance-none shadow-sm cursor-pointer focus:border-blue-500 transition-all outline-none">
@@ -975,6 +976,11 @@ window.loadSOForDO = function () {
                                 </select>
                             </td>
                             <td class="px-4 py-3 text-center font-black text-blue-600 text-sm shadow-inner" id="dosi_colly_display_${idx}">0</td>
+                            <td class="px-2 py-3 text-right">
+                                <button type="button" onclick="this.closest('tr').remove()" class="w-7 h-7 rounded bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition-all">
+                                    <i class="fas fa-times text-xs"></i>
+                                </button>
+                            </td>
                         </tr>
                     `).join('')}
                 </tbody>
@@ -983,7 +989,7 @@ window.loadSOForDO = function () {
 
         window.updateSOColly = function (idx) {
             const qtyBox = document.getElementById(`dosi_qty_${idx}`);
-            const qty = parseFloat(qtyBox?.dataset.qty) || 0;
+            const qty = parseFloat(qtyBox?.value) || 0;
             const kemasan = document.getElementById(`dosi_kemasan_${idx}`).value;
             const display = document.getElementById(`dosi_colly_display_${idx}`);
             if (display) {
@@ -1013,13 +1019,15 @@ window.saveDeliveryFromSO = async function () {
         const rows = document.getElementById('dos_items_preview').querySelectorAll('tbody tr');
         const items = [];
         rows.forEach((row, idx) => {
-            const qtyBox = row.querySelector(`#dosi_qty_${idx}`);
+            const qtyBox = row.querySelector(`input[id^="dosi_qty_"]`);
+            if (!qtyBox) return; // Row was deleted
+            const rowIdx = qtyBox.id.split('_').pop();
             const name = row.cells[1].innerText.split('\n')[0];
-            const qty = parseFloat(qtyBox.dataset.qty) || 0;
-            const kemasan = row.querySelector(`#dosi_kemasan_${idx}`)?.value || '';
-            const colly = row.querySelector(`#dosi_colly_display_${idx}`)?.innerText || 0;
+            const qty = parseFloat(qtyBox.value) || 0;
+            const kemasan = row.querySelector(`#dosi_kemasan_${rowIdx}`)?.value || '';
+            const colly = row.querySelector(`#dosi_colly_display_${rowIdx}`)?.innerText || 0;
 
-            const soItem = so.items[idx]; 
+            const soItem = so.items[rowIdx]; 
 
             items.push({
                 name,
