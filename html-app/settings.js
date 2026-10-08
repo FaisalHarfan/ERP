@@ -883,6 +883,10 @@ window.searchDataCorrection = async () => {
     resultsEl.innerHTML = `<div class="p-10 text-center"><i class="fas fa-spinner fa-spin text-2xl text-orange-500"></i><p class="mt-3 text-sm text-gray-500">Mencari transaksi...</p></div>`;
 
     try {
+        // PENTING: Ambil data terbaru dari server karena halaman ini tidak pre-load stockTransactions
+        await db.sync('stockTransactions');
+        await db.sync('inventoryItems');
+        
         const allTx = db.read('stockTransactions') || [];
         const filtered = allTx.filter(tx => {
             const txDate = (tx.date || tx.transactionDate || '').slice(0, 10);
