@@ -800,5 +800,279 @@ window.settingsViews = {
     'settings-users': renderSettingsUsers,
     'settings-roles': renderSettingsRoles,
     'settings-company': renderSettingsCompany,
-    'settings-system': renderSettingsSystem
+    'settings-system': renderSettingsSystem,
+    'settings-data-correction': window.renderSettingsDataCorrection
+};
+
+// ─── DATA CORRECTION TOOL ──────────────────────────────────────────────────────
+window.renderSettingsDataCorrection = async () => {
+    document.getElementById('pageTitle').innerText = 'Koreksi Data';
+    const mc = document.getElementById('main-content');
+
+    // Default: cari transaksi dari 1–31 Oktober 2026 (periode yang bermasalah)
+    const defaultFrom = '2026-10-01';
+    const defaultTo   = '2026-10-31';
+
+    mc.innerHTML = `
+    <div class="animate-in fade-in duration-300 space-y-6">
+
+        <!-- Header -->
+        <div class="bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl p-6 text-white shadow-lg">
+            <div class="flex items-center gap-3 mb-2">
+                <div class="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                    <i class="fas fa-pencil-alt text-lg"></i>
+                </div>
+                <div>
+                    <h2 class="text-lg font-black tracking-tight">Koreksi Tanggal Transaksi</h2>
+                    <p class="text-orange-100 text-xs font-medium">Cari & perbaiki transaksi yang salah input tanggal</p>
+                </div>
+            </div>
+            <div class="bg-white/15 rounded-xl p-3 mt-3 text-xs font-medium leading-relaxed">
+                <i class="fas fa-info-circle mr-1.5"></i>
+                Gunakan tool ini untuk memperbaiki transaksi konversi stok yang tanggalnya salah input.
+                Setiap perubahan akan dicatat di log sistem.
+            </div>
+        </div>
+
+        <!-- Filter -->
+        <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <h3 class="text-xs font-black text-gray-400 uppercase tracking-widest mb-4">Filter Pencarian</h3>
+            <div class="flex flex-wrap gap-4 items-end">
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1.5">Dari Tanggal</label>
+                    <input type="date" id="dc_from" value="${defaultFrom}"
+                        class="border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-700 focus:border-orange-400 outline-none transition-all">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1.5">Sampai Tanggal</label>
+                    <input type="date" id="dc_to" value="${defaultTo}"
+                        class="border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-700 focus:border-orange-400 outline-none transition-all">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-500 mb-1.5">Jenis Transaksi</label>
+                    <select id="dc_type" class="border border-gray-200 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-700 focus:border-orange-400 outline-none transition-all">
+                        <option value="all">Semua</option>
+                        <option value="CONVERSION">Konversi Stok</option>
+                        <option value="MANUAL">Manual</option>
+                        <option value="SHRINKAGE">Penyusutan/NG</option>
+                    </select>
+                </div>
+                <button onclick="searchDataCorrection()" 
+                    class="px-6 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-black transition-all shadow-sm active:scale-95 flex items-center gap-2">
+                    <i class="fas fa-search text-xs"></i> Cari Transaksi
+                </button>
+            </div>
+        </div>
+
+        <!-- Result Table -->
+        <div id="dc_results" class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div class="p-10 text-center text-gray-400">
+                <i class="fas fa-search text-4xl mb-3 opacity-30"></i>
+                <p class="text-sm font-medium">Klik "Cari Transaksi" untuk menampilkan data</p>
+            </div>
+        </div>
+    </div>`;
+};
+
+window.searchDataCorrection = async () => {
+    const from = document.getElementById('dc_from').value;
+    const to   = document.getElementById('dc_to').value;
+    const type = document.getElementById('dc_type').value;
+    const resultsEl = document.getElementById('dc_results');
+
+    resultsEl.innerHTML = `<div class="p-10 text-center"><i class="fas fa-spinner fa-spin text-2xl text-orange-500"></i><p class="mt-3 text-sm text-gray-500">Mencari transaksi...</p></div>`;
+
+    try {
+        const allTx = db.read('stockTransactions') || [];
+        const filtered = allTx.filter(tx => {
+            const txDate = (tx.date || tx.transactionDate || '').slice(0, 10);
+            if (!txDate) return false;
+            if (txDate < from || txDate > to) return false;
+            if (type !== 'all' && tx.reference !== type && tx.type !== type) return false;
+            return true;
+        });
+
+        if (!filtered.length) {
+            resultsEl.innerHTML = `
+                <div class="p-10 text-center text-gray-400">
+                    <i class="fas fa-check-circle text-4xl text-green-400 mb-3"></i>
+                    <p class="text-sm font-bold text-gray-600">Tidak ada transaksi di rentang tanggal ini</p>
+                    <p class="text-xs mt-1">Coba perluas rentang tanggal pencarian</p>
+                </div>`;
+            return;
+        }
+
+        // Group by itemId for readability
+        const rows = filtered.map(tx => {
+            const txDate  = (tx.date || tx.transactionDate || '-').slice(0, 10);
+            const refType = tx.reference || tx.type || '-';
+            const refLabel = { PO: 'Purchase Receipt', SO: 'Sales Delivery', PRODUCTION_IN: 'Hasil Produksi', PRODUCTION_OUT: 'Konsumsi Produksi', SHRINKAGE: 'Penyusutan/NG', MANUAL: 'Manual', CONVERSION: 'Konversi' }[refType] || refType;
+            const isOut = tx.transactionType === 'OUT' || tx.type === 'OUT';
+            const qty   = (tx.quantity || tx.qty || 0);
+            const typeColor = isOut ? 'text-red-600' : 'text-green-600';
+            const typeBg    = isOut ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700';
+
+            return `<tr class="border-b border-gray-50 hover:bg-orange-50/30 transition-colors group">
+                <td class="py-3 px-4 text-sm font-black text-gray-800">${txDate}</td>
+                <td class="py-3 px-4">
+                    <span class="px-2 py-0.5 text-[10px] font-black rounded-full uppercase tracking-wider ${typeBg}">${isOut ? 'KELUAR' : 'MASUK'}</span>
+                </td>
+                <td class="py-3 px-4 text-xs text-gray-600 max-w-[220px]">
+                    <p class="font-bold text-gray-800 truncate">${tx.itemName || tx.description || '-'}</p>
+                    <p class="text-gray-400 truncate">${tx.notes || tx.description || ''}</p>
+                </td>
+                <td class="py-3 px-4 text-xs font-bold ${typeColor}">${isOut ? '-' : '+'}${qty}</td>
+                <td class="py-3 px-4 text-xs text-gray-500">${refLabel}</td>
+                <td class="py-3 px-4 text-right">
+                    <button onclick="openDateCorrectionModal('${tx.id}', '${txDate}', \`${(tx.itemName || '').replace(/`/g,'')}\`)"
+                        class="opacity-0 group-hover:opacity-100 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all shadow-sm active:scale-95">
+                        <i class="fas fa-pencil-alt mr-1"></i>Koreksi
+                    </button>
+                </td>
+            </tr>`;
+        }).join('');
+
+        resultsEl.innerHTML = `
+            <div class="p-4 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                    <h3 class="text-sm font-black text-gray-800">Hasil Pencarian</h3>
+                    <p class="text-xs text-gray-400 mt-0.5">${filtered.length} transaksi ditemukan pada periode ${from} s/d ${to}</p>
+                </div>
+                <span class="px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-black">${filtered.length} record</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead><tr class="bg-gray-50 border-b border-gray-100">
+                        <th class="py-2.5 px-4 text-[10px] font-black text-gray-400 uppercase tracking-wider">Tanggal</th>
+                        <th class="py-2.5 px-4 text-[10px] font-black text-gray-400 uppercase tracking-wider">Tipe</th>
+                        <th class="py-2.5 px-4 text-[10px] font-black text-gray-400 uppercase tracking-wider">Produk / Keterangan</th>
+                        <th class="py-2.5 px-4 text-[10px] font-black text-gray-400 uppercase tracking-wider">Qty</th>
+                        <th class="py-2.5 px-4 text-[10px] font-black text-gray-400 uppercase tracking-wider">Ref</th>
+                        <th class="py-2.5 px-4 text-[10px] font-black text-gray-400 uppercase tracking-wider text-right">Aksi</th>
+                    </tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>`;
+    } catch (err) {
+        resultsEl.innerHTML = `<div class="p-10 text-center text-red-500"><i class="fas fa-exclamation-circle text-3xl mb-3"></i><p class="text-sm">${err.message}</p></div>`;
+    }
+};
+
+window.openDateCorrectionModal = (txId, currentDate, itemName) => {
+    const today = new Date().toISOString().split('T')[0];
+    const body = `
+        <div class="space-y-5">
+            <div class="bg-orange-50 border border-orange-100 rounded-xl p-4">
+                <p class="text-xs font-black text-orange-600 uppercase tracking-widest mb-1">Transaksi yang Akan Dikoreksi</p>
+                <p class="text-sm font-bold text-gray-800">${itemName}</p>
+                <p class="text-xs text-gray-500 mt-1">Tanggal Saat Ini: <strong class="text-orange-600">${currentDate}</strong></p>
+            </div>
+            <div>
+                <label class="block text-xs font-black text-gray-500 uppercase tracking-widest mb-2">Tanggal Koreksi (Yang Benar)</label>
+                <input type="date" id="dc_new_date" value="${currentDate}" max="${today}"
+                    class="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-sm font-bold text-gray-700 focus:border-orange-400 outline-none transition-all">
+            </div>
+            <div>
+                <label class="block text-xs font-black text-gray-500 uppercase tracking-widest mb-2">Alasan Koreksi <span class="text-red-500">*</span></label>
+                <textarea id="dc_reason" rows="3" placeholder="Contoh: Salah input tanggal, seharusnya 30 September bukan 30 Oktober"
+                    class="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-700 focus:border-orange-400 outline-none transition-all resize-none placeholder:text-gray-300"></textarea>
+            </div>
+            <div class="bg-amber-50 border border-amber-100 rounded-xl p-3">
+                <p class="text-[11px] text-amber-700 font-medium">
+                    <i class="fas fa-exclamation-triangle mr-1.5"></i>
+                    Perubahan ini akan mempengaruhi kartu stok dan laporan mutasi. Pastikan tanggal koreksi sudah benar.
+                </p>
+            </div>
+        </div>`;
+    const footer = `
+        <button onclick="closeModal()" class="px-5 py-2.5 bg-gray-100 text-gray-600 rounded-xl text-sm font-bold hover:bg-gray-200 transition-all">Batal</button>
+        <button onclick="applyDateCorrection('${txId}', '${currentDate}')"
+            class="px-6 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-black transition-all shadow-sm active:scale-95 flex items-center gap-2">
+            <i class="fas fa-check-circle text-xs"></i> Simpan Koreksi
+        </button>`;
+    showModal('Koreksi Tanggal Transaksi', body, footer, 'md');
+};
+
+window.applyDateCorrection = async (txId, oldDate) => {
+    const newDate = document.getElementById('dc_new_date')?.value;
+    const reason  = document.getElementById('dc_reason')?.value?.trim();
+
+    if (!newDate) { showToast('Pilih tanggal koreksi', 'error'); return; }
+    if (!reason)  { showToast('Isi alasan koreksi terlebih dahulu', 'error'); return; }
+    if (newDate === oldDate) { showToast('Tanggal sama dengan sebelumnya', 'warning'); return; }
+
+    try {
+        // Tutup modal dulu, tunjukkan loading
+        closeModal();
+        showToast('Menyimpan koreksi ke server...', 'info');
+
+        // Ambil data transaksi dari cache lokal
+        const allTx = db.read('stockTransactions') || [];
+        const mainTx = allTx.find(t => t.id === txId);
+        if (!mainTx) throw new Error('Transaksi tidak ditemukan (ID: ' + txId + ')');
+
+        const correctionMeta = {
+            _correctedAt: new Date().toISOString(),
+            _correctedBy: window._session?.fullName || 'Admin',
+            _correctionReason: reason,
+            _originalDate: oldDate
+        };
+
+        // 1. Update transaksi utama ke PostgreSQL
+        const result1 = await db.update('stockTransactions', txId, {
+            date: newDate,
+            ...correctionMeta
+        });
+        if (!result1) throw new Error('Gagal update transaksi utama di server');
+
+        // 2. Cari & update semua transaksi pasangan (IN/OUT) yang berkaitan lewat referenceId/conversionId
+        const convId = mainTx.referenceId || mainTx.conversionId || null;
+        const siblingUpdates = [];
+
+        if (convId) {
+            const siblings = allTx.filter(t => t.id !== txId && (t.referenceId === convId || t.conversionId === convId));
+            for (const sib of siblings) {
+                const r = await db.update('stockTransactions', sib.id, {
+                    date: newDate,
+                    ...correctionMeta,
+                    _correctionReason: reason + ' (pasangan konversi)'
+                });
+                siblingUpdates.push(r);
+            }
+
+            // 3. Update record inventoryConversions (pakai JSONB — merge field date ke dalam data)
+            const allConv = db.read('inventoryConversions') || [];
+            const conv = allConv.find(c => c.id === convId);
+            if (conv) {
+                await db.update('inventoryConversions', convId, {
+                    date: newDate,
+                    ...correctionMeta
+                });
+            }
+        }
+
+        // 4. Log ke sistem
+        if (typeof db.logSystemActivity === 'function') {
+            db.logSystemActivity('DATA_CORRECTION',
+                `Koreksi tanggal: txId=${txId}${convId ? ', convId=' + convId : ''} | ${oldDate} → ${newDate} | Alasan: ${reason}`
+            );
+        }
+
+        // 5. Re-sync dari PostgreSQL supaya _dbCache segar & laporan langsung update
+        await Promise.all([
+            db.sync('stockTransactions'),
+            db.sync('inventoryConversions'),
+            db.sync('inventoryItems') // refresh currentStock
+        ]);
+
+        const totalUpdated = 1 + siblingUpdates.length;
+        showToast(`✅ ${totalUpdated} transaksi dikoreksi: ${oldDate} → ${newDate}`, 'success');
+
+        // Refresh hasil pencarian
+        setTimeout(() => searchDataCorrection(), 500);
+
+    } catch (err) {
+        console.error('Data correction error:', err);
+        showToast('Gagal koreksi: ' + err.message, 'error');
+    }
 };

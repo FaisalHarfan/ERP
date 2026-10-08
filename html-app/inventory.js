@@ -1282,7 +1282,7 @@ window.openInventoryConversionModal = (preSelectedId = null) => {
                 <label class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-2.5">Tanggal Konversi</label>
                 <div class="relative">
                     <i class="fas fa-calendar absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"></i>
-                    <input type="date" id="conv_date" value="${currentDate}" class="w-full border-2 border-gray-200 rounded-xl pl-11 pr-4 py-3.5 text-sm font-bold text-gray-700 focus:border-blue-500 outline-none transition-all">
+                    <input type="date" id="conv_date" value="${currentDate}" max="${currentDate}" class="w-full border-2 border-gray-200 rounded-xl pl-11 pr-4 py-3.5 text-sm font-bold text-gray-700 focus:border-blue-500 outline-none transition-all">
                 </div>
             </div>
             <div>
@@ -1569,7 +1569,7 @@ window.renderProductToProductConversionPage = () => {
                             <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tanggal Konversi</label>
                             <div class="relative">
                                 <i class="fas fa-calendar absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
-                                <input type="date" id="p2p_date" value="${currentDate}" class="w-full border-2 border-transparent bg-white rounded-2xl pl-12 pr-4 py-3 text-sm font-black text-slate-700 focus:border-indigo-500/20 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all shadow-sm">
+                                <input type="date" id="p2p_date" value="${currentDate}" max="${currentDate}" class="w-full border-2 border-transparent bg-white rounded-2xl pl-12 pr-4 py-3 text-sm font-black text-slate-700 focus:border-indigo-500/20 focus:ring-4 focus:ring-indigo-500/5 outline-none transition-all shadow-sm">
                             </div>
                         </div>
                         <div class="space-y-2">

@@ -498,7 +498,8 @@ const views = {
     'settings-users': window.renderSettingsUsers,
     'settings-roles': window.renderSettingsRoles,
     'settings-company': window.renderSettingsCompany,
-    'settings-system': window.renderSettingsSystem
+    'settings-system': window.renderSettingsSystem,
+    'settings-data-correction': () => window.renderSettingsDataCorrection()
 };
 
 // --- Access Control Mapping ---
@@ -528,7 +529,7 @@ const MODULE_VIEW_MAP = {
     'finance-journal': 'finance', 'finance-settings': 'finance',
     'finance-credit-notes': 'finance', 'finance-debit-notes': 'finance', 'finance-hpp': 'finance', 'finance-rugilaba': 'finance', 'finance-neracasaldo': 'finance',
     'settings-users': 'pengaturan', 'settings-roles': 'pengaturan', 'settings-company': 'pengaturan',
-    'settings-system': 'pengaturan', 'settings-dashboard': 'pengaturan',
+    'settings-system': 'pengaturan', 'settings-dashboard': 'pengaturan', 'settings-data-correction': 'pengaturan',
     'sales-delivery-orders': 'penjualan',
     'sales-region-report': 'penjualan'
 };
