@@ -4027,6 +4027,9 @@ window.renderMonthlyStockReport = () => {
                     <button onclick="openInventoryConversionModal()" id="btn_msr_conversion" class="hidden bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl transition-all text-sm font-bold shadow-lg shadow-indigo-500/20 flex items-center gap-2">
                         <i class="fas fa-random"></i> Konversi
                     </button>
+                    <button onclick="printMonthlyStockReport()" class="bg-rose-500 hover:bg-rose-600 text-white px-5 py-2.5 rounded-xl transition-all text-sm font-bold shadow-lg shadow-rose-500/20 flex items-center gap-2" title="Cetak PDF">
+                        <i class="fas fa-file-pdf"></i> Cetak PDF
+                    </button>
                     <button onclick="runMonthlyStockReport()" class="bg-white border border-slate-200 text-slate-600 px-5 py-2.5 rounded-xl hover:bg-slate-50 transition-all text-sm font-bold" title="Refresh Data">
                         <i class="fas fa-sync-alt"></i>
                     </button>
@@ -4041,6 +4044,147 @@ window.renderMonthlyStockReport = () => {
     </div>`;
 
     setTimeout(() => runMonthlyStockReport(), 50);
+};
+
+window.printMonthlyStockReport = () => {
+    const monthVal = document.getElementById('msr_month')?.value;
+    const catSelect = document.getElementById('msr_category');
+    if (!monthVal) return;
+
+    const [year, month] = monthVal.split('-').map(Number);
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0, 23, 59, 59);
+
+    const items = db.read('inventoryItems').filter(it => it.status !== 'INACTIVE');
+    const allTxs = (db.read('stockTransactions') || []).map(t => ({ ...t, date: window.getEffectiveStockTxDate(t).toISOString() }));
+
+    const cat = window.currentMonthlyReportCategory || 'RAW_MATERIAL';
+    const catName = catSelect ? catSelect.options[catSelect.selectedIndex].text : cat;
+
+    let filteredItems = items.filter(it => it.category === cat);
+    if (cat === 'WIP_OVEN_BASAH') {
+        filteredItems = items.filter(it => it.category === 'OVEN_BASAH_STOCK' || (it.category === 'WIP' && it.itemName.toLowerCase().includes('oven basah')));
+    } else if (cat === 'WIP_OVEN_KERING') {
+        filteredItems = items.filter(it => it.category === 'OVEN_KERING_STOCK' || (it.category === 'WIP' && it.itemName.toLowerCase().includes('oven kering')));
+    }
+
+    const searchQuery = document.getElementById('msr_search')?.value.toLowerCase() || '';
+    if (searchQuery) {
+        filteredItems = filteredItems.filter(it => it.itemName.toLowerCase().includes(searchQuery) || it.itemCode.toLowerCase().includes(searchQuery));
+    }
+
+    const reportData = filteredItems.map(it => {
+        const itemTxs = allTxs.filter(t => t.itemId === it.id);
+        const preTxs = itemTxs.filter(t => new Date(t.date) < startDate);
+        const inPeriodTxs = itemTxs.filter(t => new Date(t.date) >= startDate && new Date(t.date) <= endDate);
+
+        const initial = preTxs.reduce((sum, t) => sum + (t.type === 'IN' ? (parseFloat(t.qty) || 0) : -(parseFloat(t.qty) || 0)), 0);
+        const totalIn = inPeriodTxs.filter(t => t.type === 'IN').reduce((sum, t) => sum + (parseFloat(t.qty) || 0), 0);
+        const totalOut = inPeriodTxs.filter(t => t.type === 'OUT').reduce((sum, t) => sum + (parseFloat(t.qty) || 0), 0);
+        const final = initial + totalIn - totalOut;
+
+        return { ...it, openingStock: initial, totalIn, totalOut, closingStock: final };
+    }).filter(it => it.openingStock !== 0 || it.totalIn !== 0 || it.totalOut !== 0);
+
+    const invFmt = (num) => parseFloat(num).toLocaleString('id-ID', { maximumFractionDigits: 2 });
+    const monthName = new Intl.DateTimeFormat('id-ID', { month: 'long', year: 'numeric' }).format(startDate);
+
+    let trs = reportData.map((s, i) => `
+        <tr>
+            <td class="t-center">${i + 1}</td>
+            <td>
+                <strong>${s.itemName}</strong><br>
+                <small style="color: #64748b;">${s.itemCode}</small>
+            </td>
+            <td class="t-center">${s.unit}</td>
+            <td class="t-right">${invFmt(s.openingStock)}</td>
+            <td class="t-right text-green">+${invFmt(s.totalIn)}</td>
+            <td class="t-right text-red">-${invFmt(s.totalOut)}</td>
+            <td class="t-right"><strong>${invFmt(s.closingStock)}</strong></td>
+        </tr>
+    `).join('');
+
+    if (reportData.length === 0) {
+        trs = `<tr><td colspan="7" class="t-center" style="padding: 20px;">Tidak ada pergerakan stok di periode ini.</td></tr>`;
+    }
+
+    const printHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Laporan Mutasi Stok - ${monthName}</title>
+        <style>
+            @page { size: A4 landscape; margin: 15mm; }
+            body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11px; color: #1e293b; -webkit-print-color-adjust: exact; margin: 0; }
+            .header { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; }
+            .header h2 { margin: 0 0 5px 0; color: #0f172a; font-size: 18px; }
+            .header p { margin: 0; color: #64748b; font-size: 12px; }
+            
+            .meta-info { margin-bottom: 15px; font-weight: bold; }
+            
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            th { background: #f8fafc; border: 1px solid #cbd5e1; padding: 10px 8px; text-transform: uppercase; font-size: 10px; color: #475569; }
+            td { border: 1px solid #cbd5e1; padding: 8px; }
+            
+            .t-right { text-align: right; }
+            .t-center { text-align: center; }
+            .text-green { color: #16a34a; }
+            .text-red { color: #dc2626; }
+            
+            .footer { margin-top: 30px; display: flex; justify-content: space-between; page-break-inside: avoid; }
+            .sign-box { width: 200px; text-align: center; }
+            .sign-box .title { font-weight: bold; margin-bottom: 60px; }
+            .sign-box .name { border-bottom: 1px solid #000; padding-bottom: 5px; }
+        </style>
+    </head>
+    <body onload="setTimeout(() => { window.print(); }, 500)">
+        <div class="header">
+            <h2>LAPORAN MUTASI STOK BULANAN</h2>
+            <p>PT TANA SUBUR NUSANTARA</p>
+        </div>
+        
+        <div class="meta-info">
+            Kategori: ${catName} <br>
+            Periode: ${monthName}
+        </div>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th width="5%">No</th>
+                    <th width="35%" style="text-align: left;">Nama Item / Kode</th>
+                    <th width="10%">Satuan</th>
+                    <th width="12%" class="t-right">Stok Awal</th>
+                    <th width="12%" class="t-right">Masuk (+)</th>
+                    <th width="12%" class="t-right">Keluar (-)</th>
+                    <th width="14%" class="t-right">Stok Akhir</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${trs}
+            </tbody>
+        </table>
+        
+        <div class="footer">
+            <div class="sign-box">
+                <div class="title">Dibuat Oleh,</div>
+                <div class="name">${window._session?.fullName || 'Admin Logistik'}</div>
+            </div>
+            <div class="sign-box">
+                <div class="title">Diketahui Oleh,</div>
+                <div class="name">Manajer Logistik</div>
+            </div>
+        </div>
+    </body>
+    </html>`;
+
+    const printWin = window.open('', '_blank');
+    if (printWin) {
+        printWin.document.write(printHtml);
+        printWin.document.close();
+    } else {
+        alert("Pop-up diblokir. Mohon izinkan pop-up untuk mencetak PDF.");
+    }
 };
 
 window.getEffectiveStockTxDate = function(t) {
