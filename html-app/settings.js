@@ -888,7 +888,16 @@ window.searchDataCorrection = async () => {
             const txDate = (tx.date || tx.transactionDate || '').slice(0, 10);
             if (!txDate) return false;
             if (txDate < from || txDate > to) return false;
-            if (type !== 'all' && tx.reference !== type && tx.type !== type) return false;
+            
+            if (type === 'CONVERSION') {
+                const isConv = (tx.reference || '').toUpperCase() === 'CONVERSION' || 
+                               (tx.notes || '').toUpperCase().includes('KONVERSI');
+                if (!isConv) return false;
+            } else if (type !== 'all') {
+                const refMatch = (tx.reference || '').toUpperCase() === type.toUpperCase();
+                const typeMatch = (tx.type || '').toUpperCase() === type.toUpperCase();
+                if (!refMatch && !typeMatch) return false;
+            }
             return true;
         });
 
