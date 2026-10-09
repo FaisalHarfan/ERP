@@ -3234,6 +3234,7 @@ function renderCustomerRows(customers) {
                     </div>
                     <div>
                         <div class="text-sm font-bold text-slate-800">${c.name}</div>
+                        <div class="text-[11px] font-semibold text-purple-600 mt-0.5"><i class="fas fa-industry mr-1"></i>${c.businessType || 'Belum Diisi'}</div>
                     </div>
                 </div>
             </td>
@@ -18292,6 +18293,7 @@ function renderSalesInvoiceTrends() {
                     <option value="Item">Item</option>
                     <option value="Customer">Customer</option>
                     <option value="Territory">Territory</option>
+                    <option value="Jenis Usaha">Jenis Usaha</option>
                 </select>
 
                 <select id="sit_group_by" class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-400 focus:outline-none cursor-not-allowed outline-none" disabled>
@@ -18410,10 +18412,22 @@ window.updateSalesInvoiceTrends = () => {
                 pivot[key].periods[pIdx].amt += parseFloat(item.subtotal) || 0;
             });
         } else {
-            // Customer based
             const cust = customers.find(c => c.id === inv.customerId);
-            const key   = inv.customerId || 'unknown';
-            const label = cust?.name || inv.customerName || key;
+            let key, label;
+            
+            if (basedOn === 'Territory') {
+                key = cust?.region || cust?.city || 'Unknown';
+                if (key.trim() === '') key = 'Unknown';
+                label = key;
+            } else if (basedOn === 'Jenis Usaha') {
+                key = cust?.businessType || 'Belum Diisi';
+                if (key.trim() === '') key = 'Belum Diisi';
+                label = key;
+            } else {
+                key = inv.customerId || 'unknown';
+                label = cust?.name || inv.customerName || key;
+            }
+
             if (!pivot[key]) {
                 pivot[key] = { label, code: key, currency, periods: Array(periods.length).fill(null).map(() => ({qty:0, amt:0})) };
             }
