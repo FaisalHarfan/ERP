@@ -18447,30 +18447,89 @@ window.updateSalesInvoiceTrends = () => {
         }
     });
 
-    const rows = Object.values(pivot);
+    const isItem = basedOn === 'Item';
 
-    const datasets = [{
-        label: 'Total Invoice Value',
-        data: chartTotalAmt,
-        borderColor: '#2563eb',
-        backgroundColor: 'rgba(37, 99, 235, 0.08)',
-        fill: true,
-        pointBackgroundColor: '#2563eb',
-        pointBorderColor: '#ffffff',
-        pointBorderWidth: 2,
-        pointHoverBackgroundColor: '#2563eb',
-        pointHoverBorderColor: '#ffffff',
-        pointRadius: 4,
-        pointHoverRadius: 6,
-        borderWidth: 2.5,
-        tension: 0.3
-    }];
+    let rows = Object.values(pivot).map(row => {
+        row.totalQty = row.periods.reduce((s, p) => s + p.qty, 0);
+        row.totalAmt = row.periods.reduce((s, p) => s + p.amt, 0);
+        return row;
+    });
 
-    // Draw Chart
-    const ctx = document.getElementById('sit_chart');
-    if (ctx) {
-        if (window._sitChart) window._sitChart.destroy();
-        window._sitChart = new Chart(ctx, {
+    if (isItem) {
+        rows.sort((a, b) => b.totalQty - a.totalQty);
+    } else {
+        rows.sort((a, b) => b.totalAmt - a.totalAmt);
+    }
+
+    let chartConfig = {};
+
+    if (isItem) {
+        const top5 = rows.slice(0, 5);
+        const chartLabels = top5.map(r => r.label.length > 25 ? r.label.slice(0,25) + '...' : r.label);
+        const chartData = top5.map(r => r.totalQty);
+        
+        const TOP5_COLORS = [
+            { border: '#8b5cf6', bg: 'rgba(139,92,246,0.85)' },
+            { border: '#0ea5e9', bg: 'rgba(14,165,233,0.85)' },
+            { border: '#10b981', bg: 'rgba(16,185,129,0.85)' },
+            { border: '#f59e0b', bg: 'rgba(245,158,11,0.85)' },
+            { border: '#ef4444', bg: 'rgba(239,68,68,0.85)' }
+        ];
+
+        chartConfig = {
+            type: 'bar',
+            data: {
+                labels: chartLabels,
+                datasets: [{
+                    label: 'Total Qty',
+                    data: chartData,
+                    backgroundColor: TOP5_COLORS.map(c => c.bg).slice(0, chartData.length),
+                    borderColor: TOP5_COLORS.map(c => c.border).slice(0, chartData.length),
+                    borderWidth: 2,
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: c => ' Total Qty: ' + new Intl.NumberFormat('id-ID').format(c.parsed.y)
+                        }
+                    }
+                },
+                scales: {
+                    x: { grid: { color: 'transparent', drawBorder: false }, ticks: { color: '#6b7280', font: { size: 10 } } },
+                    y: {
+                        grid: { color: '#f3f4f6', strokeDash: [3, 3] },
+                        border: { display: false },
+                        ticks: { color: '#6b7280', font: { size: 10 } },
+                        beginAtZero: true
+                    }
+                }
+            }
+        };
+    } else {
+        const datasets = [{
+            label: 'Total Invoice Value',
+            data: chartTotalAmt,
+            borderColor: '#2563eb',
+            backgroundColor: 'rgba(37, 99, 235, 0.08)',
+            fill: true,
+            pointBackgroundColor: '#2563eb',
+            pointBorderColor: '#ffffff',
+            pointBorderWidth: 2,
+            pointHoverBackgroundColor: '#2563eb',
+            pointHoverBorderColor: '#ffffff',
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            borderWidth: 2.5,
+            tension: 0.3
+        }];
+
+        chartConfig = {
             type: 'line',
             data: {
                 labels: periods,
@@ -18505,10 +18564,15 @@ window.updateSalesInvoiceTrends = () => {
                     }
                 }
             }
-        });
+        };
     }
 
-    const isItem = basedOn === 'Item';
+    // Draw Chart
+    const ctx = document.getElementById('sit_chart');
+    if (ctx) {
+        if (window._sitChart) window._sitChart.destroy();
+        window._sitChart = new Chart(ctx, chartConfig);
+    }
 
     // Thead
     const thead = document.getElementById('sit_thead');
