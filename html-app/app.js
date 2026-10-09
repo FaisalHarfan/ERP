@@ -19358,39 +19358,50 @@ window.updateSalesRegionTrends = () => {
         chartTotalQty[pIdx] += orderQty;
     });
 
-    const rows = Object.entries(pivot).map(([region, data]) => ({ region, periods: data.periods }));
+    // Sort rows by total qty descending
+    const rows = Object.entries(pivot)
+        .map(([region, data]) => ({
+            region,
+            periods: data.periods,
+            total: data.periods.reduce((s, v) => s + v, 0)
+        }))
+        .sort((a, b) => b.total - a.total);
+
+    // TOP 5 regions for chart
+    const TOP5_COLORS = [
+        { border: '#8b5cf6', bg: 'rgba(139,92,246,0.75)' },
+        { border: '#0ea5e9', bg: 'rgba(14,165,233,0.75)' },
+        { border: '#10b981', bg: 'rgba(16,185,129,0.75)' },
+        { border: '#f59e0b', bg: 'rgba(245,158,11,0.75)' },
+        { border: '#ef4444', bg: 'rgba(239,68,68,0.75)' }
+    ];
+    const top5 = rows.slice(0, 5);
+    const chartLabels = top5.map(r => r.region);
+    const chartTotals = top5.map(r => r.total);
 
     const datasets = [{
         label: 'Total Qty (Kg)',
-        data: chartTotalQty,
-        borderColor: '#8b5cf6',
-        backgroundColor: 'rgba(139, 92, 246, 0.08)',
-        fill: true,
-        pointBackgroundColor: '#8b5cf6',
-        pointBorderColor: '#ffffff',
-        pointBorderWidth: 2,
-        pointHoverBackgroundColor: '#8b5cf6',
-        pointHoverBorderColor: '#ffffff',
-        pointRadius: 4,
-        pointHoverRadius: 6,
-        borderWidth: 2.5,
-        tension: 0.3
+        data: chartTotals,
+        backgroundColor: TOP5_COLORS.map(c => c.bg),
+        borderColor: TOP5_COLORS.map(c => c.border),
+        borderWidth: 2,
+        borderRadius: 6
     }];
 
-    // Draw Chart
+    // Draw Chart — Bar chart TOP 5 region
     const ctx = document.getElementById('srt_chart');
     if (ctx) {
         if (window._srtChart) window._srtChart.destroy();
         window._srtChart = new Chart(ctx, {
-            type: 'line',
+            type: 'bar',
             data: {
-                labels: periods,
+                labels: chartLabels,
                 datasets: datasets
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                interaction: { mode: 'index', intersect: false },
+                indexAxis: 'x',
                 plugins: {
                     legend: { display: false },
                     tooltip: {
@@ -19400,11 +19411,14 @@ window.updateSalesRegionTrends = () => {
                     }
                 },
                 scales: {
-                    x: { grid: { color: 'transparent', drawBorder: false }, ticks: { color: '#6b7280', font: { size: 10 } } },
+                    x: {
+                        grid: { color: 'transparent' },
+                        ticks: { color: '#374151', font: { size: 11, weight: '600' } }
+                    },
                     y: {
-                        grid: { color: '#f3f4f6', strokeDash: [3, 3] },
+                        grid: { color: '#f3f4f6' },
                         border: { display: false },
-                        ticks: { 
+                        ticks: {
                             color: '#6b7280', font: { size: 10 },
                             callback: v => {
                                 if(v >= 1000000) return (v/1000000).toFixed(0) + ' M';
