@@ -18369,8 +18369,7 @@ window.updateSalesInvoiceTrends = () => {
     // Config periods based on month / period dropdown
     let periods = [];
     if (isSpecificMonth) {
-        const daysInMonth = new Date(year, monthNum, 0).getDate();
-        periods = Array.from({ length: daysInMonth }, (_, i) => `Tgl ${i + 1}`);
+        periods = [document.getElementById('sit_month').options[document.getElementById('sit_month').selectedIndex].text];
     } else if (period === 'Monthly') {
         periods = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     } else if (period === 'Quarterly') {
@@ -18405,7 +18404,7 @@ window.updateSalesInvoiceTrends = () => {
         let pIdx = 0;
         
         if (isSpecificMonth) {
-            pIdx = date.getDate() - 1;
+            pIdx = 0;
         } else if (period === 'Monthly') {
             pIdx = monthIdx;
         } else if (period === 'Quarterly') {
@@ -19408,10 +19407,27 @@ window.renderSalesRegionTrends = () => {
             <div class="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white shadow-sm shrink-0">
                 <select id="srt_period" onchange="updateSalesRegionTrends()"
                     class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
-                    <option value="Monthly" selected>Monthly</option>
+                    <option value="Monthly" selected>Monthly (Jan - Dec)</option>
                     <option value="Quarterly">Quarterly</option>
                     <option value="Half-Yearly">Half-Yearly</option>
                     <option value="Yearly">Yearly</option>
+                </select>
+
+                <select id="srt_month" onchange="updateSalesRegionTrends()"
+                    class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
+                    <option value="All" selected>Semua Bulan (Jan - Des)</option>
+                    <option value="1">Januari</option>
+                    <option value="2">Februari</option>
+                    <option value="3">Maret</option>
+                    <option value="4">April</option>
+                    <option value="5">Mei</option>
+                    <option value="6">Juni</option>
+                    <option value="7">Juli</option>
+                    <option value="8">Agustus</option>
+                    <option value="9">September</option>
+                    <option value="10">Oktober</option>
+                    <option value="11">November</option>
+                    <option value="12">Desember</option>
                 </select>
 
                 <select id="srt_based_on" class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-400 focus:outline-none cursor-not-allowed outline-none" disabled>
@@ -19469,12 +19485,22 @@ window.updateSalesRegionTrends = () => {
     const year          = parseInt(document.getElementById('srt_year')?.value || new Date().getFullYear());
     const period        = document.getElementById('srt_period')?.value || 'Monthly';
     const includeClosed = document.getElementById('srt_include_closed')?.checked;
+    const selectedMonth = document.getElementById('srt_month')?.value || 'All';
+    const isSpecificMonth = selectedMonth !== 'All';
+    const monthNum      = isSpecificMonth ? parseInt(selectedMonth) : null;
     
     let periods = [];
-    if (period === 'Monthly') periods = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    else if (period === 'Quarterly') periods = ['Q1', 'Q2', 'Q3', 'Q4'];
-    else if (period === 'Half-Yearly') periods = ['H1', 'H2'];
-    else if (period === 'Yearly') periods = [year.toString()];
+    if (isSpecificMonth) {
+        periods = [document.getElementById('srt_month').options[document.getElementById('srt_month').selectedIndex].text];
+    } else if (period === 'Monthly') {
+        periods = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    } else if (period === 'Quarterly') {
+        periods = ['Q1', 'Q2', 'Q3', 'Q4'];
+    } else if (period === 'Half-Yearly') {
+        periods = ['H1', 'H2'];
+    } else if (period === 'Yearly') {
+        periods = [year.toString()];
+    }
     
     let orders = db.read('salesOrders') || [];
     const customers = db.read('customers') || [];
@@ -19483,6 +19509,7 @@ window.updateSalesRegionTrends = () => {
     orders = orders.filter(so => {
         const d = new Date(so.date || so.createdAt);
         if (d.getFullYear() !== year) return false;
+        if (isSpecificMonth && (d.getMonth() + 1) !== monthNum) return false;
         
         if (!includeClosed && (so.status === 'CLOSED' || so.status === 'REJECTED' || so.status === 'CANCELED')) return false;
         return true;
@@ -19495,8 +19522,8 @@ window.updateSalesRegionTrends = () => {
         const date = new Date(so.date || so.createdAt);
         const monthIdx = date.getMonth();
         let pIdx = 0;
-        
-        if (period === 'Monthly') pIdx = monthIdx;
+        if (isSpecificMonth) pIdx = 0;
+        else if (period === 'Monthly') pIdx = monthIdx;
         else if (period === 'Quarterly') pIdx = Math.floor(monthIdx / 3);
         else if (period === 'Half-Yearly') pIdx = Math.floor(monthIdx / 6);
         else if (period === 'Yearly') pIdx = 0;
