@@ -3274,7 +3274,7 @@ window.openCustomerModal = async (id = null, afterView = null) => {
 
             <!-- Form Body -->
             <div class="flex-1 overflow-y-auto p-8 bg-slate-50/30 custom-scrollbar pb-20">
-                <div class="max-w-5xl mx-auto space-y-8">
+                <div class="space-y-8">
                     <!-- General Info -->
                     <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-6">
                         <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
@@ -3299,6 +3299,24 @@ window.openCustomerModal = async (id = null, afterView = null) => {
                             <div>
                                 <label class="block text-sm font-semibold text-slate-600 mb-2">Phone Number <span class="text-red-400">*</span></label>
                                 <input type="text" id="cust_phone" value="${customer.phone}" placeholder="081x xxxx xxxx" class="w-full bg-slate-50 border-2 border-transparent rounded-xl px-4 py-3 text-sm font-bold text-slate-800 focus:bg-white focus:border-blue-400 outline-none transition-all">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Jenis Usaha -->
+                    <div class="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm space-y-6">
+                        <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                            <i class="fas fa-industry text-purple-500"></i> Jenis Usaha
+                        </h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Jenis Usaha <span class="text-red-400">*</span></label>
+                                <select id="cust_business_type" class="w-full bg-slate-50 border-2 border-transparent rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:bg-white focus:border-blue-400 outline-none cursor-pointer transition-all appearance-none">
+                                    <option value="" ${!customer.businessType ? 'selected' : ''}>-- Pilih Jenis Usaha --</option>
+                                    <option value="Penggoreng" ${customer.businessType === 'Penggoreng' ? 'selected' : ''}>Penggoreng</option>
+                                    <option value="Distributor Mentah" ${customer.businessType === 'Distributor Mentah' ? 'selected' : ''}>Distributor Mentah</option>
+                                    <option value="Pabrik Snack" ${customer.businessType === 'Pabrik Snack' ? 'selected' : ''}>Pabrik Snack</option>
+                                </select>
                             </div>
                         </div>
                     </div>
@@ -3493,6 +3511,7 @@ window.saveCustomer = async (id) => {
     const city = document.getElementById('cust_city').value.trim();
     const paymentTerm = document.getElementById('cust_payment_term').value;
     const ppn = parseInt(document.getElementById('cust_ppn').value) || 0;
+    const businessType = document.getElementById('cust_business_type')?.value || '';
     const commonProducts = window.tempCustomerProducts || [];
 
     if (!name) { showToast('Nama Customer harus diisi', 'error'); return; }
@@ -3505,7 +3524,7 @@ window.saveCustomer = async (id) => {
     if (!city) { showToast('Kota harus diisi', 'error'); return; }
     if (!paymentTerm) { showToast('Sistem Pembayaran harus dipilih', 'error'); return; }
 
-    const data = { name, phone, email, address, contactPerson, shippingAddress, paymentTerm, region, city, ppn, commonProducts };
+    const data = { name, phone, email, address, contactPerson, shippingAddress, paymentTerm, region, city, ppn, businessType, commonProducts };
 
     try {
         if (id) {
