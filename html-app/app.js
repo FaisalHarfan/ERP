@@ -3232,9 +3232,11 @@ function renderCustomerRows(customers) {
                     <div class="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-xs font-bold shrink-0">
                         ${(c.name || '??').substring(0,2).toUpperCase()}
                     </div>
-                    <div>
+                    <div class="flex items-center gap-2 flex-wrap">
                         <div class="text-sm font-bold text-slate-800">${c.name}</div>
-                        <div class="text-[11px] font-semibold text-purple-600 mt-0.5"><i class="fas fa-industry mr-1"></i>${c.businessType || 'Belum Diisi'}</div>
+                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${c.businessType ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-400'}">
+                            <i class="fas fa-industry text-[9px]"></i>${c.businessType || 'Belum Diisi'}
+                        </span>
                     </div>
                 </div>
             </td>
@@ -3604,14 +3606,24 @@ window.saveCustomer = async (id) => {
     if (!city) { showToast('Kota harus diisi', 'error'); return; }
     if (!paymentTerm) { showToast('Sistem Pembayaran harus dipilih', 'error'); return; }
 
-    const data = { name, phone, email, address, contactPerson, shippingAddress, paymentTerm, region, city, ppn, businessType, commonProducts };
+    const data = { 
+        name, phone, email, address, contactPerson, shippingAddress, 
+        paymentTerm, region, city, ppn, 
+        businessType: businessType || null,
+        commonProducts: commonProducts || []
+    };
 
     try {
         if (id) {
-            await db.update('customers', id, data);
-            // Don't show toast yet, wait until everything is done
+            const updateResult = await db.update('customers', id, data);
+            if (!updateResult) {
+                throw new Error('Server tidak merespons atau gagal menyimpan data. Periksa koneksi server.');
+            }
         } else {
-            await db.insert('customers', data);
+            const insertResult = await db.insert('customers', data);
+            if (!insertResult) {
+                throw new Error('Server tidak merespons atau gagal menyimpan data. Periksa koneksi server.');
+            }
         }
 
         // Only navigate/refresh if the DB operation succeeded

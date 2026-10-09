@@ -56,6 +56,7 @@ const Customer = sequelize.define('customers', {
     npwp: DataTypes.STRING(50),
     payment_term: DataTypes.STRING(100),
     ppn: DataTypes.DECIMAL(5, 2),
+    businessType: { type: DataTypes.STRING(100), field: 'business_type' },
     common_products: { type: DataTypes.JSONB, defaultValue: [] }
 });
 
