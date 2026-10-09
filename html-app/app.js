@@ -18280,30 +18280,12 @@ function renderSalesInvoiceTrends() {
         <div class="min-h-full flex flex-col font-sans bg-white">
             <!-- ERPNext-style compact header -->
             <div class="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white shadow-sm shrink-0">
-                <select id="sit_period" onchange="updateSalesInvoiceTrends()"
-                    class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
-                    <option value="Monthly" selected>Monthly (Jan - Dec)</option>
-                    <option value="Quarterly">Quarterly</option>
-                    <option value="Half-Yearly">Half-Yearly</option>
-                    <option value="Yearly">Yearly</option>
-                </select>
-
-                <select id="sit_month" onchange="updateSalesInvoiceTrends()"
-                    class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
-                    <option value="All" selected>Semua Bulan (Jan - Des)</option>
-                    <option value="1">Januari</option>
-                    <option value="2">Februari</option>
-                    <option value="3">Maret</option>
-                    <option value="4">April</option>
-                    <option value="5">Mei</option>
-                    <option value="6">Juni</option>
-                    <option value="7">Juli</option>
-                    <option value="8">Agustus</option>
-                    <option value="9">September</option>
-                    <option value="10">Oktober</option>
-                    <option value="11">November</option>
-                    <option value="12">Desember</option>
-                </select>
+                
+                <div class="flex items-center gap-1.5">
+                    <input type="date" id="sit_start_date" onchange="updateSalesInvoiceTrends()" value="${currentYear}-01-01" class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 outline-none w-[130px]">
+                    <span class="text-gray-400 text-xs font-semibold">to</span>
+                    <input type="date" id="sit_end_date" onchange="updateSalesInvoiceTrends()" value="${currentYear}-12-31" class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 outline-none w-[130px]">
+                </div>
 
                 <select id="sit_based_on" onchange="updateSalesInvoiceTrends()"
                     class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
@@ -18315,9 +18297,6 @@ function renderSalesInvoiceTrends() {
                 <select id="sit_group_by" class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-400 focus:outline-none cursor-not-allowed outline-none" disabled>
                     <option value="">Group By</option>
                 </select>
-                
-                <input type="number" id="sit_year" value="${currentYear}" onchange="updateSalesInvoiceTrends()"
-                    class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 outline-none w-24">
 
                 <div class="flex-1"></div>
                 <button onclick="exportSITrendsCsv()" class="bg-gray-100 border border-gray-200 rounded-md px-3 py-1.5 text-[13px] text-gray-700 transition-colors hover:bg-gray-200 shadow-sm">
@@ -18359,38 +18338,48 @@ function renderSalesInvoiceTrends() {
 }
 
 window.updateSalesInvoiceTrends = () => {
-    const year          = parseInt(document.getElementById('sit_year')?.value || new Date().getFullYear());
     const basedOn       = document.getElementById('sit_based_on')?.value || 'Item';
-    const period        = document.getElementById('sit_period')?.value || 'Monthly';
-    const selectedMonth = document.getElementById('sit_month')?.value || 'All';
-    const isSpecificMonth = selectedMonth !== 'All';
-    const monthNum      = isSpecificMonth ? parseInt(selectedMonth) : null;
+    const startStr      = document.getElementById('sit_start_date')?.value;
+    const endStr        = document.getElementById('sit_end_date')?.value;
     
-    // Config periods based on month / period dropdown
+    const currYear = new Date().getFullYear();
+    const startDate = startStr ? new Date(startStr) : new Date(currYear, 0, 1);
+    const endDate = endStr ? new Date(endStr) : new Date(currYear, 11, 31);
+    
+    // Build periods (Months)
+    let current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+    const endMonth = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+    
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     let periods = [];
-    if (isSpecificMonth) {
-        periods = [document.getElementById('sit_month').options[document.getElementById('sit_month').selectedIndex].text];
-    } else if (period === 'Monthly') {
-        periods = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    } else if (period === 'Quarterly') {
-        periods = ['Q1', 'Q2', 'Q3', 'Q4'];
-    } else if (period === 'Half-Yearly') {
-        periods = ['H1', 'H2'];
-    } else if (period === 'Yearly') {
-        periods = [year.toString()];
+    const periodKeys = [];
+    
+    while (current <= endMonth) {
+        periods.push(`${monthNames[current.getMonth()]} ${current.getFullYear()}`);
+        periodKeys.push(`${current.getFullYear()}-${current.getMonth()}`);
+        current.setMonth(current.getMonth() + 1);
+    }
+    
+    // Fallback if empty
+    if (periods.length === 0) {
+        periods = [`${monthNames[startDate.getMonth()]} ${startDate.getFullYear()}`];
+        periodKeys = [`${startDate.getFullYear()}-${startDate.getMonth()}`];
     }
     
     const invoices  = db.read('salesInvoices') || [];
     const customers = db.read('customers') || [];
 
-    // Filter by year & month (excluding CANCELLED/CANCELED docs)
+    // Filter by Date Range (excluding CANCELLED docs)
     const yearInvs = invoices.filter(inv => {
         const d = new Date(inv.date || inv.createdAt);
         const statusUpper = (inv.status || '').toUpperCase();
-        const isCancelled = statusUpper === 'CANCELLED' || statusUpper === 'CANCELED';
-        if (isCancelled) return false;
-        if (d.getFullYear() !== year) return false;
-        if (isSpecificMonth && (d.getMonth() + 1) !== monthNum) return false;
+        if (statusUpper === 'CANCELLED' || statusUpper === 'CANCELED') return false;
+        
+        const invDateOnly = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        const startOnly = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+        const endOnly = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+        
+        if (invDateOnly < startOnly || invDateOnly > endOnly) return false;
         return true;
     });
 
@@ -18400,21 +18389,10 @@ window.updateSalesInvoiceTrends = () => {
 
     yearInvs.forEach(inv => {
         const date = new Date(inv.date || inv.createdAt);
-        const monthIdx = date.getMonth();
-        let pIdx = 0;
+        const pKey = `${date.getFullYear()}-${date.getMonth()}`;
+        const pIdx = periodKeys.indexOf(pKey);
         
-        if (isSpecificMonth) {
-            pIdx = 0;
-        } else if (period === 'Monthly') {
-            pIdx = monthIdx;
-        } else if (period === 'Quarterly') {
-            pIdx = Math.floor(monthIdx / 3);
-        } else if (period === 'Half-Yearly') {
-            pIdx = Math.floor(monthIdx / 6);
-        } else if (period === 'Yearly') {
-            pIdx = 0;
-        }
-        if (pIdx < 0 || pIdx >= periods.length) return;
+        if (pIdx < 0) return;
         const currency = 'IDR';
 
         chartTotalAmt[pIdx] += parseFloat(inv.totalAmount || inv.grandTotal || 0);
@@ -18655,8 +18633,8 @@ window.exportSITrendsCsv = () => {
     });
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `sales_invoice_trends_${document.getElementById('sit_year')?.value || ''}.csv`;
+    const startStr = document.getElementById('sit_start_date')?.value || '';
+    a.download = `sales_invoice_trends_${startStr}.csv`;
     a.click();
 };
 // ─── Sales Quotation Trends ──────────────────────────────────
@@ -19405,37 +19383,15 @@ window.renderSalesRegionTrends = () => {
         <div class="min-h-full flex flex-col font-sans bg-white">
             <!-- ERPNext-style compact header -->
             <div class="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white shadow-sm shrink-0">
-                <select id="srt_period" onchange="updateSalesRegionTrends()"
-                    class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
-                    <option value="Monthly" selected>Monthly (Jan - Dec)</option>
-                    <option value="Quarterly">Quarterly</option>
-                    <option value="Half-Yearly">Half-Yearly</option>
-                    <option value="Yearly">Yearly</option>
-                </select>
-
-                <select id="srt_month" onchange="updateSalesRegionTrends()"
-                    class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
-                    <option value="All" selected>Semua Bulan (Jan - Des)</option>
-                    <option value="1">Januari</option>
-                    <option value="2">Februari</option>
-                    <option value="3">Maret</option>
-                    <option value="4">April</option>
-                    <option value="5">Mei</option>
-                    <option value="6">Juni</option>
-                    <option value="7">Juli</option>
-                    <option value="8">Agustus</option>
-                    <option value="9">September</option>
-                    <option value="10">Oktober</option>
-                    <option value="11">November</option>
-                    <option value="12">Desember</option>
-                </select>
+                <div class="flex items-center gap-1.5">
+                    <input type="date" id="srt_start_date" onchange="updateSalesRegionTrends()" value="${currentYear}-01-01" class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 outline-none w-[130px]">
+                    <span class="text-gray-400 text-xs font-semibold">to</span>
+                    <input type="date" id="srt_end_date" onchange="updateSalesRegionTrends()" value="${currentYear}-12-31" class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 outline-none w-[130px]">
+                </div>
 
                 <select id="srt_based_on" class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-400 focus:outline-none cursor-not-allowed outline-none" disabled>
                     <option value="Region">Region</option>
                 </select>
-
-                <input type="number" id="srt_year" value="${currentYear}" onchange="updateSalesRegionTrends()"
-                    class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 outline-none w-24">
 
                 <label class="flex items-center gap-2 text-[13px] text-gray-700 cursor-pointer ml-2">
                     <input type="checkbox" id="srt_include_closed" onchange="updateSalesRegionTrends()" class="rounded border-gray-300 text-blue-600 outline-none">
@@ -19482,24 +19438,30 @@ window.renderSalesRegionTrends = () => {
 };
 
 window.updateSalesRegionTrends = () => {
-    const year          = parseInt(document.getElementById('srt_year')?.value || new Date().getFullYear());
-    const period        = document.getElementById('srt_period')?.value || 'Monthly';
     const includeClosed = document.getElementById('srt_include_closed')?.checked;
-    const selectedMonth = document.getElementById('srt_month')?.value || 'All';
-    const isSpecificMonth = selectedMonth !== 'All';
-    const monthNum      = isSpecificMonth ? parseInt(selectedMonth) : null;
+    const startStr      = document.getElementById('srt_start_date')?.value;
+    const endStr        = document.getElementById('srt_end_date')?.value;
     
+    const currYear = new Date().getFullYear();
+    const startDate = startStr ? new Date(startStr) : new Date(currYear, 0, 1);
+    const endDate = endStr ? new Date(endStr) : new Date(currYear, 11, 31);
+    
+    let current = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
+    const endMonth = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+    
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     let periods = [];
-    if (isSpecificMonth) {
-        periods = [document.getElementById('srt_month').options[document.getElementById('srt_month').selectedIndex].text];
-    } else if (period === 'Monthly') {
-        periods = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    } else if (period === 'Quarterly') {
-        periods = ['Q1', 'Q2', 'Q3', 'Q4'];
-    } else if (period === 'Half-Yearly') {
-        periods = ['H1', 'H2'];
-    } else if (period === 'Yearly') {
-        periods = [year.toString()];
+    const periodKeys = [];
+    
+    while (current <= endMonth) {
+        periods.push(`${monthNames[current.getMonth()]} ${current.getFullYear()}`);
+        periodKeys.push(`${current.getFullYear()}-${current.getMonth()}`);
+        current.setMonth(current.getMonth() + 1);
+    }
+    
+    if (periods.length === 0) {
+        periods = [`${monthNames[startDate.getMonth()]} ${startDate.getFullYear()}`];
+        periodKeys = [`${startDate.getFullYear()}-${startDate.getMonth()}`];
     }
     
     let orders = db.read('salesOrders') || [];
@@ -19508,10 +19470,14 @@ window.updateSalesRegionTrends = () => {
     // Apply Filter logic
     orders = orders.filter(so => {
         const d = new Date(so.date || so.createdAt);
-        if (d.getFullYear() !== year) return false;
-        if (isSpecificMonth && (d.getMonth() + 1) !== monthNum) return false;
-        
         if (!includeClosed && (so.status === 'CLOSED' || so.status === 'REJECTED' || so.status === 'CANCELED')) return false;
+        
+        const orderDateOnly = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+        const startOnly = new Date(startDate.getFullYear(), startDate.getMonth(), startDate.getDate());
+        const endOnly = new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate());
+        
+        if (orderDateOnly < startOnly || orderDateOnly > endOnly) return false;
+        
         return true;
     });
 
@@ -19520,13 +19486,10 @@ window.updateSalesRegionTrends = () => {
 
     orders.forEach(so => {
         const date = new Date(so.date || so.createdAt);
-        const monthIdx = date.getMonth();
-        let pIdx = 0;
-        if (isSpecificMonth) pIdx = 0;
-        else if (period === 'Monthly') pIdx = monthIdx;
-        else if (period === 'Quarterly') pIdx = Math.floor(monthIdx / 3);
-        else if (period === 'Half-Yearly') pIdx = Math.floor(monthIdx / 6);
-        else if (period === 'Yearly') pIdx = 0;
+        const pKey = `${date.getFullYear()}-${date.getMonth()}`;
+        const pIdx = periodKeys.indexOf(pKey);
+        
+        if (pIdx < 0) return;
         
         const cust = customers.find(c => c.id === so.customerId);
         let rawRegion = cust?.region || cust?.city || 'Unknown';
@@ -19686,8 +19649,9 @@ window.exportSalesRegionCsv = () => {
     });
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
+    const startStr = document.getElementById('srt_start_date')?.value || '';
     a.href = URL.createObjectURL(blob);
-    a.download = `sales_region_report_${document.getElementById('srt_year')?.value || ''}.csv`;
+    a.download = `sales_region_report_${startStr}.csv`;
     a.click();
 };
 
