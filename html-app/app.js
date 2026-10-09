@@ -1891,7 +1891,7 @@ function renderSalesDashboard() {
             <!-- Chart Row 2 -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 ${chartPanel(`Tren Penjualan Bulanan (${filters.fiscalYear})`, 'chartTopCustomers', 'h-[250px]')}
-                ${noDataPanel('Sales Order Analysis')}
+                ${chartPanel('Penjualan Berdasarkan Jenis Usaha', 'chartBusinessType', 'h-[250px]')}
             </div>
         </div>
     `;
@@ -2231,7 +2231,7 @@ window.initSalesCharts = function(invoices, customers, allYearInvoices) {
     const filters = window.dashFilters;
     
     // Helper to destroy existing charts if any
-    const chartIds = ['chartSOTrends', 'chartTopCustomers'];
+    const chartIds = ['chartSOTrends', 'chartTopCustomers', 'chartBusinessType'];
     chartIds.forEach(id => {
         const existing = Chart.getChart(id);
         if (existing) existing.destroy();
@@ -2404,7 +2404,86 @@ window.initSalesCharts = function(invoices, customers, allYearInvoices) {
             }
         });
     }
+
+    // 3. Penjualan Berdasarkan Jenis Usaha
+    const ctxBusinessType = document.getElementById('chartBusinessType');
+    if (ctxBusinessType) {
+        const businessTotals = {};
+        
+        // Use allYearInvoices if period is monthly/yearly to show whole dataset proportion
+        // Or if we just want it based on the exact same filter, use invoices
+        // Since it's a dashboard breakdown, we'll use `invoices` (the currently filtered ones)
+        (invoices || []).forEach(inv => {
+            const cust = (customers || []).find(c => c.id === inv.customerId || c.id === inv.customer_id);
+            const bType = cust?.businessType || 'Belum Diisi';
+            
+            businessTotals[bType] = (businessTotals[bType] || 0) + parseFloat(inv.totalAmount || inv.grandTotal || 0);
+        });
+
+        const sortedBusiness = Object.entries(businessTotals)
+            .filter(x => x[1] > 0)
+            .sort((a, b) => b[1] - a[1]);
+
+        const labels = sortedBusiness.map(x => x[0]);
+        const data = sortedBusiness.map(x => x[1]);
+
+        if (data.length === 0) {
+            const parent = ctxBusinessType.parentElement;
+            parent.innerHTML = '<div class="bg-[#f8f9fa] flex items-center justify-center w-full h-full rounded-lg min-h-[220px]"><span class="text-sm text-gray-400 font-medium">Tidak ada data transaksi</span></div>';
+        } else {
+            new Chart(ctxBusinessType, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: data,
+                        backgroundColor: [
+                            'rgba(139, 92, 246, 0.85)',
+                            'rgba(14, 165, 233, 0.85)',
+                            'rgba(16, 185, 129, 0.85)',
+                            'rgba(245, 158, 11, 0.85)',
+                            'rgba(239, 68, 68, 0.85)',
+                            'rgba(107, 114, 128, 0.85)'
+                        ],
+                        hoverBackgroundColor: [
+                            '#7c3aed',
+                            '#0284c7',
+                            '#059669',
+                            '#d97706',
+                            '#dc2626',
+                            '#4b5563'
+                        ],
+                        borderWidth: 0,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '65%',
+                    plugins: {
+                        legend: { 
+                            position: 'right',
+                            labels: {
+                                padding: 20,
+                                font: { size: 11 },
+                                color: '#4b5563',
+                                usePointStyle: true,
+                                pointStyle: 'circle'
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: c => ' Rp ' + new Intl.NumberFormat('id-ID').format(c.parsed)
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
 };
+
 
 // Helper to get effective date of PO (Uses Actual Received Date if goods have been received)
 window.getPOEffectiveDate = (p) => {
