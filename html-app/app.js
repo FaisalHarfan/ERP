@@ -2516,6 +2516,11 @@ function renderPurchaseDashboard() {
                     rcptAmt = parseFloat(rcpt.totalAmount || 0);
                 }
 
+                const taxRate = parseFloat(p.taxRate) || 0;
+                if (taxRate > 0) {
+                    rcptAmt = rcptAmt * (1 + taxRate / 100);
+                }
+
                 totalPurchase += rcptAmt;
                 if (supId) {
                     supTotals[supId] = (supTotals[supId] || 0) + rcptAmt;

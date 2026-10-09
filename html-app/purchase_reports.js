@@ -1439,6 +1439,11 @@ window.updatePurchaseReceiptTrends = () => {
                 };
             });
 
+            const taxRate = parseFloat(po.taxRate) || 0;
+            if (taxRate > 0) {
+                rcptAmt = rcptAmt * (1 + taxRate / 100);
+            }
+
             allReceipts.push({
                 id: rcpt.id || rcpt.receiptNumber,
                 receiptNumber: rcpt.receiptNumber,
