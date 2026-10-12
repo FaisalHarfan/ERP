@@ -13142,25 +13142,6 @@ function renderSalesOrders() {
         customerName: (customers.find(c => c.id === so.customerId) || { name: 'Customer' }).name
     }));
 
-    // --- Chart data: Top 5 customers filtered by active date range ---
-    let chartSos = allSos.filter(s => {
-        if (s.status === 'CANCELLED') return false;
-        const d = getSODateObj(s.date || s.createdAt);
-        if (!d) return false;
-        if (filterStart && d < filterStart) return false;
-        if (filterEnd && d > filterEnd) return false;
-        return true;
-    });
-
-    const custTotals = {};
-    chartSos.forEach(s => {
-        const name = s.customerName || 'Customer';
-        custTotals[name] = (custTotals[name] || 0) + parseFloat(s.totalAmount || 0);
-    });
-    const top5 = Object.entries(custTotals)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5);
-
     // --- Table data: filtered strictly by active date range ---
     let rawSos = allSos.filter(s => {
         const d = getSODateObj(s.date || s.createdAt);
@@ -13316,24 +13297,6 @@ function renderSalesOrders() {
                 </button>
             </div>
 
-            <!-- Report Cache Message -->
-            <div class="px-6 mt-3 mb-1 text-[13px] text-gray-500 font-medium flex items-center gap-2 shrink-0">
-                <div class="w-2 h-2 rounded-full bg-[#e65c00]"></div>
-                This report was generated just now.
-            </div>
-
-            <!-- Top 5 Customers Chart -->
-            <div class="bg-white mx-0 border-b border-gray-200 shrink-0">
-                <div class="px-6 pt-4 pb-2 flex items-center justify-between">
-                    <span class="text-[13px] font-semibold text-gray-700">Top 5 Customers by Sales Order Value</span>
-                    <span class="text-[11px] text-gray-400 font-medium">${filterLabel}</span>
-                </div>
-                ${top5.length === 0
-                    ? `<div class="flex items-center justify-center h-[200px] text-gray-400 text-[13px]">Tidak ada data di periode ini</div>`
-                    : `<div class="px-6 pb-5 pt-2" style="height:220px;"><canvas id="so_top5_chart"></canvas></div>`
-                }
-            </div>
-
             <!-- Table Container -->
             <div class="flex-1 overflow-auto">
                 <table class="w-full text-left border-collapse" id="so_table">
@@ -13378,69 +13341,6 @@ function renderSalesOrders() {
 
         <div id="so-form-view" class="hidden"></div>
     `;
-
-    // Safely destroy any existing Top 5 chart
-    if (window._soTop5Chart) {
-        try { window._soTop5Chart.destroy(); } catch (e) {}
-        window._soTop5Chart = null;
-    }
-
-    // Draw Top 5 chart after DOM update
-    if (top5.length > 0) {
-        requestAnimationFrame(() => {
-            const ctx = document.getElementById('so_top5_chart');
-            if (!ctx) return;
-            if (window._soTop5Chart) {
-                try { window._soTop5Chart.destroy(); } catch (e) {}
-                window._soTop5Chart = null;
-            }
-            const palette = ['#8B5CF6', '#0EA5E9', '#10B981', '#F59E0B', '#EF4444'];
-            window._soTop5Chart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: top5.map(([name]) => name),
-                    datasets: [{
-                        label: 'Nilai SO',
-                        data: top5.map(([, val]) => val),
-                        backgroundColor: top5.map((_, i) => palette[i % palette.length]),
-                        borderRadius: 6,
-                        borderSkipped: false,
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            callbacks: {
-                                label: ctx => ' ' + formatCurrency(ctx.parsed.y)
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            grid: { display: false },
-                            ticks: { font: { size: 11, weight: '600' }, color: '#374151' }
-                        },
-                        y: {
-                            grid: { color: '#f1f5f9' },
-                            ticks: {
-                                font: { size: 10 },
-                                color: '#9CA3AF',
-                                callback: v => {
-                                    if (v >= 1e9) return (v/1e9).toFixed(1) + ' M';
-                                    if (v >= 1e6) return (v/1e6).toFixed(1) + ' Jt';
-                                    if (v >= 1e3) return (v/1e3).toFixed(0) + ' Rb';
-                                    return v;
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        });
-    }
 }
 
 function romanize(num) {
@@ -19245,52 +19145,37 @@ window.renderSalesOrderTrends = () => {
         <div class="min-h-full flex flex-col font-sans bg-white">
             <!-- ERPNext-style compact header -->
             <div class="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white shadow-sm shrink-0">
-                <select id="sot_period" onchange="updateSalesOrderTrends()"
-                    class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
-                    <option value="Monthly" selected>Monthly (Jan - Dec)</option>
-                    <option value="Quarterly">Quarterly</option>
-                    <option value="Half-Yearly">Half-Yearly</option>
-                    <option value="Yearly">Yearly</option>
-                </select>
+                <div class="flex items-center gap-1.5">
+                    <input type="date" id="sot_start_date" onchange="updateSalesOrderTrends()" value="${currentYear}-01-01" class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 outline-none w-[130px]">
+                    <span class="text-gray-400 text-xs font-semibold">to</span>
+                    <input type="date" id="sot_end_date" onchange="updateSalesOrderTrends()" value="${currentYear}-12-31" class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 outline-none w-[130px]">
+                </div>
 
-                <select id="sot_month" onchange="updateSalesOrderTrends()"
-                    class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
-                    <option value="All" selected>Semua Bulan (Jan - Des)</option>
-                    <option value="1">Januari</option>
-                    <option value="2">Februari</option>
-                    <option value="3">Maret</option>
-                    <option value="4">April</option>
-                    <option value="5">Mei</option>
-                    <option value="6">Juni</option>
-                    <option value="7">Juli</option>
-                    <option value="8">Agustus</option>
-                    <option value="9">September</option>
-                    <option value="10">Oktober</option>
-                    <option value="11">November</option>
-                    <option value="12">Desember</option>
+                <select id="sot_month" onchange="applySOTMonthFilter(this.value)"
+                    class="bg-gray-100 border-none rounded-md px-2.5 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
+                    <option value="" selected>Semua Bulan (${currentYear})</option>
+                    <option value="1">Januari</option><option value="2">Februari</option>
+                    <option value="3">Maret</option><option value="4">April</option>
+                    <option value="5">Mei</option><option value="6">Juni</option>
+                    <option value="7">Juli</option><option value="8">Agustus</option>
+                    <option value="9">September</option><option value="10">Oktober</option>
+                    <option value="11">November</option><option value="12">Desember</option>
                 </select>
 
                 <select id="sot_based_on" onchange="updateSalesOrderTrends()"
                     class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
+                    <option value="Customer" selected>Customer</option>
                     <option value="Item">Item</option>
-                    <option value="Customer">Customer</option>
                     <option value="Territory">Territory</option>
+                    <option value="Jenis Usaha">Jenis Usaha</option>
                 </select>
 
-                <select id="sot_group_by" class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-400 focus:outline-none cursor-not-allowed outline-none" disabled>
-                    <option value="">Group By</option>
-                </select>
-                
-                <input type="number" id="sot_year" value="${currentYear}" onchange="updateSalesOrderTrends()"
-                    class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 outline-none w-24">
-
-                <input type="text" id="sot_customer" placeholder="Customer Name" onkeyup="updateSalesOrderTrends()"
-                    class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 outline-none w-48">
-
-                <label class="flex items-center gap-2 text-[13px] text-gray-700 cursor-pointer ml-2">
-                    <input type="checkbox" id="sot_include_closed" onchange="updateSalesOrderTrends()" class="rounded border-gray-300 text-blue-600 outline-none">
-                    Include Closed Orders
-                </label>
+                <button onclick="updateSalesOrderTrends()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm transition-all active:scale-95 flex items-center gap-1.5" title="Filter">
+                    <i class="fas fa-filter text-[10px]"></i> Filter
+                </button>
+                <button onclick="resetSOTFilter()" class="bg-gray-100 hover:bg-gray-200 text-gray-600 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center gap-1" title="Reset">
+                    <i class="fas fa-undo text-[10px]"></i>
+                </button>
 
                 <div class="flex-1"></div>
                 <button onclick="exportSOTrendsCsv()" class="bg-gray-100 border border-gray-200 rounded-md px-3 py-1.5 text-[13px] text-gray-700 transition-colors hover:bg-gray-200 shadow-sm">
@@ -19299,7 +19184,7 @@ window.renderSalesOrderTrends = () => {
             </div>
 
             <!-- Report Cache Message -->
-            <div class="px-8 mt-4 text-[13px] text-gray-500 font-medium flex items-center gap-2">
+            <div class="px-5 mt-4 mb-2 text-[13px] text-gray-500 font-medium flex items-center gap-2">
                 <div class="w-2 h-2 rounded-full bg-[#e65c00]"></div>
                 This report was generated just now.
             </div>
@@ -19312,7 +19197,7 @@ window.renderSalesOrderTrends = () => {
             </div>
 
             <!-- Trends Table Wrapper -->
-            <div class="w-full overflow-x-auto bg-white relative">
+            <div class="w-full overflow-x-auto bg-white border border-gray-200 border-t-0 border-x-0 relative">
                 <table class="w-full text-left border-collapse" id="sot_table">
                     <thead class="bg-[#f9fafb] sticky top-0 z-20 shadow-[0_1px_0_#e5e7eb]">
                         <tr id="sot_thead" class="text-[13px] text-gray-600 border-b border-gray-200"></tr>
@@ -19320,10 +19205,10 @@ window.renderSalesOrderTrends = () => {
                     <tbody id="sot_tbody" class="divide-y divide-gray-100 text-[13px] text-gray-800"></tbody>
                 </table>
             </div>
-            
+
             <!-- Help text footer -->
             <div class="px-5 py-3 bg-white border-t border-gray-200 shrink-0 flex justify-between items-center w-full mt-auto">
-                <p class="text-[13px] text-gray-500">For comparison, use >5, <10 or =324. For ranges, use 5:10 (for values between 5 & 10).</p>
+                <p class="text-[13px] text-gray-500">For comparison, use &gt;5, &lt;10 or =324. For ranges, use 5:10 (for values between 5 &amp; 10).</p>
                 <p class="text-[12px] text-gray-500 font-medium tracking-wide">Execution Time: ${(Math.random() * 0.05 + 0.01).toFixed(6)} sec</p>
             </div>
         </div>
@@ -19331,165 +19216,230 @@ window.renderSalesOrderTrends = () => {
     updateSalesOrderTrends();
 };
 
-window.updateSalesOrderTrends = () => {
-    const year          = parseInt(document.getElementById('sot_year')?.value || new Date().getFullYear());
-    const basedOn       = document.getElementById('sot_based_on')?.value || 'Item';
-    const period        = document.getElementById('sot_period')?.value || 'Monthly';
-    const selectedMonth = document.getElementById('sot_month')?.value || 'All';
-    const custFilter    = (document.getElementById('sot_customer')?.value || '').toLowerCase();
-    const includeClosed = document.getElementById('sot_include_closed')?.checked;
-    const isSpecificMonth = selectedMonth !== 'All';
-    const monthNum      = isSpecificMonth ? parseInt(selectedMonth) : null;
-    
-    let periods = [];
-    if (isSpecificMonth) {
-        const daysInMonth = new Date(year, monthNum, 0).getDate();
-        periods = Array.from({ length: daysInMonth }, (_, i) => `Tgl ${i + 1}`);
-    } else if (period === 'Monthly') {
-        periods = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    } else if (period === 'Quarterly') {
-        periods = ['Q1', 'Q2', 'Q3', 'Q4'];
-    } else if (period === 'Half-Yearly') {
-        periods = ['H1', 'H2'];
-    } else if (period === 'Yearly') {
-        periods = [year.toString()];
+window.applySOTMonthFilter = (m) => {
+    const yr = new Date().getFullYear();
+    const sInput = document.getElementById('sot_start_date');
+    const eInput = document.getElementById('sot_end_date');
+    if (!sInput || !eInput) return;
+    if (!m) {
+        sInput.value = `${yr}-01-01`;
+        eInput.value = `${yr}-12-31`;
+    } else {
+        const mm = String(m).padStart(2, '0');
+        const lastDay = new Date(yr, parseInt(m), 0).getDate();
+        sInput.value = `${yr}-${mm}-01`;
+        eInput.value = `${yr}-${mm}-${String(lastDay).padStart(2, '0')}`;
     }
-    
-    let orders = db.read('salesOrders') || [];
-    const customers = db.read('customers') || [];
+    updateSalesOrderTrends();
+};
 
-    // Apply Filter logic
-    orders = orders.filter(so => {
-        const d = new Date(so.date || so.createdAt);
-        if (d.getFullYear() !== year) return false;
-        if (isSpecificMonth && (d.getMonth() + 1) !== monthNum) return false;
-        if (!includeClosed && (so.status === 'CLOSED' || so.status === 'REJECTED' || so.status === 'CANCELED')) return false;
-        
-        if (custFilter) {
-            const cust = customers.find(c => c.id === so.customerId);
-            const cName = (cust?.name || so.customerName || so.customerId || '').toLowerCase();
-            if (!cName.includes(custFilter)) return false;
+window.resetSOTFilter = () => {
+    const yr = new Date().getFullYear();
+    const sInput = document.getElementById('sot_start_date');
+    const eInput = document.getElementById('sot_end_date');
+    const mInput = document.getElementById('sot_month');
+    const bInput = document.getElementById('sot_based_on');
+    if (sInput) sInput.value = `${yr}-01-01`;
+    if (eInput) eInput.value = `${yr}-12-31`;
+    if (mInput) mInput.value = '';
+    if (bInput) bInput.value = 'Customer';
+    updateSalesOrderTrends();
+};
+
+window.updateSalesOrderTrends = () => {
+    const basedOn  = document.getElementById('sot_based_on')?.value || 'Customer';
+    const startStr = document.getElementById('sot_start_date')?.value;
+    const endStr   = document.getElementById('sot_end_date')?.value;
+
+    const getDateObj = (raw) => {
+        if (!raw) return null;
+        if (typeof raw === 'string') {
+            const clean = raw.split('T')[0].split(' ')[0];
+            const parts = clean.split('-');
+            if (parts.length === 3 && parts[0].length === 4) {
+                return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+            }
         }
+        const d = new Date(raw);
+        return isNaN(d.getTime()) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    };
+
+    const currYear = new Date().getFullYear();
+    const filterStart = getDateObj(startStr || `${currYear}-01-01`);
+    const filterEnd   = getDateObj(endStr   || `${currYear}-12-31`);
+    if (filterStart) filterStart.setHours(0, 0, 0, 0);
+    if (filterEnd)   filterEnd.setHours(23, 59, 59, 999);
+
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const periods = [];
+    const periodKeys = [];
+
+    let current = new Date(filterStart.getFullYear(), filterStart.getMonth(), 1);
+    const endMonth = new Date(filterEnd.getFullYear(), filterEnd.getMonth(), 1);
+
+    while (current <= endMonth) {
+        periods.push(`${monthNames[current.getMonth()]} ${current.getFullYear()}`);
+        periodKeys.push(`${current.getFullYear()}-${current.getMonth()}`);
+        current.setMonth(current.getMonth() + 1);
+    }
+
+    if (periods.length === 0) {
+        periods.push(`${monthNames[filterStart.getMonth()]} ${filterStart.getFullYear()}`);
+        periodKeys.push(`${filterStart.getFullYear()}-${filterStart.getMonth()}`);
+    }
+
+    const orders    = db.read('salesOrders') || [];
+    const customers = db.read('customers') || [];
+    const formatNum = v => new Intl.NumberFormat('id-ID', { maximumFractionDigits: 3 }).format(v || 0);
+
+    const filteredOrders = orders.filter(so => {
+        const s = (so.status || '').toUpperCase();
+        if (s === 'CANCELLED' || s === 'CANCELED' || s === 'DELETED') return false;
+        const d = getDateObj(so.date || so.createdAt);
+        if (!d) return false;
+        if (filterStart && d < filterStart) return false;
+        if (filterEnd && d > filterEnd) return false;
         return true;
     });
 
+    const isItem = basedOn === 'Item';
     const pivot = {};
-    const chartTotalAmt = Array(periods.length).fill(0); 
 
-    orders.forEach(so => {
-        const date = new Date(so.date || so.createdAt);
-        const monthIdx = date.getMonth();
-        let pIdx = 0;
-        
-        if (isSpecificMonth) {
-            pIdx = date.getDate() - 1;
-        } else if (period === 'Monthly') {
-            pIdx = monthIdx;
-        } else if (period === 'Quarterly') {
-            pIdx = Math.floor(monthIdx / 3);
-        } else if (period === 'Half-Yearly') {
-            pIdx = Math.floor(monthIdx / 6);
-        } else if (period === 'Yearly') {
-            pIdx = 0;
-        }
-        if (pIdx < 0 || pIdx >= periods.length) return;
-        
+    filteredOrders.forEach(so => {
+        const d = getDateObj(so.date || so.createdAt);
+        if (!d) return;
+        const pKey = `${d.getFullYear()}-${d.getMonth()}`;
+        const pIdx = periodKeys.indexOf(pKey);
+        if (pIdx < 0) return;
+
         const currency = 'IDR';
+        const soTotalAmt = parseFloat(so.totalAmount || so.grandTotal || 0);
 
-        chartTotalAmt[pIdx] += parseFloat(so.totalAmount || so.grandTotal || 0);
-
-        if (basedOn.includes('Item')) {
+        if (isItem) {
             (so.items || []).forEach(item => {
-                const rawLabel = item.prodText || item.itemName || '-';
+                const rawLabel = item.prodText || item.itemName || item.name || '-';
                 const label = rawLabel.split(' (')[0].trim();
-                const key = label; // Group by item name to merge OB/OK/duplicates
+                const key = label;
                 if (!pivot[key]) {
-                    pivot[key] = { label, currency, periods: Array(periods.length).fill(null).map(() => ({qty:0, amt:0})) };
+                    pivot[key] = { label, currency, periods: Array.from({ length: periods.length }, () => ({ qty: 0, amt: 0 })) };
                 }
-                pivot[key].periods[pIdx].qty += parseFloat(item.qty) || 0;
-                pivot[key].periods[pIdx].amt += parseFloat(item.subtotal) || 0;
+                const itQty = parseFloat(item.qty || 0);
+                const itAmt = parseFloat(item.subtotal || item.total || (itQty * (item.price || 0)) || 0);
+                pivot[key].periods[pIdx].qty += itQty;
+                pivot[key].periods[pIdx].amt += itAmt;
             });
         } else {
             const cust = customers.find(c => c.id === so.customerId);
-            const key   = so.customerId || 'unknown';
-            const label = cust?.name || so.customerName || key;
+            let key, label;
+
+            if (basedOn === 'Territory') {
+                key = cust?.region || cust?.city || 'Unknown';
+                if (key.trim() === '') key = 'Unknown';
+                label = key;
+            } else if (basedOn === 'Jenis Usaha') {
+                key = cust?.businessType || 'Belum Diisi';
+                if (key.trim() === '') key = 'Belum Diisi';
+                label = key;
+            } else {
+                key = so.customerId || 'unknown';
+                label = cust?.name || so.customerName || key;
+            }
+
             if (!pivot[key]) {
-                pivot[key] = { label, currency, periods: Array(periods.length).fill(null).map(() => ({qty:0, amt:0})) };
+                pivot[key] = { label, currency, periods: Array.from({ length: periods.length }, () => ({ qty: 0, amt: 0 })) };
             }
             (so.items || []).forEach(item => {
-                pivot[key].periods[pIdx].qty += parseFloat(item.qty) || 0;
+                pivot[key].periods[pIdx].qty += parseFloat(item.qty || 0);
             });
-            pivot[key].periods[pIdx].amt += parseFloat(so.totalAmount || so.grandTotal || 0);
+            pivot[key].periods[pIdx].amt += soTotalAmt;
         }
     });
 
-    const rows = Object.values(pivot);
+    let rows = Object.values(pivot).map(row => {
+        row.totalQty = row.periods.reduce((s, p) => s + (p.qty || 0), 0);
+        row.totalAmt = row.periods.reduce((s, p) => s + (p.amt || 0), 0);
+        return row;
+    });
 
-    const datasets = [{
-        label: 'Total Order Value',
-        data: chartTotalAmt,
-        borderColor: '#10b981',
-        backgroundColor: 'rgba(16, 185, 129, 0.08)',
-        fill: true,
-        pointBackgroundColor: '#10b981',
-        pointBorderColor: '#ffffff',
-        pointBorderWidth: 2,
-        pointHoverBackgroundColor: '#10b981',
-        pointHoverBorderColor: '#ffffff',
-        pointRadius: 4,
-        pointHoverRadius: 6,
-        borderWidth: 2.5,
-        tension: 0.3
-    }];
+    if (isItem) {
+        rows.sort((a, b) => b.totalQty - a.totalQty);
+    } else {
+        rows.sort((a, b) => b.totalAmt - a.totalAmt);
+    }
+
+    // Top 5 bar chart exactly matching Sales Invoice Trends UI
+    const top5 = rows.slice(0, 5);
+    const chartLabels = top5.map(r => r.label.length > 25 ? r.label.slice(0, 25).trim() + '...' : r.label);
+    const chartData = top5.map(r => isItem ? r.totalQty : r.totalAmt);
+
+    const TOP5_COLORS = [
+        { border: '#8b5cf6', bg: 'rgba(139,92,246,0.85)' },
+        { border: '#0ea5e9', bg: 'rgba(14,165,233,0.85)' },
+        { border: '#10b981', bg: 'rgba(16,185,129,0.85)' },
+        { border: '#f59e0b', bg: 'rgba(245,158,11,0.85)' },
+        { border: '#ef4444', bg: 'rgba(239,68,68,0.85)' }
+    ];
+
+    const chartConfig = {
+        type: 'bar',
+        data: {
+            labels: chartLabels,
+            datasets: [{
+                label: isItem ? 'Total Qty' : 'Total Nilai',
+                data: chartData,
+                backgroundColor: TOP5_COLORS.map(c => c.bg).slice(0, chartData.length),
+                borderColor: TOP5_COLORS.map(c => c.border).slice(0, chartData.length),
+                borderWidth: 2,
+                borderRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: c => isItem
+                            ? ' Total Qty: ' + new Intl.NumberFormat('id-ID').format(c.parsed.y) + ' KG'
+                            : ' Total: Rp ' + new Intl.NumberFormat('id-ID').format(c.parsed.y)
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: 'transparent', drawBorder: false },
+                    ticks: {
+                        color: '#6b7280',
+                        font: { size: 10 },
+                        maxRotation: 0,
+                        minRotation: 0
+                    }
+                },
+                y: {
+                    grid: { color: '#f3f4f6', strokeDash: [3, 3] },
+                    border: { display: false },
+                    ticks: {
+                        color: '#6b7280',
+                        font: { size: 10 }
+                    },
+                    beginAtZero: true
+                }
+            }
+        }
+    };
 
     // Draw Chart
     const ctx = document.getElementById('sot_chart');
     if (ctx) {
         if (window._sotChart) window._sotChart.destroy();
-        window._sotChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: periods,
-                datasets: datasets
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: { mode: 'index', intersect: false },
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: c => ' Total Order: Rp ' + new Intl.NumberFormat('id-ID').format(c.parsed.y)
-                        }
-                    }
-                },
-                scales: {
-                    x: { grid: { color: 'transparent', drawBorder: false }, ticks: { color: '#6b7280', font: { size: 10 } } },
-                    y: {
-                        grid: { color: '#f3f4f6', strokeDash: [3, 3] },
-                        border: { display: false },
-                        ticks: { 
-                            color: '#6b7280', font: { size: 10 },
-                            callback: v => {
-                                if(v >= 1000000) return (v/1000000).toFixed(0) + ' M';
-                                if(v >= 1000) return (v/1000).toFixed(0) + ' K';
-                                return v;
-                            }
-                        },
-                        beginAtZero: true
-                    }
-                }
-            }
-        });
+        window._sotChart = new Chart(ctx, chartConfig);
     }
-
-    const isItem = basedOn === 'Item';
 
     // Thead
     const thead = document.getElementById('sot_thead');
     if (!thead) return;
-    
+
     thead.innerHTML = `
         <th class="w-10 px-3 py-2 border-r border-[#e5e7eb] font-medium text-center"></th>
         <th class="min-w-[200px] px-3 py-2 border-r border-[#e5e7eb] font-medium">${basedOn}</th>
@@ -19510,7 +19460,6 @@ window.updateSalesOrderTrends = () => {
         row.periods.forEach((m, i) => { totQty[i] += m.qty; totAmt[i] += m.amt; });
     });
 
-    const formatNum = v => new Intl.NumberFormat('id-ID', { maximumFractionDigits: 3 }).format(v || 0);
     const colCount = (isItem ? 2 : 3) + periods.length;
 
     tbody.innerHTML = rows.length === 0
@@ -19540,7 +19489,7 @@ window.updateSalesOrderTrends = () => {
             <td class="px-3 py-2 border-r border-[#e5e7eb] text-right font-semibold"><span class="text-gray-400 text-[11px] mr-1">Rp</span>${formatNum(val)}</td>
         `).join('')}
     `;
-    
+
     Array.from(tbody.children).forEach((tr, i) => {
         if(tr !== totalRow && tr.children[0] && tr.children.length > 1) {
             tr.children[0].innerHTML = i + 1;
@@ -19562,7 +19511,7 @@ window.exportSOTrendsCsv = () => {
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `sales_order_trends_${document.getElementById('sot_year')?.value || ''}.csv`;
+    a.download = `sales_order_trends_${document.getElementById('sot_start_date')?.value || ''}_to_${document.getElementById('sot_end_date')?.value || ''}.csv`;
     a.click();
 };
 
