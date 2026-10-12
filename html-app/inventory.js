@@ -2346,12 +2346,20 @@ function renderProductionBoard() {
     const yieldFilterHtml = `<select id="chartProdYieldFilter" class="px-2 h-7 rounded bg-gray-50 border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors text-[11px] font-medium outline-none" onchange="window.initProdCharts(window._mosRawData)"><option value="">-- Semua Produk --</option>${prodOpts}</select>`;
 
     const chartSection = `
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-            ${chartPanel('Tren Output Produksi', 'Last synced just now', 'chartProdOutput', 'h-[300px]', true)}
-            ${chartPanel('Tren Yield Oven Kering', 'Efisiensi yield harian per produk', 'chartProdYield', 'h-[300px]', true, '', yieldFilterHtml)}
+        <!-- Chart 1: Top 5 Produk Paling Banyak Diproduksi (Full Width) -->
+        <div class="mb-4">
+            ${chartPanel('Top 5 Produk Paling Banyak Diproduksi', 'Top 5 produk berdasarkan total output (KG) & per batch (Oven Basah & Oven Kering)', 'chartTopProds', 'h-[320px]')}
         </div>
-        <div class="grid grid-cols-1 gap-4 mb-8">
-            ${chartPanel('Produk Paling Sering Diproduksi', 'Top 5 produk berdasarkan total output (KG)', 'chartTopProds', 'h-[320px]')}
+
+        <!-- Chart Row 2: Tren Output Produksi & Persentase / Distribusi Produksi -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+            ${chartPanel('Tren Output Produksi', 'Last synced just now', 'chartProdOutput', 'h-[280px]', true)}
+            ${chartPanel('Persentase Produksi Berdasarkan Tahap & Batch', 'Distribusi output Oven Basah vs Oven Kering', 'chartProdDistribution', 'h-[280px]')}
+        </div>
+
+        <!-- Chart Row 3: Tren Yield Oven Kering -->
+        <div class="mb-8">
+            ${chartPanel('Tren Yield Oven Kering', 'Efisiensi yield harian per produk', 'chartProdYield', 'h-[260px]', true, '', yieldFilterHtml)}
         </div>
     `;
 
@@ -2471,6 +2479,8 @@ window.initProdCharts = function(mos) {
     // Destroy existing instances if any
     if (window.outputChartInstance) window.outputChartInstance.destroy();
     if (window.yieldChartInstance) window.yieldChartInstance.destroy();
+    if (window.topProdChartInstance) window.topProdChartInstance.destroy();
+    if (window.distChartInstance) window.distChartInstance.destroy();
 
     // 1. Tren Output Produksi (Bar Chart)
     const ctxOutput = document.getElementById('chartProdOutput');
@@ -2624,56 +2634,294 @@ window.initProdCharts = function(mos) {
                 }
             });
         }
+    }
 
-        // 3. Top Products (Horizontal Bar Chart)
-        const ctxTop = document.getElementById('chartTopProds');
-        if (ctxTop) {
-            if (window.topProdChartInstance) window.topProdChartInstance.destroy();
-            const topProdsRaw = {};
-            mos.filter(m => m.status === 'DONE' || m.status === 'PARTIAL').forEach(m => {
-                const name = m.productName || (m.outputProducts && m.outputProducts.length > 0 ? m.outputProducts[0].itemName : null) || 'Unknown';
-                topProdsRaw[name] = (topProdsRaw[name] || 0) + (parseFloat(m.outputQty) || 0);
+    // 3. Top 5 Produk Paling Banyak Diproduksi (Per Batch: Oven Basah vs Oven Kering)
+    const ctxTop = document.getElementById('chartTopProds');
+    if (ctxTop) {
+        if (window.topProdChartInstance) window.topProdChartInstance.destroy();
+
+        const topProdsMap = {};
+        let grandTotalOutput = 0;
+        let grandTotalBasah = 0;
+        let grandTotalKering = 0;
+        let grandBasahBatches = 0;
+        let grandKeringBatches = 0;
+
+        const cleanProdName = (raw) => {
+            if (!raw) return 'Unknown';
+            let s = raw.replace(/\s*\((?:Oven\s+Basah|Oven\s+Kering|WIP)\)/gi, '').trim();
+            return s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+        };
+
+        const addProdRecord = (rawName, qty, stage, batchInc = 1) => {
+            if (!rawName || qty <= 0) return;
+            const cleanName = cleanProdName(rawName);
+            const st = (stage || '').toUpperCase();
+            const isBasah = st.includes('BASAH') || rawName.toLowerCase().includes('oven basah');
+
+            if (!topProdsMap[cleanName]) {
+                topProdsMap[cleanName] = {
+                    name: cleanName,
+                    ovenBasahQty: 0,
+                    ovenBasahBatches: 0,
+                    ovenKeringQty: 0,
+                    ovenKeringBatches: 0,
+                    totalQty: 0,
+                    totalBatches: 0
+                };
+            }
+
+            if (isBasah) {
+                topProdsMap[cleanName].ovenBasahQty += qty;
+                topProdsMap[cleanName].ovenBasahBatches += batchInc;
+                grandTotalBasah += qty;
+                grandBasahBatches += batchInc;
+            } else {
+                topProdsMap[cleanName].ovenKeringQty += qty;
+                topProdsMap[cleanName].ovenKeringBatches += batchInc;
+                grandTotalKering += qty;
+                grandKeringBatches += batchInc;
+            }
+
+            topProdsMap[cleanName].totalQty += qty;
+            topProdsMap[cleanName].totalBatches += batchInc;
+            grandTotalOutput += qty;
+        };
+
+        const finishedMos = (mos || []).filter(m => m.status === 'DONE' || m.status === 'PARTIAL' || m.status === 'COMPLETED');
+
+        finishedMos.forEach(m => {
+            if (m.targetProducts && Array.isArray(m.targetProducts) && m.targetProducts.length > 0) {
+                m.targetProducts.forEach(tp => {
+                    const q = parseFloat(tp.outputQty || tp.qty || 0);
+                    addProdRecord(tp.itemName || tp.name, q, m.stage, 1);
+                });
+            } else if (m.outputProducts && Array.isArray(m.outputProducts) && m.outputProducts.length > 0) {
+                m.outputProducts.forEach(op => {
+                    const q = parseFloat(op.outputQty || op.qty || 0);
+                    addProdRecord(op.itemName || op.name, q, m.stage, 1);
+                });
+            } else {
+                const q = parseFloat(m.outputQty || m.qty || 0);
+                addProdRecord(m.productName, q, m.stage, 1);
+            }
+        });
+
+        const sortedTop = Object.values(topProdsMap)
+            .filter(p => p.totalQty > 0)
+            .sort((a, b) => b.totalQty - a.totalQty)
+            .slice(0, 5);
+
+        if (sortedTop.length === 0) {
+            ctxTop.parentElement.innerHTML = '<div class="bg-[#f8f9fa] flex items-center justify-center w-full h-full rounded-lg min-h-[240px]"><span class="text-sm text-gray-400 font-medium">Belum ada data output produksi untuk periode ini</span></div>';
+        } else {
+            const labels = sortedTop.map(p => {
+                const n = p.name;
+                return n.length > 20 ? n.slice(0, 20) + '...' : n;
             });
-            const sorted = Object.entries(topProdsRaw).sort((a,b) => b[1] - a[1]).slice(0, 5);
+            const fullLabels = sortedTop.map(p => p.name);
+            const basahData = sortedTop.map(p => p.ovenBasahQty);
+            const keringData = sortedTop.map(p => p.ovenKeringQty);
 
             window.topProdChartInstance = new Chart(ctxTop, {
                 type: 'bar',
                 data: {
-                    labels: sorted.map(p => p[0]),
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Oven Basah (Kg)',
+                            data: basahData,
+                            backgroundColor: 'rgba(249, 115, 22, 0.85)',
+                            hoverBackgroundColor: '#ea580c',
+                            borderRadius: 6,
+                            barPercentage: 0.6,
+                            categoryPercentage: 0.65
+                        },
+                        {
+                            label: 'Oven Kering (Kg)',
+                            data: keringData,
+                            backgroundColor: 'rgba(16, 185, 129, 0.85)',
+                            hoverBackgroundColor: '#059669',
+                            borderRadius: 6,
+                            barPercentage: 0.6,
+                            categoryPercentage: 0.65
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                boxWidth: 10,
+                                boxHeight: 10,
+                                usePointStyle: true,
+                                pointStyle: 'circle',
+                                font: { size: 11, weight: 'bold' },
+                                color: '#475569',
+                                padding: 16
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: '#1e293b',
+                            padding: 12,
+                            cornerRadius: 8,
+                            titleFont: { size: 12, weight: 'bold' },
+                            bodyFont: { size: 11 },
+                            callbacks: {
+                                title: (items) => fullLabels[items[0].dataIndex] || items[0].label,
+                                label: (c) => {
+                                    const prod = sortedTop[c.dataIndex];
+                                    const isBasah = c.datasetIndex === 0;
+                                    const qty = isBasah ? prod.ovenBasahQty : prod.ovenKeringQty;
+                                    const batches = isBasah ? prod.ovenBasahBatches : prod.ovenKeringBatches;
+                                    const stageName = isBasah ? 'Oven Basah' : 'Oven Kering';
+                                    return ` ${stageName}: ${invFmt(qty)} Kg (${batches} Batch)`;
+                                },
+                                afterBody: (items) => {
+                                    const prod = sortedTop[items[0].dataIndex];
+                                    const pct = grandTotalOutput > 0 ? ((prod.totalQty / grandTotalOutput) * 100).toFixed(1) : 0;
+                                    return [
+                                        `--------------------------`,
+                                        `Total Output: ${invFmt(prod.totalQty)} Kg (${prod.totalBatches} Batch)`,
+                                        `Kontribusi: ${pct}% dari total produksi`
+                                    ];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: {
+                                color: '#64748b',
+                                font: { size: 11, weight: 'bold' },
+                                maxRotation: 0,
+                                minRotation: 0
+                            }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: '#f1f5f9', drawBorder: false },
+                            border: { display: false },
+                            ticks: {
+                                color: '#94a3b8',
+                                font: { size: 11 },
+                                callback: (v) => {
+                                    if (v >= 1000) return (v / 1000).toLocaleString('id-ID') + ' Ton';
+                                    return v.toLocaleString('id-ID') + ' Kg';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    // 4. Persentase / Distribusi Produksi Berdasarkan Tahap & Batch (chartProdDistribution)
+    const ctxDist = document.getElementById('chartProdDistribution');
+    if (ctxDist) {
+        if (window.distChartInstance) window.distChartInstance.destroy();
+
+        let totalOut = 0;
+        let totalBasah = 0;
+        let totalKering = 0;
+        let batchesBasah = 0;
+        let batchesKering = 0;
+
+        (mos || []).filter(m => m.status === 'DONE' || m.status === 'PARTIAL' || m.status === 'COMPLETED').forEach(m => {
+            const rawName = m.productName || (m.outputProducts && m.outputProducts[0] ? m.outputProducts[0].itemName : '') || '';
+            const st = (m.stage || '').toUpperCase();
+            const isBasah = st.includes('BASAH') || rawName.toLowerCase().includes('oven basah');
+            const qty = parseFloat(m.outputQty || m.qty || 0);
+
+            if (isBasah) {
+                totalBasah += qty;
+                batchesBasah += 1;
+            } else {
+                totalKering += qty;
+                batchesKering += 1;
+            }
+            totalOut += qty;
+        });
+
+        if (totalOut === 0) {
+            ctxDist.parentElement.innerHTML = '<div class="bg-[#f8f9fa] flex items-center justify-center w-full h-full rounded-lg min-h-[200px]"><span class="text-sm text-gray-400 font-medium">Belum ada data distribusi produksi</span></div>';
+        } else {
+            const distLabels = ['Oven Basah', 'Oven Kering'];
+            const distData = [totalBasah, totalKering];
+            const distBatches = [batchesBasah, batchesKering];
+
+            window.distChartInstance = new Chart(ctxDist, {
+                type: 'doughnut',
+                data: {
+                    labels: distLabels,
                     datasets: [{
-                        data: sorted.map(p => p[1]),
-                        backgroundColor: '#818cf8',
-                        borderRadius: 6,
-                        barPercentage: 0.5,
-                        categoryPercentage: 0.8,
-                        hoverBackgroundColor: '#6366f1'
+                        data: distData,
+                        backgroundColor: [
+                            'rgba(249, 115, 22, 0.85)',
+                            'rgba(16, 185, 129, 0.85)'
+                        ],
+                        hoverBackgroundColor: [
+                            '#ea580c',
+                            '#059669'
+                        ],
+                        borderWidth: 0,
+                        hoverOffset: 4
                     }]
                 },
                 options: {
-                    indexAxis: 'y',
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { 
-                        legend: { display: false },
+                    cutout: '68%',
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                boxWidth: 10,
+                                boxHeight: 10,
+                                usePointStyle: true,
+                                pointStyle: 'circle',
+                                font: { size: 11, weight: 'bold' },
+                                color: '#475569',
+                                padding: 14,
+                                generateLabels: (chart) => {
+                                    const data = chart.data;
+                                    if (data.labels.length && data.datasets.length) {
+                                        return data.labels.map((label, i) => {
+                                            const val = data.datasets[0].data[i] || 0;
+                                            const pct = totalOut > 0 ? ((val / totalOut) * 100).toFixed(1) : 0;
+                                            const batch = distBatches[i] || 0;
+                                            return {
+                                                text: `${label}: ${pct}% (${batch} Batch)`,
+                                                fillStyle: data.datasets[0].backgroundColor[i],
+                                                strokeStyle: data.datasets[0].backgroundColor[i],
+                                                pointStyle: 'circle',
+                                                hidden: false,
+                                                index: i
+                                            };
+                                        });
+                                    }
+                                    return [];
+                                }
+                            }
+                        },
                         tooltip: {
                             backgroundColor: '#1e293b',
                             padding: 12,
                             cornerRadius: 8,
                             callbacks: {
-                                label: (c) => ` ${invFmt(c.parsed.x)} KG`
-                            }
-                        }
-                    },
-                    scales: {
-                        x: { display: false, grid: { display: false } },
-                        y: { 
-                            grid: { display: false }, 
-                            border: { display: false },
-                            ticks: { 
-                                color: '#64748b', 
-                                font: { size: 10, weight: 'bold' },
-                                padding: 10,
-                                crossAlign: 'far'
+                                label: (c) => {
+                                    const val = c.parsed;
+                                    const pct = totalOut > 0 ? ((val / totalOut) * 100).toFixed(1) : 0;
+                                    const batch = distBatches[c.dataIndex] || 0;
+                                    return ` ${c.label}: ${invFmt(val)} Kg (${batch} Batch • ${pct}%)`;
+                                }
                             }
                         }
                     }

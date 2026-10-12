@@ -290,13 +290,36 @@ window.renderProductionDashboard = () => {
         </div>`;
     }).join('');
 
-    // Calculate Top Produced Products (by total KG)
-    const topProdsRaw = {};
-    filteredMOs.filter(m => m.status === 'DONE' || m.status === 'PARTIAL').forEach(m => {
-        const name = m.productName || (m.outputProducts && m.outputProducts.length > 0 ? m.outputProducts[0].itemName : null) || 'Unknown';
-        topProdsRaw[name] = (topProdsRaw[name] || 0) + (parseFloat(m.outputQty) || 0);
+    // Calculate Top Produced Products (per batch Oven Basah & Oven Kering)
+    const cleanProdName = (raw) => {
+        if (!raw) return 'Unknown';
+        let s = raw.replace(/\s*\((?:Oven\s+Basah|Oven\s+Kering|WIP)\)/gi, '').trim();
+        return s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+    };
+    const topProdsMap = {};
+    let grandTotalMfgOutput = 0;
+    filteredMOs.filter(m => m.status === 'DONE' || m.status === 'PARTIAL' || m.status === 'COMPLETED').forEach(m => {
+        const rawName = m.productName || (m.outputProducts && m.outputProducts[0] ? m.outputProducts[0].itemName : '') || 'Unknown';
+        const cleanName = cleanProdName(rawName);
+        const qty = parseFloat(m.outputQty || m.qty || 0);
+        const st = (m.stage || '').toUpperCase();
+        const isBasah = st.includes('BASAH') || rawName.toLowerCase().includes('oven basah');
+
+        if (!topProdsMap[cleanName]) {
+            topProdsMap[cleanName] = { name: cleanName, ovenBasahQty: 0, ovenBasahBatches: 0, ovenKeringQty: 0, ovenKeringBatches: 0, totalQty: 0, totalBatches: 0 };
+        }
+        if (isBasah) {
+            topProdsMap[cleanName].ovenBasahQty += qty;
+            topProdsMap[cleanName].ovenBasahBatches += 1;
+        } else {
+            topProdsMap[cleanName].ovenKeringQty += qty;
+            topProdsMap[cleanName].ovenKeringBatches += 1;
+        }
+        topProdsMap[cleanName].totalQty += qty;
+        topProdsMap[cleanName].totalBatches += 1;
+        grandTotalMfgOutput += qty;
     });
-    const sortedProds = Object.entries(topProdsRaw).sort((a,b) => b[1] - a[1]).slice(0, 5);
+    const sortedProds = Object.values(topProdsMap).filter(p => p.totalQty > 0).sort((a,b) => b.totalQty - a.totalQty).slice(0, 5);
 
     const yearListOptions = [];
     const minYear = 2024;
@@ -448,48 +471,105 @@ window.renderProductionDashboard = () => {
         </div>
     `;
 
-    // Draw Chart
+    // Draw Chart (Grouped Bar: Oven Basah & Oven Kering per produk)
     setTimeout(() => {
         const ctx = document.getElementById('prod_top_chart');
         if (ctx && sortedProds.length > 0) {
-            new Chart(ctx, {
+            const labels = sortedProds.map(p => {
+                const n = p.name;
+                return n.length > 20 ? n.slice(0, 20) + '...' : n;
+            });
+            const fullLabels = sortedProds.map(p => p.name);
+            const basahData = sortedProds.map(p => p.ovenBasahQty);
+            const keringData = sortedProds.map(p => p.ovenKeringQty);
+
+            if (window.prodTopChartInstance) window.prodTopChartInstance.destroy();
+            window.prodTopChartInstance = new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: sortedProds.map(p => p[0]),
-                    datasets: [{
-                        data: sortedProds.map(p => p[1]),
-                        backgroundColor: '#818cf8',
-                        borderRadius: 6,
-                        barPercentage: 0.5,
-                        categoryPercentage: 0.8,
-                        hoverBackgroundColor: '#6366f1'
-                    }]
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Oven Basah (Kg)',
+                            data: basahData,
+                            backgroundColor: 'rgba(249, 115, 22, 0.85)',
+                            hoverBackgroundColor: '#ea580c',
+                            borderRadius: 6,
+                            barPercentage: 0.6,
+                            categoryPercentage: 0.65
+                        },
+                        {
+                            label: 'Oven Kering (Kg)',
+                            data: keringData,
+                            backgroundColor: 'rgba(16, 185, 129, 0.85)',
+                            hoverBackgroundColor: '#059669',
+                            borderRadius: 6,
+                            barPercentage: 0.6,
+                            categoryPercentage: 0.65
+                        }
+                    ]
                 },
                 options: {
-                    indexAxis: 'y',
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { 
-                        legend: { display: false },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                boxWidth: 10,
+                                boxHeight: 10,
+                                usePointStyle: true,
+                                pointStyle: 'circle',
+                                font: { size: 11, weight: 'bold' },
+                                color: '#475569',
+                                padding: 16
+                            }
+                        },
                         tooltip: {
                             backgroundColor: '#1e293b',
                             padding: 12,
                             cornerRadius: 8,
+                            titleFont: { size: 12, weight: 'bold' },
+                            bodyFont: { size: 11 },
                             callbacks: {
-                                label: (c) => ` ${prodFmt(c.parsed.x)} KG`
+                                title: (items) => fullLabels[items[0].dataIndex] || items[0].label,
+                                label: (c) => {
+                                    const prod = sortedProds[c.dataIndex];
+                                    const isBasah = c.datasetIndex === 0;
+                                    const qty = isBasah ? prod.ovenBasahQty : prod.ovenKeringQty;
+                                    const batches = isBasah ? prod.ovenBasahBatches : prod.ovenKeringBatches;
+                                    const stageName = isBasah ? 'Oven Basah' : 'Oven Kering';
+                                    return ` ${stageName}: ${prodFmt(qty)} Kg (${batches} Batch)`;
+                                },
+                                afterBody: (items) => {
+                                    const prod = sortedProds[items[0].dataIndex];
+                                    const pct = grandTotalMfgOutput > 0 ? ((prod.totalQty / grandTotalMfgOutput) * 100).toFixed(1) : 0;
+                                    return [
+                                        `--------------------------`,
+                                        `Total: ${prodFmt(prod.totalQty)} Kg (${prod.totalBatches} Batch)`,
+                                        `Kontribusi: ${pct}% dari total produksi`
+                                    ];
+                                }
                             }
                         }
                     },
                     scales: {
-                        x: { display: false, grid: { display: false } },
-                        y: { 
-                            grid: { display: false }, 
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#64748b', font: { size: 11, weight: 'bold' }, maxRotation: 0, minRotation: 0 }
+                        },
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: '#f1f5f9', drawBorder: false },
                             border: { display: false },
-                            ticks: { 
-                                color: '#64748b', 
-                                font: { size: 10, weight: 'bold' },
-                                padding: 10,
-                                crossAlign: 'far'
+                            ticks: {
+                                color: '#94a3b8',
+                                font: { size: 11 },
+                                callback: (v) => {
+                                    if (v >= 1000) return (v / 1000).toLocaleString('id-ID') + ' Ton';
+                                    return v.toLocaleString('id-ID') + ' Kg';
+                                }
                             }
                         }
                     }

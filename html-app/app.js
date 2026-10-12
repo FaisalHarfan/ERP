@@ -3227,16 +3227,40 @@ function renderDashboard() {
                 </div>
             </div>
 
-            <!-- Card 4 -- >
-        <div class="bg-white rounded-lg shadow-sm p-5 border border-gray-100 flex items-center">
-            <div class="p-3 rounded-full bg-orange-100 text-orange-600 mr-4">
-                <i class="fas fa-industry text-xl"></i>
-            </div>
-            <div>
-                <p class="text-sm text-gray-500 font-medium">Produksi (+Bulan Ini)</p>
-                <p class="text-xl font-bold text-gray-800">${monthlyProd.length} Batch Selesai</p>
+            <!-- Card 4 -->
+            <div class="bg-white rounded-lg shadow-sm p-5 border border-gray-100 flex items-center cursor-pointer hover:border-orange-200 transition-colors" onclick="navigate('production-dashboard')">
+                <div class="p-3 rounded-full bg-orange-100 text-orange-600 mr-4">
+                    <i class="fas fa-industry text-xl"></i>
+                </div>
+                <div>
+                    <p class="text-sm text-gray-500 font-medium">Produksi (+Bulan Ini)</p>
+                    <p class="text-xl font-bold text-gray-800">${monthlyProd.length} Batch Selesai</p>
+                </div>
             </div>
         </div>
+
+        <!-- Section: Top 5 Produk Paling Banyak Diproduksi (Bulan Ini) -->
+        <div class="bg-white rounded-xl border border-gray-100 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.05)] p-5 mb-6">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                <div>
+                    <h3 class="text-[15px] font-semibold text-gray-800 flex items-center gap-2">
+                        <i class="fas fa-industry text-orange-500"></i>
+                        Top 5 Produk Paling Banyak Diproduksi (${monthNames[currentMonth]} ${currentYear})
+                    </h3>
+                    <p class="text-[12px] text-gray-500 mt-1">Total output (KG) & per batch (Oven Basah & Oven Kering)</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-slate-500 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
+                        ${monthlyProd.length} Batch Selesai
+                    </span>
+                    <button onclick="navigate('production-dashboard')" class="text-xs font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+                        Detail Produksi <i class="fas fa-arrow-right text-[10px]"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="relative w-full h-[320px]">
+                <canvas id="mainDashboardProdChart"></canvas>
+            </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -3278,8 +3302,190 @@ function renderDashboard() {
                             </li>
                         `).join('') || '<li class="text-sm text-gray-500 p-4 text-center">Semua stok dalam keadaan aman.</li>'}
                     </ul>
+                </div>
+            </div>
         </div>
     `;
+
+    // Render Main Dashboard Production Chart
+    setTimeout(() => {
+        const ctxDashProd = document.getElementById('mainDashboardProdChart');
+        if (!ctxDashProd) return;
+
+        const cleanProdName = (raw) => {
+            if (!raw) return 'Unknown';
+            let s = raw.replace(/\s*\((?:Oven\s+Basah|Oven\s+Kering|WIP)\)/gi, '').trim();
+            return s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+        };
+
+        const topProdsMap = {};
+        let grandTotalOutput = 0;
+
+        const addProd = (rawName, qty, stage) => {
+            if (!rawName || qty <= 0) return;
+            const cleanName = cleanProdName(rawName);
+            const st = (stage || '').toUpperCase();
+            const isBasah = st.includes('BASAH') || rawName.toLowerCase().includes('oven basah');
+
+            if (!topProdsMap[cleanName]) {
+                topProdsMap[cleanName] = {
+                    name: cleanName,
+                    ovenBasahQty: 0,
+                    ovenBasahBatches: 0,
+                    ovenKeringQty: 0,
+                    ovenKeringBatches: 0,
+                    totalQty: 0,
+                    totalBatches: 0
+                };
+            }
+
+            if (isBasah) {
+                topProdsMap[cleanName].ovenBasahQty += qty;
+                topProdsMap[cleanName].ovenBasahBatches += 1;
+            } else {
+                topProdsMap[cleanName].ovenKeringQty += qty;
+                topProdsMap[cleanName].ovenKeringBatches += 1;
+            }
+
+            topProdsMap[cleanName].totalQty += qty;
+            topProdsMap[cleanName].totalBatches += 1;
+            grandTotalOutput += qty;
+        };
+
+        monthlyProd.forEach(m => {
+            if (m.targetProducts && Array.isArray(m.targetProducts) && m.targetProducts.length > 0) {
+                m.targetProducts.forEach(tp => {
+                    const q = parseFloat(tp.outputQty || tp.qty || 0);
+                    addProd(tp.itemName || tp.name, q, m.stage);
+                });
+            } else if (m.outputProducts && Array.isArray(m.outputProducts) && m.outputProducts.length > 0) {
+                m.outputProducts.forEach(op => {
+                    const q = parseFloat(op.outputQty || op.qty || 0);
+                    addProd(op.itemName || op.name, q, m.stage);
+                });
+            } else {
+                const q = parseFloat(m.outputQty || m.qty || 0);
+                addProd(m.productName, q, m.stage);
+            }
+        });
+
+        const sortedTop = Object.values(topProdsMap)
+            .filter(p => p.totalQty > 0)
+            .sort((a, b) => b.totalQty - a.totalQty)
+            .slice(0, 5);
+
+        if (sortedTop.length === 0) {
+            ctxDashProd.parentElement.innerHTML = '<div class="bg-[#f8f9fa] flex items-center justify-center w-full h-full rounded-lg min-h-[240px]"><span class="text-sm text-gray-400 font-medium">Belum ada data output produksi selesai untuk bulan ini</span></div>';
+            return;
+        }
+
+        const labels = sortedTop.map(p => {
+            const n = p.name;
+            return n.length > 20 ? n.slice(0, 20) + '...' : n;
+        });
+        const fullLabels = sortedTop.map(p => p.name);
+        const basahData = sortedTop.map(p => p.ovenBasahQty);
+        const keringData = sortedTop.map(p => p.ovenKeringQty);
+
+        if (window.mainDashboardProdChartInstance) window.mainDashboardProdChartInstance.destroy();
+
+        window.mainDashboardProdChartInstance = new Chart(ctxDashProd, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Oven Basah (Kg)',
+                        data: basahData,
+                        backgroundColor: 'rgba(249, 115, 22, 0.85)',
+                        hoverBackgroundColor: '#ea580c',
+                        borderRadius: 6,
+                        barPercentage: 0.6,
+                        categoryPercentage: 0.65
+                    },
+                    {
+                        label: 'Oven Kering (Kg)',
+                        data: keringData,
+                        backgroundColor: 'rgba(16, 185, 129, 0.85)',
+                        hoverBackgroundColor: '#059669',
+                        borderRadius: 6,
+                        barPercentage: 0.6,
+                        categoryPercentage: 0.65
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: {
+                            boxWidth: 10,
+                            boxHeight: 10,
+                            usePointStyle: true,
+                            pointStyle: 'circle',
+                            font: { size: 11, weight: 'bold' },
+                            color: '#475569',
+                            padding: 16
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: '#1e293b',
+                        padding: 12,
+                        cornerRadius: 8,
+                        titleFont: { size: 12, weight: 'bold' },
+                        bodyFont: { size: 11 },
+                        callbacks: {
+                            title: (items) => fullLabels[items[0].dataIndex] || items[0].label,
+                            label: (c) => {
+                                const prod = sortedTop[c.dataIndex];
+                                const isBasah = c.datasetIndex === 0;
+                                const qty = isBasah ? prod.ovenBasahQty : prod.ovenKeringQty;
+                                const batches = isBasah ? prod.ovenBasahBatches : prod.ovenKeringBatches;
+                                const stageName = isBasah ? 'Oven Basah' : 'Oven Kering';
+                                return ` ${stageName}: ${formatNumber(qty)} Kg (${batches} Batch)`;
+                            },
+                            afterBody: (items) => {
+                                const prod = sortedTop[items[0].dataIndex];
+                                const pct = grandTotalOutput > 0 ? ((prod.totalQty / grandTotalOutput) * 100).toFixed(1) : 0;
+                                return [
+                                    `--------------------------`,
+                                    `Total Output: ${formatNumber(prod.totalQty)} Kg (${prod.totalBatches} Batch)`,
+                                    `Kontribusi: ${pct}% dari total produksi`
+                                ];
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: {
+                            color: '#64748b',
+                            font: { size: 11, weight: 'bold' },
+                            maxRotation: 0,
+                            minRotation: 0
+                        }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: '#f1f5f9', drawBorder: false },
+                        border: { display: false },
+                        ticks: {
+                            color: '#94a3b8',
+                            font: { size: 11 },
+                            callback: (v) => {
+                                if (v >= 1000) return (v / 1000).toLocaleString('id-ID') + ' Ton';
+                                return v.toLocaleString('id-ID') + ' Kg';
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }, 80);
 }
 
 // --- Master Customers Module ---
