@@ -12791,62 +12791,38 @@ window.filterSOTable = () => {
     }, 150);
 };
 
+window.toggleSODateDropdown = () => {
+    const el = document.getElementById('so_date_dropdown');
+    if (el) el.classList.toggle('hidden');
+};
+
 window.applySOHeaderDateFilter = () => {
     if (!window.currentFilters) window.currentFilters = {};
-    const startVal = document.getElementById('so_header_start')?.value || '';
-    const endVal = document.getElementById('so_header_end')?.value || '';
     window.currentFilters.salesOrders = {
         ...(window.currentFilters.salesOrders || {}),
-        start: startVal,
-        end: endVal,
-        month: ''
+        start: document.getElementById('so_header_start')?.value || '',
+        end: document.getElementById('so_header_end')?.value || ''
     };
     if (window.tablePagination && window.tablePagination['so']) {
         window.tablePagination['so'].page = 1;
     }
-    renderSalesOrders();
-};
-
-window.applySOMonthFilter = (monthVal) => {
-    if (!window.currentFilters) window.currentFilters = {};
-    const currYear = new Date().getFullYear();
-    if (!monthVal) {
-        window.currentFilters.salesOrders = {
-            ...(window.currentFilters.salesOrders || {}),
-            start: `${currYear}-01-01`,
-            end: `${currYear}-12-31`,
-            month: ''
-        };
-    } else {
-        const m = parseInt(monthVal, 10);
-        const lastDay = new Date(currYear, m, 0).getDate();
-        const mm = String(m).padStart(2, '0');
-        window.currentFilters.salesOrders = {
-            ...(window.currentFilters.salesOrders || {}),
-            start: `${currYear}-${mm}-01`,
-            end: `${currYear}-${mm}-${String(lastDay).padStart(2, '0')}`,
-            month: String(m)
-        };
-    }
-    if (window.tablePagination && window.tablePagination['so']) {
-        window.tablePagination['so'].page = 1;
-    }
+    const el = document.getElementById('so_date_dropdown');
+    if (el) el.classList.add('hidden');
     renderSalesOrders();
 };
 
 window.resetSOHeaderDateFilter = () => {
     if (!window.currentFilters) window.currentFilters = {};
-    const currYear = new Date().getFullYear();
-    window.currentFilters.salesOrders = {
+    window.currentFilters.salesOrders = { 
         ...(window.currentFilters.salesOrders || {}),
-        start: `${currYear}-01-01`,
-        end: `${currYear}-12-31`,
-        month: '',
-        q: ''
+        start: '', 
+        end: '' 
     };
     if (window.tablePagination && window.tablePagination['so']) {
         window.tablePagination['so'].page = 1;
     }
+    const el = document.getElementById('so_date_dropdown');
+    if (el) el.classList.add('hidden');
     renderSalesOrders();
 };
 
@@ -13103,7 +13079,8 @@ function renderSalesOrders() {
 
     const soStatusOrder = { 'DRAFT': 0, 'OPEN': 0, 'CONFIRMED': 1, 'APPROVED': 1, 'DELIVERED': 2, 'COMPLETED': 2 };
     const customers = db.read('customers') || [];
-    const filters = window.currentFilters?.salesOrders || { start: '', end: '', month: '', customer: '', q: '' };
+    const filters = window.currentFilters?.salesOrders || { start: '', end: '', customer: '', q: '' };
+    const hasDateFilter = !!(filters.start || filters.end);
 
     const defaultSOSort = (arr) => [...arr].sort((a, b) => {
         const sa = soStatusOrder[a.status] ?? 99;
@@ -13112,65 +13089,41 @@ function renderSalesOrders() {
         return new Date(b.date || b.createdAt) - new Date(a.date || a.createdAt);
     });
 
-    // Helper to extract clean Date object (local midnight) avoiding timezone drift
-    const getSODateObj = (raw) => {
-        if (!raw) return null;
-        if (typeof raw === 'string') {
-            const clean = raw.split('T')[0].split(' ')[0];
-            const parts = clean.split('-');
-            if (parts.length === 3 && parts[0].length === 4) {
-                return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-            }
-        }
-        const d = new Date(raw);
-        return isNaN(d.getTime()) ? null : new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    };
-
-    const currentYear = new Date().getFullYear();
-    const activeStartStr = filters.start || `${currentYear}-01-01`;
-    const activeEndStr   = filters.end   || `${currentYear}-12-31`;
-
-    const filterStart = getSODateObj(activeStartStr);
-    if (filterStart) filterStart.setHours(0, 0, 0, 0);
-
-    const filterEnd = getSODateObj(activeEndStr);
-    if (filterEnd) filterEnd.setHours(23, 59, 59, 999);
-
-    // All SOs enriched with customerName
-    let allSos = (db.read('salesOrders') || []).map(so => ({
+    // Enrich with customerName for sorting
+    let rawSos = (db.read('salesOrders') || []).map(so => ({
         ...so,
         customerName: (customers.find(c => c.id === so.customerId) || { name: 'Customer' }).name
     }));
 
-    // --- Table data: filtered strictly by active date range ---
-    let rawSos = allSos.filter(s => {
-        const d = getSODateObj(s.date || s.createdAt);
-        if (d) {
-            if (filterStart && d < filterStart) return false;
-            if (filterEnd && d > filterEnd) return false;
-        }
-        return true;
-    });
-
-    // Search filter (No. SO, Customer, Status)
+    // Search filter
     if (filters.q) {
         const q = filters.q.toLowerCase().trim();
-        rawSos = rawSos.filter(s =>
+        rawSos = rawSos.filter(s => 
             (s.soNumber || '').toLowerCase().includes(q) ||
             (s.customerName || '').toLowerCase().includes(q) ||
             (s.status || '').toLowerCase().includes(q)
         );
     }
 
+    // Check if any date filter is applied
+    if (filters.start) { 
+        const d = new Date(filters.start); 
+        d.setHours(0, 0, 0, 0); 
+        rawSos = rawSos.filter(q => new Date(q.date || q.createdAt) >= d); 
+    }
+    if (filters.end) { 
+        const d = new Date(filters.end); 
+        d.setHours(23, 59, 59, 999); 
+        rawSos = rawSos.filter(q => new Date(q.date || q.createdAt) <= d); 
+    }
+
     let sos = window.applyTableSort(rawSos, 'so', defaultSOSort);
     const paginated = window.paginateTable(sos, 'so', 25);
 
-    // Summary Totals calculated from active filtered period
-    const totalNominalSO    = rawSos.reduce((sum, s) => sum + parseFloat(s.totalAmount || 0), 0);
-    const totalConfirmedSO  = rawSos.filter(s => s.status === 'CONFIRMED' || s.status === 'DELIVERED' || s.status === 'COMPLETED').reduce((sum, s) => sum + parseFloat(s.totalAmount || 0), 0);
-    const totalDraftSO      = rawSos.filter(s => s.status === 'DRAFT' || s.status === 'OPEN').reduce((sum, s) => sum + parseFloat(s.totalAmount || 0), 0);
-
-    const filterLabel = `${activeStartStr} s/d ${activeEndStr}`;
+    // Calculate Summary Totals
+    const totalNominalSO = sos.reduce((sum, s) => sum + parseFloat(s.totalAmount || 0), 0);
+    const totalConfirmedSO = sos.filter(s => s.status === 'CONFIRMED' || s.status === 'DELIVERED' || s.status === 'COMPLETED').reduce((sum, s) => sum + parseFloat(s.totalAmount || 0), 0);
+    const totalDraftSO = sos.filter(s => s.status === 'DRAFT' || s.status === 'OPEN').reduce((sum, s) => sum + parseFloat(s.totalAmount || 0), 0);
 
     let rows = paginated.items.map(so => {
         const customer = customers.find(c => c.id === so.customerId) || { name: so.customerName || 'Customer' };
@@ -13233,68 +13186,69 @@ function renderSalesOrders() {
     }).join('');
 
     if (sos.length === 0) {
-        rows = `<tr><td colspan="6" class="py-10 text-center text-slate-400 text-xs font-medium">Belum ada data sales order untuk periode ini</td></tr>`;
+        rows = `<tr><td colspan="6" class="py-10 text-center text-slate-400 text-xs font-medium">Belum ada data sales order untuk ditampilkan</td></tr>`;
     }
 
     mainContent.innerHTML = `
-        <div id="so-list-view" class="animate-in fade-in duration-300 flex flex-col bg-slate-50 -m-4 sm:-m-6" style="min-height:calc(100vh - 64px);">
+        <div id="so-list-view" class="animate-in fade-in duration-300 h-[calc(100vh-64px)] flex flex-col bg-slate-50 -m-4 sm:-m-6">
+            <!-- Full Width Fixed Filter Bar (Compact) -->
+            <div class="bg-white border-b border-gray-200 shrink-0 z-40 shadow-sm relative">
+                <div class="flex flex-wrap md:flex-nowrap justify-between items-center px-6 py-2.5 gap-3">
+                    <div class="flex items-center gap-3 flex-1">
+                        <div class="flex-1 max-w-md relative">
+                            <i class="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs cursor-text pointer-events-none"></i>
+                            <input type="text" id="so_global_search" value="${filters.q || ''}" oninput="filterSOTable()" placeholder="Cari No. SO, Customer..." 
+                                class="w-full pl-10 pr-4 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-700 placeholder:text-slate-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:bg-white outline-none transition-all">
+                        </div>
+                        
+                        <!-- Date Filter Dropdown Trigger -->
+                        <div class="relative" id="so_date_filter_container">
+                            <button onclick="toggleSODateDropdown()" class="flex items-center bg-slate-50 border border-slate-200 rounded-lg overflow-hidden hover:bg-slate-100 transition-all shadow-sm h-[32px] group p-0">
+                                <span class="bg-slate-100 border-r border-slate-200 px-2.5 h-full flex items-center text-slate-600 transition-colors">
+                                    <i class="fas fa-calendar-alt text-xs"></i>
+                                </span>
+                                <span class="px-2.5 text-xs font-bold ${hasDateFilter ? 'text-blue-600' : 'text-slate-700'}">
+                                    ${hasDateFilter ? `${filters.start || '...'} s/d ${filters.end || '...'}` : 'Date'}
+                                </span>
+                                <span class="pr-2 pl-0.5 text-slate-500 justify-center flex items-center">
+                                    <i class="fas fa-chevron-down text-[10px]"></i>
+                                </span>
+                            </button>
+                            
+                            <!-- Dropdown Content -->
+                            <div id="so_date_dropdown" class="absolute left-0 mt-2 w-80 bg-white border border-slate-100 rounded-2xl shadow-xl z-[200] hidden p-5 animate-in fade-in zoom-in-95 duration-200">
+                                <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Pilihan Cepat</h4>
+                                <div class="grid grid-cols-2 gap-1.5 mb-4">
+                                    <button type="button" onclick="setQuickDatePreset('so_header_start','so_header_end','today','applySOHeaderDateFilter')" class="py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-[10px] font-bold text-slate-600 transition-colors text-center border border-slate-100">Hari Ini</button>
+                                    <button type="button" onclick="setQuickDatePreset('so_header_start','so_header_end','this_month','applySOHeaderDateFilter')" class="py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-[10px] font-bold text-slate-600 transition-colors text-center border border-slate-100">Bulan Ini</button>
+                                    <button type="button" onclick="setQuickDatePreset('so_header_start','so_header_end','last_30_days','applySOHeaderDateFilter')" class="py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-[10px] font-bold text-slate-600 transition-colors text-center border border-slate-100">30 Hari Terakhir</button>
+                                    <button type="button" onclick="setQuickDatePreset('so_header_start','so_header_end','this_year','applySOHeaderDateFilter')" class="py-1.5 px-2 rounded-lg bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-[10px] font-bold text-slate-600 transition-colors text-center border border-slate-100">Tahun Ini</button>
+                                </div>
+                                <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Rentang Manual</h4>
+                                <div class="space-y-3">
+                                    <div>
+                                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Dari Tanggal</label>
+                                        <input type="date" id="so_header_start" value="${filters.start || ''}" class="w-full border border-slate-100 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 focus:bg-white focus:border-blue-500 outline-none transition-all">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Sampai Tanggal</label>
+                                        <input type="date" id="so_header_end" value="${filters.end || ''}" class="w-full border border-slate-100 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 bg-slate-50/50 focus:bg-white focus:border-blue-500 outline-none transition-all">
+                                    </div>
+                                    <div class="flex gap-2 pt-2">
+                                        <button onclick="applySOHeaderDateFilter()" class="flex-1 bg-blue-600 text-white py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-md active:scale-95">Terapkan</button>
+                                        <button onclick="resetSOHeaderDateFilter()" class="flex-1 bg-slate-100 text-slate-600 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all">Reset</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
-            <!-- ERPNext-style Date Filter Header -->
-            <div class="flex flex-wrap items-center gap-2.5 px-4 py-2.5 border-b border-gray-200 bg-white shadow-sm shrink-0 z-40 relative">
-                <!-- Date Range Inputs -->
-                <div class="flex items-center gap-1.5">
-                    <input type="date" id="so_header_start" value="${activeStartStr}"
-                        onchange="applySOHeaderDateFilter()"
-                        class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 outline-none w-[130px]">
-                    <span class="text-gray-400 text-xs font-semibold">to</span>
-                    <input type="date" id="so_header_end" value="${activeEndStr}"
-                        onchange="applySOHeaderDateFilter()"
-                        class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 outline-none w-[130px]">
+                    <div class="flex items-center gap-2">
+                        <button onclick="openSOModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg transition-all text-xs font-medium shadow-sm flex items-center gap-1.5 active:scale-95">
+                            <i class="fas fa-plus text-xs"></i> Buat SO Baru
+                        </button>
+                    </div>
                 </div>
-
-                <!-- Quick Month Dropdown -->
-                <select id="so_header_month" onchange="applySOMonthFilter(this.value)"
-                    class="bg-gray-100 border-none rounded-md px-2.5 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
-                    <option value="" ${!filters.month ? 'selected' : ''}>Semua Bulan (Tahun ${currentYear})</option>
-                    <option value="1" ${filters.month === '1' ? 'selected' : ''}>Januari</option>
-                    <option value="2" ${filters.month === '2' ? 'selected' : ''}>Februari</option>
-                    <option value="3" ${filters.month === '3' ? 'selected' : ''}>Maret</option>
-                    <option value="4" ${filters.month === '4' ? 'selected' : ''}>April</option>
-                    <option value="5" ${filters.month === '5' ? 'selected' : ''}>Mei</option>
-                    <option value="6" ${filters.month === '6' ? 'selected' : ''}>Juni</option>
-                    <option value="7" ${filters.month === '7' ? 'selected' : ''}>Juli</option>
-                    <option value="8" ${filters.month === '8' ? 'selected' : ''}>Agustus</option>
-                    <option value="9" ${filters.month === '9' ? 'selected' : ''}>September</option>
-                    <option value="10" ${filters.month === '10' ? 'selected' : ''}>Oktober</option>
-                    <option value="11" ${filters.month === '11' ? 'selected' : ''}>November</option>
-                    <option value="12" ${filters.month === '12' ? 'selected' : ''}>Desember</option>
-                </select>
-
-                <!-- Search/Filter Buttons -->
-                <button onclick="applySOHeaderDateFilter()" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md text-xs font-semibold shadow-sm transition-all active:scale-95 flex items-center gap-1.5" title="Terapkan Filter Tanggal">
-                    <i class="fas fa-filter text-[10px]"></i> Filter
-                </button>
-                <button onclick="resetSOHeaderDateFilter()" class="bg-gray-100 hover:bg-gray-200 text-gray-600 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-all flex items-center gap-1" title="Reset Filter">
-                    <i class="fas fa-undo text-[10px]"></i>
-                </button>
-
-                <!-- Global Search -->
-                <div class="relative flex-1 max-w-xs ml-1">
-                    <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none"></i>
-                    <input type="text" id="so_global_search" value="${filters.q || ''}" oninput="filterSOTable()"
-                        placeholder="Cari No. SO, Customer..."
-                        class="w-full pl-9 pr-4 py-1.5 bg-gray-100 border-none rounded-md text-[13px] text-gray-700 placeholder:text-gray-400 focus:outline-none hover:bg-gray-200 outline-none">
-                </div>
-
-                <div class="flex-1"></div>
-
-                <!-- Export & Buat SO -->
-                <button onclick="exportSOCsv()" class="bg-gray-100 hover:bg-gray-200 border border-gray-200 text-gray-700 px-3 py-1.5 rounded-md text-xs font-medium transition-colors shadow-sm flex items-center gap-1.5">
-                    <i class="fas fa-download text-[11px] text-gray-500"></i> Export
-                </button>
-                <button onclick="openSOModal()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 rounded-lg transition-all text-xs font-medium shadow-sm flex items-center gap-1.5 active:scale-95">
-                    <i class="fas fa-plus text-xs"></i> Buat SO Baru
-                </button>
             </div>
 
             <!-- Table Container -->
