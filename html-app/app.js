@@ -2910,7 +2910,9 @@ function renderPurchaseDashboard() {
                 const labels = sortedSuppliers.map(([sid]) => {
                     const s = suppliers.find(x => x.id === sid) || suppliers.find(x => x.name === sid);
                     const n = toTitleCase(s ? s.name : (sid ? String(sid) : 'Unknown'));
-                    return n.length > 22 ? n.slice(0, 22) + '...' : n;
+                    // Strip common prefixes to shorten: "Pt. Indofood Sukses Makmur" -> "Indofood Sukses"
+                    const short = n.replace(/^(Pt\.?\s*|Cv\.?\s*|Ud\.?\s*)/i, '');
+                    return short.length > 14 ? short.slice(0, 14) + '...' : short;
                 });
                 const fullLabels = sortedSuppliers.map(([sid]) => {
                     const s = suppliers.find(x => x.id === sid) || suppliers.find(x => x.name === sid);
@@ -2969,7 +2971,12 @@ function renderPurchaseDashboard() {
                             },
                             x: { 
                                 grid: { display: false, drawBorder: false }, 
-                                ticks: { color: '#4b5563', font: { size: 11, weight: '600' } },
+                                ticks: { 
+                                    color: '#4b5563', 
+                                    font: { size: 11, weight: '600' },
+                                    maxRotation: 0,
+                                    minRotation: 0
+                                },
                                 border: { display: false }
                             }
                         }
