@@ -2555,11 +2555,13 @@ function renderPurchaseDashboard() {
     let totalPurchase = 0;
     const supTotals = {};
     const categoryTotals = {};
-    // Helper: normalize category to Title Case so "SPAREPART" and "Sparepart" merge
-    const normalizeCategory = (raw) => {
-        const s = (raw || 'Lainnya').trim() || 'Lainnya';
-        return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+    // Normalize to proper Title Case: each word capitalized, e.g. "BAHAN BAKU" → "Bahan Baku"
+    const toTitleCase = (str) => {
+        const s = (str || '').trim();
+        if (!s) return 'Lainnya';
+        return s.toLowerCase().replace(/(?:^|\s|-)\S/g, a => a.toUpperCase());
     };
+    const normalizeCategory = (raw) => toTitleCase(raw) || 'Lainnya';
     let matchingPosCount = 0;
 
     pos.forEach(p => {
@@ -2907,12 +2909,12 @@ function renderPurchaseDashboard() {
             } else {
                 const labels = sortedSuppliers.map(([sid]) => {
                     const s = suppliers.find(x => x.id === sid) || suppliers.find(x => x.name === sid);
-                    const n = s ? s.name : (sid ? String(sid) : 'Unknown');
-                    return n.length > 20 ? n.slice(0, 20) + '...' : n;
+                    const n = toTitleCase(s ? s.name : (sid ? String(sid) : 'Unknown'));
+                    return n.length > 22 ? n.slice(0, 22) + '...' : n;
                 });
                 const fullLabels = sortedSuppliers.map(([sid]) => {
                     const s = suppliers.find(x => x.id === sid) || suppliers.find(x => x.name === sid);
-                    return s ? s.name : (sid ? String(sid) : 'Unknown');
+                    return toTitleCase(s ? s.name : (sid ? String(sid) : 'Unknown'));
                 });
                 const data = sortedSuppliers.map(([, total]) => total);
 
