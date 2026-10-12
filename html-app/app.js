@@ -2554,6 +2554,7 @@ function renderPurchaseDashboard() {
     // Calculate total purchase and supplier breakdown based on actual Goods Receipts in period
     let totalPurchase = 0;
     const supTotals = {};
+    const categoryTotals = {};
     let matchingPosCount = 0;
 
     pos.forEach(p => {
@@ -2604,6 +2605,9 @@ function renderPurchaseDashboard() {
                 if (supId) {
                     supTotals[supId] = (supTotals[supId] || 0) + rcptAmt;
                 }
+                const supObj = suppliers.find(x => x.id === supId) || suppliers.find(x => x.name === supId);
+                const rcptCat = (supObj?.category || p.category || 'Lainnya').trim() || 'Lainnya';
+                categoryTotals[rcptCat] = (categoryTotals[rcptCat] || 0) + rcptAmt;
                 poMatchedInPeriod = true;
             });
             if (poMatchedInPeriod) matchingPosCount++;
@@ -2615,6 +2619,9 @@ function renderPurchaseDashboard() {
                 if (supId) {
                     supTotals[supId] = (supTotals[supId] || 0) + amt;
                 }
+                const supObj = suppliers.find(x => x.id === supId) || suppliers.find(x => x.name === supId);
+                const rcptCat = (supObj?.category || p.category || 'Lainnya').trim() || 'Lainnya';
+                categoryTotals[rcptCat] = (categoryTotals[rcptCat] || 0) + amt;
                 matchingPosCount++;
             }
         }
@@ -2676,6 +2683,9 @@ function renderPurchaseDashboard() {
     const sortedSuppliers = Object.entries(supTotals)
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5);
+
+    const sortedCategories = Object.entries(categoryTotals)
+        .sort((a, b) => b[1] - a[1]);
 
     let purchaseTitle = 'Annual Purchase';
     if (filters.periodType === 'month') {
@@ -2803,7 +2813,7 @@ function renderPurchaseDashboard() {
             <!-- Top Suppliers chart + PO Analysis -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 ${chartPanel('Top Suppliers', 'chartTopSuppliers', 'h-[250px]')}
-                ${noDataPanel('Purchase Order Analysis')}
+                ${chartPanel('Purchase Receipt Analysis', 'chartReceiptCategory', 'h-[250px]')}
             </div>
         </div>
     `;
@@ -2814,7 +2824,7 @@ function renderPurchaseDashboard() {
         if (typeof Chart === 'undefined') return;
 
         // Destroy existing instances
-        ['chartPOTrends', 'chartTopSuppliers'].forEach(id => {
+        ['chartPOTrends', 'chartTopSuppliers', 'chartReceiptCategory'].forEach(id => {
             const ex = Chart.getChart(id);
             if (ex) ex.destroy();
         });
@@ -2965,6 +2975,66 @@ function renderPurchaseDashboard() {
                                 grid: { display: false },
                                 border: { display: false },
                                 ticks: { color: '#6b7280', font: { size: 11 }, crossAlign: 'far' }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // 3. Receipts by Category horizontal bar chart
+        const ctxCat = document.getElementById('chartReceiptCategory');
+        if (ctxCat) {
+            if (sortedCategories.length === 0) {
+                const parent = ctxCat.parentElement;
+                parent.innerHTML = '<div class="bg-[#f8f9fa] flex items-center justify-center w-full h-full rounded-lg"><span class="text-sm text-gray-400">Belum ada data penerimaan di periode ini</span></div>';
+            } else {
+                const catColors = [
+                    '#8b5cf6', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', 
+                    '#ec4899', '#6366f1', '#14b8a6', '#f97316', '#84cc16'
+                ];
+                const labels = sortedCategories.map(([cat]) => cat);
+                const data = sortedCategories.map(([, total]) => total);
+
+                new Chart(ctxCat, {
+                    type: 'bar',
+                    data: {
+                        labels,
+                        datasets: [{
+                            data,
+                            backgroundColor: labels.map((_, i) => catColors[i % catColors.length]),
+                            borderRadius: 4,
+                            barPercentage: 0.5,
+                            categoryPercentage: 0.8
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        indexAxis: 'y',
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: c => ' Nilai Receipt: Rp ' + new Intl.NumberFormat('id-ID').format(c.parsed.x)
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                display: true,
+                                grid: { color: '#f3f4f6', drawBorder: false },
+                                ticks: {
+                                    color: '#9ca3af',
+                                    font: { size: 10 },
+                                    callback: v => v >= 1e9 ? (v/1e9).toFixed(1)+'M' : v >= 1e6 ? (v/1e6).toFixed(1)+'Jt' : v >= 1e3 ? (v/1e3).toFixed(0)+'Rb' : v
+                                },
+                                border: { display: false }
+                            },
+                            y: {
+                                grid: { display: false },
+                                border: { display: false },
+                                ticks: { color: '#374151', font: { size: 11, weight: '600' }, crossAlign: 'far' }
                             }
                         }
                     }

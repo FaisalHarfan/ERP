@@ -378,6 +378,7 @@ window.renderPurchaseInvoiceTrends = () => {
                 <select id="pit_based_on" onchange="updatePurchaseInvoiceTrends()"
                     class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
                     <option value="Supplier" selected>Supplier</option>
+                    <option value="Category">Kategori Supplier</option>
                     <option value="Item">Item</option>
                 </select>
 
@@ -458,6 +459,7 @@ window.updatePurchaseInvoiceTrends = () => {
     const endStr    = document.getElementById('pit_end_date')?.value;
     const basedOn   = document.getElementById('pit_based_on')?.value || 'Supplier';
     const isItem    = basedOn === 'Item';
+    const isCategory = basedOn === 'Category';
 
     const getDateObj = (raw) => {
         if (!raw) return null;
@@ -543,6 +545,13 @@ window.updatePurchaseInvoiceTrends = () => {
                 pivot[label].periods[pIdx].qty += 1;
                 pivot[label].periods[pIdx].amt += invTotalAmt;
             }
+        } else if (isCategory) {
+            const supp = suppliers.find(s => s.id === inv.supplierId);
+            const label = (supp?.category || 'Lainnya').trim() || 'Lainnya';
+            const key = label;
+            if (!pivot[key]) pivot[key] = { label, currency: 'IDR', periods: Array.from({ length: periods.length }, () => ({ qty: 0, amt: 0 })) };
+            pivot[key].periods[pIdx].qty += invTotalQty;
+            pivot[key].periods[pIdx].amt += invTotalAmt;
         } else {
             const supp = suppliers.find(s => s.id === inv.supplierId);
             const label = supp?.name || inv.supplierName || 'Unknown Supplier';
@@ -1022,6 +1031,7 @@ window.renderPurchaseOrderTrends = () => {
                 <select id="pot_based_on" onchange="updatePurchaseOrderTrends()"
                     class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
                     <option value="Supplier" selected>Supplier</option>
+                    <option value="Category">Kategori Supplier</option>
                     <option value="Item">Item</option>
                 </select>
 
@@ -1102,6 +1112,7 @@ window.updatePurchaseOrderTrends = () => {
     const endStr    = document.getElementById('pot_end_date')?.value;
     const basedOn   = document.getElementById('pot_based_on')?.value || 'Supplier';
     const isItem    = basedOn === 'Item';
+    const isCategory = basedOn === 'Category';
 
     const getDateObj = (raw) => {
         if (!raw) return null;
@@ -1178,6 +1189,13 @@ window.updatePurchaseOrderTrends = () => {
                 pivot[label].periods[pIdx].qty += 1;
                 pivot[label].periods[pIdx].amt += poTotalAmt;
             }
+        } else if (isCategory) {
+            const supp = suppliers.find(s => s.id === p.supplierId);
+            const label = (supp?.category || p.category || 'Lainnya').trim() || 'Lainnya';
+            const key = label;
+            if (!pivot[key]) pivot[key] = { label, currency: 'IDR', periods: Array.from({ length: periods.length }, () => ({ qty: 0, amt: 0 })) };
+            pivot[key].periods[pIdx].qty += poTotalQty;
+            pivot[key].periods[pIdx].amt += poTotalAmt;
         } else {
             const supp = suppliers.find(s => s.id === p.supplierId);
             const label = supp?.name || p.supplierName || 'Unknown Supplier';
@@ -1340,7 +1358,8 @@ window.renderPurchaseReceiptTrends = () => {
 
                 <select id="prt_based_on" onchange="updatePurchaseReceiptTrends()"
                     class="bg-gray-100 border-none rounded-md px-3 py-1.5 text-[13px] text-gray-700 focus:outline-none hover:bg-gray-200 cursor-pointer outline-none">
-                    <option value="Supplier" selected>Supplier</option>
+                    <option value="Category" selected>Kategori Supplier</option>
+                    <option value="Supplier">Supplier</option>
                     <option value="Item">Item</option>
                 </select>
 
@@ -1419,8 +1438,9 @@ window.resetPRTFilter = () => {
 window.updatePurchaseReceiptTrends = () => {
     const startStr  = document.getElementById('prt_start_date')?.value;
     const endStr    = document.getElementById('prt_end_date')?.value;
-    const basedOn   = document.getElementById('prt_based_on')?.value || 'Supplier';
+    const basedOn   = document.getElementById('prt_based_on')?.value || 'Category';
     const isItem    = basedOn === 'Item';
+    const isCategory = basedOn === 'Category';
 
     const getDateObj = (raw) => {
         if (!raw) return null;
@@ -1509,6 +1529,7 @@ window.updatePurchaseReceiptTrends = () => {
                 poId: po.id,
                 supplierId: po.supplierId || po.supplier_id,
                 supplierName: po.supplierName || po.supplier_name,
+                category: po.category,
                 date: rcptDate,
                 totalAmount: rcptAmt,
                 items: mappedItems
@@ -1542,6 +1563,13 @@ window.updatePurchaseReceiptTrends = () => {
                 pivot[label].periods[pIdx].qty += 1;
                 pivot[label].periods[pIdx].amt += rcptTotalAmt;
             }
+        } else if (isCategory) {
+            const supp = suppliers.find(s => s.id === rcpt.supplierId);
+            const label = (supp?.category || rcpt.category || 'Lainnya').trim() || 'Lainnya';
+            const key = label;
+            if (!pivot[key]) pivot[key] = { label, currency: 'IDR', periods: Array.from({ length: periods.length }, () => ({ qty: 0, amt: 0 })) };
+            pivot[key].periods[pIdx].qty += rcptTotalQty;
+            pivot[key].periods[pIdx].amt += rcptTotalAmt;
         } else {
             const supp = suppliers.find(s => s.id === rcpt.supplierId);
             const label = supp?.name || rcpt.supplierName || 'Unknown Supplier';
