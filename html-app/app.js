@@ -2555,6 +2555,11 @@ function renderPurchaseDashboard() {
     let totalPurchase = 0;
     const supTotals = {};
     const categoryTotals = {};
+    // Helper: normalize category to Title Case so "SPAREPART" and "Sparepart" merge
+    const normalizeCategory = (raw) => {
+        const s = (raw || 'Lainnya').trim() || 'Lainnya';
+        return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+    };
     let matchingPosCount = 0;
 
     pos.forEach(p => {
@@ -2606,7 +2611,7 @@ function renderPurchaseDashboard() {
                     supTotals[supId] = (supTotals[supId] || 0) + rcptAmt;
                 }
                 const supObj = suppliers.find(x => x.id === supId) || suppliers.find(x => x.name === supId);
-                const rcptCat = (supObj?.category || p.category || 'Lainnya').trim() || 'Lainnya';
+                const rcptCat = normalizeCategory(supObj?.category || p.category);
                 categoryTotals[rcptCat] = (categoryTotals[rcptCat] || 0) + rcptAmt;
                 poMatchedInPeriod = true;
             });
@@ -2620,7 +2625,7 @@ function renderPurchaseDashboard() {
                     supTotals[supId] = (supTotals[supId] || 0) + amt;
                 }
                 const supObj = suppliers.find(x => x.id === supId) || suppliers.find(x => x.name === supId);
-                const rcptCat = (supObj?.category || p.category || 'Lainnya').trim() || 'Lainnya';
+                const rcptCat = normalizeCategory(supObj?.category || p.category);
                 categoryTotals[rcptCat] = (categoryTotals[rcptCat] || 0) + amt;
                 matchingPosCount++;
             }
