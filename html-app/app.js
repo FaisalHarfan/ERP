@@ -2627,6 +2627,63 @@ function renderPurchaseDashboard() {
         }
     });
 
+    // Calculate monthly purchases for the full fiscal year (Jan - Dec)
+    const allYearMonthlyPurchases = new Array(12).fill(0);
+    pos.forEach(p => {
+        const statusUpper = (p.status || '').toUpperCase();
+        if (statusUpper === 'CANCELLED' || statusUpper === 'DELETED') return;
+
+        const supId = p.supplierId || p.supplier_id;
+        if (filters.supplier) {
+            const s = suppliers.find(x => x.id === supId) || suppliers.find(x => x.name === supId);
+            const nm = s ? s.name : String(supId || '');
+            if (!nm.toLowerCase().includes(filters.supplier.toLowerCase())) return;
+        }
+
+        const receipts = safeArray(p.receipts);
+        const poItems = safeArray(p.items);
+
+        if (receipts.length > 0) {
+            receipts.forEach(rcpt => {
+                const rawDate = rcpt.date || rcpt.receivedDate || rcpt.createdAt;
+                if (!rawDate) return;
+                const d = new Date(rawDate);
+                if (isNaN(d.getTime())) return;
+                if (d.getFullYear() !== filters.fiscalYear) return;
+
+                const rcptItems = safeArray(rcpt.items);
+                let rcptAmt = 0;
+                rcptItems.forEach(it => {
+                    const poItem = poItems.find(pi => (pi.inventoryItemId && pi.inventoryItemId === it.inventoryItemId) || (pi.itemName && pi.itemName === it.itemName));
+                    const price = parseFloat(it.price || (poItem ? poItem.price : 0) || 0);
+                    const qty = parseFloat(it.receivedQty || it.qty || 0);
+                    const subtotal = parseFloat(it.subtotal || (qty * price) || 0);
+                    rcptAmt += subtotal;
+                });
+                if (rcptAmt === 0 && rcpt.totalAmount) {
+                    rcptAmt = parseFloat(rcpt.totalAmount || 0);
+                }
+                const taxRate = parseFloat(p.taxRate) || 0;
+                if (taxRate > 0) {
+                    rcptAmt = rcptAmt * (1 + taxRate / 100);
+                }
+                const m = d.getMonth();
+                if (m >= 0 && m < 12) {
+                    allYearMonthlyPurchases[m] += rcptAmt;
+                }
+            });
+        } else if (['RECEIVED', 'COMPLETED'].includes(statusUpper)) {
+            const d = window.getPOEffectiveDate(p);
+            if (d.getFullYear() === filters.fiscalYear) {
+                const amt = parseFloat(p.totalAmount || p.total_amount || 0);
+                const m = d.getMonth();
+                if (m >= 0 && m < 12) {
+                    allYearMonthlyPurchases[m] += amt;
+                }
+            }
+        }
+    });
+
     // Apply filters to Invoices
     let filteredInvs = (invs || []).filter(i => {
         const statusUpper = (i.status || '').toUpperCase();
@@ -2819,118 +2876,150 @@ function renderPurchaseDashboard() {
     `;
 
     // ── Draw Charts ───────────────────────────────────────────────
-    const poFilters = filters;   // alias (already set above)
     setTimeout(() => {
         if (typeof Chart === 'undefined') return;
 
         // Destroy existing instances
-        ['chartPOTrends', 'chartTopSuppliers', 'chartReceiptCategory'].forEach(id => {
+        ['chartTopSuppliers', 'chartPOTrends', 'chartReceiptCategory'].forEach(id => {
             const ex = Chart.getChart(id);
             if (ex) ex.destroy();
         });
 
-        // 1. PO Trends line chart
-        const ctxTrends = document.getElementById('chartPOTrends');
-        if (ctxTrends) {
-            // Apply filters
-            const fyYear = poFilters.fiscalYear || currentYear;
-            let labels, data;
-            if (poFilters.period === 'Quarterly') {
-                labels = ['Q1', 'Q2', 'Q3', 'Q4'];
-                data = [0, 0, 0, 0];
-                pos.forEach(p => {
-                    if (!poFilters.includeCancelled && ((p.status || '').toUpperCase() === 'CANCELLED' || (p.status || '').toUpperCase() === 'DELETED')) return;
-                    if (poFilters.supplier) {
-                        const sid = p.supplierId || p.supplier_id || '';
-                        const sup = suppliers.find(x => x.id === sid) || suppliers.find(x => x.name === sid);
-                        const supName = sup ? sup.name : sid;
-                        if (!supName.toLowerCase().includes(poFilters.supplier.toLowerCase())) return;
-                    }
-                    const receipts = safeArray(p.receipts);
-                    if (receipts.length > 0) {
-                        receipts.forEach(rcpt => {
-                            const d = new Date(rcpt.date || rcpt.receivedDate || rcpt.createdAt);
-                            if (d.getFullYear() === fyYear) data[Math.floor(d.getMonth()/3)]++;
-                        });
-                    } else {
-                        const d = window.getPOEffectiveDate(p);
-                        if (d.getFullYear() === fyYear) data[Math.floor(d.getMonth()/3)]++;
-                    }
-                });
-            } else if (poFilters.period === 'Weekly') {
-                labels = ['Week 1', 'Week 2', 'Week 3', 'Week 4'];
-                data = [0, 0, 0, 0];
-                pos.forEach(p => {
-                    if (!poFilters.includeCancelled && ((p.status || '').toUpperCase() === 'CANCELLED' || (p.status || '').toUpperCase() === 'DELETED')) return;
-                    if (poFilters.supplier) {
-                        const sid = p.supplierId || p.supplier_id || '';
-                        const sup = suppliers.find(x => x.id === sid) || suppliers.find(x => x.name === sid);
-                        const supName = sup ? sup.name : sid;
-                        if (!supName.toLowerCase().includes(poFilters.supplier.toLowerCase())) return;
-                    }
-                    const receipts = safeArray(p.receipts);
-                    if (receipts.length > 0) {
-                        receipts.forEach(rcpt => {
-                            const d = new Date(rcpt.date || rcpt.receivedDate || rcpt.createdAt);
-                            if (d.getFullYear() === fyYear) data[Math.min(3, Math.floor((d.getDate()-1)/7))]++;
-                        });
-                    } else {
-                        const d = window.getPOEffectiveDate(p);
-                        if (d.getFullYear() === fyYear) data[Math.min(3, Math.floor((d.getDate()-1)/7))]++;
-                    }
-                });
+        const formatShortRp = (val) => {
+            if (!val || val === 0) return '0';
+            if (val >= 1_000_000_000) return 'Rp ' + (val / 1_000_000_000).toFixed(1).replace(/\.0$/, '') + ' M';
+            if (val >= 1_000_000) return 'Rp ' + (val / 1_000_000).toFixed(1).replace(/\.0$/, '') + ' Jt';
+            if (val >= 1_000) return 'Rp ' + (val / 1_000).toFixed(0) + ' Rb';
+            return 'Rp ' + val;
+        };
+
+        // 1. Top 5 Suppliers vertical bar chart (matches Top 5 Customers on Sales Dashboard)
+        const ctxTop = document.getElementById('chartTopSuppliers');
+        if (ctxTop) {
+            if (sortedSuppliers.length === 0) {
+                const parent = ctxTop.parentElement;
+                parent.innerHTML = '<div class="bg-[#f8f9fa] flex items-center justify-center w-full h-full rounded-lg min-h-[220px]"><span class="text-sm text-gray-400 font-medium">Tidak ada data transaksi pembelian untuk periode ini</span></div>';
             } else {
-                labels = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-                data = new Array(12).fill(0);
-                pos.forEach(p => {
-                    if (!poFilters.includeCancelled && ((p.status || '').toUpperCase() === 'CANCELLED' || (p.status || '').toUpperCase() === 'DELETED')) return;
-                    if (poFilters.supplier) {
-                        const sid = p.supplierId || p.supplier_id || '';
-                        const sup = suppliers.find(x => x.id === sid) || suppliers.find(x => x.name === sid);
-                        const supName = sup ? sup.name : sid;
-                        if (!supName.toLowerCase().includes(poFilters.supplier.toLowerCase())) return;
-                    }
-                    const receipts = safeArray(p.receipts);
-                    if (receipts.length > 0) {
-                        receipts.forEach(rcpt => {
-                            const d = new Date(rcpt.date || rcpt.receivedDate || rcpt.createdAt);
-                            if (d.getFullYear() === fyYear) data[d.getMonth()]++;
-                        });
-                    } else {
-                        const d = window.getPOEffectiveDate(p);
-                        if (d.getFullYear() === fyYear) data[d.getMonth()]++;
+                const labels = sortedSuppliers.map(([sid]) => {
+                    const s = suppliers.find(x => x.id === sid) || suppliers.find(x => x.name === sid);
+                    const n = s ? s.name : (sid ? String(sid) : 'Unknown');
+                    return n.length > 20 ? n.slice(0, 20) + '...' : n;
+                });
+                const fullLabels = sortedSuppliers.map(([sid]) => {
+                    const s = suppliers.find(x => x.id === sid) || suppliers.find(x => x.name === sid);
+                    return s ? s.name : (sid ? String(sid) : 'Unknown');
+                });
+                const data = sortedSuppliers.map(([, total]) => total);
+
+                new Chart(ctxTop, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Total Pembelian',
+                            data: data,
+                            backgroundColor: [
+                                'rgba(59, 130, 246, 0.85)',
+                                'rgba(99, 102, 241, 0.85)',
+                                'rgba(139, 92, 246, 0.85)',
+                                'rgba(236, 72, 153, 0.85)',
+                                'rgba(245, 158, 11, 0.85)'
+                            ],
+                            hoverBackgroundColor: [
+                                '#2563eb',
+                                '#4f46e5',
+                                '#7c3aed',
+                                '#db2777',
+                                '#d97706'
+                            ],
+                            borderRadius: 8,
+                            barPercentage: 0.5,
+                            categoryPercentage: 0.7
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    title: items => fullLabels[items[0].dataIndex] || items[0].label,
+                                    label: c => ' Total Pembelian: Rp ' + new Intl.NumberFormat('id-ID').format(c.parsed.y)
+                                }
+                            }
+                        },
+                        scales: {
+                            y: { 
+                                beginAtZero: true, 
+                                grid: { color: '#f3f4f6', drawBorder: false }, 
+                                ticks: { 
+                                    color: '#9ca3af', 
+                                    font: { size: 11 },
+                                    callback: val => formatShortRp(val)
+                                },
+                                border: { display: false }
+                            },
+                            x: { 
+                                grid: { display: false, drawBorder: false }, 
+                                ticks: { color: '#4b5563', font: { size: 11, weight: '600' } },
+                                border: { display: false }
+                            }
+                        }
                     }
                 });
             }
+        }
+
+        // 2. Tren Pembelian Bulanan (Annual Purchase Jan - Dec, matches Tren Penjualan Bulanan)
+        const ctxTrends = document.getElementById('chartPOTrends');
+        if (ctxTrends) {
+            const labels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const monthlyPurchase = allYearMonthlyPurchases;
 
             new Chart(ctxTrends, {
                 type: 'line',
                 data: {
-                    labels,
+                    labels: labels,
                     datasets: [{
-                        label: 'Purchase Orders',
-                        data,
-                        borderColor: '#f9a8d4',
-                        borderWidth: 2,
-                        tension: 0.1,
-                        pointBackgroundColor: '#f9a8d4',
-                        pointRadius: data.some(v => v > 0) ? 3 : 0,
-                        fill: false
+                        label: 'Total Pembelian',
+                        data: monthlyPurchase,
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.08)',
+                        borderWidth: 2.5,
+                        tension: 0.35,
+                        pointBackgroundColor: '#3b82f6',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        pointRadius: monthlyPurchase.some(v => v > 0) ? 3.5 : 0,
+                        pointHoverRadius: 6,
+                        fill: true
                     }]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: c => ' Total Pembelian: Rp ' + new Intl.NumberFormat('id-ID').format(c.parsed.y)
+                            }
+                        }
+                    },
                     scales: {
-                        y: {
-                            beginAtZero: true,
-                            grid: { color: '#f3f4f6', drawBorder: false },
-                            ticks: { stepSize: 1, color: '#9ca3af', font: { size: 11 } },
+                        y: { 
+                            beginAtZero: true, 
+                            grid: { color: '#f3f4f6', drawBorder: false }, 
+                            ticks: { 
+                                color: '#9ca3af', 
+                                font: { size: 11 },
+                                callback: val => formatShortRp(val)
+                            },
                             border: { display: false }
                         },
-                        x: {
-                            grid: { display: false, drawBorder: false },
+                        x: { 
+                            grid: { display: false, drawBorder: false }, 
                             ticks: { color: '#9ca3af', font: { size: 11 } },
                             border: { display: false }
                         }
@@ -2939,109 +3028,72 @@ function renderPurchaseDashboard() {
             });
         }
 
-        // 2. Top Suppliers horizontal bar chart
-        const ctxTop = document.getElementById('chartTopSuppliers');
-        if (ctxTop) {
-            if (sortedSuppliers.length === 0) {
-                const parent = ctxTop.parentElement;
-                parent.innerHTML = '<div class="bg-[#f8f9fa] flex items-center justify-center w-full h-full rounded-lg"><span class="text-sm text-gray-400">No Data</span></div>';
-            } else {
-                const labels = sortedSuppliers.map(([sid]) => {
-                    const s = suppliers.find(x => x.id === sid) || suppliers.find(x => x.name === sid);
-                    return s ? s.name.slice(0, 18) : (sid ? String(sid).slice(0, 18) : 'Unknown');
-                });
-                const data = sortedSuppliers.map(([, total]) => total);
-
-                new Chart(ctxTop, {
-                    type: 'bar',
-                    data: {
-                        labels,
-                        datasets: [{
-                            data,
-                            backgroundColor: '#818cf8',
-                            borderRadius: 4,
-                            barPercentage: 0.5,
-                            categoryPercentage: 0.8
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        indexAxis: 'y',
-                        plugins: { legend: { display: false } },
-                        scales: {
-                            x: { display: false, grid: { display: false } },
-                            y: {
-                                grid: { display: false },
-                                border: { display: false },
-                                ticks: { color: '#6b7280', font: { size: 11 }, crossAlign: 'far' }
-                            }
-                        }
-                    }
-                });
-            }
-        }
-
-        // 3. Receipts by Category horizontal bar chart
+        // 3. Pembelian Berdasarkan Kategori (Doughnut chart, matches Penjualan Berdasarkan Jenis Usaha)
         const ctxCat = document.getElementById('chartReceiptCategory');
         if (ctxCat) {
             if (sortedCategories.length === 0) {
                 const parent = ctxCat.parentElement;
-                parent.innerHTML = '<div class="bg-[#f8f9fa] flex items-center justify-center w-full h-full rounded-lg"><span class="text-sm text-gray-400">Belum ada data penerimaan di periode ini</span></div>';
+                parent.innerHTML = '<div class="bg-[#f8f9fa] flex items-center justify-center w-full h-full rounded-lg min-h-[220px]"><span class="text-sm text-gray-400 font-medium">Belum ada data penerimaan di periode ini</span></div>';
             } else {
-                const catColors = [
-                    '#8b5cf6', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', 
-                    '#ec4899', '#6366f1', '#14b8a6', '#f97316', '#84cc16'
-                ];
                 const labels = sortedCategories.map(([cat]) => cat);
                 const data = sortedCategories.map(([, total]) => total);
 
                 new Chart(ctxCat, {
-                    type: 'bar',
+                    type: 'doughnut',
                     data: {
-                        labels,
+                        labels: labels,
                         datasets: [{
-                            data,
-                            backgroundColor: labels.map((_, i) => catColors[i % catColors.length]),
-                            borderRadius: 4,
-                            barPercentage: 0.5,
-                            categoryPercentage: 0.8
+                            data: data,
+                            backgroundColor: [
+                                'rgba(139, 92, 246, 0.85)',
+                                'rgba(14, 165, 233, 0.85)',
+                                'rgba(16, 185, 129, 0.85)',
+                                'rgba(245, 158, 11, 0.85)',
+                                'rgba(239, 68, 68, 0.85)',
+                                'rgba(107, 114, 128, 0.85)',
+                                'rgba(236, 72, 153, 0.85)',
+                                'rgba(99, 102, 241, 0.85)'
+                            ],
+                            hoverBackgroundColor: [
+                                '#7c3aed',
+                                '#0284c7',
+                                '#059669',
+                                '#d97706',
+                                '#dc2626',
+                                '#4b5563',
+                                '#db2777',
+                                '#4f46e5'
+                            ],
+                            borderWidth: 0,
+                            hoverOffset: 4
                         }]
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        indexAxis: 'y',
+                        cutout: '65%',
                         plugins: {
-                            legend: { display: false },
+                            legend: { 
+                                position: 'right',
+                                labels: {
+                                    padding: 20,
+                                    font: { size: 11 },
+                                    color: '#4b5563',
+                                    usePointStyle: true,
+                                    pointStyle: 'circle'
+                                }
+                            },
                             tooltip: {
                                 callbacks: {
-                                    label: c => ' Nilai Receipt: Rp ' + new Intl.NumberFormat('id-ID').format(c.parsed.x)
+                                    label: c => ' Rp ' + new Intl.NumberFormat('id-ID').format(c.parsed)
                                 }
-                            }
-                        },
-                        scales: {
-                            x: {
-                                display: true,
-                                grid: { color: '#f3f4f6', drawBorder: false },
-                                ticks: {
-                                    color: '#9ca3af',
-                                    font: { size: 10 },
-                                    callback: v => v >= 1e9 ? (v/1e9).toFixed(1)+'M' : v >= 1e6 ? (v/1e6).toFixed(1)+'Jt' : v >= 1e3 ? (v/1e3).toFixed(0)+'Rb' : v
-                                },
-                                border: { display: false }
-                            },
-                            y: {
-                                grid: { display: false },
-                                border: { display: false },
-                                ticks: { color: '#374151', font: { size: 11, weight: '600' }, crossAlign: 'far' }
                             }
                         }
                     }
                 });
             }
         }
-    }, 100);
+    }, 120);
 }
 
 
