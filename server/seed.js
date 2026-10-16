@@ -84,10 +84,11 @@ async function seedDefaults() {
                         code: a.code,
                         name: a.name,
                         type: a.type,
+                        description: a.description || null,
                         parentId: a.parentId || null,
                         isGroup: !!a.isGroup,
                         status: a.status || 'ACTIVE',
-                        opening_balance: 0
+                        opening_balance: a.opening_balance || 0
                     });
                 }
                 console.log(`  ✅ Chart of Accounts (COA 2026) seeded (${coaData.accounts.length} items)`);

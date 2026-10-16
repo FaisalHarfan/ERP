@@ -444,11 +444,16 @@ window.initFinanceChartsERP = function(accounts, journal, salesInvoices, purchas
     }
 };
 
-window.renderFinanceAccounts = function () {
+window.renderFinanceAccounts = async function () {
     document.getElementById('pageTitle').innerText = 'Chart of Accounts (COA)';
     const mc = document.getElementById('main-content');
     
     let accounts = db.read('accounts');
+    if (!accounts || accounts.length === 0) {
+        if (typeof db.sync === 'function') {
+            accounts = (await db.sync('accounts')) || [];
+        }
+    }
     let q = (window._coaFilters?.q || '').toLowerCase();
     const accountTypes = db.read('accountTypes') || [];
     let filteredAccounts = accounts;
@@ -475,11 +480,6 @@ window.renderFinanceAccounts = function () {
         filteredAccounts = accounts.filter(a => finalIds.has(a.id));
         
         // Auto-expand all when searching
-        accountTypes.forEach(t => {
-            window._coaExpandedNodes[t.id] = true;
-            window._coaExpandedNodes[`type_${t.id}`] = true;
-        });
-        window._coaExpandedNodes['type_unknown'] = true;
         filteredAccounts.forEach(a => {
             window._coaExpandedNodes[a.id] = true;
         });
@@ -487,8 +487,8 @@ window.renderFinanceAccounts = function () {
 
     const getCalculatedBalance = (node) => {
         if (!node) return 0;
-        if (!node.id.startsWith('type_') && !node.isGroup) {
-            return db.getAccountBalance(node.id);
+        if (!node.isGroup && (!node.children || node.children.length === 0)) {
+            return db.getAccountBalance(node.id) || 0;
         }
         let total = 0;
         if (node.children && node.children.length > 0) {
@@ -500,56 +500,46 @@ window.renderFinanceAccounts = function () {
     };
 
     const buildTree = (list) => {
-        const typeRoots = {};
-        accountTypes.forEach(t => {
-            typeRoots[t.id] = {
-                id: `type_${t.id}`,
-                name: t.name,
-                isGroup: true,
-                children: []
-            };
-        });
-
-        const unknownRoot = {
-            id: 'type_unknown',
-            name: 'Tanpa Tipe',
-            isGroup: true,
-            children: []
-        };
-
         const accountMap = {};
         list.forEach(acc => {
             accountMap[acc.id] = { ...acc, children: [] };
         });
 
+        const roots = [];
         list.forEach(acc => {
             const node = accountMap[acc.id];
-            if (acc.parentId && accountMap[acc.parentId] !== undefined) {
+            if (acc.parentId && accountMap[acc.parentId]) {
                 accountMap[acc.parentId].children.push(node);
             } else {
-                const typeId = acc.type;
-                if (typeRoots[typeId]) {
-                    typeRoots[typeId].children.push(node);
-                } else {
-                    const match = accountTypes.find(t => t.name.toLowerCase() === (typeId || '').toLowerCase());
-                    if (match && typeRoots[match.id]) {
-                        typeRoots[match.id].children.push(node);
-                    } else {
-                        unknownRoot.children.push(node);
-                    }
-                }
+                roots.push(node);
             }
         });
 
-        const finalRoots = Object.values(typeRoots);
-        if (unknownRoot.children.length > 0) {
-            finalRoots.push(unknownRoot);
-        }
+        const sortNodes = (nodes) => {
+            nodes.sort((a, b) => (a.code || '').localeCompare(b.code || '', undefined, { numeric: true, sensitivity: 'base' }));
+            nodes.forEach(n => {
+                if (n.children && n.children.length > 0) {
+                    sortNodes(n.children);
+                }
+            });
+        };
+
+        sortNodes(roots);
 
         if (q) {
-            return finalRoots.filter(r => r.children && r.children.length > 0);
+            const filterBranches = (nodes) => {
+                return nodes.filter(n => {
+                    if (n.children && n.children.length > 0) {
+                        n.children = filterBranches(n.children);
+                    }
+                    const isMatch = (n.name && n.name.toLowerCase().includes(q)) || (n.code && n.code.toLowerCase().includes(q));
+                    return isMatch || (n.children && n.children.length > 0);
+                });
+            };
+            return filterBranches(roots);
         }
-        return finalRoots;
+
+        return roots;
     };
 
     const treeData = buildTree(JSON.parse(JSON.stringify(filteredAccounts)));
@@ -564,14 +554,17 @@ window.renderFinanceAccounts = function () {
         // Highlight match
         const nameText = node.name;
         const codeText = node.code || '';
-        let displayHTML = `${codeText ? `<span class="text-slate-400 font-mono text-[11px] mr-2">${codeText}</span>` : ''}${nameText}`;
+        let displayHTML = `${codeText ? `<span class="text-slate-500 font-mono text-[11px] font-bold mr-2">${codeText}</span>` : ''}<span class="${isGroup ? 'font-bold text-slate-800' : 'text-slate-700'}">${nameText}</span>`;
+        if (node.description) {
+            displayHTML += ` <span class="text-[10px] bg-slate-100 text-slate-500 rounded px-1.5 py-0.5 ml-2 font-normal">${node.description}</span>`;
+        }
         
         if (q) {
             const regex = new RegExp(`(${q})`, 'gi');
             displayHTML = displayHTML.replace(regex, '<mark class="bg-yellow-200 text-slate-900">$1</mark>');
         }
 
-        const isVirtual = node.id.startsWith('type_');
+        const isVirtual = node.id && node.id.startsWith('type_');
         
         return `
             <div class="group border-b border-gray-50 hover:bg-blue-50/20 transition-all">
@@ -727,17 +720,9 @@ window.toggleCOANode = function(id, event) {
 
 window.expandAllCOA = function() {
     window._coaExpandedNodes = window._coaExpandedNodes || {};
-    const accountTypes = db.read('accountTypes') || [];
-    accountTypes.forEach(t => {
-        window._coaExpandedNodes[t.id] = true;
-        window._coaExpandedNodes[`type_${t.id}`] = true;
-    });
-    window._coaExpandedNodes['type_unknown'] = true;
     const accounts = db.read('accounts') || [];
     accounts.forEach(a => {
-        if (a.isGroup || a.parentId || a.children) {
-            window._coaExpandedNodes[a.id] = true;
-        }
+        window._coaExpandedNodes[a.id] = true;
     });
     renderFinanceAccounts();
 };
