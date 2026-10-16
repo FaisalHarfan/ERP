@@ -480,6 +480,11 @@ window.renderFinanceAccounts = async function () {
         filteredAccounts = accounts.filter(a => finalIds.has(a.id));
         
         // Auto-expand all when searching
+        accountTypes.forEach(t => {
+            window._coaExpandedNodes[t.id] = true;
+            window._coaExpandedNodes[`type_${t.id}`] = true;
+        });
+        window._coaExpandedNodes['type_unknown'] = true;
         filteredAccounts.forEach(a => {
             window._coaExpandedNodes[a.id] = true;
         });
@@ -487,7 +492,7 @@ window.renderFinanceAccounts = async function () {
 
     const getCalculatedBalance = (node) => {
         if (!node) return 0;
-        if (!node.isGroup && (!node.children || node.children.length === 0)) {
+        if (!node.id.startsWith('type_') && !node.isGroup && (!node.children || node.children.length === 0)) {
             return db.getAccountBalance(node.id) || 0;
         }
         let total = 0;
@@ -500,18 +505,65 @@ window.renderFinanceAccounts = async function () {
     };
 
     const buildTree = (list) => {
+        const typeRoots = {};
+        accountTypes.forEach(t => {
+            typeRoots[t.id] = {
+                id: `type_${t.id}`,
+                name: t.name,
+                isGroup: true,
+                children: []
+            };
+        });
+
+        const unknownRoot = {
+            id: 'type_unknown',
+            name: 'Tanpa Tipe',
+            isGroup: true,
+            children: []
+        };
+
         const accountMap = {};
         list.forEach(acc => {
             accountMap[acc.id] = { ...acc, children: [] };
         });
 
-        const roots = [];
         list.forEach(acc => {
             const node = accountMap[acc.id];
             if (acc.parentId && accountMap[acc.parentId]) {
                 accountMap[acc.parentId].children.push(node);
             } else {
-                roots.push(node);
+                const typeId = acc.type;
+                if (typeRoots[typeId]) {
+                    typeRoots[typeId].children.push(node);
+                } else {
+                    const match = accountTypes.find(t => 
+                        (t.id && t.id.toLowerCase() === (typeId || '').toLowerCase()) ||
+                        (t.name && t.name.toLowerCase() === (typeId || '').toLowerCase()) ||
+                        (t.base_type && t.base_type.toLowerCase() === (typeId || '').toLowerCase()) ||
+                        (t.baseType && t.baseType.toLowerCase() === (typeId || '').toLowerCase())
+                    );
+                    if (match && typeRoots[match.id]) {
+                        typeRoots[match.id].children.push(node);
+                    } else {
+                        // Fallback match by account code prefix (1=Asset, 2=Liability, 3=Equity, 4=Income, 5/6=Expense)
+                        let codeMatch = null;
+                        if (acc.code) {
+                            const c = String(acc.code).trim();
+                            if (c.startsWith('1')) codeMatch = accountTypes.find(t => (t.base_type || t.baseType || '').toUpperCase() === 'ASSET');
+                            else if (c.startsWith('2')) codeMatch = accountTypes.find(t => (t.base_type || t.baseType || '').toUpperCase() === 'LIABILITY');
+                            else if (c.startsWith('3')) codeMatch = accountTypes.find(t => (t.base_type || t.baseType || '').toUpperCase() === 'EQUITY');
+                            else if (c.startsWith('4')) codeMatch = accountTypes.find(t => (t.base_type || t.baseType || '').toUpperCase() === 'INCOME');
+                            else if (c.startsWith('5') || c.startsWith('6') || c.startsWith('7') || c.startsWith('8') || c.startsWith('9')) {
+                                codeMatch = accountTypes.find(t => (t.base_type || t.baseType || '').toUpperCase() === 'EXPENSE');
+                            }
+                        }
+                        if (codeMatch && typeRoots[codeMatch.id]) {
+                            typeRoots[codeMatch.id].children.push(node);
+                        } else {
+                            unknownRoot.children.push(node);
+                        }
+                    }
+                }
             }
         });
 
@@ -524,22 +576,18 @@ window.renderFinanceAccounts = async function () {
             });
         };
 
-        sortNodes(roots);
+        Object.values(typeRoots).forEach(r => sortNodes(r.children));
+        sortNodes(unknownRoot.children);
 
-        if (q) {
-            const filterBranches = (nodes) => {
-                return nodes.filter(n => {
-                    if (n.children && n.children.length > 0) {
-                        n.children = filterBranches(n.children);
-                    }
-                    const isMatch = (n.name && n.name.toLowerCase().includes(q)) || (n.code && n.code.toLowerCase().includes(q));
-                    return isMatch || (n.children && n.children.length > 0);
-                });
-            };
-            return filterBranches(roots);
+        const finalRoots = Object.values(typeRoots).filter(r => r.children && r.children.length > 0);
+        if (unknownRoot.children && unknownRoot.children.length > 0) {
+            finalRoots.push(unknownRoot);
         }
 
-        return roots;
+        if (q) {
+            return finalRoots.filter(r => r.children && r.children.length > 0);
+        }
+        return finalRoots;
     };
 
     const treeData = buildTree(JSON.parse(JSON.stringify(filteredAccounts)));
@@ -720,6 +768,12 @@ window.toggleCOANode = function(id, event) {
 
 window.expandAllCOA = function() {
     window._coaExpandedNodes = window._coaExpandedNodes || {};
+    const accountTypes = db.read('accountTypes') || [];
+    accountTypes.forEach(t => {
+        window._coaExpandedNodes[t.id] = true;
+        window._coaExpandedNodes[`type_${t.id}`] = true;
+    });
+    window._coaExpandedNodes['type_unknown'] = true;
     const accounts = db.read('accounts') || [];
     accounts.forEach(a => {
         window._coaExpandedNodes[a.id] = true;
