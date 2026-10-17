@@ -2252,7 +2252,11 @@ window.initSalesCharts = function(invoices, customers, allYearInvoices) {
         const custNames = {};
 
         (invoices || []).forEach(inv => {
-            const cust = (customers || []).find(c => c.id === inv.customerId || c.id === inv.customer_id);
+            const cust = (customers || []).find(c => 
+                (inv.customerId && String(c.id) === String(inv.customerId)) || 
+                (inv.customer_id && String(c.id) === String(inv.customer_id)) ||
+                (c.name && inv.customerName && c.name.trim().toLowerCase() === inv.customerName.trim().toLowerCase())
+            );
             const rawName = cust?.name || inv.customerName || inv.customer_name || 'Customer';
             const key = inv.customerId || inv.customer_id || rawName;
             
@@ -2414,8 +2418,17 @@ window.initSalesCharts = function(invoices, customers, allYearInvoices) {
         // Or if we just want it based on the exact same filter, use invoices
         // Since it's a dashboard breakdown, we'll use `invoices` (the currently filtered ones)
         (invoices || []).forEach(inv => {
-            const cust = (customers || []).find(c => c.id === inv.customerId || c.id === inv.customer_id);
-            const bType = cust?.businessType || 'Belum Diisi';
+            const cust = (customers || []).find(c => 
+                (inv.customerId && String(c.id) === String(inv.customerId)) || 
+                (inv.customer_id && String(c.id) === String(inv.customer_id)) ||
+                (c.name && inv.customerName && c.name.trim().toLowerCase() === inv.customerName.trim().toLowerCase())
+            );
+            const bType = cust?.businessType?.trim();
+            
+            // Gausah cantumkan kategori 'Belum Diisi' jika belum diisi/kosong
+            if (!bType || bType.toLowerCase() === 'belum diisi') {
+                return;
+            }
             
             businessTotals[bType] = (businessTotals[bType] || 0) + parseFloat(inv.totalAmount || inv.grandTotal || 0);
         });
@@ -2442,7 +2455,10 @@ window.initSalesCharts = function(invoices, customers, allYearInvoices) {
                             'rgba(14, 165, 233, 0.85)',
                             'rgba(16, 185, 129, 0.85)',
                             'rgba(245, 158, 11, 0.85)',
-                            'rgba(239, 68, 68, 0.85)',
+                            'rgba(236, 72, 153, 0.85)',
+                            'rgba(99, 102, 241, 0.85)',
+                            'rgba(20, 184, 166, 0.85)',
+                            'rgba(249, 115, 22, 0.85)',
                             'rgba(107, 114, 128, 0.85)'
                         ],
                         hoverBackgroundColor: [
@@ -2450,7 +2466,10 @@ window.initSalesCharts = function(invoices, customers, allYearInvoices) {
                             '#0284c7',
                             '#059669',
                             '#d97706',
-                            '#dc2626',
+                            '#db2777',
+                            '#4f46e5',
+                            '#0d9488',
+                            '#ea580c',
                             '#4b5563'
                         ],
                         borderWidth: 0,
@@ -3576,9 +3595,10 @@ function renderCustomerRows(customers) {
                     </div>
                     <div class="flex items-center gap-2 flex-wrap">
                         <div class="text-sm font-bold text-slate-800">${c.name}</div>
-                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${c.businessType ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-400'}">
-                            <i class="fas fa-industry text-[9px]"></i>${c.businessType || 'Belum Diisi'}
-                        </span>
+                        ${c.businessType ? `
+                        <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700">
+                            <i class="fas fa-industry text-[9px]"></i>${c.businessType}
+                        </span>` : ''}
                     </div>
                 </div>
             </td>
@@ -3734,12 +3754,14 @@ window.openCustomerModal = async (id = null, afterView = null) => {
                         </h4>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
-                                <label class="block text-sm font-semibold text-slate-600 mb-2">Jenis Usaha <span class="text-red-400">*</span></label>
+                                <label class="block text-sm font-semibold text-slate-600 mb-2">Jenis Usaha</label>
                                 <select id="cust_business_type" class="w-full bg-slate-50 border-2 border-transparent rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:bg-white focus:border-blue-400 outline-none cursor-pointer transition-all appearance-none">
                                     <option value="" ${!customer.businessType ? 'selected' : ''}>-- Pilih Jenis Usaha --</option>
                                     <option value="Penggoreng" ${customer.businessType === 'Penggoreng' ? 'selected' : ''}>Penggoreng</option>
                                     <option value="Distributor Mentah" ${customer.businessType === 'Distributor Mentah' ? 'selected' : ''}>Distributor Mentah</option>
                                     <option value="Pabrik Snack" ${customer.businessType === 'Pabrik Snack' ? 'selected' : ''}>Pabrik Snack</option>
+                                    <option value="Export" ${customer.businessType === 'Export' ? 'selected' : ''}>Export</option>
+                                    <option value="Canvas" ${customer.businessType === 'Canvas' ? 'selected' : ''}>Canvas</option>
                                 </select>
                             </div>
                         </div>
@@ -18786,7 +18808,11 @@ window.updateSalesInvoiceTrends = () => {
                 pivot[key].periods[pIdx].amt += parseFloat(item.subtotal) || 0;
             });
         } else {
-            const cust = customers.find(c => c.id === inv.customerId);
+            const cust = customers.find(c => 
+                (inv.customerId && String(c.id) === String(inv.customerId)) || 
+                (inv.customer_id && String(c.id) === String(inv.customer_id)) ||
+                (c.name && inv.customerName && c.name.trim().toLowerCase() === inv.customerName.trim().toLowerCase())
+            );
             let key, label;
             
             if (basedOn === 'Territory') {
@@ -18794,8 +18820,7 @@ window.updateSalesInvoiceTrends = () => {
                 if (key.trim() === '') key = 'Unknown';
                 label = key;
             } else if (basedOn === 'Jenis Usaha') {
-                key = cust?.businessType || 'Belum Diisi';
-                if (key.trim() === '') key = 'Belum Diisi';
+                key = cust?.businessType?.trim() || 'Lainnya';
                 label = key;
             } else {
                 key = inv.customerId || 'unknown';
@@ -19555,7 +19580,11 @@ window.updateSalesOrderTrends = () => {
                 pivot[key].periods[pIdx].amt += itAmt;
             });
         } else {
-            const cust = customers.find(c => c.id === so.customerId);
+            const cust = customers.find(c => 
+                (so.customerId && String(c.id) === String(so.customerId)) || 
+                (so.customer_id && String(c.id) === String(so.customer_id)) ||
+                (c.name && so.customerName && c.name.trim().toLowerCase() === so.customerName.trim().toLowerCase())
+            );
             let key, label;
 
             if (basedOn === 'Territory') {
@@ -19563,8 +19592,7 @@ window.updateSalesOrderTrends = () => {
                 if (key.trim() === '') key = 'Unknown';
                 label = key;
             } else if (basedOn === 'Jenis Usaha') {
-                key = cust?.businessType || 'Belum Diisi';
-                if (key.trim() === '') key = 'Belum Diisi';
+                key = cust?.businessType?.trim() || 'Lainnya';
                 label = key;
             } else {
                 key = so.customerId || 'unknown';
