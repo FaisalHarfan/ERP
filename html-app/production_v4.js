@@ -319,7 +319,7 @@ window.renderProductionDashboard = () => {
         topProdsMap[cleanName].totalBatches += 1;
         grandTotalMfgOutput += qty;
     });
-    const sortedProds = Object.values(topProdsMap).filter(p => p.totalQty > 0).sort((a,b) => b.totalQty - a.totalQty).slice(0, 5);
+    const sortedProds = Object.values(topProdsMap).filter(p => p.totalQty > 0).sort((a, b) => b.totalQty - a.totalQty).slice(0, 5);
 
     const yearListOptions = [];
     const minYear = 2024;
@@ -346,9 +346,9 @@ window.renderProductionDashboard = () => {
                     <div id="mfg_dash_period_type_trigger" onclick="toggleMfgDashDropdown('mfg_dash_period_type_dropdown')" 
                         class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 cursor-pointer hover:bg-slate-100/50 transition-all flex justify-between items-center h-11 shadow-sm">
                         <span id="mfg_dash_period_type_label">
-                            ${filters.periodType === 'year' ? 'Per Tahun' : 
-                              filters.periodType === 'month' ? 'Per Bulan' : 
-                              filters.periodType === 'custom' ? 'Kustom Tanggal' : 'Semua Waktu'}
+                            ${filters.periodType === 'year' ? 'Per Tahun' :
+            filters.periodType === 'month' ? 'Per Bulan' :
+                filters.periodType === 'custom' ? 'Kustom Tanggal' : 'Semua Waktu'}
                         </span>
                         <i class="fas fa-chevron-down text-[9px] text-slate-400"></i>
                     </div>
@@ -581,6 +581,7 @@ window.renderProductionDashboard = () => {
 
 // --- DAFTAR MO ---
 window.renderProductionMO = async () => {
+    window._moFormOpen = false; // Clear form guard when returning to MO list
     const canEdit = getModulePermission('produksi').edit || isCurrentUserAdmin();
     document.getElementById('pageTitle').innerText = 'Manufacturing Order ( MO )';
     const mc = document.getElementById('main-content');
@@ -788,6 +789,7 @@ document.addEventListener('click', (e) => {
 window.openMOModal = async (stagePreset = '') => {
     window._completeMOReferrer = document.getElementById('pageTitle')?.innerText.includes('Work In Progress') ? 'dashboard' : 'history';
     if (window.pushCurrentToHistory) window.pushCurrentToHistory();
+    window._moFormOpen = true; // Guard: prevent background sync from clobbering this form
 
     // Tampilkan loading spinner dulu
     const mc = document.getElementById('main-content');
@@ -801,7 +803,7 @@ window.openMOModal = async (stagePreset = '') => {
             db.sync('inventoryItems'),
             db.sync('machines')
         ]);
-    } catch(e) { console.warn('openMOModal sync error:', e); }
+    } catch (e) { console.warn('openMOModal sync error:', e); }
 
     const invItems = db.read('inventoryItems') || [];
     const stageOpts = PROD_STAGES.map(s =>
@@ -902,7 +904,7 @@ window.openMOModal = async (stagePreset = '') => {
                                         </div>
                                     </div>
                                     <div class="max-h-60 overflow-y-auto p-1" id="mo_shift_options">
-                                        ${[['1','Shift 1'],['2','Shift 2'],['3','Shift 3']].map(([v,l]) => `
+                                        ${[['1', 'Shift 1'], ['2', 'Shift 2'], ['3', 'Shift 3']].map(([v, l]) => `
                                             <div onclick="selectSearchableOption('mo_shift', '${v}', '${l}')"
                                                 class="px-4 py-2.5 rounded-lg text-sm font-bold text-slate-600 hover:bg-blue-50 hover:text-blue-600 cursor-pointer transition-colors flex items-center justify-between">
                                                 <span>${l}</span>
@@ -936,14 +938,14 @@ window.openMOModal = async (stagePreset = '') => {
                                             -- Tanpa Resep --
                                         </div>
                                         ${boms.map(b => {
-                                            const prod = db.findById('inventoryItems', b.productId);
-                                            const name = b.productName || b.name || (prod ? prod.itemName : 'Resep Tanpa Nama');
-                                            return `<div onclick="selectSearchableOption('mo_bom_id', '${b.id}', '${name.replace(/'/g, '\\&apos;')}')"
+        const prod = db.findById('inventoryItems', b.productId);
+        const name = b.productName || b.name || (prod ? prod.itemName : 'Resep Tanpa Nama');
+        return `<div onclick="selectSearchableOption('mo_bom_id', '${b.id}', '${name.replace(/'/g, '\\&apos;')}')"
                                                 class="px-4 py-2.5 rounded-lg text-sm font-bold text-slate-600 hover:bg-blue-50 hover:text-blue-600 cursor-pointer transition-colors flex items-center justify-between">
                                                 <span>${name}</span>
                                                 <i class="fas fa-check text-[10px] text-blue-500 opacity-0"></i>
                                             </div>`;
-                                        }).join('')}
+    }).join('')}
                                     </div>
                                 </div>
                             </div>
@@ -1372,7 +1374,7 @@ window.renderRMDropdownList = (rowId, query) => {
     listEl.innerHTML = items.map(o => {
         const stock = o.getAttribute('data-stock') || '0';
         const unit = o.getAttribute('data-unit') || 'Kg';
-        return `<div onclick="selectRMItem('${rowId}', '${o.value}', '${o.text.replace(/'/g,"&apos;")}', '${unit}', '${stock}')"
+        return `<div onclick="selectRMItem('${rowId}', '${o.value}', '${o.text.replace(/'/g, "&apos;")}', '${unit}', '${stock}')"
             class="px-3 py-2 text-xs font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 rounded-lg cursor-pointer transition-colors m-0.5 flex justify-between items-center">
             <span>${o.getAttribute('data-label') || o.text.split(' (')[0]}</span>
             <span class="text-[10px] text-slate-400 font-normal ml-2 shrink-0">Stok: ${parseFloat(stock).toFixed(0)} ${unit}</span>
@@ -1572,7 +1574,7 @@ window.startMO = async () => {
         await db.sync('productionOrders'); // <-- Fetch data terbaru dari server!
         closeModal(); // Tutup popup Buat MO Baru
         showToast(`MO ${moNumber} dimulai!`, 'success');
-        
+
         if (window._completeMOReferrer === 'dashboard') {
             renderProductionDashboard();
         } else {
@@ -1587,6 +1589,7 @@ window.startMO = async () => {
 window.openCompleteMOModal = (id) => {
     window._completeMOReferrer = document.getElementById('pageTitle')?.innerText.includes('Work In Progress') ? 'dashboard' : 'history';
     if (window.pushCurrentToHistory) window.pushCurrentToHistory();
+    window._moFormOpen = true; // Guard: prevent background sync from clobbering this form
     const mo = db.findById('productionOrders', id);
     if (!mo) return;
     const invItems = db.read('inventoryItems') || [];
@@ -1603,7 +1606,7 @@ window.openCompleteMOModal = (id) => {
     let historyHtml = '';
     if (mo.stage === 'OVEN_BASAH') {
         const history = mo.history || [];
-        
+
         // Calculate cumulative raw material consumed
         const cumulativeRM = {};
         history.forEach(h => {
@@ -1611,7 +1614,7 @@ window.openCompleteMOModal = (id) => {
                 cumulativeRM[item.inventoryItemId] = (cumulativeRM[item.inventoryItemId] || 0) + parseFloat(item.qty || 0);
             });
         });
-        
+
         // Calculate cumulative WIP produced
         const cumulativeWIP = {};
         history.forEach(h => {
@@ -1729,7 +1732,7 @@ window.openCompleteMOModal = (id) => {
                 <div class="flex items-center justify-between">
                     <div>
                         <p class="text-[9px] font-black text-slate-300 uppercase tracking-widest mb-0.5">Produk</p>
-                        <p class="text-sm font-black text-slate-800">${wipItem?.itemName || tp.itemName || `Produk ${idx+1}`}</p>
+                        <p class="text-sm font-black text-slate-800">${wipItem?.itemName || tp.itemName || `Produk ${idx + 1}`}</p>
                         <p class="text-[9px] text-slate-400 mt-0.5">${wipItem?.itemCode || ''}</p>
                     </div>
                     <div class="text-right">
@@ -1810,7 +1813,7 @@ window.openCompleteMOModal = (id) => {
                 <div class="flex items-center justify-between">
                     <div>
                         <p class="text-[9px] font-black text-slate-300 uppercase tracking-widest mb-0.5">Produk</p>
-                        <p class="text-sm font-black text-slate-800">${baseProd?.itemName || tp.itemName || `Produk ${idx+1}`}</p>
+                        <p class="text-sm font-black text-slate-800">${baseProd?.itemName || tp.itemName || `Produk ${idx + 1}`}</p>
                         <p class="text-[9px] text-slate-400 mt-0.5">${baseProd?.itemCode || ''}</p>
                     </div>
                 </div>
@@ -2071,26 +2074,49 @@ window.recalcPackingSacks = (idx) => {
 };
 
 window.finalizeMO = async (id) => {
+    // Guard: prevent double-submit
+    if (window._finalizeMOInProgress) return;
+    window._finalizeMOInProgress = true;
+
+    // Show loading state on the button
+    const btn = document.querySelector(`button[onclick="finalizeMO('${id}')"]`);
+    let originalBtnHTML = '';
+    if (btn) {
+        originalBtnHTML = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin text-[10px]"></i> Memproses...';
+        btn.classList.add('opacity-70', 'cursor-not-allowed');
+    }
+
+    const resetBtn = () => {
+        window._finalizeMOInProgress = false;
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalBtnHTML;
+            btn.classList.remove('opacity-70', 'cursor-not-allowed');
+        }
+    };
+
     const mo = db.findById('productionOrders', id);
-    if (!mo) return;
+    if (!mo) { resetBtn(); return; }
 
     const completedDateVal = document.getElementById('mo_completed_date')?.value;
     const partialDateVal = document.getElementById('mo_partial_date')?.value;
     const todayStr = new Date().toISOString().split('T')[0];
-    
+
     if (mo.stage !== 'OVEN_BASAH') {
         if (!completedDateVal) {
             showToast('Tanggal Selesai wajib diisi!', 'error');
-            return;
+            resetBtn(); return;
         }
         if (completedDateVal > todayStr) {
             showToast('Tanggal Selesai tidak boleh melebihi tanggal hari ini', 'error');
-            return;
+            resetBtn(); return;
         }
     } else {
         if (partialDateVal && partialDateVal > todayStr) {
             showToast('Tanggal Realisasi tidak boleh melebihi tanggal hari ini', 'error');
-            return;
+            resetBtn(); return;
         }
     }
 
@@ -2120,18 +2146,18 @@ window.finalizeMO = async (id) => {
         });
         if (rmErrors.length > 0) {
             showToast(`Stok Bahan tidak cukup: ` + rmErrors.join("; "), 'error');
-            return;
+            resetBtn(); return;
         }
 
         // --- Record Multi-Product Output ---
         const outputRows = document.querySelectorAll('.ob-output-row');
         const partialOutputProducts = [];
-        
+
         outputRows.forEach((row, i) => {
             const itemId = row.querySelector('.ob-out-item')?.value;
             const qty = parseFormattedNum(row.querySelector('.ob-out-qty')?.value);
             const itemName = db.findById('inventoryItems', itemId)?.itemName || '';
-            
+
             // Only add output products if a valid product and quantity are provided (allowing others to be skipped/empty)
             if (itemId && qty > 0) {
                 partialOutputProducts.push({ itemId, itemName, qty });
@@ -2141,10 +2167,10 @@ window.finalizeMO = async (id) => {
         const selectedStatus = document.getElementById('mo_partial_status')?.value || 'PARTIAL';
         const finalNotesVal = document.getElementById('mo_final_notes')?.value || '';
         const partialDateVal = document.getElementById('mo_partial_date')?.value;
-        
+
         if (!partialDateVal) {
             showToast('Tanggal Realisasi wajib diisi!', 'error');
-            return;
+            resetBtn(); return;
         }
 
         updates = {
@@ -2161,14 +2187,14 @@ window.finalizeMO = async (id) => {
     } else if (mo.stage === 'OVEN_KERING') {
         const tpList = mo.targetProducts || [];
         const resultInputs = document.querySelectorAll('.ok-result-qty');
-        
+
         let totalInputActual = 0;
         let totalOutputActual = 0;
         let totalShrinkageKg = 0;
-        
+
         const outErrors = [];
         const completedProducts = [];
-        
+
         tpList.forEach((tp, idx) => {
             const inputQty = tp.qty;
             const outputQty = parseFormattedNum(resultInputs[idx]?.value);
@@ -2183,10 +2209,10 @@ window.finalizeMO = async (id) => {
             totalShrinkageKg += shrink;
             completedProducts.push({ ...tp, outputQty, shrinkageKg: shrink });
         });
-        
+
         if (outErrors.length > 0) {
             showToast(outErrors.join(' | '), 'error');
-            return;
+            resetBtn(); return;
         }
 
         const rmErrors = [];
@@ -2199,7 +2225,7 @@ window.finalizeMO = async (id) => {
         });
         if (rmErrors.length > 0) {
             showToast(rmErrors.join(' | '), 'error');
-            return;
+            resetBtn(); return;
         }
 
         updates.inputQty = totalInputActual;
@@ -2231,10 +2257,10 @@ window.finalizeMO = async (id) => {
             const inputWipId = row.getAttribute('data-wip-item-id');
 
             if (inputQtyActual <= 0) {
-                outErrors.push(`${tp.itemName || `Baris ${idx+1}`}: Masukkan Qty bahan yang DI AMBIL/DIPAKAI`);
+                outErrors.push(`${tp.itemName || `Baris ${idx + 1}`}: Masukkan Qty bahan yang DI AMBIL/DIPAKAI`);
             }
             if (outputSacks < 0) {
-                outErrors.push(`${tp.itemName || `Baris ${idx+1}`}: Jumlah sak tidak boleh negatif`);
+                outErrors.push(`${tp.itemName || `Baris ${idx + 1}`}: Jumlah sak tidak boleh negatif`);
             }
 
             // Validate stock in OVEN_KERING location
@@ -2242,7 +2268,7 @@ window.finalizeMO = async (id) => {
                 const srcLoc = 'OVEN_KERING';
                 const stock = db.getInventoryStock(inputWipId, srcLoc);
                 if (stock < inputQtyActual) {
-                    rmErrors.push(`Stok WIP Oven Kering untuk ${tp.itemName || `Baris ${idx+1}`} tidak cukup (Sisa: ${prodFmt(stock)} Kg, Butuh: ${prodFmt(inputQtyActual)} Kg)`);
+                    rmErrors.push(`Stok WIP Oven Kering untuk ${tp.itemName || `Baris ${idx + 1}`} tidak cukup (Sisa: ${prodFmt(stock)} Kg, Butuh: ${prodFmt(inputQtyActual)} Kg)`);
                 }
             }
 
@@ -2259,11 +2285,11 @@ window.finalizeMO = async (id) => {
 
         if (outErrors.length > 0) {
             showToast(outErrors.join(' | '), 'error');
-            return;
+            resetBtn(); return;
         }
         if (rmErrors.length > 0) {
             showToast(rmErrors.join(' | '), 'error');
-            return;
+            resetBtn(); return;
         }
 
         updates.inputQty = totalInputActual;
@@ -2280,33 +2306,47 @@ window.finalizeMO = async (id) => {
 
     try {
         await api.completeProductionOrder(id, updates);
-        
+
+        // Release lock before navigating away
+        window._finalizeMOInProgress = false;
+
         // Show success toast and navigate back immediately (instant UI response)
         showToast(`Produksi ${mo.moNumber} selesai!`, 'success');
-        if (window._completeMOReferrer === 'dashboard') {
+
+        // Capture which page to re-render after background sync
+        const referrer = window._completeMOReferrer;
+
+        if (referrer === 'dashboard') {
             renderProductionDashboard();
         } else {
-            // Navigate back to MO list and keep it visible
+            // Navigate back to MO list
             window._prodSearchPerformed = true;
             renderProductionMO();
         }
 
-        // Run heavy cache updates in the background in parallel
+        // Run heavy cache updates in the background in parallel.
+        // IMPORTANT: only re-render if the user is still on the same section
+        // to avoid overwriting a page they navigated to after the submit.
         Promise.all([
             db.sync('productionOrders'),
             db.sync('stockTransactions'),
             db.sync('inventoryItems')
         ]).then(() => {
             console.log('[DB] Background sync completed after MO completion.');
-            // Re-render UI to show latest data without losing state
-            if (window._completeMOReferrer === 'dashboard') {
+            // Check current active page before re-rendering to avoid stomping
+            const pageTitle = document.getElementById('pageTitle')?.innerText || '';
+            const stillOnDashboard = pageTitle.includes('Work In Progress') || pageTitle.includes('Production Dashboard');
+            const stillOnMOList = pageTitle.includes('Manufacturing Order') && !pageTitle.includes('Selesaikan');
+            if (referrer === 'dashboard' && stillOnDashboard) {
                 renderProductionDashboard();
-            } else {
+            } else if (referrer !== 'dashboard' && stillOnMOList) {
                 renderProductionMO();
             }
+            // If user has navigated elsewhere, do nothing — don't clobber their current page
         }).catch(err => console.warn('Background sync error:', err));
     } catch (err) {
         showToast(err.message, 'error');
+        resetBtn();
     }
 };
 
@@ -2462,11 +2502,11 @@ window.filterMOProductList = (rowId, val) => {
     if (!container) return;
     const search = val.toLowerCase();
     const allItems = db.read('inventoryItems') || [];
-    
+
     // Get allowed categories based on current stage
     const stage = document.getElementById('mo_stage')?.value;
     const allowedCats = STAGE_STOCK_CATEGORY[stage] || ['FINISHED_GOODS'];
-    
+
     const products = allItems.filter(i => {
         if (!allowedCats.includes(i.category) || i.status === 'INACTIVE') return false;
         // Filter khusus untuk departemen Produksi: Hanya tampilkan kemasan 25 Kg untuk Produk Jadi.
@@ -2491,7 +2531,7 @@ window.filterMOProductList = (rowId, val) => {
         const isWIP = ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'].includes(p.category);
         let stockLabel = isWIP ? 'Stok WIP' : 'Stok FG';
         let stockColor = isWIP ? 'text-orange-500' : 'text-blue-500';
-        
+
         let displayItemName = p.itemName || p.item_name || 'Tanpa Nama';
         if (p.category === 'OVEN_BASAH_STOCK' && !displayItemName.toLowerCase().includes('(oven basah)')) {
             displayItemName += ' (Oven Basah)';
@@ -2500,7 +2540,7 @@ window.filterMOProductList = (rowId, val) => {
         }
 
         let displayItemCode = p.itemCode || p.item_code || '-';
-        
+
         if (stageInfo.inputFrom !== 'RAW_MATERIAL') {
             const inputStageLabel = PROD_STAGES.find(s => s.key === stageInfo.inputFrom)?.label || stageInfo.inputFrom;
             const inputItemId = db.ensureWIPItem(p.id, inputStageLabel, false);
@@ -2518,7 +2558,7 @@ window.filterMOProductList = (rowId, val) => {
             }
             stockColor = displayStock > 0 ? 'text-emerald-600' : 'text-rose-500';
         }
-        
+
         const name = (displayItemName).replace(/'/g, "\\'");
         return `
             <div onclick="selectMOProduct('${rowId}', '${p.id}', '${name}')"
@@ -2637,7 +2677,7 @@ window.loadBOMMaterialsToMO = async () => {
     // Sync bomMaterials dari API kalau cache kosong
     const cachedMats = db.read('bomMaterials') || [];
     if (cachedMats.length === 0) {
-        try { await db.sync('bomMaterials'); } catch(e) {}
+        try { await db.sync('bomMaterials'); } catch (e) { }
     }
 
     // Auto fill name
@@ -2814,17 +2854,17 @@ window.viewProductionMO = (id) => {
                 </h4>
                 <div class="space-y-1">
                     ${(mo.status === 'DONE' || mo.status === 'PARTIAL')
-                    ? (mo.outputProducts && mo.outputProducts.length > 0
-                        ? `<div class="space-y-2">${mo.outputProducts.map(op => `
+            ? (mo.outputProducts && mo.outputProducts.length > 0
+                ? `<div class="space-y-2">${mo.outputProducts.map(op => `
                             <div class="flex justify-between items-center text-sm py-2 border-b border-slate-50 last:border-none">
                                 <span class="font-semibold text-slate-700">${op.itemName}</span>
                                 <span class="font-black text-emerald-600">+${prodFmt(op.qty)} ${outputUnit}</span>
                             </div>`).join('')}</div>`
-                        : `<div class="flex justify-between items-center text-sm py-2">
+                : `<div class="flex justify-between items-center text-sm py-2">
                             <span class="font-semibold text-slate-700">${mo.productName}</span>
                             <span class="font-black text-emerald-600">+${prodFmt(mo.outputQty)} ${outputUnit}</span>
                            </div>`)
-                    : '<div class="text-sm text-slate-400 italic py-2">Belum ada output yang selesai</div>'}
+            : '<div class="text-sm text-slate-400 italic py-2">Belum ada output yang selesai</div>'}
                 </div>
                 ${mo.shrinkagePct > 0 ? `
                 <div class="mt-4 pt-3 border-t border-slate-100 flex justify-between items-center text-xs">
@@ -2911,7 +2951,7 @@ window.deleteMO = async (id) => {
         icon: 'fa-trash-alt'
     });
     if (!confirmed) return;
-    
+
     try {
         await db.delete('productionOrders', id);
         await db.sync('productionOrders');
@@ -2996,16 +3036,16 @@ window.renderProductionReports = () => {
 };
 
 window.updateProductionReports = () => {
-    const year      = parseInt(document.getElementById('pr_year')?.value || new Date().getFullYear());
-    const basedOn   = document.getElementById('pr_based_on')?.value || 'Item';
-    const period    = document.getElementById('pr_period')?.value || 'Monthly';
-    
+    const year = parseInt(document.getElementById('pr_year')?.value || new Date().getFullYear());
+    const basedOn = document.getElementById('pr_based_on')?.value || 'Item';
+    const period = document.getElementById('pr_period')?.value || 'Monthly';
+
     let labels = [];
-    if (period === 'Monthly') labels = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+    if (period === 'Monthly') labels = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
     else if (period === 'Quarterly') labels = ['Q1', 'Q2', 'Q3', 'Q4'];
     else if (period === 'Half-Yearly') labels = ['H1', 'H2'];
     else if (period === 'Yearly') labels = [year.toString()];
-    
+
     const mos = (db.read('productionOrders') || []).filter(mo => {
         if (mo.status !== 'DONE' && mo.status !== 'PARTIAL') return false;
         const d = new Date(mo.completedAt || mo.date || mo.createdAt);
@@ -3019,7 +3059,7 @@ window.updateProductionReports = () => {
         const date = new Date(mo.completedAt || mo.date || mo.createdAt);
         const monthIdx = date.getMonth();
         let pIdx = 0;
-        
+
         if (period === 'Monthly') pIdx = monthIdx;
         else if (period === 'Quarterly') pIdx = Math.floor(monthIdx / 3);
         else if (period === 'Half-Yearly') pIdx = Math.floor(monthIdx / 6);
@@ -3030,12 +3070,12 @@ window.updateProductionReports = () => {
         let key, label;
         if (basedOn === 'Item') {
             // Robust name detection
-            const bestName = mo.productName || 
-                            (mo.outputProducts && mo.outputProducts.length > 0 ? mo.outputProducts[0].itemName : null) ||
-                            (mo.targetProducts && mo.targetProducts.length > 0 ? mo.targetProducts[0].itemName : null) ||
-                            (mo.outputItemId ? db.findById('inventoryItems', mo.outputItemId)?.itemName : null) ||
-                            'Produk #' + (mo.productId || mo.id).slice(0,8);
-            
+            const bestName = mo.productName ||
+                (mo.outputProducts && mo.outputProducts.length > 0 ? mo.outputProducts[0].itemName : null) ||
+                (mo.targetProducts && mo.targetProducts.length > 0 ? mo.targetProducts[0].itemName : null) ||
+                (mo.outputItemId ? db.findById('inventoryItems', mo.outputItemId)?.itemName : null) ||
+                'Produk #' + (mo.productId || mo.id).slice(0, 8);
+
             key = mo.productId || mo.outputItemId || bestName;
             label = bestName;
         } else {
@@ -3120,12 +3160,12 @@ window.updateProductionReports = () => {
     // Body Table
     const tbody = document.getElementById('pr_tbody');
     if (tbody) {
-        const rows = Object.values(pivot).sort((a,b) => {
-            const sumA = a.periods.reduce((s,v) => s + (parseFloat(v) || 0), 0);
-            const sumB = b.periods.reduce((s,v) => s + (parseFloat(v) || 0), 0);
+        const rows = Object.values(pivot).sort((a, b) => {
+            const sumA = a.periods.reduce((s, v) => s + (parseFloat(v) || 0), 0);
+            const sumB = b.periods.reduce((s, v) => s + (parseFloat(v) || 0), 0);
             return sumB - sumA;
         });
-        
+
         let htmlRows = '';
         if (rows.length === 0) {
             htmlRows = `<tr><td colspan="${4 + labels.length}" class="text-center text-slate-400 py-20 italic font-medium">Belum ada data produksi yang selesai pada tahun ${year}</td></tr>`;
@@ -3134,13 +3174,13 @@ window.updateProductionReports = () => {
                 const row = rows[i];
                 let rowTotal = 0;
                 let monthCells = '';
-                
+
                 for (let j = 0; j < row.periods.length; j++) {
                     const val = parseFloat(row.periods[j]) || 0;
                     rowTotal += val;
                     monthCells += `<td class="px-4 py-4 border-r border-slate-200 text-right ${val > 0 ? 'text-gray-900 font-medium' : 'text-gray-300'}">${val > 0 ? prodFmt(val) : '0'}</td>`;
                 }
-                
+
                 htmlRows += `
                 <tr class="hover:bg-gray-50 transition-colors border-b border-slate-100">
                     <td class="px-4 py-6 border-r border-slate-200 text-center text-gray-400 text-sm font-medium">${i + 1}</td>
@@ -3175,7 +3215,7 @@ window.updateProductionReports = () => {
 window.exportProductionReportsCsv = () => {
     const table = document.getElementById('pr_table');
     if (!table) return;
-    let csv = '\uFEFF'; 
+    let csv = '\uFEFF';
     const trs = Array.from(table.querySelectorAll('tr'));
     trs.forEach(row => {
         const cells = Array.from(row.querySelectorAll('th,td')).map(c => {
@@ -3822,12 +3862,12 @@ window.renderBOMManagement = () => {
 
 window.renderBOMRows = (boms) => {
     if (boms.length === 0) return '';
-    
+
     return boms.map(bom => {
         const targetProduct = db.findById('inventoryItems', bom.productId);
         const materials = (db.read('bomMaterials') || []).filter(m => m.bomId === bom.id);
-        const initials = bom.productName ? bom.productName.substring(0,2).toUpperCase() : 'BM';
-        
+        const initials = bom.productName ? bom.productName.substring(0, 2).toUpperCase() : 'BM';
+
         return `
         <tr class="hover:bg-slate-50/80 transition-colors group">
             <td class="py-4 px-5">
@@ -3859,18 +3899,18 @@ window.renderBOMRows = (boms) => {
 window.filterBOMList = () => {
     const search = document.getElementById('bom_search')?.value.toLowerCase() || '';
     const boms = db.read('bomHeaders') || [];
-    
+
     const filtered = boms.filter(b => {
         const targetProduct = db.findById('inventoryItems', b.productId);
         const productName = targetProduct ? targetProduct.itemName.toLowerCase() : '';
-        return !search || 
-            (b.productName || b.name).toLowerCase().includes(search) || 
+        return !search ||
+            (b.productName || b.name).toLowerCase().includes(search) ||
             productName.includes(search);
     });
 
     const tbody = document.getElementById('bom_table_body');
     const emptyState = document.getElementById('bom_empty_state');
-    
+
     if (filtered.length === 0) {
         tbody.innerHTML = '';
         emptyState.classList.remove('hidden');
@@ -3910,14 +3950,14 @@ window.selectMaterialOption = (id, name, unit) => {
     input.value = id;
     input.dataset.name = name;
     input.dataset.unit = unit;
-    
+
     const btnText = document.getElementById('material_dropdown_text');
     btnText.textContent = name;
     btnText.classList.remove('text-slate-400');
     btnText.classList.add('text-slate-700');
-    
+
     document.getElementById('add_mat_unit').value = unit || '';
-    
+
     document.getElementById('material_dropdown_menu').classList.add('hidden');
     document.getElementById('material_dropdown_search').value = '';
     filterMaterialDropdown();
@@ -3950,14 +3990,14 @@ window.filterBOMTargetDropdown = () => {
 window.selectBOMTargetOption = (id, name) => {
     const input = document.getElementById('bom_product_id');
     input.value = id;
-    
+
     const btnText = document.getElementById('bom_target_dropdown_text');
     btnText.textContent = name;
-    
+
     const btn = document.getElementById('bom_target_dropdown_btn');
     btn.classList.remove('text-slate-400');
     btn.classList.add('text-slate-800');
-    
+
     document.getElementById('bom_target_dropdown_menu').classList.add('hidden');
     document.getElementById('bom_target_dropdown_search').value = '';
     filterBOMTargetDropdown();
@@ -4046,10 +4086,10 @@ window.openBOMModal = (id = null) => {
                         
                         <div class="max-h-64 overflow-y-auto custom-scrollbar p-2" id="material_dropdown_list">
                             ${rawMaterials.map(m => {
-                                const stockTxs = db.read('stockTransactions') || [];
-                                const stock = stockTxs.filter(t => t.itemId === m.id).reduce((tot, t) => t.type === 'IN' ? tot + parseFloat(t.qty) : tot - parseFloat(t.qty), 0);
-                                
-                                return `
+        const stockTxs = db.read('stockTransactions') || [];
+        const stock = stockTxs.filter(t => t.itemId === m.id).reduce((tot, t) => t.type === 'IN' ? tot + parseFloat(t.qty) : tot - parseFloat(t.qty), 0);
+
+        return `
                                 <div class="material-option flex justify-between items-center p-3 hover:bg-blue-50/50 rounded-xl cursor-pointer transition-all group" 
                                     onclick="selectMaterialOption('${m.id}', '${m.itemName.replace(/'/g, "\\'")}', '${m.unit}')"
                                     data-name="${(m.itemName || '').toLowerCase()}" data-code="${(m.itemCode || '').toLowerCase()}">
@@ -4061,7 +4101,7 @@ window.openBOMModal = (id = null) => {
                                         <div class="text-[10px] font-black text-blue-500 uppercase tracking-widest bg-blue-50 px-2 py-1 rounded-lg">STOCK: ${prodFmt(stock)}</div>
                                     </div>
                                 </div>`;
-                            }).join('')}
+    }).join('')}
                         </div>
                         
                         <div class="p-2 border-t border-slate-100 bg-slate-50/50">
@@ -4223,7 +4263,7 @@ window.saveBOM = async (id = '') => {
     // Replace materials in PostgreSQL
     const allMaterials = db.read('bomMaterials') || [];
     const oldMaterials = allMaterials.filter(m => m.bomId === headerId);
-    
+
     for (const old of oldMaterials) {
         await db.delete('bomMaterials', old.id);
     }
@@ -4534,7 +4574,7 @@ window.renderMachineMaster = () => {
 
 window.renderMachineRows = (machines) => {
     if (machines.length === 0) return '';
-    
+
     return machines.map(m => {
         const isMaintenance = m.status === 'MAINTENANCE';
         const isActive = m.status === 'ACTIVE';
@@ -4542,9 +4582,9 @@ window.renderMachineRows = (machines) => {
         let statusClass = 'bg-slate-100 text-slate-500';
         if (isActive) statusClass = 'bg-green-50 text-green-700 border border-green-200/50 shadow-[0_1px_2px_rgba(0,0,0,0.05)]';
         if (isMaintenance) statusClass = 'bg-amber-50 text-amber-700 border border-amber-200/50 shadow-[0_1px_2px_rgba(0,0,0,0.05)]';
-        
+
         // Use initial letters for the avatar
-        const initials = m.name ? m.name.substring(0,2).toUpperCase() : 'MC';
+        const initials = m.name ? m.name.substring(0, 2).toUpperCase() : 'MC';
 
         return `
         <tr class="hover:bg-slate-50/80 transition-colors group">
@@ -4583,17 +4623,17 @@ window.renderMachineRows = (machines) => {
 window.filterMachineList = () => {
     const search = document.getElementById('mch_search')?.value.toLowerCase() || '';
     const machines = db.read('machines') || [];
-    
+
     const filtered = machines.filter(m => {
-        return !search || 
-            (m.name || '').toLowerCase().includes(search) || 
+        return !search ||
+            (m.name || '').toLowerCase().includes(search) ||
             (m.code || '').toLowerCase().includes(search) ||
             (m.type || '').toLowerCase().includes(search);
     });
 
     const tbody = document.getElementById('machine_table_body');
     const emptyState = document.getElementById('machine_empty_state');
-    
+
     if (filtered.length === 0) {
         tbody.innerHTML = '';
         emptyState.classList.remove('hidden');
@@ -4738,7 +4778,7 @@ window.renderProductionStockMaster = () => {
     renderBreadcrumb(['Produksi', 'Master', 'Stock Master']);
     document.getElementById('pageTitle').innerText = 'Stok Produksi';
     const mc = document.getElementById('main-content');
-    
+
     // Persist filters
     window._prodStockFilters = window._prodStockFilters || { q: '', cat: '' };
     const f = window._prodStockFilters;
@@ -4746,10 +4786,10 @@ window.renderProductionStockMaster = () => {
     let allItems = (db.read('inventoryItems') || []).filter(it => it.status === 'ACTIVE');
     window._tempProdStockItems = allItems;
     let items = [...allItems];
-    
+
     // Default categories for production: Only WIP (Oven Basah & Oven Kering)
     const prodCats = ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'];
-    
+
     // Apply Filters
     if (f.cat) {
         items = items.filter(it => it.category === f.cat);
@@ -4854,7 +4894,7 @@ window.renderProductionStockMaster = () => {
 window.renderProductionStockRows = (items) => {
     const canEdit = getModulePermission('produksi').edit || isCurrentUserAdmin();
     if (items.length === 0) return '';
-    
+
     const catLabels = {
         RAW_MATERIAL: 'Bahan Baku',
         OVEN_BASAH_STOCK: 'Oven Basah',
@@ -4874,7 +4914,7 @@ window.renderProductionStockRows = (items) => {
         const stock = db.getInventoryStock(it.id);
         const isLow = stock < (it.minStock || 0);
         const isActive = it.status !== 'INACTIVE';
-        
+
         return `
         <tr class="hover:bg-slate-50/80 transition-colors group ${isLow ? 'bg-red-50/10' : ''}">
             <td class="py-4 px-5">
@@ -4949,24 +4989,24 @@ window.applyProdStockFilters = () => {
     _prodStockFilterDebounce = setTimeout(() => {
         const qInput = document.getElementById('filter_prodStock_q');
         const catSelect = document.getElementById('filter_prodStock_cat');
-        
+
         window._prodStockFilters = {
             q: qInput ? qInput.value : '',
             cat: catSelect ? catSelect.value : ''
         };
-        
+
         const cached = window._tempProdStockItems;
         if (cached) {
             const f = window._prodStockFilters;
             let items = [...cached];
             const prodCats = ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK'];
-            
+
             if (f.cat) {
                 items = items.filter(it => it.category === f.cat);
             } else {
                 items = items.filter(it => prodCats.includes(it.category));
             }
-            
+
             if (f.q) {
                 const q = f.q.toLowerCase().trim();
                 const searchWords = q.split(/\s+/).filter(w => w.length > 0);
@@ -4975,11 +5015,11 @@ window.applyProdStockFilters = () => {
                     return searchWords.every(word => targetText.includes(word));
                 });
             }
-            
+
             const tbody = document.getElementById('prod_stock_table_body');
             const emptyState = document.getElementById('prod_stock_empty_state');
             const countEl = document.getElementById('prod_stock_count');
-            
+
             if (tbody) tbody.innerHTML = renderProductionStockRows(items);
             if (emptyState) emptyState.classList.toggle('hidden', items.length > 0);
             if (countEl) countEl.textContent = `Showing ${items.length} Production Items`;
@@ -5011,9 +5051,9 @@ window.openQuickAddProductModal = (rowId) => {
 
     const allCats = [
         ['FINISHED_GOODS', 'Gudang Jadi'],
-        ['OVEN_BASAH_STOCK', 'Oven Basah'], 
+        ['OVEN_BASAH_STOCK', 'Oven Basah'],
         ['OVEN_KERING_STOCK', 'Oven Kering'],
-        ['RAW_MATERIAL', 'Bahan Baku & Bumbu'], 
+        ['RAW_MATERIAL', 'Bahan Baku & Bumbu'],
         ['PACKAGING', 'Kemasan']
     ];
     const catOpts = allCats.map(([val, label]) => `<option value="${val}" ${val === defaultCat ? 'selected' : ''}>${label}</option>`).join('');
@@ -5077,7 +5117,7 @@ window.saveQuickAddProduct = async (rowId) => {
     const category = document.getElementById('quick_p_category')?.value;
     const unit = document.getElementById('quick_p_unit')?.value;
     const minStock = parseFloat(document.getElementById('quick_p_minstock')?.value) || 0;
-    
+
     if (!name) {
         showToast('Nama barang wajib diisi', 'error');
         return;
@@ -5090,14 +5130,14 @@ window.saveQuickAddProduct = async (rowId) => {
     saveBtn.disabled = true;
 
     try {
-        const result = await api.createInventoryItem({ 
-            itemName: name, 
-            category, 
-            unit, 
-            minStock, 
-            purchasePrice: 0, 
-            status: 'ACTIVE', 
-            initialStock: 0 
+        const result = await api.createInventoryItem({
+            itemName: name,
+            category,
+            unit,
+            minStock,
+            purchasePrice: 0,
+            status: 'ACTIVE',
+            initialStock: 0
         });
 
         showToast('Produk baru berhasil ditambahkan');
@@ -5110,7 +5150,7 @@ window.saveQuickAddProduct = async (rowId) => {
         // Retrieve the newly created item
         const items = db.read('inventoryItems') || [];
         const newItem = items.find(it => it.itemName === name && it.category === category) || result;
-        
+
         if (newItem && newItem.id) {
             selectMOProduct(rowId, newItem.id, newItem.itemName);
         }

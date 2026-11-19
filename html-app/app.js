@@ -1010,7 +1010,7 @@ async function navigateTo(viewId, isBack = false) {
                         'cust-form-view', 'gr-form-view', 'pr-form-view', 
                         'bom-form-view', 'mo-form-view'
                     ];
-                    const isFormOpen = activeForms.some(id => {
+                    const isFormOpen = window._moFormOpen || activeForms.some(id => {
                         const el = document.getElementById(id);
                         return el && !el.classList.contains('hidden');
                     });

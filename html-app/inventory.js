@@ -29,9 +29,9 @@ const CATEGORY_COLORS = {
 };
 const REF_LABELS = { PO: 'Purchase Receipt', SO: 'Sales Delivery', PRODUCTION_IN: 'Hasil Produksi', PRODUCTION_OUT: 'Konsumsi Produksi', SHRINKAGE: 'Penyusutan/NG', MANUAL: 'Manual', CONVERSION: 'Konversi' };
 
-function invFmt(n) { 
+function invFmt(n) {
     const val = parseFloat(n);
-    return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(isNaN(val) ? 0 : val); 
+    return new Intl.NumberFormat('id-ID', { maximumFractionDigits: 2 }).format(isNaN(val) ? 0 : val);
 }
 function invDate(d) { return d ? new Date(d).toLocaleDateString('id-ID') : '-'; }
 
@@ -91,10 +91,10 @@ window.toggleRowDropdown = (e, id) => {
     e.stopPropagation();
     const dropdown = document.getElementById(`dropdown-${id}`);
     const isHidden = dropdown.classList.contains('hidden');
-    
+
     // Close all other dropdowns first
     document.querySelectorAll('.inventory-action-menu').forEach(d => d.classList.add('hidden'));
-    
+
     if (isHidden) {
         dropdown.classList.remove('hidden');
     }
@@ -118,10 +118,10 @@ window.renderInventoryDashboard = () => {
     const items = (db.read('inventoryItems') || []).filter(it => it.status === 'ACTIVE');
     const warehouses = db.read('warehouses') || [];
     const stockTxs = db.read('stockTransactions') || [];
-    
+
     // Calculate Stats
     let totalInventoryValue = 0;
-    const warehouseValues = {}; 
+    const warehouseValues = {};
     const locations = ['WHS', 'OVEN_BASAH', 'OVEN_KERING'];
     locations.forEach(loc => warehouseValues[loc] = 0);
 
@@ -135,7 +135,7 @@ window.renderInventoryDashboard = () => {
     });
 
     const shortageItems = items.filter(it => db.getInventoryStock(it.id) < (it.minStock || 0));
-    
+
     const fmt = v => new Intl.NumberFormat('id-ID').format(v);
 
     const frappeCard = (title, value) => `
@@ -232,11 +232,11 @@ window.renderInventoryDashboard = () => {
     `;
 
     setTimeout(() => {
-        if(window.initInventoryCharts) window.initInventoryCharts(warehouseValues, stockTxs);
+        if (window.initInventoryCharts) window.initInventoryCharts(warehouseValues, stockTxs);
     }, 100);
 };
 
-window.initInventoryCharts = function(warehouseValues, stockTxs) {
+window.initInventoryCharts = function (warehouseValues, stockTxs) {
     if (typeof Chart === 'undefined') return;
     const currentYear = new Date().getFullYear();
 
@@ -264,8 +264,8 @@ window.initInventoryCharts = function(warehouseValues, stockTxs) {
                     maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: {
-                        y: { display: false, grid: {display: false} },
-                        x: { grid: {display: false}, border: {display: false}, ticks: { color: '#6b7280', font: {size: 11} } }
+                        y: { display: false, grid: { display: false } },
+                        x: { grid: { display: false }, border: { display: false }, ticks: { color: '#6b7280', font: { size: 11 } } }
                     }
                 }
             });
@@ -314,8 +314,8 @@ window.initInventoryCharts = function(warehouseValues, stockTxs) {
                     maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: {
-                        y: { beginAtZero: true, grid: { color: '#f3f4f6', drawBorder: false }, ticks: { color: '#9ca3af', font: {size: 11} }, border: {display: false} },
-                        x: { grid: { display: false, drawBorder: false }, ticks: { color: '#9ca3af', font: {size: 11} }, border: {display: false} }
+                        y: { beginAtZero: true, grid: { color: '#f3f4f6', drawBorder: false }, ticks: { color: '#9ca3af', font: { size: 11 } }, border: { display: false } },
+                        x: { grid: { display: false, drawBorder: false }, ticks: { color: '#9ca3af', font: { size: 11 } }, border: { display: false } }
                     }
                 }
             });
@@ -348,8 +348,8 @@ window.initInventoryCharts = function(warehouseValues, stockTxs) {
                     maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: {
-                        y: { beginAtZero: true, grid: { color: '#f3f4f6', drawBorder: false }, ticks: { color: '#9ca3af', font: {size: 11} }, border: {display: false} },
-                        x: { grid: { display: false, drawBorder: false }, ticks: { color: '#9ca3af', font: {size: 11} }, border: {display: false} }
+                        y: { beginAtZero: true, grid: { color: '#f3f4f6', drawBorder: false }, ticks: { color: '#9ca3af', font: { size: 11 } }, border: { display: false } },
+                        x: { grid: { display: false, drawBorder: false }, ticks: { color: '#9ca3af', font: { size: 11 } }, border: { display: false } }
                     }
                 }
             });
@@ -364,20 +364,14 @@ window.renderInventoryMaster = async () => {
     renderBreadcrumb(['Stock', 'Master Items']);
     document.getElementById('pageTitle').innerText = 'Master Item';
     const mc = document.getElementById('main-content');
-    
+
     // Loading State
-    mc.innerHTML = `<div class="p-10 text-center"><i class="fas fa-spinner fa-spin text-3xl text-indigo-500"></i><p class="mt-4 text-slate-500 font-medium">Memuat Master Item...</p></div>`;
+    const cachedItems = (window._tempInventoryMasterItems && window._tempInventoryMasterItems.length > 0)
+        ? window._tempInventoryMasterItems
+        : (typeof db !== 'undefined' && db.read ? db.read('inventoryItems') : []);
 
-    try {
-        let items = await api.getInventoryItems();
-        window._tempInventoryItems = items; // Cache for modals
-
-        // Exclude WIP categories — these belong to Manufacturing, not Inventory
-        const WIP_CATEGORIES = ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK', 'BULK_STOCK'];
-        // Exclude Purchase categories — these belong to Purchasing department
-        const PURCHASE_CATEGORIES = ['PACKAGING', 'SPAREPART', 'SUPPLIES', 'SERVICE', 'GAS', 'ASSET'];
-        
-        items = items.filter(it => !WIP_CATEGORIES.includes(it.category) && !PURCHASE_CATEGORIES.includes(it.category));
+    const renderWithItems = (rawItems) => {
+        let items = rawItems.filter(it => !WIP_CATEGORIES.includes(it.category) && !PURCHASE_CATEGORIES.includes(it.category));
         window._tempInventoryItems = items; // Update cache after filters
         window._tempInventoryMasterItems = items; // Cache for fast client-side search
 
@@ -395,7 +389,7 @@ window.renderInventoryMaster = async () => {
         if (f.name) {
             const q = f.name.toLowerCase().trim();
             const searchWords = q.split(/\s+/).filter(w => w.length > 0);
-            
+
             items = items.filter(it => {
                 const targetText = `${it.itemName} ${it.itemCode}`.toLowerCase();
                 // Match if ALL words in the query are present in the item name or code
@@ -422,7 +416,7 @@ window.renderInventoryMaster = async () => {
 
         const selectedCatLabel = f.category ? (CATEGORY_LABELS[f.category] || f.category) : 'All Categories';
 
-    mc.innerHTML = `
+        mc.innerHTML = `
     <div class="space-y-4 animate-in fade-in duration-500">
         <!-- Compact Filter Bar -->
         <div class="bg-white rounded-xl shadow-sm border border-slate-100 p-5">
@@ -522,20 +516,37 @@ window.renderInventoryMaster = async () => {
             </div>
         </div>
     </div>`;
+    };
+
+    // Optimistic Render: Jika sudah ada cache, render langsung 0 ms!
+    if (cachedItems && cachedItems.length > 0) {
+        renderWithItems(cachedItems);
+    } else {
+        mc.innerHTML = `<div class="p-10 text-center"><i class="fas fa-spinner fa-spin text-3xl text-indigo-500"></i><p class="mt-4 text-slate-500 font-medium">Memuat Master Item...</p></div>`;
+    }
+
+    try {
+        let items = await api.getInventoryItems();
+        // Update tampilan secara halus tanpa jeda muter
+        if (document.getElementById('pageTitle')?.innerText === 'Master Item') {
+            renderWithItems(items);
+        }
     } catch (err) {
-        mc.innerHTML = `<div class="p-10 text-center text-red-500"><i class="fas fa-exclamation-triangle text-3xl mb-4"></i><p>${err.message}</p></div>`;
+        if (!cachedItems || cachedItems.length === 0) {
+            mc.innerHTML = `<div class="p-10 text-center text-red-500"><i class="fas fa-exclamation-triangle text-3xl mb-4"></i><p>${err.message}</p></div>`;
+        }
     }
 }
 
 function renderInventoryRows(items) {
     const canEdit = getModulePermission('logistik').edit;
     if (items.length === 0) return '';
-    
+
     return items.map(it => {
         const stock = it.currentStock || 0; // Menggunakan pre-calculated stock dari Backend API!
         const isLow = stock < (it.minStock || 0);
         const isActive = it.status !== 'INACTIVE';
-        
+
         return `
         <tr class="hover:bg-slate-50/80 transition-colors group ${isLow ? 'bg-red-50/10' : ''}">
             <td class="py-4 px-5">
@@ -592,7 +603,8 @@ function renderInventoryRows(items) {
                                     <i class="fas fa-trash w-4"></i> Hapus Item
                                 </button>
                                 ` : ''}
-                            </div>
+                            </div>.
+                            
                         </div>
                     </div>
                 </div>
@@ -665,29 +677,29 @@ window.renderInventoryItemForm = (id = null, context = null) => {
     const item = id ? ((window._tempInventoryItems || []).find(it => it.id === id) || db.findById('inventoryItems', id)) : null;
     const units = ['KG', 'GR', 'GRAM', 'Lembar', 'PCS', 'BOX', 'SAK', 'KARTON', 'LITER', 'Tabung', 'Batang', 'MM', 'RIM', 'DRUM', 'LOT'];
     const unitOpts = units.map(u => `<option ${item?.unit === u ? 'selected' : ''}>${u}</option>`).join('');
-    
+
     // Dynamic Categories based on context
     const allCats = [
-        ['RAW_MATERIAL', 'Bahan Baku'], 
+        ['RAW_MATERIAL', 'Bahan Baku'],
         ['PACKAGING', 'Packaging'],
         ['SUPPLIES', 'Perlengkapan'],
         ['SERVICE', 'Service'],
         ['SPAREPART', 'Sparepart'],
         ['ASSET', 'Aktiva ( tetap )'],
         ['GAS', 'Gas'],
-        ['OVEN_BASAH_STOCK', 'Oven Basah'], 
-        ['OVEN_KERING_STOCK', 'Oven Kering'], 
+        ['OVEN_BASAH_STOCK', 'Oven Basah'],
+        ['OVEN_KERING_STOCK', 'Oven Kering'],
         ['FINISHED_GOODS', 'Gudang Jadi']
     ];
-    
+
     const pageTitleText = document.getElementById('pageTitle')?.innerText;
     const isProductionContext = pageTitleText === 'Stok Produksi' || (window._currentView && window._currentView.includes('production'));
     const isPurchaseContext = context === 'purchase' || pageTitleText === 'Master Item Pembelian';
-    
+
     // Purchase categories (non-inventory)
     const PURCHASE_CATS = ['PACKAGING', 'SUPPLIES', 'SERVICE', 'SPAREPART', 'ASSET', 'GAS'];
     const WIP_CATS = ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK', 'BULK_STOCK'];
-    
+
     let filteredCats;
     if (isProductionContext) {
         // Production context: only show WIP categories
@@ -850,7 +862,7 @@ window.invUpdateCodePreview = () => {
     if (!cat) return;
     const preview = document.getElementById('inv_code_preview');
     const label = document.getElementById('inv_code_preview_label');
-    
+
     if (preview && (preview.value.includes('(auto-generate)') || preview.value.includes('(preview)'))) {
         const newCode = db.generateItemCode(cat) + ' (preview)';
         preview.value = newCode;
@@ -863,7 +875,7 @@ window.invUpdateCodePreview = () => {
         let name = nameInput.value.trim();
         // Remove existing suffixes first to avoid duplicates
         name = name.replace(/\s*\(Oven Basah\)/gi, '').replace(/\s*\(Oven Kering\)/gi, '');
-        
+
         if (cat === 'OVEN_BASAH_STOCK') {
             nameInput.value = name + (name ? ' ' : '') + '(Oven Basah)';
         } else if (cat === 'OVEN_KERING_STOCK') {
@@ -901,7 +913,7 @@ window.saveInventoryItem = async (id, btnEl) => {
             await api.createInventoryItem({ itemName: name, category, unit, minStock, purchasePrice, status, initialStock });
             showToast('Item baru berhasil ditambahkan');
         }
-        
+
         // Bust the master cache so next open fetches fresh data
         window._tempInventoryMasterItems = null;
 
@@ -924,7 +936,7 @@ window.toggleInventoryItemStatus = async (id) => {
     const item = (window._tempInventoryItems || []).find(it => it.id === id) || db.findById('inventoryItems', id);
     if (!item) return;
     const newStatus = item.status === 'INACTIVE' ? 'ACTIVE' : 'INACTIVE';
-    
+
     try {
         await api.updateInventoryItem(id, { status: newStatus });
         await db.sync('inventoryItems');
@@ -955,7 +967,7 @@ window.deleteInventoryItem = async (id) => {
         // -- LOCAL CLEANUP --
         // Keep the local deep clean for other modules that are not yet migrated to Phase 2
         const collections = [
-            'stockTransactions', 'stockCard', 'purchaseRFQs', 'purchaseOrders', 
+            'stockTransactions', 'stockCard', 'purchaseRFQs', 'purchaseOrders',
             'salesQuotations', 'salesOrders', 'productionOrders', 'inventoryBOM',
             'salesInvoices', 'purchaseInvoices', 'deliveryOrders', 'salesReturns',
             'productExchanges', 'inventoryShrinkage'
@@ -969,7 +981,7 @@ window.deleteInventoryItem = async (id) => {
                 const initialLen = data.length;
                 data = data.filter(t => t.itemId !== id && t.item_id !== id);
                 if (data.length !== initialLen) modified = true;
-            } 
+            }
             else if (col === 'productExchanges') {
                 const initialLen = data.length;
                 data = data.filter(t => t.fromItemId !== id && t.toItemId !== id);
@@ -1191,7 +1203,7 @@ window.saveStockAdjustment = async (itemId) => {
             notes: notes || 'Stock Adjustment (Manual Update)',
             date: adjDate
         });
-        
+
         // SYNC TABLES IN BACKGROUND
         showToast(`Stok berhasil disesuaikan (${type}: ${absDiff})`);
         closeModal();
@@ -1242,15 +1254,15 @@ window.renderInventoryConversion = () => {
                 </thead>
                 <tbody class="text-sm divide-y divide-gray-50">
                     ${logs.slice().reverse().flatMap(l => {
-                        const fromItem = db.findById('inventoryItems', l.fromItemId);
-                        // Support both new format (entries[]) and old format (single toItemId)
-                        const entries = l.entries || (l.toItemId ? [{
-                            itemId: l.toItemId,
-                            itemName: db.findById('inventoryItems', l.toItemId)?.itemName || '-',
-                            qty: l.resultQty,
-                            unit: db.findById('inventoryItems', l.toItemId)?.unit || 'Pack'
-                        }] : []);
-                        return entries.map((e, i) => `
+        const fromItem = db.findById('inventoryItems', l.fromItemId);
+        // Support both new format (entries[]) and old format (single toItemId)
+        const entries = l.entries || (l.toItemId ? [{
+            itemId: l.toItemId,
+            itemName: db.findById('inventoryItems', l.toItemId)?.itemName || '-',
+            qty: l.resultQty,
+            unit: db.findById('inventoryItems', l.toItemId)?.unit || 'Pack'
+        }] : []);
+        return entries.map((e, i) => `
                         <tr class="hover:bg-gray-50">
                             <td class="px-6 py-3 text-xs text-gray-400">${i === 0 ? invDate(l.date) : ''}</td>
                             <td class="px-6 py-3 text-gray-600">${i === 0 ? (fromItem?.itemName || '-') : ''}</td>
@@ -1263,7 +1275,7 @@ window.renderInventoryConversion = () => {
                             <td class="px-6 py-3 text-xs text-gray-400">${i === 0 ? (l.notes || '-') : ''}</td>
                             <td class="px-6 py-3 text-xs text-gray-400">${i === 0 ? (l.createdBy || 'Admin') : ''}</td>
                         </tr>`);
-                    }).join('') || '<tr><td colspan="6" class="py-12 text-center text-gray-400 text-sm">Belum ada riwayat</td></tr>'}
+    }).join('') || '<tr><td colspan="6" class="py-12 text-center text-gray-400 text-sm">Belum ada riwayat</td></tr>'}
                 </tbody>
             </table>
         </div>
@@ -1405,7 +1417,7 @@ window.calculateConversionResult = () => {
     const totalKg = parseFloat(inputKg.value) || 0;
     const ratio = parseFloat(ratioEl.value) || 1;
     const result = totalKg / ratio;
-    
+
     // Update hidden fields for saving
     const hiddenKg = document.getElementById('conv_total_kg');
     const hiddenQty = document.getElementById('conv_result_qty_manual');
@@ -1423,17 +1435,17 @@ window.updateConversionSourceInfo = () => {
     const id = document.getElementById('conv_from_item').value;
     const info = document.getElementById('conv_src_info');
     const stockEl = document.getElementById('conv_src_stock');
-    
+
     if (id) {
         const totalStock = db.getInventoryStock(id);
         const pb = (db.read('packBreakdowns') || []).find(b => b.itemId === id) || {};
         const q5 = pb.qty5 || 0;
         const q800 = pb.qty800 || 0;
         const weightOthers = q5 * 5 + q800 * 0.8;
-        
+
         // Show only the 25kg packaging stock (convertible stock)
         const q25Stock = totalStock - weightOthers;
-        
+
         stockEl.textContent = invFmt(q25Stock) + ' Kg';
         info.classList.remove('hidden');
     } else {
@@ -1464,12 +1476,12 @@ window.saveInventoryConversion = async () => {
 
         // Simpan Log Konversi
         db.insert('inventoryConversions', {
-            date, 
-            fromItemId: fromId, 
-            totalKg, 
-            ratio, 
-            resultQty, 
-            notes, 
+            date,
+            fromItemId: fromId,
+            totalKg,
+            ratio,
+            resultQty,
+            notes,
             pic,
             createdBy: window._session?.fullName || 'Admin',
             createdAt: new Date().toISOString()
@@ -1480,7 +1492,7 @@ window.saveInventoryConversion = async () => {
         // Use db.update/db.insert to persist to PostgreSQL (not db.save which is memory-only)
         const allPB = db.read('packBreakdowns') || [];
         let pb = allPB.find(b => b.itemId === fromId);
-        
+
         if (pb) {
             // Update existing breakdown
             const updates = {};
@@ -1500,13 +1512,13 @@ window.saveInventoryConversion = async () => {
             }
             await db.insert('packBreakdowns', newPB);
         }
-        
+
         // Sync cache from server to ensure consistency
         await db.sync('packBreakdowns');
 
         showToast('Konversi kemasan berhasil disimpan', 'success');
         closeModal();
-        
+
         // Refresh laporan jika sedang terbuka
         if (window.runMonthlyStockReport) window.runMonthlyStockReport();
     } catch (err) {
@@ -2098,7 +2110,7 @@ window.invShowCurrentStock = (selectId, infoId) => {
     const hidden = document.getElementById(selectId);
     const info = document.getElementById(infoId);
     if (!hidden || !info || !hidden.value) { info.classList.add('hidden'); return; }
-    
+
     const item = db.findById('inventoryItems', hidden.value);
     if (!item) return;
 
@@ -2242,7 +2254,7 @@ function renderProductionBoard() {
     const canEdit = getModulePermission('logistik').edit;
     document.getElementById('pageTitle').innerText = 'Production Command Center';
     const mc = document.getElementById('main-content');
-    
+
     const mos = db.read('productionOrders') || [];
     const filters = window.mfgBoardFilters;
 
@@ -2276,7 +2288,7 @@ function renderProductionBoard() {
 
     const activeMOs = filteredMOs.filter(m => m.status === 'IN_PROGRESS' || m.status === 'PARTIAL');
     const finishedMOs = filteredMOs.filter(m => m.status === 'DONE' || m.status === 'PARTIAL');
-    
+
     // Calculate Stats
     const totalOutput = finishedMOs.reduce((s, m) => s + (m.outputQty || 0), 0);
     const avgYield = finishedMOs.length ? (finishedMOs.reduce((s, m) => s + (m.yield || 100), 0) / finishedMOs.length).toFixed(1) : '100';
@@ -2389,9 +2401,9 @@ function renderProductionBoard() {
                         <div id="mfg_board_period_type_trigger" onclick="toggleMfgBoardDropdown('mfg_board_period_type_dropdown')" 
                             class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-bold text-slate-700 cursor-pointer hover:bg-slate-100/50 transition-all flex justify-between items-center h-11 shadow-sm">
                             <span id="mfg_board_period_type_label">
-                                ${filters.periodType === 'year' ? 'Per Tahun' : 
-                                  filters.periodType === 'month' ? 'Per Bulan' : 
-                                  filters.periodType === 'custom' ? 'Kustom Tanggal' : 'Semua Waktu'}
+                                ${filters.periodType === 'year' ? 'Per Tahun' :
+            filters.periodType === 'month' ? 'Per Bulan' :
+                filters.periodType === 'custom' ? 'Kustom Tanggal' : 'Semua Waktu'}
                             </span>
                             <i class="fas fa-chevron-down text-[9px] text-slate-400"></i>
                         </div>
@@ -2469,11 +2481,11 @@ function renderProductionBoard() {
     `;
 
     setTimeout(() => {
-        if(window.initProdCharts) window.initProdCharts(filteredMOs);
+        if (window.initProdCharts) window.initProdCharts(filteredMOs);
     }, 100);
 }
 
-window.initProdCharts = function(mos) {
+window.initProdCharts = function (mos) {
     if (typeof Chart === 'undefined') return;
 
     // Destroy existing instances if any
@@ -2537,11 +2549,11 @@ window.initProdCharts = function(mos) {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { position: 'top', labels: { boxWidth: 10, usePointStyle: true, font: {size: 11} } }
+                    legend: { position: 'top', labels: { boxWidth: 10, usePointStyle: true, font: { size: 11 } } }
                 },
                 scales: {
-                    x: { grid: { display: false }, ticks: { color: '#9ca3af', font: {size: 11} } },
-                    y: { beginAtZero: true, grid: { color: '#f3f4f6', drawBorder: false }, ticks: { color: '#9ca3af', font: {size: 11} }, border: {display: false} }
+                    x: { grid: { display: false }, ticks: { color: '#9ca3af', font: { size: 11 } } },
+                    y: { beginAtZero: true, grid: { color: '#f3f4f6', drawBorder: false }, ticks: { color: '#9ca3af', font: { size: 11 } }, border: { display: false } }
                 }
             }
         });
@@ -2597,7 +2609,7 @@ window.initProdCharts = function(mos) {
             if (ctxYield.classList.contains('hidden')) {
                 ctxYield.parentElement.innerHTML = '<canvas id="chartProdYield"></canvas>';
             }
-            
+
             window.yieldChartInstance = new Chart(document.getElementById('chartProdYield'), {
                 type: 'line',
                 data: {
@@ -2620,16 +2632,16 @@ window.initProdCharts = function(mos) {
                     maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: {
-                        y: { 
-                            beginAtZero: false, 
+                        y: {
+                            beginAtZero: false,
                             min: 80,
-                            max: 100, 
- 
-                            grid: { color: '#f3f4f6', drawBorder: false }, 
-                            ticks: { callback: function(value) { return value + "%" }, color: '#9ca3af', font: {size: 11} },
-                            border: {display: false}
+                            max: 100,
+
+                            grid: { color: '#f3f4f6', drawBorder: false },
+                            ticks: { callback: function (value) { return value + "%" }, color: '#9ca3af', font: { size: 11 } },
+                            border: { display: false }
                         },
-                        x: { grid: { display: false }, ticks: { color: '#9ca3af', font: {size: 11} }, border: {display: false} }
+                        x: { grid: { display: false }, ticks: { color: '#9ca3af', font: { size: 11 } }, border: { display: false } }
                     }
                 }
             });
@@ -2990,7 +3002,7 @@ window.openOvenProcessModal = () => {
             </button>
         </div>`;
     showModal('Proses Oven (Baking)', body, footer, 'max-w-md');
-    setTimeout(() => { const el = document.getElementById('oven_input_item'); if(el) el.dispatchEvent(new Event('change')); }, 100);
+    setTimeout(() => { const el = document.getElementById('oven_input_item'); if (el) el.dispatchEvent(new Event('change')); }, 100);
 };
 
 window.saveOvenProcess = async () => {
@@ -3077,7 +3089,7 @@ window.openFinalizeProdModal = () => {
             </button>
         </div>`;
     showModal('Finalisasi Produksi', body, footer, 'xl');
-    setTimeout(() => { const el = document.getElementById('fin_input_item'); if(el) el.dispatchEvent(new Event('change')); }, 100);
+    setTimeout(() => { const el = document.getElementById('fin_input_item'); if (el) el.dispatchEvent(new Event('change')); }, 100);
 };
 
 window.saveFinalizeProd = async () => {
@@ -3474,7 +3486,7 @@ function renderInventoryPOReceipt() {
         const el = document.getElementById('por_sup_dropdown');
         if (el) el.classList.add('hidden');
     };
-    
+
     window.togglePORSupDropdown = () => {
         document.getElementById('por_sup_dropdown').classList.toggle('hidden');
         const el = document.getElementById('por_date_dropdown');
@@ -3503,7 +3515,7 @@ function renderInventoryPOReceipt() {
     };
 }
 
-window.handleInventoryPRAction = function(action, value) {
+window.handleInventoryPRAction = function (action, value) {
     const id = (value && typeof value === 'object' && value.value !== undefined) ? value.value : value;
     if (!action || !id) return;
     const cleanId = id.includes('-') ? id.split('-').pop() : id;
@@ -3557,7 +3569,7 @@ window.openPOReceiptModal = (id) => {
     }).join('');
 
     const todayStr = new Date().toISOString().split('T')[0];
-    const npbNum = window.generateNPBNumber ? window.generateNPBNumber() : `NPB-${todayStr.replace(/-/g, '')}-${Math.floor(Math.random()*1000)}`;
+    const npbNum = window.generateNPBNumber ? window.generateNPBNumber() : `NPB-${todayStr.replace(/-/g, '')}-${Math.floor(Math.random() * 1000)}`;
     const body = `<div class="text-sm">
         <div class="bg-blue-50 border border-blue-100 p-4 rounded-xl mb-4">
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -3606,7 +3618,7 @@ window.openPOReceiptModal = (id) => {
 
     const listViewPending = document.getElementById('por-list-view');
     if (listViewPending) listViewPending.classList.add('hidden');
-    
+
     formView.innerHTML = `
         <div class="animate-in fade-in slide-in-from-bottom-2 duration-400 -m-4 sm:-m-6 h-[calc(100vh-64px)] flex flex-col overflow-hidden bg-slate-50/50">
             <div class="sticky top-0 z-40 bg-white border-b border-slate-100 px-8 py-4 flex justify-between items-center shrink-0 shadow-sm">
@@ -3633,7 +3645,7 @@ window.openPOReceiptModal = (id) => {
             </div>
         </div>
     `;
-    
+
     formView.classList.remove('hidden');
 };
 
@@ -3882,14 +3894,14 @@ window.renderInventoryShrinkageReport = () => {
 window.runShrinkageReport = () => {
     const fromVal = document.getElementById('sr_from')?.value;
     const toVal = document.getElementById('sr_to')?.value;
-    
+
     if (!window.currentFilters.inventoryShrinkage) window.currentFilters.inventoryShrinkage = {};
     if (fromVal) window.currentFilters.inventoryShrinkage.start = fromVal;
     if (toVal) window.currentFilters.inventoryShrinkage.end = toVal;
 
     const monthlyBody = document.getElementById('shrinkage_monthly_body');
     const monthlyFoot = document.getElementById('shrinkage_monthly_foot');
-    
+
     if (!fromVal || !toVal || !monthlyBody) return;
 
     const from = new Date(fromVal + 'T00:00:00');
@@ -3934,9 +3946,9 @@ window.runShrinkageReport = () => {
         };
     });
 
-    const allEntries = [...moShrinkages, ...manualTxs].sort((a,b) => new Date(b.date) - new Date(a.date));
+    const allEntries = [...moShrinkages, ...manualTxs].sort((a, b) => new Date(b.date) - new Date(a.date));
     let grandTotal = 0;
-    
+
     const buckets = [];
     let curr = new Date(from.getFullYear(), from.getMonth(), 1);
     while (curr <= to) {
@@ -4016,8 +4028,8 @@ window.runShrinkageReport = () => {
                 },
                 scales: {
                     x: { grid: { display: false }, ticks: { font: { size: 10, weight: 'bold' }, color: '#94a3b8' } },
-                    y: { 
-                        beginAtZero: true, 
+                    y: {
+                        beginAtZero: true,
                         grid: { color: 'rgba(226, 232, 240, 0.5)', drawBorder: false },
                         ticks: { font: { size: 10, weight: 'bold' }, color: '#94a3b8', callback: v => v + ' kg' }
                     }
@@ -4028,19 +4040,19 @@ window.runShrinkageReport = () => {
 };
 
 window.showShrinkageMonthDetail = (month, year, start = null, end = null) => {
-    const months = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+    const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
     const label = `${months[month]} ${year}`;
-    
+
     // Default to full month if no specific dates provided
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
-    
+
     const filterStart = start ? new Date(start) : firstDay;
     const filterEnd = end ? new Date(end) : lastDay;
-    
+
     // Set hours to ensure range works
-    filterStart.setHours(0,0,0,0);
-    filterEnd.setHours(23,59,59,999);
+    filterStart.setHours(0, 0, 0, 0);
+    filterEnd.setHours(23, 59, 59, 999);
 
     const data = (window._lastShrinkData || []).filter(e => {
         const d = new Date(e.date);
@@ -4141,10 +4153,10 @@ window.applyModalShrinkFilter = (month, year) => {
 window.exportShrinkageReport = () => {
     const data = window._lastShrinkData || [];
     if (data.length === 0) { showToast('Tidak ada data untuk diekspor', 'info'); return; }
-    
+
     const headers = ['Tanggal', 'Item', 'Keterangan', 'Qty (KG)', 'Persentase (%)', 'Sumber'];
     const csvRows = [headers.join(',')];
-    
+
     data.forEach(e => {
         csvRows.push([
             invDate(e.date),
@@ -4155,12 +4167,12 @@ window.exportShrinkageReport = () => {
             e.source
         ].join(','));
     });
-    
+
     const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Laporan_Penyusutan_Produksi_${new Date().toISOString().slice(0,10)}.csv`;
+    a.download = `Laporan_Penyusutan_Produksi_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
 };
 
@@ -4435,7 +4447,7 @@ window.printMonthlyStockReport = () => {
     }
 };
 
-window.getEffectiveStockTxDate = function(t) {
+window.getEffectiveStockTxDate = function (t) {
     if (!t) return new Date();
     const refUpper = (t.reference || '').toUpperCase();
     if (refUpper === 'SALES_OUT' || refUpper === 'DELIVERY_ORDER') {
@@ -4486,7 +4498,7 @@ window.runMonthlyStockReport = () => {
     const catSelect = document.getElementById('msr_category');
     if (catSelect) window.currentMonthlyReportCategory = catSelect.value;
     const cat = window.currentMonthlyReportCategory || 'RAW_MATERIAL';
-    
+
     const btnConv = document.getElementById('btn_msr_conversion');
     if (btnConv) {
         if (cat === 'FINISHED_GOODS') btnConv.classList.remove('hidden');
@@ -4659,7 +4671,7 @@ window.viewProductStockCard = (productId, startDateStr = null, endDateStr = null
 
     // Handle initial call (legacy format with monthStr)
     let startDate, endDate;
-    if (startDateStr && startDateStr.includes('-') && startDateStr.length === 7) { 
+    if (startDateStr && startDateStr.includes('-') && startDateStr.length === 7) {
         // monthStr format (YYYY-MM)
         const [year, month] = startDateStr.split('-').map(Number);
         startDate = new Date(year, month - 1, 1);
@@ -4697,7 +4709,7 @@ window.viewProductStockCard = (productId, startDateStr = null, endDateStr = null
         const rawQty = parseFloat(t.qty) || 0;
         const qtyIn = isInType(t.type) ? rawQty : 0;
         const qtyOut = isOutType(t.type) ? rawQty : 0;
-        
+
         const refUpper = (t.reference || '').toUpperCase();
         const isShrink = ['SHRINKAGE', 'ADJUST_OUT', 'WASTE', 'JUDGMENT'].includes(refUpper) || (t.notes || '').toLowerCase().includes('susut');
         const isManualIn = ['MANUAL', 'ADJUST_IN'].includes(refUpper);
@@ -4711,7 +4723,7 @@ window.viewProductStockCard = (productId, startDateStr = null, endDateStr = null
             else totalNormalOut += qtyOut;
         }
         balance += qtyIn - qtyOut;
-        
+
         // Smart reference resolution for old records
         let displayTxNo = t.txNo || t.tx_no;
         if (!displayTxNo || displayTxNo.length > 20) {
@@ -4824,7 +4836,7 @@ window.viewProductStockCard = (productId, startDateStr = null, endDateStr = null
 
         ${item.category === 'FINISHED_GOODS' ? (() => {
             const pb = (db.read('packBreakdowns') || []).find(b => b.itemId === productId) || {};
-            const q5   = pb.qty5    || 0;
+            const q5 = pb.qty5 || 0;
             const q800 = pb.qty800 || 0;
             // q25 is now the remainder of the total weight
             const weightOthers = q5 * 5 + q800 * 0.8;
@@ -4880,28 +4892,28 @@ window.viewProductStockCard = (productId, startDateStr = null, endDateStr = null
 };
 
 window.recalcPackBreakdown = (saldoAkhir) => {
-    const q5   = parseFloat(document.getElementById('pb_5')?.value)   || 0;
+    const q5 = parseFloat(document.getElementById('pb_5')?.value) || 0;
     const q800 = parseFloat(document.getElementById('pb_800')?.value) || 0;
-    
+
     // Auto calculate q25 as remainder
     const weightOthers = q5 * 5 + q800 * 0.8;
     const q25 = (saldoAkhir - weightOthers) / 25;
 
     const el25_inp = document.getElementById('pb_25');
-    const el25_kg  = document.getElementById('pb_25_kg');
-    const el5_kg   = document.getElementById('pb_5_kg');
+    const el25_kg = document.getElementById('pb_25_kg');
+    const el5_kg = document.getElementById('pb_5_kg');
     const el800_kg = document.getElementById('pb_800_kg');
-    const elTot    = document.getElementById('pb_total_kg');
+    const elTot = document.getElementById('pb_total_kg');
 
     if (el25_inp) el25_inp.value = q25.toFixed(2);
-    if (el25_kg)  el25_kg.textContent = invFmt(q25 * 25) + ' Kg';
-    if (el5_kg)   el5_kg.textContent = invFmt(q5 * 5) + ' Kg';
+    if (el25_kg) el25_kg.textContent = invFmt(q25 * 25) + ' Kg';
+    if (el5_kg) el5_kg.textContent = invFmt(q5 * 5) + ' Kg';
     if (el800_kg) el800_kg.textContent = invFmt(q800 * 0.8) + ' Kg';
-    if (elTot)    elTot.innerHTML = '<span class="text-green-700">' + invFmt(saldoAkhir) + ' Kg</span>';
+    if (elTot) elTot.innerHTML = '<span class="text-green-700">' + invFmt(saldoAkhir) + ' Kg</span>';
 };
 
 window.savePackBreakdown = (productId) => {
-    const q5   = parseFloat(document.getElementById('pb_5')?.value)   || 0;
+    const q5 = parseFloat(document.getElementById('pb_5')?.value) || 0;
     const q800 = parseFloat(document.getElementById('pb_800')?.value) || 0;
     // We only need to store the "assigned" packs. 25Kg is derived.
     const existing = db.read('packBreakdowns').find(b => b.itemId === productId);
@@ -4937,7 +4949,7 @@ window.printProductStockCard = (productId, startDateStr, endDateStr) => {
     const rows = monthTxs.map(t => {
         const qtyIn = t.type === 'IN' ? t.qty : 0;
         const qtyOut = t.type === 'OUT' ? t.qty : 0;
-        
+
         const refUpper = (t.reference || '').toUpperCase();
         const isShrink = ['SHRINKAGE', 'ADJUST_OUT', 'WASTE', 'JUDGMENT'].includes(refUpper) || (t.notes || '').toLowerCase().includes('susut');
         const isManualIn = ['MANUAL', 'ADJUST_IN'].includes(refUpper);
@@ -4951,7 +4963,7 @@ window.printProductStockCard = (productId, startDateStr, endDateStr) => {
             else totalNormalOut += qtyOut;
         }
         balance += qtyIn - qtyOut;
-        
+
         // Smart reference resolution
         let displayTxNo = t.txNo || t.tx_no;
         if (!displayTxNo || displayTxNo.length > 20) {
@@ -5116,11 +5128,11 @@ document.addEventListener('click', (e) => {
     }
 });
 
-window.renderProductionWIPStock = function() {
+window.renderProductionWIPStock = function () {
     renderBreadcrumb(['Produksi', 'Reports', 'Mutasi Stock Bulanan']);
     document.getElementById('pageTitle').innerText = 'Mutasi Stock Bulanan';
     const mc = document.getElementById('main-content');
-    
+
     if (!window.currentWIPMutationCategory) window.currentWIPMutationCategory = 'OVEN_BASAH';
     const now = new Date();
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -5208,7 +5220,7 @@ window.runWIPMutationReport = () => {
         const output = document.getElementById('wip_mutation_report_output');
         const locSelect = document.getElementById('wip_msr_location');
         const searchInput = document.getElementById('wip_msr_search');
-        
+
         if (!monthVal || !output) return;
 
         if (locSelect) window.currentWIPMutationCategory = locSelect.value;
@@ -5233,14 +5245,14 @@ window.runWIPMutationReport = () => {
             return it.itemName.toLowerCase().includes(searchQuery) || it.itemCode.toLowerCase().includes(searchQuery);
         }).map(it => {
             const itemTxs = allTxs.filter(t => t.itemId === it.id);
-            
+
             const getStageQty = (txs, direction) => {
                 return txs.reduce((sum, t) => {
                     const q = parseFloat(t.qty) || 0;
                     const type = (t.type || '').toUpperCase();
                     const isIn = ['IN', 'ADJUST_IN', 'PRODUCTION_IN', 'RETURN_IN'].includes(type);
                     const isOut = ['OUT', 'SHRINKAGE', 'ADJUST_OUT', 'PRODUCTION_OUT', 'SALES_OUT', 'WASTE'].includes(type);
-                    
+
                     if (direction === 'IN' && isIn) return sum + q;
                     if (direction === 'OUT' && isOut) return sum + q;
                     if (direction === 'NET') {
@@ -5253,7 +5265,7 @@ window.runWIPMutationReport = () => {
 
             const openingTxs = itemTxs.filter(t => new Date(t.date) < startDate);
             const openingStock = getStageQty(openingTxs, 'NET');
-            
+
             const monthTxs = itemTxs.filter(t => new Date(t.date) >= startDate && new Date(t.date) <= endDate);
             const totalIn = getStageQty(monthTxs, 'IN');
             const totalOut = getStageQty(monthTxs, 'OUT');
@@ -5337,7 +5349,7 @@ window.runWIPMutationReport = () => {
         <div class="p-4 bg-slate-50/50 border-t border-slate-100 flex justify-between items-center">
             <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Showing ${reportData.length} WIP Items</span>
         </div>`;
-        
+
         output.innerHTML = html;
     } catch (e) {
         console.error(e);
@@ -5366,9 +5378,9 @@ window.openWIPHistoryModal = (itemId, location, startDateStr = null, endDateStr 
         }
         return l;
     };
-    
+
     const txs = allTxs.filter(t => t.itemId === itemId && _getTxLoc(t) === location && new Date(t.date) >= startDate && new Date(t.date) <= new Date(endDate.getTime() + 86400000))
-                      .sort((a, b) => new Date(a.date) - new Date(b.date));
+        .sort((a, b) => new Date(a.date) - new Date(b.date));
 
     let balance = 0; // WIP card might need opening stock logic too if we want same precision as inventory
     const openingTxs = allTxs.filter(t => t.itemId === itemId && _getTxLoc(t) === location && new Date(t.date) < startDate);
@@ -5393,20 +5405,20 @@ window.openWIPHistoryModal = (itemId, location, startDateStr = null, endDateStr 
         const isIn = ['IN', 'ADJUST_IN', 'PRODUCTION_IN', 'RETURN_IN'].includes(type);
         const isOut = ['OUT', 'SHRINKAGE', 'ADJUST_OUT', 'PRODUCTION_OUT', 'SALES_OUT', 'WASTE'].includes(type);
         const q = parseFloat(t.qty) || 0;
-        
+
         const refUpper = (t.reference || '').toUpperCase();
         const isShrink = ['SHRINKAGE', 'ADJUST_OUT', 'WASTE', 'JUDGMENT'].includes(refUpper) || (t.notes || '').toLowerCase().includes('susut');
         const isManualIn = ['MANUAL', 'ADJUST_IN'].includes(refUpper);
 
-        if (isIn) { 
+        if (isIn) {
             if (isManualIn) totalManualIn += q;
             else totalNormalIn += q;
-            currentBalance += q; 
+            currentBalance += q;
         }
-        if (isOut) { 
+        if (isOut) {
             if (isShrink) totalShrinkOut += q;
             else totalNormalOut += q;
-            currentBalance -= q; 
+            currentBalance -= q;
         }
 
         // Smart reference resolution
@@ -5429,7 +5441,7 @@ window.openWIPHistoryModal = (itemId, location, startDateStr = null, endDateStr 
 
         return `
             <tr class="border-b border-gray-50 text-[11px]">
-                <td class="py-2.5 px-2 text-gray-500">${new Date(t.date).toLocaleString('id-ID', {day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'})}</td>
+                <td class="py-2.5 px-2 text-gray-500">${new Date(t.date).toLocaleString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                 <td class="py-2.5 px-2 font-mono text-slate-500 font-bold text-[10px]">${displayTxNo}</td>
                 <td class="py-2.5 px-2 text-center font-mono text-gray-400 text-[10px]">${t.type}</td>
                 <td class="py-2.5 px-2 text-right text-green-600 font-bold">${isIn ? '+' + invFmt(q) : '-'}</td>
@@ -5561,7 +5573,7 @@ window.printWIPStockCard = (itemId, location, startDateStr, endDateStr) => {
     }, 0);
 
     const txs = allTxs.filter(t => t.itemId === itemId && _getTxLoc(t) === location && new Date(t.date) >= startDate && new Date(t.date) <= endDate)
-                      .sort((a, b) => new Date(a.date) - new Date(b.date));
+        .sort((a, b) => new Date(a.date) - new Date(b.date));
 
     let currentBalance = openingStock;
     let totalNormalIn = 0;
@@ -5574,20 +5586,20 @@ window.printWIPStockCard = (itemId, location, startDateStr, endDateStr) => {
         const isIn = ['IN', 'ADJUST_IN', 'PRODUCTION_IN', 'RETURN_IN'].includes(type);
         const isOut = ['OUT', 'SHRINKAGE', 'ADJUST_OUT', 'PRODUCTION_OUT', 'SALES_OUT', 'WASTE'].includes(type);
         const q = parseFloat(t.qty) || 0;
-        
+
         const refUpper = (t.reference || '').toUpperCase();
         const isShrink = ['SHRINKAGE', 'ADJUST_OUT', 'WASTE', 'JUDGMENT'].includes(refUpper) || (t.notes || '').toLowerCase().includes('susut');
         const isManualIn = ['MANUAL', 'ADJUST_IN'].includes(refUpper);
 
-        if (isIn) { 
+        if (isIn) {
             if (isManualIn) totalManualIn += q;
             else totalNormalIn += q;
-            currentBalance += q; 
+            currentBalance += q;
         }
-        if (isOut) { 
+        if (isOut) {
             if (isShrink) totalShrinkOut += q;
             else totalNormalOut += q;
-            currentBalance -= q; 
+            currentBalance -= q;
         }
 
         return `
@@ -5714,7 +5726,7 @@ window.renderInventoryJudgment = () => {
     const canEdit = getModulePermission('logistik').edit;
     document.getElementById('pageTitle').innerText = 'Judgment / Barang NG';
     const mc = document.getElementById('main-content');
-    
+
     // Initialize & Persist Filters
     window._judgmentFilters = window._judgmentFilters || { start: '', end: '', status: '', itemName: '' };
     const f = window._judgmentFilters;
@@ -5739,7 +5751,7 @@ window.renderInventoryJudgment = () => {
         });
     }
 
-    judgments.sort((a,b) => new Date(b.date) - new Date(a.date));
+    judgments.sort((a, b) => new Date(b.date) - new Date(a.date));
 
     // Options for Statuses
     const statusTypes = ['NG (NOT GOOD)', 'REJECTED', 'EXPIRED', 'WASTE', 'DAMAGE'];
@@ -5770,8 +5782,8 @@ window.renderInventoryJudgment = () => {
         <div onclick="toggleInvJFilter()" class="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 transition-colors select-none">
             <h3 class="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em] flex items-center gap-3">
                 <i class="fas fa-filter text-blue-600"></i> FILTER PENCARIAN
-                ${(!window._uiState.invJFilterOpen && (f.start || f.end || f.status || f.itemName)) ? 
-                    `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
+                ${(!window._uiState.invJFilterOpen && (f.start || f.end || f.status || f.itemName)) ?
+            `<span class="ml-2 px-2 py-0.5 bg-blue-50 text-blue-600 rounded-full text-[9px] font-bold">Filter Aktif</span>` : ''}
             </h3>
             <div class="flex items-center gap-3">
                 <span class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">${window._uiState.invJFilterOpen ? 'Sembunyikan' : 'Tampilkan'}</span>
@@ -5968,10 +5980,10 @@ window.openJudgmentModal = () => {
 
         // 3. Impact Stock: OUT transaction
         db.addInventoryTransaction(
-            data.itemId, 
-            'OUT', 
-            data.qty, 
-            'SHRINKAGE', 
+            data.itemId,
+            'OUT',
+            data.qty,
+            'SHRINKAGE',
             res.id,
             `JUDGMENT [${data.status}]: ${data.notes}`,
             window._session?.fullName || 'System',
@@ -6094,7 +6106,7 @@ window.printWIPReport = () => {
     window.printHTML(printHtml, `Mutasi WIP ${loc} - ${monthVal}`, true);
 };
 
-window.deleteInventoryReturn = async function(id, type) {
+window.deleteInventoryReturn = async function (id, type) {
     const tableName = type === 'return' ? 'salesReturns' : 'productExchanges';
     const label = type === 'return' ? 'Retur Penjualan' : 'Tukar Guling';
     const confirmed = await window.showConfirmDialog({
@@ -6106,7 +6118,7 @@ window.deleteInventoryReturn = async function(id, type) {
         icon: 'fa-trash-alt'
     });
     if (!confirmed) return;
-    
+
     try {
         await db.delete(tableName, id);
         if (window.api && typeof window.api.pullAll === 'function') await window.api.pullAll();
@@ -6143,23 +6155,23 @@ window.renderIncomingReturns = async function () {
 
         const srDate = d => d ? new Date(d).toLocaleDateString('id-ID') : '-';
         const srFmt = n => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(n || 0);
-        
+
         function getStatusBadge(status) {
             const map = {
-                'PENDING':        'bg-slate-100 text-slate-500',
-                'APPROVED':       'bg-slate-100 text-slate-500 shadow-sm',
+                'PENDING': 'bg-slate-100 text-slate-500',
+                'APPROVED': 'bg-slate-100 text-slate-500 shadow-sm',
                 'GOODS_RECEIVED': 'bg-indigo-100 text-indigo-800',
-                'RETURN_RECEIVED':'bg-indigo-100 text-indigo-800',
-                'COMPLETED':      'bg-emerald-100 text-emerald-800',
-                'REJECTED':       'bg-red-100 text-red-800'
+                'RETURN_RECEIVED': 'bg-indigo-100 text-indigo-800',
+                'COMPLETED': 'bg-emerald-100 text-emerald-800',
+                'REJECTED': 'bg-red-100 text-red-800'
             };
             const labels = {
-                'PENDING':        'WAITING WH',
-                'APPROVED':       'WAITING WH',
+                'PENDING': 'WAITING WH',
+                'APPROVED': 'WAITING WH',
                 'GOODS_RECEIVED': 'INSPECTED',
-                'RETURN_RECEIVED':'RETUR DITERIMA',
-                'COMPLETED':      'SELESAI',
-                'REJECTED':       'DITOLAK'
+                'RETURN_RECEIVED': 'RETUR DITERIMA',
+                'COMPLETED': 'SELESAI',
+                'REJECTED': 'DITOLAK'
             };
             const cls = map[status] || 'bg-gray-100 text-gray-600';
             const lbl = labels[status] || status;
@@ -6178,8 +6190,8 @@ window.renderIncomingReturns = async function () {
             allItems = allItems.filter(item => {
                 const cName = getCustomerName(item.customer_id || item.customerId).toLowerCase();
                 return (item.return_number || item.returnNumber || item.exchange_number || item.exchangeNumber || '').toLowerCase().includes(s) ||
-                       cName.includes(s) ||
-                       (item.product_name || item.productName || item.returned_product_name || item.returnedProductName || '').toLowerCase().includes(s);
+                    cName.includes(s) ||
+                    (item.product_name || item.productName || item.returned_product_name || item.returnedProductName || '').toLowerCase().includes(s);
             });
         }
 
@@ -6194,7 +6206,7 @@ window.renderIncomingReturns = async function () {
             const isReturn = item.irType === 'return';
             const idDoc = isReturn ? (item.return_number || item.returnNumber) : (item.exchange_number || item.exchangeNumber);
             const customerName = getCustomerName(item.customer_id || item.customerId);
-            
+
             let refDocHtml = '';
             if (isReturn) {
                 refDocHtml = `
@@ -6296,17 +6308,17 @@ window.renderIncomingReturns = async function () {
     }
 };
 
-window.changeIRTab = function(tab) {
+window.changeIRTab = function (tab) {
     window._irActiveTab = tab;
     window.renderIncomingReturns();
 };
 
-window.applyIRFilters = function() {
+window.applyIRFilters = function () {
     window._irFilters.search = document.getElementById('ir_search').value;
     window.renderIncomingReturns();
 };
 
-window.handleIRAction = function(actionOrSelect, id, type) {
+window.handleIRAction = function (actionOrSelect, id, type) {
     let action;
     if (typeof actionOrSelect === 'string') {
         action = actionOrSelect;
@@ -6342,7 +6354,7 @@ window.handleIRAction = function(actionOrSelect, id, type) {
  */
 window.openReceiveReturnForm = async function (id, type) {
     const mc = document.getElementById('main-content');
-    
+
     try {
         const record = await api.findById(type === 'return' ? 'salesReturns' : 'productExchanges', id);
         if (!record) { showToast('Data tidak ditemukan', 'error'); return; }
@@ -6481,9 +6493,9 @@ window.confirmInventoryReceive = async function (id, type) {
     if (qty <= 0) { showToast('Qty aktual harus lebih dari 0', 'error'); return; }
 
     try {
-        const payload = { 
-            receivedQty: qty, 
-            receivedCondition: condition, 
+        const payload = {
+            receivedQty: qty,
+            receivedCondition: condition,
             receivedNotes: notes,
             receivedBy: person
         };
@@ -6493,7 +6505,7 @@ window.confirmInventoryReceive = async function (id, type) {
         } else {
             await api.receiveProductExchange(id, payload);
         }
-        
+
         const condLabel = condition === 'Good' ? 'Bagus → stok bertambah (RETURN_IN) ✓' : 'Rusak → masuk Judgment ✓';
         showToast(`Barang diterima & diinspeksi: ${condLabel}`);
         if (window.api && typeof window.api.pullAll === 'function') await window.api.pullAll();
@@ -6510,8 +6522,8 @@ window.openProductionWipMutationModal = (wipItemId) => {
 
     // Cari target Finished Good yang namanya sama dengan WIP (tanpa akhiran Oven Kering)
     const baseName = wipItem.itemName.split(' (')[0].trim().toLowerCase();
-    const fgItem = (db.read('inventoryItems') || []).find(i => 
-        i.category === 'FINISHED_GOODS' && 
+    const fgItem = (db.read('inventoryItems') || []).find(i =>
+        i.category === 'FINISHED_GOODS' &&
         (i.itemName || '').toLowerCase().trim() === baseName
     );
 
@@ -6646,7 +6658,7 @@ window.submitProductionWipMutation = async (wipItemId, fgItemId, currentStock) =
 
         showToast('Mutasi sisa stok ke Gudang Jadi berhasil!', 'success');
         closeModal();
-        
+
         // Re-render report table immediately
         if (window.runWIPMutationReport) {
             window.runWIPMutationReport();

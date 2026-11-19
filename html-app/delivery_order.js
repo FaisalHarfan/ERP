@@ -811,7 +811,7 @@ window.openDeliveryFromSOModal = function (soId = null) {
                     <button onclick="renderSalesDeliveryOrders()" class="px-6 py-2.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95">
                         Batal
                     </button>
-                    <button onclick="saveDeliveryFromSO()" class="px-10 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all shadow-xl shadow-blue-500/20 active:scale-95 flex items-center gap-2 font-black">
+                    <button id="btn-teruskan-gudang" onclick="saveDeliveryFromSO()" class="px-10 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-900 transition-all shadow-xl shadow-blue-500/20 active:scale-95 flex items-center gap-2 font-black">
                         TERUSKAN KE GUDANG <i class="fas fa-truck-loading ml-1 text-white/50"></i>
                     </button>
                 </div>
@@ -1002,6 +1002,29 @@ window.loadSOForDO = function () {
 };
 
 window.saveDeliveryFromSO = async function () {
+    // Guard: prevent double-submit
+    if (window._saveDeliveryInProgress) return;
+    window._saveDeliveryInProgress = true;
+
+    // Show loading state on button
+    const btn = document.getElementById('btn-teruskan-gudang');
+    let originalHTML = '';
+    if (btn) {
+        originalHTML = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Memproses...';
+        btn.classList.add('opacity-70', 'cursor-not-allowed');
+    }
+
+    const resetBtn = () => {
+        window._saveDeliveryInProgress = false;
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalHTML;
+            btn.classList.remove('opacity-70', 'cursor-not-allowed');
+        }
+    };
+
     try {
         const soId = document.getElementById('dos_so_id')?.value;
         const recipient = document.getElementById('dos_recipient')?.value.trim();
@@ -1011,11 +1034,11 @@ window.saveDeliveryFromSO = async function () {
         const date = document.getElementById('dos_date')?.value;
         const notes = document.getElementById('dos_notes')?.value.trim();
 
-        if (!soId) { showToast('Pilih Sales Order.', 'error'); return; }
-        if (!recipient) { showToast('Penerima harus diisi.', 'error'); return; }
+        if (!soId) { showToast('Pilih Sales Order.', 'error'); resetBtn(); return; }
+        if (!recipient) { showToast('Penerima harus diisi.', 'error'); resetBtn(); return; }
 
         const so = db.findById('salesOrders', soId);
-        if (!so) { showToast('Sales Order tidak ditemukan.', 'error'); return; }
+        if (!so) { showToast('Sales Order tidak ditemukan.', 'error'); resetBtn(); return; }
         const rows = document.getElementById('dos_items_preview').querySelectorAll('tbody tr');
         const items = [];
         rows.forEach((row, idx) => {
@@ -1058,12 +1081,16 @@ window.saveDeliveryFromSO = async function () {
         });
 
         if (saved) {
+            window._saveDeliveryInProgress = false; // release before navigate
             showToast(`Surat Jalan ${doNum} berhasil diproses ke gudang.`);
             renderSalesDeliveryOrders();
+        } else {
+            resetBtn();
         }
     } catch (err) {
         console.error('Error in saveDeliveryFromSO:', err);
         showToast('Gagal menyimpan Surat Jalan', 'error');
+        resetBtn();
     }
 };
 
