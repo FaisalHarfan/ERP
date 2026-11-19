@@ -365,13 +365,17 @@ window.renderInventoryMaster = async () => {
     document.getElementById('pageTitle').innerText = 'Master Item';
     const mc = document.getElementById('main-content');
 
-    // Loading State
+    // Exclude WIP categories — these belong to Manufacturing, not Inventory
+    const WIP_CATEGORIES = ['OVEN_BASAH_STOCK', 'OVEN_KERING_STOCK', 'BULK_STOCK'];
+    // Exclude Purchase categories — these belong to Purchasing department
+    const PURCHASE_CATEGORIES = ['PACKAGING', 'SPAREPART', 'SUPPLIES', 'SERVICE', 'GAS', 'ASSET'];
+
     const cachedItems = (window._tempInventoryMasterItems && window._tempInventoryMasterItems.length > 0)
         ? window._tempInventoryMasterItems
         : (typeof db !== 'undefined' && db.read ? db.read('inventoryItems') : []);
 
     const renderWithItems = (rawItems) => {
-        let items = rawItems.filter(it => !WIP_CATEGORIES.includes(it.category) && !PURCHASE_CATEGORIES.includes(it.category));
+        let items = (rawItems || []).filter(it => !WIP_CATEGORIES.includes(it.category) && !PURCHASE_CATEGORIES.includes(it.category));
         window._tempInventoryItems = items; // Update cache after filters
         window._tempInventoryMasterItems = items; // Cache for fast client-side search
 
@@ -518,20 +522,21 @@ window.renderInventoryMaster = async () => {
     </div>`;
     };
 
-    // Optimistic Render: Jika sudah ada cache, render langsung 0 ms!
-    if (cachedItems && cachedItems.length > 0) {
-        renderWithItems(cachedItems);
-    } else {
-        mc.innerHTML = `<div class="p-10 text-center"><i class="fas fa-spinner fa-spin text-3xl text-indigo-500"></i><p class="mt-4 text-slate-500 font-medium">Memuat Master Item...</p></div>`;
-    }
-
     try {
+        // Optimistic Render: Jika sudah ada cache, render langsung 0 ms!
+        if (cachedItems && cachedItems.length > 0) {
+            renderWithItems(cachedItems);
+        } else {
+            mc.innerHTML = `<div class="p-10 text-center"><i class="fas fa-spinner fa-spin text-3xl text-indigo-500"></i><p class="mt-4 text-slate-500 font-medium">Memuat Master Item...</p></div>`;
+        }
+
         let items = await api.getInventoryItems();
         // Update tampilan secara halus tanpa jeda muter
         if (document.getElementById('pageTitle')?.innerText === 'Master Item') {
             renderWithItems(items);
         }
     } catch (err) {
+        console.error('renderInventoryMaster error:', err);
         if (!cachedItems || cachedItems.length === 0) {
             mc.innerHTML = `<div class="p-10 text-center text-red-500"><i class="fas fa-exclamation-triangle text-3xl mb-4"></i><p>${err.message}</p></div>`;
         }
