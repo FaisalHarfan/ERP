@@ -3873,8 +3873,8 @@ window.openCustomerModal = async (id = null, afterView = null) => {
                                     <thead class="bg-slate-50/50 border-b border-slate-100">
                                         <tr>
                                             <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Produk / Barang</th>
-                                            <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Harga (Rp)</th>
-                                            <th class="py-3 px-4 w-16"></th>
+                                            <th class="py-3 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Harga Kesepakatan (Rp)</th>
+                                            <th class="py-3 px-4 w-16 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">Aksi</th>
                                         </tr>
                                     </thead>
                                     <tbody id="cust_cp_list" class="divide-y divide-slate-50">
@@ -3897,20 +3897,48 @@ window.openCustomerModal = async (id = null, afterView = null) => {
 window.refreshCustomerProductsTable = () => {
     const list = document.getElementById('cust_cp_list');
     if (!list) return;
-    const inventory = db.read('inventoryItems');
     if (window.tempCustomerProducts.length === 0) {
-        list.innerHTML = '<tr><td colspan="3" class="py-4 text-center text-gray-400 text-xs">Belum ada produk yang disepakati</td></tr>';
+        list.innerHTML = '<tr><td colspan="3" class="py-6 text-center text-slate-400 text-xs font-medium italic">Belum ada produk yang disepakati</td></tr>';
         return;
     }
     list.innerHTML = window.tempCustomerProducts.map((p, idx) => {
         return `
-            <tr class="border-b">
-                <td class="py-2 px-2 text-gray-800">${p.itemName}</td>
-                <td class="py-2 px-2 text-right font-bold text-blue-600">${formatNumber(p.price)}</td>
-                <td class="py-2 px-2 text-right"><button type="button" onclick="removeCustomerProduct(${idx})" class="text-red-500 hover:text-red-700"><i class="fas fa-times"></i></button></td>
+            <tr class="hover:bg-slate-50/60 transition-colors group">
+                <td class="py-3 px-4 text-slate-800 font-bold">
+                    <div class="flex items-center gap-2.5">
+                        <div class="w-7 h-7 rounded-lg bg-orange-50 text-orange-600 flex items-center justify-center text-xs shrink-0">
+                            <i class="fas fa-tag"></i>
+                        </div>
+                        <span class="truncate">${p.itemName}</span>
+                    </div>
+                </td>
+                <td class="py-2.5 px-4 text-right">
+                    <div class="inline-flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 focus-within:bg-white focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-100 transition-all shadow-sm">
+                        <span class="text-xs font-black text-slate-400 select-none">Rp</span>
+                        <input type="number" min="0" step="any"
+                            value="${p.price !== undefined ? p.price : 0}"
+                            oninput="updateCustomerProductPrice(${idx}, this.value)"
+                            class="cust-cp-price-input w-28 sm:w-36 bg-transparent text-sm font-black text-slate-800 text-right outline-none font-sans"
+                            placeholder="0">
+                    </div>
+                </td>
+                <td class="py-2.5 px-4 text-center">
+                    <button type="button" onclick="removeCustomerProduct(${idx})" 
+                        class="w-8 h-8 rounded-lg bg-red-50 text-red-500 hover:bg-red-500 hover:text-white transition-all inline-flex items-center justify-center active:scale-95" 
+                        title="Hapus Produk">
+                        <i class="fas fa-trash-alt text-xs"></i>
+                    </button>
+                </td>
             </tr>
         `;
     }).join('');
+};
+
+window.updateCustomerProductPrice = (idx, value) => {
+    const val = parseFloat(value);
+    if (window.tempCustomerProducts && window.tempCustomerProducts[idx]) {
+        window.tempCustomerProducts[idx].price = isNaN(val) ? 0 : val;
+    }
 };
 
 window.addCustomerProduct = () => {
@@ -3947,6 +3975,15 @@ window.removeCustomerProduct = (idx) => {
 };
 
 window.saveCustomer = async (id) => {
+    // Sync any values currently typed in table inputs before saving
+    const priceInputs = document.querySelectorAll('.cust-cp-price-input');
+    priceInputs.forEach((inp, idx) => {
+        if (window.tempCustomerProducts && window.tempCustomerProducts[idx]) {
+            const val = parseFloat(inp.value);
+            window.tempCustomerProducts[idx].price = isNaN(val) ? 0 : val;
+        }
+    });
+
     const name = document.getElementById('cust_name').value.trim();
     const phone = document.getElementById('cust_phone').value.trim();
     const email = document.getElementById('cust_email').value.trim();
